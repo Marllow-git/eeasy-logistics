@@ -35,6 +35,7 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 | [0028](0028-driver-location-pings-bypass-the-outbox.md) | Write driver location pings to a bounded ring and fan out by Redis, not through the outbox | proposed |
 | [0029](0029-cursor-pagination-and-sse-event-names.md) | Page lists by opaque cursor and name SSE events after domain event types | proposed |
 | [0030](0030-merchant-webhook-signing-and-delivery.md) | Sign merchant webhooks with a timestamped HMAC and verify each subscription by token | proposed |
+| [0031](0031-database-roles-and-ledger-single-writer.md) | Separate database roles by duty and keep ledger writes in the application's ledger services | proposed |
 
 ## Groups
 
@@ -43,3 +44,4 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 - **Proposed by the architecture lead, accepted by the owner on merging PR #1 (2026-10-31):** 0018 one sites concept, 0019 PostgreSQL with PostGIS, 0020 Drizzle, 0021 driver app in the monorepo, 0022 containers on a Gulf host, 0024 outbox and queue, 0025 tenancy by account_id.
 - **Proposed with the domain model (document 2):** 0026 bounded contexts and module boundaries, 0027 domain event envelope and versioning, 0028 driver location pings bypass the outbox.
 - **Proposed with the API contracts (document 3):** 0029 cursor pagination and SSE event names, 0030 merchant webhook signing and delivery.
+- **Proposed with the data architecture (document 5):** 0031 database roles and the ledger single writer.
