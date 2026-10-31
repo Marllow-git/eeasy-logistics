@@ -619,7 +619,7 @@ paths:
       security: [{staffCookie: []}]
       parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
       responses:
-        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/CodCollection'}}}}]}}}}
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/StaffCodCollection'}}}}]}}}}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /orders/{order_id}/label:
     get:
@@ -878,7 +878,7 @@ paths:
       security: [{staffCookie: []}]
       parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/DriverIdQuery'}, {$ref: './components.yaml#/components/parameters/BusinessDate'}, {name: method, in: query, schema: {type: string, enum: [cash, card, mada, wallet]}}, {name: custody, in: query, schema: {type: string, enum: [collected, with_cashier, with_bank, not_held]}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
       responses:
-        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/CodCollection'}}}}]}}}}
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/StaffCodCollection'}}}}]}}}}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /cash/collections/{collection_id}/custody:
     get:
@@ -1044,7 +1044,7 @@ paths:
     post:
       operationId: issueTrackingToken
       summary: "Issue a recipient link"
-      description: 'Purposes track (order close + 30 days), reschedule and address_pin (48 h) (document 4 §3.5). Optional WhatsApp send goes through the outbox.'
+      description: 'Purposes track (order close + 30 days), reschedule and address_pin (48 h) (document 4 §3.5). Optional WhatsApp send goes through the outbox. The link is returned once; a replay returns 409 secret_already_issued and the link is not kept in the idempotency store.'
       tags: [tracking]
       x-wave: 1
       x-permission: delivery.tracking.manage
@@ -1053,7 +1053,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/IssueTrackingTokenRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/TrackingToken'}}}}
-        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, secret_already_issued.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /tracking-tokens/{token_id}/revoke:

@@ -49,6 +49,18 @@ Operations are in `public.yaml` (API key with `core.webhooks.manage`) and, ident
 | delivery log, redeliver | `GET /webhook-subscriptions/{subscription_id}/deliveries`, `POST …/deliveries/{delivery_id}/redeliver` |
 | catalogue with samples | `GET /webhook-event-types` |
 
+**Scope (H3).** A subscription stores `created_by_key_id` (public API) or `created_by_membership_id` (web app). Each event type needs the creator's matching read permission, checked at create, at update and before every delivery:
+
+| Event types | Required permission |
+|---|---|
+| `delivery.order.*`, `delivery.cod.*` | `delivery.orders.read` |
+| `delivery.proof.*` | `delivery.proofs.read` |
+| `wms.stock.*` | `wms.stock.read` |
+| `wms.fulfilment_order.*`, `wms.package.*` | `wms.fulfilment.read` |
+| `wms.inbound_receipt.*`, `wms.return.*` | `wms.receipts.read` |
+
+A missing scope at create or update returns `403 forbidden` with `details.missing_scope`. When the creating key is revoked or loses a scope, or the creating member is revoked, the subscription becomes `paused` with `paused_reason` and nothing more is sent until a principal with the scope resumes it.
+
 **One-time verification token.** Creating a subscription (or changing its URL) sets `status = pending_verification` and sends one signed `webhook.verification` request to the URL whose body carries a single-use `verification_token`, valid 24 hours. The integrator calls `verify` with that token; only then does the subscription become `active` and receive events. This proves control of the URL without asking the receiver to echo anything synchronously. URLs must be `https` and must not resolve to private, loopback or link-local ranges (checked at create and at every delivery).
 
 **Test and samples (Bolesa pattern, foundation plan §9).** `GET /webhook-event-types` returns every event type with its version, Arabic and English description and a sample envelope; the web app renders it as the samples page. `test-deliveries` signs and sends the sample of a chosen type to the subscription now, marked `"test": true` in the delivery log and `X-Eeasy-Delivery-Id`; tests ignore event-type filters and never enter the ordering queue.

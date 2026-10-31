@@ -358,7 +358,7 @@ paths:
     post:
       operationId: createApiKey
       summary: "Create an API key; the secret is shown once"
-      description: 'Scopes must be a subset of the integrator permissions in README §11 (document 4 §3.4).'
+      description: 'Scopes must be a subset of the integrator permissions in README §11 (document 4 §3.4). The idempotency store keeps the response without the secret; a replay returns 409 secret_already_issued with details.resource_id (README §3).'
       tags: [api-keys]
       x-wave: 4
       x-permission: core.api_keys.manage
@@ -368,12 +368,14 @@ paths:
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/ApiKeyWithSecret'}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /api-keys/{api_key_id}/rotate:
     post:
       operationId: rotateApiKey
       summary: "Rotate a key with an overlap window"
+      description: 'The old key keeps working for overlap_hours. A replay returns 409 secret_already_issued; the new secret is never stored in the idempotency store.'
       tags: [api-keys]
       x-wave: 4
       x-permission: core.api_keys.manage
@@ -382,6 +384,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RotateApiKeyRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/ApiKeyWithSecret'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /api-keys/{api_key_id}:
@@ -412,7 +415,7 @@ paths:
     post:
       operationId: createWebhookSubscription
       summary: "Subscribe a URL to event types; the secret is shown once"
-      description: 'Status pending_verification. A webhook.verification request with a one-time verification_token is POSTed to the URL; the subscription delivers events only after the verify call (webhooks.md §4, ADR-0030).'
+      description: 'Status pending_verification. The URL check and a webhook.verification request with a one-time verification_token go through the outbox; the subscription delivers events only after the verify call (webhooks.md §4, ADR-0030). Scope: each event type needs the matching read permission of the creator (delivery.order.* and delivery.cod.* → delivery.orders.read; delivery.proof.* → delivery.proofs.read; wms.stock.* → wms.stock.read; wms.fulfilment_order.* and wms.package.* → wms.fulfilment.read; wms.inbound_receipt.* and wms.return.* → wms.receipts.read), checked at create, update and every delivery; a missing scope returns 403 forbidden with details.missing_scope. The subscription is paused when the creating key is revoked or loses the scope, or the creating member is revoked.'
       tags: [webhooks]
       x-wave: 4
       x-permission: core.webhooks.manage
@@ -422,6 +425,8 @@ paths:
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionCreated'}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, limit_exceeded, idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /webhook-subscriptions/{subscription_id}:
@@ -439,7 +444,7 @@ paths:
     patch:
       operationId: updateWebhookSubscription
       summary: "Change URL, event types or pause"
-      description: 'A URL change returns the subscription to pending_verification.'
+      description: 'A URL change returns the subscription to pending_verification. Scope: each event type needs the matching read permission of the creator (delivery.order.* and delivery.cod.* → delivery.orders.read; delivery.proof.* → delivery.proofs.read; wms.stock.* → wms.stock.read; wms.fulfilment_order.* and wms.package.* → wms.fulfilment.read; wms.inbound_receipt.* and wms.return.* → wms.receipts.read), checked at create, update and every delivery; a missing scope returns 403 forbidden with details.missing_scope. The subscription is paused when the creating key is revoked or loses the scope, or the creating member is revoked.'
       tags: [webhooks]
       x-wave: 4
       x-permission: core.webhooks.manage
@@ -448,6 +453,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionInput'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
     delete:
@@ -481,6 +487,7 @@ paths:
     post:
       operationId: rotateWebhookSecret
       summary: "Issue a new signing secret; the old one stays valid 24 h"
+      description: 'Both secrets sign for 24 h. A replay returns 409 secret_already_issued; the secret is never stored in the idempotency store.'
       tags: [webhooks]
       x-wave: 4
       x-permission: core.webhooks.manage
@@ -488,6 +495,7 @@ paths:
       parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionCreated'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /webhook-subscriptions/{subscription_id}/test-deliveries:
@@ -599,7 +607,7 @@ components:
       required: [name, scopes]
       properties:
         name: {type: string}
-        scopes: {type: array, minItems: 1, items: {type: string, enum: [delivery.orders.read, delivery.orders.create, delivery.orders.cancel, core.webhooks.manage, wms.products.read, wms.stock.read, wms.fulfilment.read, wms.fulfilment.manage]}}
+        scopes: {type: array, minItems: 1, items: {type: string, enum: [delivery.orders.read, delivery.orders.create, delivery.orders.cancel, delivery.proofs.read, core.webhooks.manage, wms.products.read, wms.stock.read, wms.receipts.read, wms.fulfilment.read, wms.fulfilment.manage]}}
     RotateApiKeyRequest:
       type: object
       properties: {overlap_hours: {type: integer, minimum: 0, maximum: 168, default: 24}}
