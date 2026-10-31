@@ -31,6 +31,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AcceptInvitationRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
@@ -46,6 +47,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LoginRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/LoginResponse'}}}}
@@ -60,6 +62,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChallengeRequest'}}}}
       responses:
         '202': {description: Done}
@@ -75,6 +78,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChallengeVerifyRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/LoginResponse'}}}}
@@ -90,6 +94,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SelectAccountRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
@@ -105,6 +110,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.self
       security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SwitchAccountRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
@@ -120,6 +126,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.self
       security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnrolSecondFactorRequest'}}}}
       responses:
         '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/EnrolChallenge'}}}}
@@ -136,6 +143,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.self
       security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChallengeVerifyRequest'}}}}
       responses:
         '204': {description: Done}
@@ -150,6 +158,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.self
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '204': {description: Done}
         '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid, token_expired.'}
@@ -163,6 +172,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.self
       security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '204': {description: Done}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
@@ -175,6 +185,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PasswordResetRequest'}}}}
       responses:
         '202': {description: Done}
@@ -189,6 +200,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PasswordResetConfirm'}}}}
       responses:
         '204': {description: Done}
@@ -231,12 +243,12 @@ paths:
     patch:
       operationId: updateAccountSettings
       summary: "Change account settings"
-      description: 'Audited with before and after (K-7).'
+      description: 'Audited with before and after (K-7). embed_origins (wave 2): at most 10 https origins that may frame the recipient tracking pages.'
       tags: [account]
       x-wave: 0
       x-permission: core.account.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/AccountSettings'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/AccountSettings'}}}}
@@ -264,7 +276,7 @@ paths:
       x-wave: 0
       x-permission: core.members.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/InviteMemberRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Membership'}}}}
@@ -292,7 +304,7 @@ paths:
       x-wave: 0
       x-permission: core.members.manage
       security: [{staffCookie: []}]
-      parameters: [{name: membership_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: membership_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateMemberRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Membership'}}}}
@@ -308,7 +320,7 @@ paths:
       x-wave: 0
       x-permission: core.members.manage
       security: [{staffCookie: []}]
-      parameters: [{name: membership_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: membership_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '204': {description: Done}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
@@ -333,7 +345,7 @@ paths:
       x-wave: 0
       x-permission: core.sites.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
@@ -360,7 +372,7 @@ paths:
       x-wave: 0
       x-permission: core.sites.manage
       security: [{staffCookie: []}]
-      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
@@ -377,7 +389,7 @@ paths:
       x-wave: 0
       x-permission: core.sites.manage
       security: [{staffCookie: []}]
-      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: site_in_use.'}
@@ -391,7 +403,7 @@ paths:
       x-wave: 0
       x-permission: core.sites.manage
       security: [{staffCookie: []}]
-      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
@@ -429,7 +441,7 @@ paths:
       x-wave: 3
       x-permission: core.channels.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateChannelConnectionRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ChannelConnectionCreated'}}}}
@@ -457,7 +469,7 @@ paths:
       x-wave: 3
       x-permission: core.channels.manage
       security: [{staffCookie: []}]
-      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '204': {description: Done}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
@@ -471,7 +483,7 @@ paths:
       x-wave: 4
       x-permission: core.channels.manage
       security: [{staffCookie: []}]
-      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ChannelConnectionCreated'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
@@ -486,7 +498,7 @@ paths:
       x-wave: 4
       x-permission: core.channels.manage
       security: [{staffCookie: []}]
-      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '202': {description: Done}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: feature_not_enabled.'}
@@ -513,7 +525,7 @@ paths:
       x-wave: 4
       x-permission: core.api_keys.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateApiKeyRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/ApiKeyWithSecret'}}}}
@@ -530,7 +542,7 @@ paths:
       x-wave: 4
       x-permission: core.api_keys.manage
       security: [{staffCookie: []}]
-      parameters: [{name: api_key_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: api_key_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RotateApiKeyRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/ApiKeyWithSecret'}}}}
@@ -545,7 +557,7 @@ paths:
       x-wave: 4
       x-permission: core.api_keys.manage
       security: [{staffCookie: []}]
-      parameters: [{name: api_key_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: api_key_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '204': {description: Done}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
@@ -570,7 +582,7 @@ paths:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionInput'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionCreated'}}}}
@@ -600,7 +612,7 @@ paths:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: [{staffCookie: []}]
-      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionInput'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
@@ -615,7 +627,7 @@ paths:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: [{staffCookie: []}]
-      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '204': {description: Done}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
@@ -628,7 +640,7 @@ paths:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: [{staffCookie: []}]
-      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookVerifyRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
@@ -644,7 +656,7 @@ paths:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: [{staffCookie: []}]
-      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionCreated'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
@@ -659,7 +671,7 @@ paths:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: [{staffCookie: []}]
-      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookTestRequest'}}}}
       responses:
         '202': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookDelivery'}}}}
@@ -686,7 +698,7 @@ paths:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: [{staffCookie: []}]
-      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: delivery_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: delivery_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '202': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookDelivery'}}}}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}

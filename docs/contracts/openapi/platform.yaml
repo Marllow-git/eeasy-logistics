@@ -33,6 +33,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformLoginRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TotpChallenge'}}}}
@@ -48,6 +49,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TotpVerifyRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformMe'}}}}
@@ -63,6 +65,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformAcceptInvitationRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TotpChallenge'}}}}
@@ -77,6 +80,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChallengeOnlyRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TotpEnrolment'}}}}
@@ -92,6 +96,7 @@ paths:
       x-wave: 0
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TotpVerifyRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformMe'}}}}
@@ -106,6 +111,7 @@ paths:
       x-wave: 0
       x-permission: platform.auth.self
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '204': {description: Done}
         '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid, token_expired.'}
@@ -118,6 +124,7 @@ paths:
       x-wave: 0
       x-permission: platform.auth.self
       security: [{platformCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '204': {description: Done}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
@@ -152,7 +159,7 @@ paths:
       x-wave: 0
       x-permission: platform.accounts.provision
       security: [{platformCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProvisionAccountRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
@@ -180,7 +187,7 @@ paths:
       x-permission: platform.accounts.provision
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateAccountRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
@@ -195,7 +202,7 @@ paths:
       x-permission: platform.accounts.provision
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OwnerInviteRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Membership'}}}}
@@ -211,7 +218,7 @@ paths:
       x-permission: platform.accounts.suspend
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
@@ -228,7 +235,7 @@ paths:
       x-permission: platform.accounts.suspend
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
@@ -245,7 +252,7 @@ paths:
       x-permission: platform.accounts.suspend
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
@@ -261,7 +268,7 @@ paths:
       x-permission: platform.accounts.provision
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
@@ -277,7 +284,7 @@ paths:
       x-permission: platform.accounts.provision
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Zone'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Zone'}}}}
@@ -294,7 +301,7 @@ paths:
       x-permission: platform.accounts.provision
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CoverageProvisionRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/CoverageList'}}}}
@@ -321,7 +328,7 @@ paths:
       x-wave: 0
       x-permission: platform.rollout.manage
       security: [{platformCookie: []}]
-      parameters: [{name: feature_key, in: path, required: true, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: feature_key, in: path, required: true, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RolloutModeRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/RolloutMode'}}}}
@@ -351,7 +358,7 @@ paths:
       x-permission: platform.flags.manage
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: feature_key, in: path, required: true, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: feature_key, in: path, required: true, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/FeatureFlagRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FeatureFlag'}}}}
@@ -487,7 +494,7 @@ paths:
       x-permission: platform.outbox.replay
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: outbox_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: outbox_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/OutboxRow'}}}}
@@ -504,7 +511,7 @@ paths:
       x-permission: platform.outbox.replay
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayRequest'}}}}
       responses:
         '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayResult'}}}}
@@ -551,7 +558,7 @@ paths:
       x-permission: platform.outbox.replay
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: inbound_webhook_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}]
+      parameters: [{name: inbound_webhook_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/InboundWebhook'}}}}
@@ -569,7 +576,7 @@ paths:
       x-permission: platform.outbox.replay
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RefetchRequest'}}}}
       responses:
         '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayResult'}}}}
@@ -612,7 +619,7 @@ paths:
       x-permission: platform.outbox.replay
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: publication_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: publication_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/ChannelPublication'}}}}
@@ -644,7 +651,7 @@ paths:
       x-permission: platform.diagnose.run
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: fix_key, in: path, required: true, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: fix_key, in: path, required: true, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/FixRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/FixResult'}}}}
@@ -672,7 +679,7 @@ paths:
       x-wave: 0
       x-permission: platform.staff.manage
       security: [{platformCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformInviteRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformUser'}}}}
@@ -688,7 +695,7 @@ paths:
       x-wave: 0
       x-permission: platform.staff.manage
       security: [{platformCookie: []}]
-      parameters: [{name: user_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: user_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformRolesRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformUser'}}}}
@@ -704,7 +711,7 @@ paths:
       x-wave: 0
       x-permission: platform.staff.manage
       security: [{platformCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {name: user_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {name: user_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResetReasonRequest'}}}}
       responses:
         '204': {description: Done}
