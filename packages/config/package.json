@@ -6,7 +6,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./node": "./src/node.ts"
+    "./node": "./src/node.ts",
+    "./web": "./src/web.ts",
+    "./driver": "./src/driver.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
