@@ -32,3 +32,17 @@ Part of foundation document 3. Date: 2026-10-31. One security review pass (`adve
 | G1 | Choosing the account | fixed: `account_selection_required` login response with a selection token, `POST /auth/select-account`, `POST /auth/switch-account`; the `acc` claim comes only from these |
 | G2 | Second-factor enrolment | fixed: staff `second-factor/enrol` and `/confirm`; platform invitation accept, `totp/enrol`, `totp/confirm`, super-admin TOTP reset; enrolment only within 5 minutes of the password step and only when none is enrolled (`reauthentication_required`, `second_factor_already_enrolled`) |
 | G3 | Who holds which permission | fixed: role bundle table in README §11 (proposed, for the owner to confirm with document 4) |
+
+## Second pass
+
+The second adversary pass verified 25 of 28 fixes as complete (the 3 gaps included), found 5 partial (M4, M8, M10, G1, G2) and raised 12 new findings on the new surface. Partial items are closed by the new findings named.
+
+| Id | Finding | Outcome |
+|---|---|---|
+| G1 (partial) | account choice skipped factors | closed by N1 |
+| G2 (partial) | enrolment needed a stricter session | closed by N2 |
+| M10 (partial) | offer stream and push still carried the order | closed by N4 |
+| N1 (high) | select-account and switch-account skipped the target account's second factor | fixed: the session records `amr`; `select-account` and `switch-account` return `401 second_factor_required` with a challenge when the target account needs a factor the session lacks; memberships are listed only after every factor any of the user's accounts requires (README §1, `staff.yaml`) |
+| N2 (medium) | enrolment from a full session; no member reset | fixed: enrolment only with a 10-minute enrolment token from login or a redeemed re-enrolment link; `resetMemberSecondFactor` (owner or admin, not on oneself, emailed link, member notified); `redeemEnrolmentLink` needs link and password; a super admin cannot reset their own TOTP and the user is notified |
+| N3 (medium) | channel OAuth state and store takeover | fixed: single-use state nonce bound to account, member and connection, 10 minutes, PKCE where offered; `409 store_already_connected`; no connection from an install webhook without a pending state (README §1, `createChannelConnection`) |
+| N4 (medium) | offered event payload | fixed: `OrderOfferedPayload` with `OfferOrderView` only, on the driver stream and in push payloads (`components.yaml`, `driver.yaml`, README §6) |

@@ -490,7 +490,7 @@ paths:
     get:
       operationId: driverStream
       summary: "SSE stream of offers and run changes"
-      description: 'Events delivery.order.offered, delivery.order.assigned, delivery.order.cancelled, delivery.order.accepted, delivery.driver.cash_blocked, stream.resync. Push notifications carry the same offers when the app is in the background.'
+      description: 'Events delivery.order.offered (payload OrderOfferedPayload: OfferOrderView only; offer push notifications carry the same), delivery.order.assigned, delivery.order.cancelled, delivery.order.accepted, delivery.driver.cash_blocked, stream.resync; ReducedEnvelope. The full order is fetched through GET /orders/{order_id} after acceptance.'
       tags: [stream]
       x-wave: 1
       x-permission: delivery.driver.work
