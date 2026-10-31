@@ -50,6 +50,54 @@ jobs:
             exit 1
           }
 
+  # Unit, integration and architecture tests against the Compose ci profile (decision 2.3).
+  # api-test-rls repeats the suite with row-level security switched on (A-6; data §4.5).
+  api-test:
+    name: ${{ matrix.lane }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: api-test
+            rls: 'off'
+          - lane: api-test-rls
+            rls: 'on'
+    env:
+      COMPOSE_PROJECT_NAME: elx-ci
+      APP_ENV: ci
+      ELX_RLS: ${{ matrix.rls }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-scope: ${{ matrix.lane }}
+      - name: Start the ci profile and wait for healthy
+        run: |
+          cp .env.example .env
+          docker compose --profile ci up --detach --wait --wait-timeout 300 || {
+            echo "::error::the Compose ci profile did not become healthy (service logs in the last step)"
+            exit 1
+          }
+          docker compose --profile ci ps --format '{{.Service}} {{.State}} {{.Health}} {{.Publishers}}'
+      - name: Migrate from zero
+        run: pnpm --filter @eeasy-logistics/api run migrate
+      - name: Unit tests
+        run: pnpm --filter @eeasy-logistics/api run test:unit
+      - name: Integration tests (ELX_RLS=${{ matrix.rls }})
+        run: pnpm --filter @eeasy-logistics/api run test:integration
+      - name: Architecture test
+        run: pnpm --filter @eeasy-logistics/api run test:architecture
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose --profile ci logs --no-color --tail 200 || true
+      - name: Stop the ci profile
+        if: always()
+        run: docker compose --profile ci down --volumes --remove-orphans || true
+
   driver-test:
     name: driver-test
     runs-on: ubuntu-latest

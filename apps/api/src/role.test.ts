@@ -12,6 +12,11 @@ describe('parseRole', () => {
     expect(parseRole(['--role', 'api'])).toBe('api');
   });
 
+  it('reads --role migrate', () => {
+    expect(parseRole(['--role', 'migrate'])).toBe('migrate');
+    expect(parseRole(['--role=migrate'])).toBe('migrate');
+  });
+
   it('rejects an unknown or missing role value', () => {
     expect(() => parseRole(['--role', 'scheduler'])).toThrow('Invalid --role "scheduler"');
     expect(() => parseRole(['--role'])).toThrow('Invalid --role ""');
