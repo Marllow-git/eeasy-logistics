@@ -444,6 +444,9 @@ components:
         status: {type: string, enum: [pending_verification, active, paused, disabled]}
         secret_prefix: {type: string}
         description: {type: string}
+        created_by_key_id: {type: [string, 'null'], format: uuid, readOnly: true, description: 'API key that created it; its scopes gate every event type (H3)'}
+        created_by_membership_id: {type: [string, 'null'], format: uuid, readOnly: true, description: Set when created from the web app}
+        paused_reason: {type: [string, 'null'], enum: [merchant, key_revoked, scope_lost, member_revoked, failing, null], readOnly: true}
     WebhookSubscriptionCreated:
       allOf:
         - $ref: '#/components/schemas/WebhookSubscription'
@@ -731,7 +734,13 @@ components:
         method: {type: string, enum: [cash, card, mada, wallet]}
         external_reference: {type: [string, 'null']}
         custody: {type: string, enum: [collected, with_cashier, with_bank, not_held], readOnly: true, description: Latest custody entry (§3.16)}
-        pin_review: {type: boolean, readOnly: true, description: Set when the replayed cash PIN failed (README §12.2)}
+    StaffCodCollection:
+      description: Staff view of a collection; pin_review never appears on the driver surface.
+      allOf:
+        - $ref: '#/components/schemas/CodCollection'
+        - type: object
+          properties:
+            pin_review: {type: boolean, readOnly: true, description: 'Set when a replayed cash PIN failed; the driver is cash_blocked until a supervisor clears it'}
     CustodyEntry:
       type: object
       description: Append-only custody ledger (document 2 §3.11, D-19).

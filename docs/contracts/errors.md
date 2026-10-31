@@ -19,6 +19,7 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `version_required` | 428 | dispatcher write to Order or Assignment without `If-Match` | D-22 |
 | `version_conflict` | 409 | `If-Match` differs from the current `version`; `details` holds `current_status`, `version` | D-22 |
 | `invalid_transition` | 409 | the arrow is not in the state machine or not for this actor, or the aggregate is terminal; `details` holds `current_status`, `version` | D-5, D-8, §3.14 to §3.17, §4.11 to §4.15 |
+| `secret_already_issued` | 409 | replay of an operation that returned a one-time secret (API key, webhook secret, tracking link); `details.resource_id` names the resource, the secret is not returned again | README §3, doc 4 §3.4 |
 | `limit_exceeded` | 422 | an account limit (orders per month, drivers, sites, API keys) is reached | §2.1 limits |
 | `rate_limited` | 429 | route budget spent; `details.retry_after_s` and `Retry-After` | doc 4 §8 |
 
@@ -31,8 +32,8 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `otp_invalid` | 401 | wrong, expired or used OTP, or a disabled driver; one code for all so the door leaks nothing | doc 4 §3.2 |
 | `device_limit_reached` | 409 | a third active device for a driver | doc 4 §3.2, §3.5 of document 2 |
 | `device_revoked` | 401 | refresh from a revoked device | doc 4 §3.2 |
-| `cash_pin_invalid` | 403 | wrong cash PIN on a handover request or PIN change | doc 4 §3.2 |
-| `cash_pin_locked` | 423 | five PIN failures; cash actions locked until a dispatcher resets | doc 4 §3.2 |
+| `cash_pin_invalid` | 403 | wrong cash PIN on a handover request, a PIN change, or a cash `delivered` event received within 120 s of `client_ts`; every failure, including one found at replay, counts toward the lock | doc 4 §3.2 |
+| `cash_pin_locked` | 423 | five PIN failures; cash actions locked until a dispatcher resets; a replayed field fact is still recorded and the driver is `cash_blocked` | doc 4 §3.2, D-23 |
 
 ## 3. Delivery
 
@@ -51,6 +52,7 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `proof_required` | 422 | `delivered` without the proofs the account's proof policy needs | D-7 |
 | `cod_amount_mismatch` | 422 | `delivered` with collections that do not sum exactly to `cod_amount` | D-7 |
 | `method_not_allowed_for_cash` | 422 | a card, mada or wallet collection added to a handover or deposit | D-18 |
+| `client_ts_out_of_range` | 422 | driver event `client_ts` before the assignment started, after `min(server_ts, assignment.ended_at + offline window)` (default 12 h) | D-6, D-23 |
 | `stale_driver_event` | 409 | driver event superseded by a dispatcher change and D-23 does not apply; shown on the sync screen | D-16 |
 | `upload_mismatch` | 422 | proof or slip confirmation whose stored object is missing or whose `sha256` differs | §3.10, D-17 |
 | `slot_full` | 409 | booking a slot with `booked = capacity` or on a closed slot day | §3.9 |
