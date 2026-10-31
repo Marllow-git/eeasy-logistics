@@ -11,7 +11,7 @@ const config = loadConfig({ role }); // exits 78 (EX_CONFIG) listing every inval
 ```
 
 - `defineConfig(env, { role })` (from `@eeasy-logistics/config`) takes a plain record and never reads `process.env`; it validates every variable with Zod and throws one `ConfigError` listing every problem at once. Problems name the variable and the expected format, never the value.
-- `loadConfig()` in `src/node.ts` is the single server entry point that reads `process.env`. It reads a `.env` file (first in the working directory, then at the workspace root) only when the effective `APP_ENV` is `local`; the process environment wins over the file.
+- `loadConfig()` in `src/node.ts` is the single server entry point that reads `process.env`. It reads a `.env` file (first in the working directory, then at the workspace root) only when the process environment itself says `APP_ENV=local`; the file's own `APP_ENV` is ignored and the process environment wins over the file. `pnpm --filter api dev` sets `APP_ENV=local`.
 - Secrets are `Secret` instances: they print as `[redacted]` through `String()`, `JSON.stringify` and `util.inspect`; call `reveal()` at the point of use only.
 - An empty value counts as unset.
 

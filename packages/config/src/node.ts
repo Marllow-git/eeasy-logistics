@@ -11,19 +11,22 @@ import { defineConfig } from './server.ts';
 
 /**
  * The environment for `defineConfig()`. A `.env` file (gitignored; first found in `cwd`, then at the
- * workspace root) is read only when the effective `APP_ENV` is `local` (plan 2.7); variables already
- * in the process environment win over the file. In `ci`, `staging` and `production`, or when
- * `APP_ENV` is unset everywhere, the file is ignored. `process.env` itself is never modified.
+ * workspace root) is read only when the process environment itself says `APP_ENV=local` (plan 2.7);
+ * the file's own `APP_ENV` is ignored and variables already in the process environment win. In
+ * every other case, `APP_ENV` unset included, the file is not read. `process.env` is never modified.
  */
 export function readEnvironment(
   processEnv: EnvRecord = process.env,
   cwd: string = process.cwd(),
 ): EnvRecord {
+  // The decision rests on the process environment alone: a `.env` file can never switch itself on,
+  // and a file copied into an image or a server is ignored unless the process says `local`.
+  if (processEnv.APP_ENV !== 'local') return { ...processEnv };
   const path = findEnvFile(cwd);
   if (path === undefined) return { ...processEnv };
   const file = dotenv.parse(readFileSync(path));
-  const appEnv = nonEmpty(processEnv.APP_ENV) ?? nonEmpty(file.APP_ENV);
-  if (appEnv !== 'local') return { ...processEnv };
+  // `APP_ENV` never comes from the file, so the file cannot turn a local process into anything else.
+  delete file.APP_ENV;
   return { ...file, ...withoutEmpty(processEnv) };
 }
 
@@ -53,10 +56,6 @@ function findEnvFile(cwd: string): string | undefined {
     }
     if (dirname(dir) === dir) return undefined;
   }
-}
-
-function nonEmpty(value: string | undefined): string | undefined {
-  return value === undefined || value === '' ? undefined : value;
 }
 
 function withoutEmpty(env: EnvRecord): Record<string, string> {
