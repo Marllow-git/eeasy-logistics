@@ -1,0 +1,705 @@
+openapi: 3.1.0
+info:
+  title: "eeasy-logistics platform API"
+  version: 1.0.0
+  license: {name: Proprietary, identifier: LicenseRef-Proprietary}
+  description: >-
+    The platform admin surface (document 4 §3.3, §5, §6; platform.md). Operations marked x-cross-tenant
+    run in a @CrossTenant() handler: the account id comes from the path, every call writes an audit row,
+    and reads of operational data require the X-Support-Reason header. Conventions, errors and waves:
+    docs/contracts/README.md.
+servers:
+  - url: /v1/platform
+security:
+  - platformCookie: []
+tags:
+  - {name: auth, description: "Platform sign-in with mandatory TOTP (document 4 §3.3)"}
+  - {name: accounts, description: "Accounts (§2.1, K-1, K-2)"}
+  - {name: provisioning, description: "Sites, zones and coverage at provisioning (ADR-0015)"}
+  - {name: rollout, description: "Rollout modes and flags (§2.4, ADR-0006)"}
+  - {name: support, description: "Cross-tenant reads, audited (document 4 §5)"}
+  - {name: outbox, description: "Outbox, consumers, dead letters (ADR-0024)"}
+  - {name: diagnose, description: "Diagnose console"}
+  - {name: staff, description: "Platform staff"}
+  - {name: audit, description: "Platform audit log"}
+paths:
+  /auth/login:
+    post:
+      operationId: platformLogin
+      summary: "Platform sign-in, step one: email and password"
+      description: 'TOTP is mandatory; no cookie is set until it is verified.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformLoginRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TotpChallenge'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: invalid_credentials.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/totp/verify:
+    post:
+      operationId: platformVerifyTotp
+      summary: "Platform sign-in, step two: TOTP"
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TotpVerifyRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformMe'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid, token_expired.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/refresh:
+    post:
+      operationId: platformRefresh
+      summary: "Rotate the platform session"
+      description: 'Sessions expire after 12 h idle (document 4 §3.3).'
+      tags: [auth]
+      x-wave: 0
+      x-permission: platform.auth.self
+      security: []
+      responses:
+        '204': {description: Done}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid, token_expired.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/logout:
+    post:
+      operationId: platformLogout
+      summary: "End the platform session"
+      tags: [auth]
+      x-wave: 0
+      x-permission: platform.auth.self
+      security: [{platformCookie: []}]
+      responses:
+        '204': {description: Done}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /me:
+    get:
+      operationId: platformGetMe
+      summary: "Current platform user and roles"
+      tags: [auth]
+      x-wave: 0
+      x-permission: platform.auth.self
+      security: [{platformCookie: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformMe'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts:
+    get:
+      operationId: platformListAccounts
+      summary: "List accounts"
+      tags: [accounts]
+      x-wave: 0
+      x-permission: platform.accounts.read
+      security: [{platformCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Account'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: platformProvisionAccount
+      summary: "Provision an account"
+      description: 'K-1: the only way an account comes to exist. Writes limits and module flags with provisioned_by, invites the owner, emits core.account.provisioned. Audited.'
+      tags: [accounts]
+      x-wave: 0
+      x-permission: platform.accounts.provision
+      security: [{platformCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProvisionAccountRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}:
+    get:
+      operationId: platformGetAccount
+      summary: "Get an account with limits and usage"
+      tags: [accounts]
+      x-wave: 0
+      x-permission: platform.accounts.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: platformUpdateAccount
+      summary: "Change name, locale or limits"
+      tags: [accounts]
+      x-wave: 0
+      x-permission: platform.accounts.provision
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateAccountRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/owner-invitations:
+    post:
+      operationId: platformInviteOwner
+      summary: "Invite or re-invite the account owner"
+      tags: [accounts]
+      x-wave: 0
+      x-permission: platform.accounts.provision
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OwnerInviteRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Membership'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/suspend:
+    post:
+      operationId: platformSuspendAccount
+      summary: "Suspend an account"
+      description: 'active → suspended. Pauses outbox effects, rejects API keys, ends driver shifts, blocks refresh; data kept (K-2, document 4 §6).'
+      tags: [accounts]
+      x-wave: 0
+      x-permission: platform.accounts.suspend
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/reactivate:
+    post:
+      operationId: platformReactivateAccount
+      summary: "Reactivate a suspended account"
+      description: 'suspended → active (§2.1).'
+      tags: [accounts]
+      x-wave: 0
+      x-permission: platform.accounts.suspend
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/close:
+    post:
+      operationId: platformCloseAccount
+      summary: "Close an account"
+      description: 'suspended → closed (§2.1). Retention follows document 5.'
+      tags: [accounts]
+      x-wave: 0
+      x-permission: platform.accounts.suspend
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/sites:
+    post:
+      operationId: platformProvisionSite
+      summary: "Create a site during provisioning"
+      tags: [provisioning]
+      x-wave: 0
+      x-permission: platform.accounts.provision
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/zones:
+    post:
+      operationId: platformProvisionZone
+      summary: "Create a zone from an official boundary"
+      tags: [provisioning]
+      x-wave: 0
+      x-permission: platform.accounts.provision
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Zone'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Zone'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/coverage:
+    put:
+      operationId: platformProvisionCoverage
+      summary: "Set own-fleet coverage (site, zone) for the account"
+      description: 'ADR-0015: coverage is explicit data created by the provisioning door before first use. K-4: branch or both sites only.'
+      tags: [provisioning]
+      x-wave: 0
+      x-permission: platform.accounts.provision
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CoverageProvisionRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/CoverageList'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /rollout-modes:
+    get:
+      operationId: platformListRolloutModes
+      summary: "Rollout mode per feature key"
+      tags: [rollout]
+      x-wave: 0
+      x-permission: platform.accounts.read
+      security: [{platformCookie: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/RolloutModeList'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /rollout-modes/{feature_key}:
+    put:
+      operationId: platformSetRolloutMode
+      summary: "Set off, allowlist or all for a feature"
+      description: 'Super admin only (§2.4); emits core.feature_flag.changed; audited.'
+      tags: [rollout]
+      x-wave: 0
+      x-permission: platform.rollout.manage
+      security: [{platformCookie: []}]
+      parameters: [{name: feature_key, in: path, required: true, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RolloutModeRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/RolloutMode'}}}}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: rollout_change_forbidden.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/feature-flags:
+    get:
+      operationId: platformListFeatureFlags
+      summary: "Feature flags of an account"
+      tags: [rollout]
+      x-wave: 0
+      x-permission: platform.accounts.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/FeatureFlagList'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/feature-flags/{feature_key}:
+    put:
+      operationId: platformSetFeatureFlag
+      summary: "Enable or disable a feature for an account"
+      description: 'Sets provisioned_by to the caller (K-6); emits core.feature_flag.changed; audited.'
+      tags: [rollout]
+      x-wave: 0
+      x-permission: platform.flags.manage
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: feature_key, in: path, required: true, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/FeatureFlagRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FeatureFlag'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/members:
+    get:
+      operationId: platformListAccountMembers
+      summary: "Members of an account"
+      description: '@CrossTenant: one audit row per call with the X-Support-Reason text.'
+      tags: [support]
+      x-wave: 0
+      x-permission: platform.tenants.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Membership'}}}}]}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/orders:
+    get:
+      operationId: platformListAccountOrders
+      summary: "Orders of an account"
+      description: '@CrossTenant, audited per call.'
+      tags: [support]
+      x-wave: 1
+      x-permission: platform.tenants.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {name: number, in: query, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Order'}}}}]}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/orders/{order_id}:
+    get:
+      operationId: platformGetAccountOrder
+      summary: "One order of an account"
+      description: '@CrossTenant, audited per call.'
+      tags: [support]
+      x-wave: 1
+      x-permission: platform.tenants.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/SupportReason'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/orders/{order_id}/events:
+    get:
+      operationId: platformListAccountOrderEvents
+      summary: "Event history of an order"
+      description: '@CrossTenant, audited per call.'
+      tags: [support]
+      x-wave: 1
+      x-permission: platform.tenants.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/OrderEvent'}}}}]}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/drivers:
+    get:
+      operationId: platformListAccountDrivers
+      summary: "Drivers of an account"
+      description: '@CrossTenant, audited per call.'
+      tags: [support]
+      x-wave: 1
+      x-permission: platform.tenants.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Driver'}}}}]}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/audit-log:
+    get:
+      operationId: platformListAccountAudit
+      summary: "Audit log of an account"
+      description: '@CrossTenant, audited per call.'
+      tags: [support]
+      x-wave: 0
+      x-permission: platform.tenants.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/AuditLogEntry'}}}}]}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /outbox:
+    get:
+      operationId: platformListOutbox
+      summary: "Inspect outbox rows"
+      tags: [outbox]
+      x-wave: 0
+      x-permission: platform.outbox.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {name: kind, in: query, schema: {type: string}}, {name: type, in: query, schema: {type: string}}, {name: aggregate_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/OutboxRow'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /outbox/{outbox_id}:
+    get:
+      operationId: platformGetOutboxRow
+      summary: "One outbox row with its envelope and last error"
+      tags: [outbox]
+      x-wave: 0
+      x-permission: platform.outbox.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: outbox_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/OutboxRow'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /outbox/{outbox_id}/replay:
+    post:
+      operationId: platformReplayOutboxRow
+      summary: "Replay a dead outbox row"
+      description: 'dead → pending; envelope columns are immutable, only delivery state changes (K-10). Audited.'
+      tags: [outbox]
+      x-wave: 0
+      x-permission: platform.outbox.replay
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: outbox_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/OutboxRow'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: replay_not_allowed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /outbox/replay-dead:
+    post:
+      operationId: platformReplayDeadOutbox
+      summary: "Replay dead rows matching a filter"
+      description: 'Rows replay in aggregate sequence order (§6.2). Audited.'
+      tags: [outbox]
+      x-wave: 0
+      x-permission: platform.outbox.replay
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayRequest'}}}}
+      responses:
+        '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayResult'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /consumers:
+    get:
+      operationId: platformListConsumers
+      summary: "Consumer lag and parked events"
+      tags: [outbox]
+      x-wave: 0
+      x-permission: platform.outbox.read
+      security: [{platformCookie: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ConsumerList'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /channel-publications:
+    get:
+      operationId: platformListChannelPublications
+      summary: "Channel publications across accounts"
+      tags: [outbox]
+      x-wave: 4
+      x-permission: platform.outbox.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/ChannelPublication'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /channel-publications/{publication_id}/replay:
+    post:
+      operationId: platformReplayChannelPublication
+      summary: "Replay a dead channel publication"
+      description: 'A newer pending publication for the same product supersedes it instead (W-18).'
+      tags: [outbox]
+      x-wave: 4
+      x-permission: platform.outbox.replay
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: publication_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/ChannelPublication'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: replay_not_allowed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/diagnose:
+    get:
+      operationId: platformDiagnoseAccount
+      summary: "Run the read-only health checks of an account"
+      description: 'Coverage, storage, flags, stuck orders, unsettled cash, dead outbox rows, ledger assertion; each failed check names its fixes.'
+      tags: [diagnose]
+      x-wave: 2
+      x-permission: platform.diagnose.run
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/SupportReason'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DiagnoseReport'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /accounts/{account_id}/diagnose/fixes/{fix_key}:
+    post:
+      operationId: platformApplyFix
+      summary: "Apply a whitelisted one-click fix"
+      description: 'Support may run only fixes marked safe (document 4 §2). Every fix is audited with before and after; no fix edits a ledger.'
+      tags: [diagnose]
+      x-wave: 2
+      x-permission: platform.diagnose.run
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: fix_key, in: path, required: true, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/FixRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/FixResult'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: fix_not_whitelisted.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /staff-users:
+    get:
+      operationId: platformListStaffUsers
+      summary: "List platform staff"
+      tags: [staff]
+      x-wave: 0
+      x-permission: platform.staff.manage
+      security: [{platformCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: '#/components/schemas/PlatformUser'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /staff-users/invitations:
+    post:
+      operationId: platformInviteStaff
+      summary: "Invite a platform staff user"
+      tags: [staff]
+      x-wave: 0
+      x-permission: platform.staff.manage
+      security: [{platformCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformInviteRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformUser'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /staff-users/{user_id}/roles:
+    put:
+      operationId: platformSetStaffRoles
+      summary: "Set platform roles"
+      description: 'Super-admin rights are granted only by another super admin; audited (document 4 §3.3).'
+      tags: [staff]
+      x-wave: 0
+      x-permission: platform.staff.manage
+      security: [{platformCookie: []}]
+      parameters: [{name: user_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformRolesRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformUser'}}}}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /audit-log:
+    get:
+      operationId: platformListAudit
+      summary: "Platform audit log"
+      tags: [audit]
+      x-wave: 0
+      x-permission: platform.audit.read
+      security: [{platformCookie: []}]
+      parameters: [{name: account_id, in: query, schema: {type: string, format: uuid}}, {name: actor_id, in: query, schema: {type: string, format: uuid}}, {name: action, in: query, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/AuditLogEntry'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+components:
+  securitySchemes:
+    platformCookie: {$ref: './components.yaml#/components/securitySchemes/platformCookie'}
+  schemas:
+
+    PlatformRole:
+      type: string
+      enum: [platform_super_admin, platform_admin, platform_support]
+    PlatformUser:
+      type: object
+      allOf: [{$ref: './components.yaml#/components/schemas/User'}]
+      properties:
+        roles: {type: array, items: {$ref: '#/components/schemas/PlatformRole'}}
+        totp_enrolled: {type: boolean}
+    PlatformMe:
+      type: object
+      properties:
+        user: {$ref: '#/components/schemas/PlatformUser'}
+        permissions: {type: array, items: {type: string}}
+    PlatformLoginRequest:
+      type: object
+      required: [email, password]
+      properties: {email: {type: string, format: email}, password: {type: string}}
+    TotpChallenge:
+      type: object
+      properties: {challenge_id: {type: string}, totp_enrolment_required: {type: boolean}}
+    TotpVerifyRequest:
+      type: object
+      required: [challenge_id, code]
+      properties: {challenge_id: {type: string}, code: {type: string, pattern: '^[0-9]{6}$'}}
+    ProvisionAccountRequest:
+      type: object
+      required: [name, default_locale, limits, owner]
+      properties:
+        name: {type: string}
+        default_locale: {type: string, enum: [ar, en]}
+        limits: {$ref: './components.yaml#/components/schemas/AccountLimits'}
+        modules: {type: array, items: {type: string, x-extensible-enum: true, example: delivery}, description: Feature keys enabled with provisioned_by set (K-6)}
+        owner: {type: object, required: [email, name], properties: {email: {type: string, format: email}, name: {type: string}}}
+    UpdateAccountRequest:
+      type: object
+      properties:
+        name: {type: string}
+        default_locale: {type: string, enum: [ar, en]}
+        limits: {$ref: './components.yaml#/components/schemas/AccountLimits'}
+    OwnerInviteRequest:
+      type: object
+      required: [email, name]
+      properties: {email: {type: string, format: email}, name: {type: string}}
+    PlatformReasonRequest:
+      type: object
+      required: [reason]
+      properties: {reason: {type: string, minLength: 5, maxLength: 500}}
+    CoverageProvisionRequest:
+      type: object
+      required: [entries]
+      properties:
+        entries: {type: array, items: {type: object, required: [site_id, zone_ids], properties: {site_id: {type: string, format: uuid}, zone_ids: {type: array, items: {type: string, format: uuid}}}}}
+    CoverageList:
+      type: object
+      properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Coverage'}}}
+    RolloutModeList:
+      type: object
+      properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/RolloutMode'}}}
+    RolloutModeRequest:
+      type: object
+      required: [mode, reason]
+      properties: {mode: {type: string, enum: ['off', allowlist, all]}, reason: {type: string}}
+    FeatureFlagList:
+      type: object
+      properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/FeatureFlag'}}}
+    FeatureFlagRequest:
+      type: object
+      required: [enabled, reason]
+      properties: {enabled: {type: boolean}, reason: {type: string}}
+    BulkReplayRequest:
+      type: object
+      required: [reason]
+      properties:
+        account_id: {type: string, format: uuid}
+        kind: {type: string, enum: [internal_event, webhook, message, push, channel_publish, carrier_call]}
+        type: {type: string}
+        created_from: {type: string, format: date-time}
+        created_to: {type: string, format: date-time}
+        reason: {type: string, minLength: 5}
+    BulkReplayResult:
+      type: object
+      properties: {matched: {type: integer}, replayed: {type: integer}}
+    ConsumerList:
+      type: object
+      properties:
+        data: {type: array, items: {type: object, properties: {consumer: {type: string}, lag_seconds: {type: number}, parked: {type: integer}, dead: {type: integer}}}}
+    DiagnoseReport:
+      type: object
+      properties:
+        account_id: {type: string, format: uuid}
+        ran_at: {type: string, format: date-time}
+        checks:
+          type: array
+          items: {type: object, properties: {key: {type: string}, status: {type: string, enum: [pass, warn, fail]}, message_ar: {type: string}, message_en: {type: string}, fixes: {type: array, items: {type: object, properties: {fix_key: {type: string}, safe_for_support: {type: boolean}}}}}}
+    FixRequest:
+      type: object
+      properties: {params: {type: object, additionalProperties: true}}
+    FixResult:
+      type: object
+      properties: {fix_key: {type: string}, applied: {type: boolean}, audit_id: {type: string, format: uuid}, message: {type: string}}
+    PlatformInviteRequest:
+      type: object
+      required: [email, name, roles]
+      properties: {email: {type: string, format: email}, name: {type: string}, roles: {type: array, items: {$ref: '#/components/schemas/PlatformRole'}}}
+    PlatformRolesRequest:
+      type: object
+      required: [roles]
+      properties: {roles: {type: array, items: {$ref: '#/components/schemas/PlatformRole'}}}
