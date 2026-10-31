@@ -227,6 +227,7 @@ paths:
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, limit_exceeded, idempotency_key_reused.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /webhook-subscriptions/{subscription_id}:
     get:
@@ -254,6 +255,7 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, idempotency_key_reused.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
     delete:
       operationId: publicDeleteWebhookSubscription

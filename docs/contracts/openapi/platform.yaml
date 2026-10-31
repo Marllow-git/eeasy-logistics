@@ -42,6 +42,7 @@ paths:
     post:
       operationId: platformVerifyTotp
       summary: "Platform sign-in, step two: TOTP"
+      description: 'TOTP with a one-step clock tolerance; a code already used in its window is refused. At most 5 verification attempts per code or challenge, then it is invalidated; challenges expire after 5 minutes.'
       tags: [auth]
       x-wave: 0
       x-permission: core.auth.anonymous
@@ -405,27 +406,31 @@ paths:
     get:
       operationId: platformListOutbox
       summary: "Inspect outbox rows"
+      description: '@CrossTenant, audited per call with X-Support-Reason. Without account_id the rows carry metadata only (kind, status, type, attempts, times, account id); envelope payloads are returned only when account_id is given.'
       tags: [outbox]
       x-wave: 0
       x-permission: platform.outbox.read
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {name: kind, in: query, schema: {type: string}}, {name: type, in: query, schema: {type: string}}, {name: aggregate_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {name: account_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {name: kind, in: query, schema: {type: string}}, {name: type, in: query, schema: {type: string}}, {name: aggregate_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/OutboxRow'}}}}]}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /outbox/{outbox_id}:
     get:
       operationId: platformGetOutboxRow
       summary: "One outbox row with its envelope and last error"
+      description: '@CrossTenant, audited per call with X-Support-Reason.'
       tags: [outbox]
       x-wave: 0
       x-permission: platform.outbox.read
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: outbox_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {name: outbox_id, in: path, required: true, schema: {type: string, format: uuid}}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/OutboxRow'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /outbox/{outbox_id}/replay:
     post:
@@ -448,16 +453,17 @@ paths:
     post:
       operationId: platformReplayDeadOutbox
       summary: "Replay dead rows matching a filter"
-      description: 'Rows replay in aggregate sequence order (§6.2). Audited.'
+      description: 'Rows replay in aggregate sequence order (§6.2). @CrossTenant; audited with X-Support-Reason.'
       tags: [outbox]
       x-wave: 0
       x-permission: platform.outbox.replay
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayRequest'}}}}
       responses:
         '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayResult'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /consumers:
@@ -475,14 +481,16 @@ paths:
     get:
       operationId: platformListChannelPublications
       summary: "Channel publications across accounts"
+      description: '@CrossTenant, audited per call with X-Support-Reason.'
       tags: [outbox]
       x-wave: 4
       x-permission: platform.outbox.read
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {name: account_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/ChannelPublication'}}}}]}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /channel-publications/{publication_id}/replay:
     post:
@@ -581,13 +589,16 @@ paths:
     get:
       operationId: platformListAudit
       summary: "Platform audit log"
+      description: '@CrossTenant when it returns account rows; audited per call with X-Support-Reason.'
       tags: [audit]
       x-wave: 0
       x-permission: platform.audit.read
+      x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{name: account_id, in: query, schema: {type: string, format: uuid}}, {name: actor_id, in: query, schema: {type: string, format: uuid}}, {name: action, in: query, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {name: account_id, in: query, schema: {type: string, format: uuid}}, {name: actor_id, in: query, schema: {type: string, format: uuid}}, {name: action, in: query, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/AuditLogEntry'}}}}]}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
 components:
   securitySchemes:
