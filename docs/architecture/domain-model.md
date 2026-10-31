@@ -720,6 +720,7 @@ Idempotency key is the envelope `id` unless stated. "Webhook" means exposed to m
 | `delivery.order.cancelled` | Delivery | WMS (package back to packed) | reason, actor | yes |
 | `delivery.order.rescheduled` | Delivery | recipient message | new slot | yes |
 | `delivery.offer.expired` | Delivery | auto-dispatch next wave | order, driver | no |
+| `delivery.assignment.ended` | Delivery | driver stream, push effect | order, driver, `end_reason` (§3.8) | no |
 | `delivery.proof.stored` | Delivery | none (webhook) | kind, signed URL on request | yes |
 | `delivery.cod.collected` | Delivery | cash report | amount, method, custody | yes |
 | `delivery.handover.confirmed` | Delivery | cash report | driver, site, expected, counted | no |
