@@ -69,6 +69,7 @@ paths:
     post:
       operationId: verifySecondFactor
       summary: "Verify the phone OTP and start the session"
+      description: 'Phone OTP over WhatsApp, six digits. At most 5 verification attempts per code or challenge, then it is invalidated; challenges expire after 5 minutes.'
       tags: [auth]
       x-wave: 0
       x-permission: core.auth.anonymous
@@ -197,6 +198,7 @@ paths:
     post:
       operationId: inviteMember
       summary: "Invite a staff member by email"
+      description: 'Invitation token valid 72 h (document 4 §3.1). Only the owner grants or removes the owner role (403 forbidden). A membership may not combine driver with a role holding a cash permission (422 role_combination_forbidden). Audited.'
       tags: [members]
       x-wave: 0
       x-permission: core.members.manage
@@ -206,7 +208,8 @@ paths:
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Membership'}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
-        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, idempotency_key_reused.'}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, idempotency_key_reused, role_combination_forbidden.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /members/{membership_id}:
     get:
@@ -223,7 +226,7 @@ paths:
     patch:
       operationId: updateMember
       summary: "Change roles and site_ids"
-      description: 'Re-reads token_version (document 4 §4); the owner role is transferred only by the owner.'
+      description: 'Re-reads token_version (document 4 §4). Only the owner grants or removes the owner role (403 forbidden). A membership may not combine driver with a role holding a cash permission (422 role_combination_forbidden). Audited.'
       tags: [members]
       x-wave: 0
       x-permission: core.members.manage
@@ -234,11 +237,12 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Membership'}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
-        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused, role_combination_forbidden.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
     delete:
       operationId: revokeMember
       summary: "Revoke a membership and its sessions"
+      description: 'Revokes sessions within one access-token lifetime. Only the owner may revoke an owner; the last owner cannot be revoked.'
       tags: [members]
       x-wave: 0
       x-permission: core.members.manage
@@ -428,6 +432,7 @@ paths:
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, limit_exceeded, idempotency_key_reused.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /webhook-subscriptions/{subscription_id}:
     get:
@@ -455,6 +460,7 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, idempotency_key_reused.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
     delete:
       operationId: deleteWebhookSubscription
@@ -595,12 +601,12 @@ components:
       properties:
         email: {type: string, format: email}
         name: {type: string}
-        roles: {type: array, minItems: 1, items: {$ref: './components.yaml#/components/schemas/Role'}}
+        roles: {type: array, minItems: 1, items: {$ref: './components.yaml#/components/schemas/StaffRole'}}
         site_ids: {type: array, items: {type: string, format: uuid}}
     UpdateMemberRequest:
       type: object
       properties:
-        roles: {type: array, minItems: 1, items: {$ref: './components.yaml#/components/schemas/Role'}}
+        roles: {type: array, minItems: 1, items: {$ref: './components.yaml#/components/schemas/StaffRole'}}
         site_ids: {type: array, items: {type: string, format: uuid}}
     CreateApiKeyRequest:
       type: object

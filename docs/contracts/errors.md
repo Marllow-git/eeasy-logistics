@@ -27,9 +27,10 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 
 | Code | HTTP | When | Enforces |
 |---|---|---|---|
+| `role_combination_forbidden` | 422 | a membership would combine `driver` with a role holding a cash permission | doc 4 §2 (separation of duties) |
 | `invalid_credentials` | 401 | wrong email or password; same body and timing for unknown and disabled users | doc 4 §8 |
 | `second_factor_required` | 401 | password accepted, OTP or TOTP step pending; `details.challenge_id` | doc 4 §3.1, §3.3 |
-| `otp_invalid` | 401 | wrong, expired or used OTP, or a disabled driver; one code for all so the door leaks nothing | doc 4 §3.2 |
+| `otp_invalid` | 401 | wrong, expired or used OTP or TOTP, a code or challenge past 5 attempts or 5 minutes, or a disabled driver; one code for all so the door leaks nothing | doc 4 §3.2, §3.3 |
 | `device_limit_reached` | 409 | a third active device for a driver | doc 4 §3.2, §3.5 of document 2 |
 | `device_revoked` | 401 | refresh from a revoked device | doc 4 §3.2 |
 | `cash_pin_invalid` | 403 | wrong cash PIN on a handover request, a PIN change, or a cash `delivered` event received within 120 s of `client_ts`; every failure, including one found at replay, counts toward the lock | doc 4 §3.2 |
@@ -54,6 +55,9 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `method_not_allowed_for_cash` | 422 | a card, mada or wallet collection added to a handover or deposit | D-18 |
 | `client_ts_out_of_range` | 422 | driver event `client_ts` before the assignment started, after `min(server_ts, assignment.ended_at + offline window)` (default 12 h) | D-6, D-23 |
 | `stale_driver_event` | 409 | driver event superseded by a dispatcher change and D-23 does not apply; shown on the sync screen | D-16 |
+| `collection_not_eligible` | 422 | a handover or deposit lists a collection that is not the driver's own, not cash, not in the expected custody, or already in another open handover or deposit | D-18, D-19 |
+| `deposit_sum_mismatch` | 422 | deposit `amount` differs from the sum of its collections | D-19, D-21 |
+| `method_not_allowed` | 422 | a collection method outside the account `allowed_cod_methods`, or a non-cash collection without `external_reference` | D-18, ADR-0017 |
 | `upload_mismatch` | 422 | proof or slip confirmation whose stored object is missing or whose `sha256` differs | §3.10, D-17 |
 | `slot_full` | 409 | booking a slot with `booked = capacity` or on a closed slot day | §3.9 |
 | `handover_amount_required` | 422 | confirming a handover without `counted_amount` | D-20 |
@@ -82,7 +86,7 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | Code | HTTP | When | Enforces |
 |---|---|---|---|
 | `api_key_revoked` | 401 | revoked or rotated-out key past its overlap window | doc 4 §3.4 |
-| `webhook_url_invalid` | 422 | subscription URL not `https`, resolves to a private range, or not reachable | ADR-0030 |
+| `webhook_url_invalid` | 422 | subscription URL is not `https` on port 443, or is a literal or resolved address in a refused class; reachability is checked later through the outbox, not here | ADR-0030 |
 | `verification_token_invalid` | 422 | wrong or reused subscription verification token | ADR-0030 |
 | `reason_required` | 400 | cross-tenant platform call without `X-Support-Reason` | doc 4 §5, §7 |
 | `rollout_change_forbidden` | 403 | a platform admin (not super admin) changing a rollout mode | §2.4, doc 4 §2 |

@@ -233,16 +233,20 @@ components:
         next_cursor: {type: [string, 'null']}
     UploadTicket:
       type: object
-      description: Signed upload URL (ADR-0015); the client PUTs the file, then confirms.
-      required: [upload_url, method, expires_at, storage_key]
+      description: 'Signed, write-once upload URL (ADR-0015). The server chooses the object key under the account prefix; content type, sha256 and maximum size are bound into the signature; the URL expires after 10 minutes. Clients refer to the file only by upload_id.'
+      required: [upload_id, upload_url, method, expires_at, max_bytes, content_type, sha256]
       properties:
+        upload_id: {type: string, format: uuid}
         upload_url: {type: string, format: uri}
         method: {type: string, enum: [PUT]}
-        headers: {type: object, additionalProperties: {type: string}}
-        expires_at: {type: string, format: date-time}
-        storage_key: {type: string}
+        headers: {type: object, additionalProperties: {type: string}, description: Headers the client must send unchanged (content type and checksum)}
+        expires_at: {type: string, format: date-time, description: Issue time plus 10 minutes}
+        max_bytes: {type: integer, description: 'Photos and slips 10 MB, CSV 20 MB'}
+        content_type: {type: string}
+        sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
     SignedUrl:
       type: object
+      description: 'Expiring read URL on a separate file domain, served with Content-Disposition: attachment.'
       required: [url, expires_at]
       properties:
         url: {type: string, format: uri}
@@ -323,6 +327,8 @@ components:
             properties: {code: {type: string}, label_ar: {type: string}, label_en: {type: string}, active: {type: boolean}}
         auto_dispatch: {type: object, properties: {enabled: {type: boolean}, offer_ttl_s: {type: integer, minimum: 30}, drivers_per_wave: {type: integer, minimum: 1}}}
         second_factor_required: {type: boolean}
+        allowed_cod_methods: {type: array, items: {type: string, enum: [cash, card, mada, wallet]}, default: [cash], description: 'Digital methods only after the owner gate of ADR-0017'}
+        offline_window_hours: {type: integer, minimum: 1, maximum: 48, default: 12, description: Driver client_ts window after an assignment ends (H1)}
         receipt_tolerance_pct: {type: number, minimum: 0}
         adjustment_approval_threshold: {type: integer, minimum: 0}
     User:
@@ -338,6 +344,10 @@ components:
     Role:
       type: string
       enum: [owner, admin, dispatcher, site_staff, warehouse_staff, cashier, viewer, driver]
+    StaffRole:
+      type: string
+      description: Roles grantable on the staff surface; driver memberships are created only through the drivers resource.
+      enum: [owner, admin, dispatcher, site_staff, warehouse_staff, cashier, viewer]
     Membership:
       type: object
       description: Binds a user to one account with roles and site_ids (document 4 §2).
@@ -464,7 +474,7 @@ components:
         status: {type: string, enum: [pending, delivered, retrying, dead]}
         attempts: {type: integer}
         last_status_code: {type: [integer, 'null']}
-        last_error: {type: [string, 'null']}
+        error_class: {type: [string, 'null'], enum: [timeout, dns_error, connection_refused, tls_error, address_refused, redirect_refused, http_status, null], description: Fixed class; the receiver response body is never stored or shown}
         next_attempt_at: {type: [string, 'null'], format: date-time}
         test: {type: boolean}
     WebhookSubscriptionInput:
@@ -522,7 +532,7 @@ components:
         items: {type: array, items: {$ref: '#/components/schemas/OrderItem'}}
         zone_id: {type: [string, 'null'], format: uuid, readOnly: true}
         slot_id: {type: [string, 'null'], format: uuid}
-        cod_amount: {$ref: '#/components/schemas/Money'}
+        cod_amount: {$ref: '#/components/schemas/Money', description: 'Locked from picked_up (409 order_locked); every change is audited'}
         current_assignment_id: {type: [string, 'null'], format: uuid, readOnly: true}
         attempt_count: {type: integer, readOnly: true}
         max_attempts: {type: integer, readOnly: true}
@@ -681,7 +691,19 @@ components:
         expires_at: {type: string, format: date-time}
         responded_at: {type: [string, 'null'], format: date-time}
         wave: {type: integer}
-        order: {$ref: '#/components/schemas/Order', description: Included on the driver surface}
+        order: {$ref: '#/components/schemas/OfferOrderView', description: 'Driver surface only; the full order is visible after acceptance'}
+    OfferOrderView:
+      type: object
+      description: What a driver sees of an order before accepting its offer (no recipient name, phone or full address).
+      properties:
+        order_id: {type: string, format: uuid}
+        kind: {$ref: '#/components/schemas/OrderKind'}
+        site_id: {type: string, format: uuid}
+        zone_id: {type: [string, 'null'], format: uuid}
+        district: {type: [string, 'null']}
+        item_count: {type: integer}
+        cod_amount: {$ref: '#/components/schemas/Money'}
+        window: {type: [object, 'null'], properties: {starts_at: {type: string, format: date-time}, ends_at: {type: string, format: date-time}}}
     SlotDay:
       type: object
       description: Document 2 §3.9.
@@ -775,9 +797,11 @@ components:
         id: {type: string, format: uuid}
         driver_id: {type: string, format: uuid}
         amount: {$ref: '#/components/schemas/SignedMoney'}
-        reason: {type: string}
+        reason: {type: string, enum: [handover_deficit, handover_surplus, clearance, write_off, correction]}
         handover_id: {type: [string, 'null'], format: uuid}
+        reference: {type: [string, 'null']}
         recorded_by: {type: string, format: uuid}
+        approved_by: {type: [string, 'null'], format: uuid, description: Required for negative entries; never the cashier of the related handover}
         created_at: {type: string, format: date-time}
     DriverCashSummary:
       type: object
@@ -795,7 +819,7 @@ components:
         site_id: {type: string, format: uuid}
         amount: {$ref: '#/components/schemas/SignedMoney'}
         bank_reference: {type: string}
-        slip_storage_key: {type: string}
+        slip_upload_id: {type: [string, 'null'], format: uuid}
         deposited_at: {type: string, format: date-time}
         recorded_by: {type: string, format: uuid}
         collection_ids: {type: array, items: {type: string, format: uuid}}

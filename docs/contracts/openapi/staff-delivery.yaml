@@ -135,6 +135,7 @@ paths:
     post:
       operationId: createDriver
       summary: "Create a driver and send the app invitation over WhatsApp"
+      description: 'Creates the user, a driver membership and the del_drivers row. Refused with role_combination_forbidden when the phone already belongs to a member of this account holding a cash permission.'
       tags: [drivers]
       x-wave: 1
       x-permission: delivery.drivers.manage
@@ -144,7 +145,7 @@ paths:
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Driver'}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
-        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, site_kind_mismatch, idempotency_key_reused.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, site_kind_mismatch, idempotency_key_reused, role_combination_forbidden.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /drivers/{driver_id}:
     get:
@@ -255,7 +256,7 @@ paths:
     post:
       operationId: recordDriverLiability
       summary: "Record a clearance or correction entry"
-      description: 'Append-only (D-20); a correction is a new signed entry, never an edit.'
+      description: 'Append-only (D-20); a correction is a new signed entry, never an edit. A negative entry (surplus, clearance, write-off) is approved by the caller, recorded as approved_by, who must not be the cashier of the related handover (403 separation_of_duties). Audited with before and after balance.'
       tags: [cash]
       x-wave: 2
       x-permission: delivery.liability.record
@@ -265,6 +266,7 @@ paths:
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverLiabilityEntry'}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: separation_of_duties.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /drivers/{driver_id}/trail:
@@ -446,7 +448,7 @@ paths:
     patch:
       operationId: updateOrder
       summary: "Edit recipient, address, items, COD or notes before pickup"
-      description: 'Items immutable after picked_up (§3.2).'
+      description: 'Items and cod_amount are locked from picked_up (§3.2, 409 order_locked). Every change of cod_amount writes an audit row with before and after (K-7).'
       tags: [orders]
       x-wave: 1
       x-permission: delivery.orders.create
@@ -920,7 +922,7 @@ paths:
     post:
       operationId: confirmHandover
       summary: "Cashier confirms the counted amount"
-      description: 'requested → confirmed. Custody entries to with_cashier for every collection and one liability entry for any difference, in one transaction (D-19, D-20). The cashier is never the driver.'
+      description: 'requested → confirmed under a row lock on the handover and its collections. Custody entries to with_cashier for every collection and one liability entry for any difference, in one transaction (D-19, D-20). The cashier is never the driver.'
       tags: [cash]
       x-wave: 2
       x-permission: delivery.cash.receive
@@ -931,7 +933,7 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashHandover'}}}}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
-        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: handover_amount_required, idempotency_key_reused.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: handover_amount_required, idempotency_key_reused, collection_not_eligible.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /cash/handovers/{handover_id}/reject:
     post:
@@ -966,7 +968,7 @@ paths:
     post:
       operationId: recordDeposit
       summary: "Record a bank deposit"
-      description: 'Custody with_cashier → with_bank for the listed collections (D-19). Corrections are reversing deposits.'
+      description: 'Custody with_cashier → with_bank for the listed collections under a row lock on them (D-19); each collection is deposited once. amount must equal the sum of the listed collections. A negative amount is a reversing deposit and requires reverses_deposit_id.'
       tags: [cash]
       x-wave: 2
       x-permission: delivery.cash.deposit
@@ -977,7 +979,7 @@ paths:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashDeposit'}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
-        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: method_not_allowed_for_cash, upload_mismatch, idempotency_key_reused.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: method_not_allowed_for_cash, upload_mismatch, idempotency_key_reused, collection_not_eligible, deposit_sum_mismatch.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
     get:
       operationId: listDeposits
@@ -1125,7 +1127,13 @@ components:
     LiabilityEntryRequest:
       type: object
       required: [amount, reason]
-      properties: {amount: {$ref: './components.yaml#/components/schemas/SignedMoney'}, reason: {type: string}}
+      properties:
+        amount: {$ref: './components.yaml#/components/schemas/SignedMoney'}
+        reason: {type: string, enum: [handover_deficit, handover_surplus, clearance, write_off, correction]}
+        handover_id: {type: string, format: uuid}
+        reference: {type: string, maxLength: 200, description: Required when no handover_id}
+        note: {type: string, maxLength: 1000}
+      anyOf: [{required: [handover_id]}, {required: [reference]}]
     DriverTrail:
       type: object
       properties:
@@ -1169,8 +1177,8 @@ components:
       properties: {point: {$ref: './components.yaml#/components/schemas/Point'}, note: {type: string}}
     CreateOrderImportRequest:
       type: object
-      required: [file_name, site_id]
-      properties: {file_name: {type: string, pattern: '\.csv$'}, site_id: {type: string, format: uuid}, sha256: {type: string}}
+      required: [file_name, site_id, sha256, size_bytes]
+      properties: {file_name: {type: string, pattern: '\.csv$'}, site_id: {type: string, format: uuid}, sha256: {type: string, pattern: '^[a-f0-9]{64}$'}, size_bytes: {type: integer, minimum: 1, maximum: 20971520}}
     OrderImportCreated:
       type: object
       properties:
@@ -1199,7 +1207,7 @@ components:
     UploadRequest:
       type: object
       required: [content_type, sha256]
-      properties: {content_type: {type: string, enum: [image/jpeg, image/png, application/pdf]}, sha256: {type: string, pattern: '^[a-f0-9]{64}$'}}
+      properties: {content_type: {type: string, enum: [image/jpeg, image/png, application/pdf]}, sha256: {type: string, pattern: '^[a-f0-9]{64}$'}, size_bytes: {type: integer, minimum: 1, maximum: 10485760}}
     DepositRequest:
       type: object
       required: [site_id, amount, bank_reference, deposited_at, collection_ids]
@@ -1208,9 +1216,12 @@ components:
         amount: {$ref: './components.yaml#/components/schemas/SignedMoney'}
         bank_reference: {type: string}
         deposited_at: {type: string, format: date-time}
-        slip_storage_key: {type: string}
+        slip_upload_id: {type: string, format: uuid, description: From createDepositSlipUpload}
         collection_ids: {type: array, items: {type: string, format: uuid}}
         reverses_deposit_id: {type: string, format: uuid}
+      allOf:
+        - if: {required: [amount], properties: {amount: {required: [amount], properties: {amount: {exclusiveMaximum: 0}}}}}
+          then: {required: [reverses_deposit_id], properties: {reverses_deposit_id: {type: string}}}
     IssueTrackingTokenRequest:
       type: object
       required: [purpose]

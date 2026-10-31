@@ -41,7 +41,7 @@ paths:
     post:
       operationId: driverVerifyOtp
       summary: "Verify the OTP and register this device"
-      description: 'Single use under a row lock; invalid code and disabled driver both return otp_invalid. Binds the refresh token to the device; at most two active devices.'
+      description: 'Single use under a row lock; invalid code and disabled driver both return otp_invalid. Binds the refresh token to the device; at most two active devices. At most 5 verification attempts per code or challenge, then it is invalidated; challenges expire after 5 minutes.'
       tags: [auth]
       x-wave: 1
       x-permission: core.auth.anonymous
@@ -302,7 +302,7 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DriverOrderEventResult'}}}}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: driver_not_assignee, cash_pin_invalid.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, stale_driver_event, shift_not_active.'}
-        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: proof_required, cod_amount_mismatch, cod_not_allowed, idempotency_key_reused, client_ts_out_of_range.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: proof_required, cod_amount_mismatch, cod_not_allowed, idempotency_key_reused, client_ts_out_of_range, method_not_allowed.'}
         '423': {$ref: './components.yaml#/components/responses/Locked', description: 'Codes: cash_pin_locked.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /orders/{order_id}/address-pin:
@@ -326,7 +326,7 @@ paths:
     post:
       operationId: driverCreateProofUpload
       summary: "Signed upload URL for a proof declared in an event"
-      description: 'The proof id is client-generated in the delivered or attempted event; the file follows when the network allows (D-17).'
+      description: 'The proof id is client-generated in the delivered or attempted event; the file follows when the network allows (D-17). Only while the proof is pending_upload (409 invalid_transition otherwise); a proof of another driver is 404.'
       tags: [proofs]
       x-wave: 1
       x-permission: delivery.driver.work
@@ -336,13 +336,14 @@ paths:
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/UploadTicket'}}}}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: driver_not_assignee.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /proofs/{proof_id}/confirm:
     post:
       operationId: driverConfirmProof
       summary: "Confirm a finished upload"
-      description: 'pending_upload → stored after the sha256 check; emits delivery.proof.stored.'
+      description: 'pending_upload → stored after the size, content-type and sha256 check; emits delivery.proof.stored. A proof that is not this drivers is 404.'
       tags: [proofs]
       x-wave: 1
       x-permission: delivery.driver.work
@@ -393,7 +394,7 @@ paths:
     post:
       operationId: driverRequestHandover
       summary: "Request a cash handover at a site with the PIN"
-      description: 'Expected amount is the sum of collected cash; custody moves only when the cashier confirms (D-19, D-20).'
+      description: 'Each collection must be the drivers own, method cash, custody collected and in no other requested handover (unique rule; collection_not_eligible otherwise). Expected amount is their sum; custody moves only when the cashier confirms (D-19, D-20).'
       tags: [cash]
       x-wave: 2
       x-permission: delivery.driver.cash
@@ -403,7 +404,7 @@ paths:
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashHandover'}}}}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: cash_pin_invalid.'}
-        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: method_not_allowed_for_cash, site_kind_mismatch, idempotency_key_reused.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: method_not_allowed_for_cash, site_kind_mismatch, idempotency_key_reused, collection_not_eligible.'}
         '423': {$ref: './components.yaml#/components/responses/Locked', description: 'Codes: cash_pin_locked.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
     get:
@@ -532,7 +533,17 @@ components:
         cod_collections:
           type: array
           description: Must sum exactly to cod_amount on delivered (D-7)
-          items: {type: object, required: [id, amount, method], properties: {id: {type: string, format: uuid}, amount: {$ref: './components.yaml#/components/schemas/Money'}, method: {type: string, enum: [cash, card, mada, wallet]}, external_reference: {type: string}}}
+          items:
+            type: object
+            required: [id, amount, method]
+            properties:
+              id: {type: string, format: uuid}
+              amount: {$ref: './components.yaml#/components/schemas/Money'}
+              method: {type: string, enum: [cash, card, mada, wallet], description: Must be in the account allowed_cod_methods}
+              external_reference: {type: string, maxLength: 120, description: Terminal or wallet reference}
+            allOf:
+              - if: {required: [method], properties: {method: {enum: [card, mada, wallet]}}}
+                then: {required: [external_reference], properties: {external_reference: {type: string}}}
         cash_pin: {type: string, pattern: '^[0-9]{4,6}$', writeOnly: true, description: 'Required when any collection has method cash; never persisted or logged (document 4 §3.2)'}
       allOf:
         - if: {required: [cod_collections], properties: {cod_collections: {contains: {type: object, required: [method], properties: {method: {const: cash}}}}}}
@@ -552,8 +563,8 @@ components:
       properties: {point: {$ref: './components.yaml#/components/schemas/Point'}, client_ts: {type: string, format: date-time}}
     ProofUploadRequest:
       type: object
-      required: [content_type, sha256]
-      properties: {content_type: {type: string, enum: [image/jpeg, image/png]}, sha256: {type: string, pattern: '^[a-f0-9]{64}$'}}
+      required: [content_type, sha256, size_bytes]
+      properties: {content_type: {type: string, enum: [image/jpeg, image/png]}, sha256: {type: string, pattern: '^[a-f0-9]{64}$'}, size_bytes: {type: integer, minimum: 1, maximum: 10485760}}
     LocationBatch:
       type: object
       required: [points]
@@ -565,4 +576,4 @@ components:
       properties:
         site_id: {type: string, format: uuid}
         cash_pin: {type: string, pattern: '^[0-9]{4,6}$'}
-        collection_ids: {type: array, items: {type: string, format: uuid}, description: Defaults to every collected cash collection}
+        collection_ids: {type: array, items: {type: string, format: uuid}, description: 'Defaults to every eligible collection: the driver''s own, method cash, custody collected, in no other open handover'}

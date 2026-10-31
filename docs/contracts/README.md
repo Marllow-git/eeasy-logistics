@@ -49,8 +49,9 @@ Authorization: every operation names one permission in `x-permission`, a flat st
 | Filtering | named query parameters per field (`status`, `site_id`, `driver_id`, `created_from`, `created_to`, `updated_from`); a comma list means "any of" (`status=assigned,picked_up`); `q` for free text where offered |
 | Sorting | `sort=<field>` or `sort=-<field>` from the operation's documented list; default `-created_at`; `id` is always the tie-breaker |
 | Language | `Accept-Language: ar` or `en` selects `message` text in errors and labels in reference lists; default is the account's locale (ADR-0016); bilingual data fields are `name_ar` and `name_en` |
-| Uploads | never in the API body: the API returns a signed upload URL (ADR-0015), the client `PUT`s the file, then confirms (proofs, deposit slips, CSV imports); reads are expiring signed URLs |
+| Uploads | never in the API body: the API returns a write-once signed upload URL (ADR-0015) valid 10 minutes, with content type, sha256 and maximum size (photos and slips 10 MB, CSV 20 MB) bound into the signature; the server picks the object key under the account prefix and clients refer to the file by `upload_id`; the client `PUT`s the file, then confirms (proofs, deposit slips, CSV imports). Reads are expiring signed URLs on a separate file domain with `Content-Disposition: attachment` |
 | Async jobs | long work (CSV import) returns `202` with a job resource; poll it or stream it |
+| Codes and challenges | OTP, second-factor and TOTP codes: at most 5 verification attempts per code or challenge, then invalidated; challenges expire after 5 minutes; a used TOTP code is refused for its whole window (document 4 §3) |
 | Request ids | every response carries `X-Request-Id`; error bodies repeat it as `request_id` |
 
 ## 4. Error model (plan 2.4)
@@ -94,6 +95,7 @@ Rules (ADR-0029):
 - The SSE `event:` is the domain event `type` (document 2 §6.3) and `data:` is the envelope (§6.1) with the payload reduced to what the reader may see. Driver positions are not domain events (ADR-0028): they use `event: telemetry.driver_location` and carry no `id:`.
 - `id:` is the envelope `id` (UUIDv7, time-ordered). On reconnect the client sends `Last-Event-ID`; the server replays the reader's events after that id from a 15-minute buffer. If the id is older than the buffer, it sends one `stream.resync` event and the client refetches through REST.
 - The server sends `retry: 5000` once and a comment line (`: keep-alive`) every 20 s.
+- A stream lives no longer than its credential: the server closes it when the access token expires (the client reconnects with a fresh token and `Last-Event-ID`), when the member or device is revoked, and when the account is suspended. The recipient stream re-reads the TrackingToken row (expiry and `revoked_at`) on connect and every 60 s.
 - Polling fallback at 10 to 15 s (ADR-0009): every stream has a REST twin: `GET /v1/staff/driver-locations/latest` and `GET /v1/staff/orders?updated_from=`, `GET /v1/driver/offers` and `GET /v1/driver/orders`, `GET /v1/recipient/tracking`.
 - The recipient stream also accepts the token as `?token=` because `EventSource` cannot set headers; only purpose `track` is accepted there and the query string is never logged.
 
@@ -120,7 +122,7 @@ Mechanics are document 4 §8: per-route budgets in Redis keyed by the stable ide
 |---|---|---|
 | Staff | user id | 600 requests per minute; sign-in 10 per email and 50 per IP per 15 min |
 | Driver | device id | 300 per minute; `POST /locations` 12 per minute; OTP 5 per phone and 20 per IP per hour, 60 s resend cooldown (document 4 §3.2) |
-| Public | API key id | 600 per minute, burst 100; order create 120 per minute |
+| Public | API key id | 600 per minute, burst 100; order create 120 per minute; webhook subscription create and URL change 5 per hour per account (also on the staff surface) |
 | Recipient | token | 60 per minute; reschedule and pin writes 5 per token per hour |
 | Platform | user id | 300 per minute |
 
