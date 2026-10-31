@@ -1,0 +1,4 @@
+{
+  "extends": "@eeasy-logistics/config-ts/tsconfig.base.json",
+  "include": ["src"]
+}
