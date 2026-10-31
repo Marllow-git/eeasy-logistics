@@ -22,7 +22,7 @@ The repository becomes a runnable pnpm + Turborepo monorepo with the four applic
 | # | Decision | Default |
 |---|---|---|
 | 2.1 | Package manager and task runner | pnpm 10 workspaces, Turborepo 2, Node 22 LTS pinned in `.nvmrc` and `package.json` `engines`; `corepack` enabled |
-| 2.2 | Language and lint | TypeScript 5 strict everywhere with a shared `packages/config-ts` base (`tsconfig.base.json`); ESLint 9 flat config shared from `packages/config-eslint`; Prettier; `.editorconfig` |
+| 2.2 | Language and lint | TypeScript 6.0.x strict everywhere (ruled 2026-10-31: Expo SDK 58 pins ~6.0.3; 7.x excluded by typescript-eslint) with a shared `packages/config-ts` base (`tsconfig.base.json`); ESLint 9 flat config shared from `packages/config-eslint`; Prettier; `.editorconfig` |
 | 2.3 | Test runner | Vitest for packages and `apps/api` unit tests; Jest with `jest-expo` only in `apps/driver` (driver app architecture §12.1); Playwright is PLAT-3's |
 | 2.4 | Versions | Latest stable at scaffold time of Next.js (App Router), NestJS, Expo SDK with Expo Router, Drizzle ORM and drizzle-kit, recorded in §8 of this file by the executor with the date; no pre-releases |
 | 2.5 | Workspace layout | `apps/web`, `apps/api`, `apps/driver`; `packages/contracts`, `packages/ui`, `packages/i18n`, `packages/config`, `packages/db`, plus the two shared tooling packages of 2.2 |
@@ -74,4 +74,29 @@ None blocking. Q-21 (brand name) is not needed: placeholders use the working nam
 
 ## 8. Versions chosen (filled by the executor)
 
-_To be filled: Node, pnpm, Turborepo, TypeScript, Next.js, NestJS, Expo SDK, Expo Router, Drizzle, drizzle-kit, Vitest, dependency-cruiser, Redocly CLI, with the date._
+Checked against the npm registry on **2026-10-31** (`npm view <pkg> version`; no pre-releases). Exact versions are pinned in each `package.json` and resolved in `pnpm-lock.yaml`.
+
+| Tool | Version | Latest stable on 2026-10-31 | Note |
+|---|---|---|---|
+| Node | 22 LTS (`.nvmrc` `22`, `engines` `>=22.13.0 <23`); verified on 22.23.4 | 24 LTS exists | plan 2.1 pins 22; Expo SDK 58 needs ≥ 22.13 |
+| pnpm | 10.34.9 (`packageManager`, Corepack) | 12.16.1 | plan 2.1 pins pnpm 10; latest 10.x taken |
+| Turborepo | 2.11.10 | 2.11.10 | |
+| TypeScript | 6.0.3 | 7.0.2 | ruling on 2.2 above; typescript-eslint 8.72.1 supports < 6.1 |
+| Next.js | 16.4.3 (App Router, Turbopack) | 16.4.3 | |
+| React | 19.3.0 | 19.3.1 | one version across the repository, the one Expo SDK 58 pins |
+| NestJS | 12.3.2 (`@nestjs/core`, `common`, `platform-express`, `testing`); CLI 12.0.11 | 12.3.2 | ESM (`"type": "module"`) as Nest 12 ships |
+| Expo SDK | 58.0.22 | 58.0.22 | React Native 0.88.1; `expo-doctor` 1.21.5: 20/20 checks |
+| Expo Router | 58.0.29 | 58.0.29 | |
+| Drizzle ORM | 0.45.4 | 0.45.4 | in `packages/db`, no schema (PLAT-5) |
+| drizzle-kit | 0.31.11 | 0.31.11 | in `packages/db`; PLAT-5 may move it next to `apps/api/drizzle/` |
+| Vitest | 5.0.5 | 5.0.5 | packages and `apps/api`; decorator metadata works without SWC |
+| Jest / jest-expo | 30.5.2 / 58.0.13 | 30.5.2 / 58.0.13 | `apps/driver` only |
+| dependency-cruiser | 18.7.0 | 18.7.0 | `apps/api` and `apps/web` |
+| Redocly CLI | 2.72.1 | 2.72.1 | `packages/contracts` |
+| ESLint | 9.39.5 (`@eslint/js` 9.39.5) | 10.14.0 | plan 2.2 pins ESLint 9; latest 9.x taken |
+| typescript-eslint | 8.72.1 | 8.72.1 | |
+| `@next/eslint-plugin-next` | 16.4.3 | 16.4.3 | |
+| `eslint-plugin-react-hooks` | 7.1.1 | 7.1.1 | |
+| Prettier | 3.9.10 | 3.9.10 | |
+
+Docs consulted for `apps/web` (owner rule, 2026-10-31): the Vercel plugin skills `vercel:knowledge-update` (dated 2026-09-18) and `vercel:nextjs` (plugin 0.50.0: file conventions, async `cookies()`, `transpilePackages`, `middleware.ts` renamed `proxy.ts` in Next.js 16). No proxy file is added in this order; web §1.1's `middleware.ts` becomes `proxy.ts` when the order that needs it lands. The Nest 12 ESM layout followed the `@nestjs/schematics` 12.0.12 application template.
