@@ -17,6 +17,10 @@ const config = loadConfig({ role }); // exits 78 (EX_CONFIG) listing every inval
 
 The variables, their formats and defaults are `serverVariables` in `src/server.ts`; `.env.example` at the repository root lists every one with a comment.
 
+## Per-account credentials at rest
+
+`createCredentialsCipher(config.credentials)` gives `encrypt`, `decrypt` and `rotate` (plan 2.4, data §10): AES-256-GCM with a random 12-byte nonce. `encrypt` uses the active key and returns `{ keyId, blob }`: `blob` holds version, key id, nonce, tag and ciphertext for one `bytea` column, `keyId` goes in the row's `*_key_id` column. `decrypt` picks the key by the id inside the blob and throws a typed `CredentialsError` (`unknown_key_id`, `malformed`, `authentication_failed`). Pass the same optional `context` (for example `core_channel_connections:<id>`) to bind a blob to its row. `CREDENTIALS_KEYS` holds every key that must still decrypt; rotation adds a key, makes it active, re-encrypts with `rotate`, then removes the old key.
+
 ## Runtime
 
 The package ships TypeScript source. `apps/api`'s compiled output imports it and Node (>= 22.18) runs it by type stripping, so relative imports carry `.ts` and only erasable syntax is allowed (`erasableSyntaxOnly`).

@@ -30,7 +30,8 @@ export type MessagingProvider = (typeof messagingProviders)[number];
 /** `CREDENTIALS_KEYS`: comma-separated `<key id>:<base64 of exactly 32 bytes>` entries. */
 const credentialsKeys = () =>
   z.string().transform((text, ctx) => {
-    const keys: Record<string, Secret> = {};
+    // No prototype: a key id such as `__proto__` must stay an ordinary entry.
+    const keys = Object.create(null) as Record<string, Secret>;
     text.split(',').forEach((rawEntry, index) => {
       // Problems name the entry by position only: an entry with a misplaced colon could put key
       // material where the id belongs, so not even the id is echoed.
