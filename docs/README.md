@@ -5,7 +5,7 @@ The documents that must exist and be approved before application code is written
 | # | Document | Path | Status |
 |---|---|---|---|
 | 1 | Architecture decision records | `adr/` | approved (PR #1) |
-| 2 | Domain model | `docs/architecture/domain-model.md` | in review (PR pending) |
+| 2 | Domain model | `docs/architecture/domain-model.md` | in review |
 | 3 | API contracts | `docs/contracts/` | not started |
 | 4 | Tenancy, identity and authorization | `docs/architecture/identity-and-tenancy.md` | approved (PR #1) |
 | 5 | Data architecture | `docs/architecture/data.md` | not started |

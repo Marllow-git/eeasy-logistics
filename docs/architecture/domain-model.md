@@ -35,7 +35,7 @@ Boundary rules (ADR-0026):
 | `FeatureGate` | kernel → all | sync read | rollout mode and per-account flag (ADR-0006) |
 | `SequenceAllocator` | kernel → all | sync, in caller's transaction | human numbers must be gap-free and roll back with the business write |
 | `AuditWriter`, `OutboxWriter`, `IdempotencyStore` | kernel → all | sync, in caller's transaction | they must commit or roll back with the business write (ADR-0024) |
-| `CoverageQuery` | Delivery → WMS | sync read | the pack bench shows the own-fleet card only when the address is covered from this site (ADR-0015) |
+| `CoverageQuery` | WMS → Delivery | sync read | the pack bench shows the own-fleet card only when the address is covered from this site (ADR-0015) |
 | `OwnFleetOrderPort.createFromPackage` | WMS → Delivery | sync command, same transaction, plus events | the packer needs the order number and label at the bench; both rows live in one database, so one transaction gives atomicity without a saga; the command emits `delivery.order.created` like any other intake (ADR-0014) |
 | `RouteOptimizer`, `DistanceMatrix` | Delivery → VROOM, Hudhud | sync adapters, read-only computations | no side effect, so not an outbox case (ADR-0010) |
 | `PaymentPort` | Delivery → provider | named, no adapter | ADR-0017 |
@@ -362,7 +362,7 @@ stateDiagram-v2
 - D-3: an order leaves `pending` only if its address point lies inside a zone covered by its site; otherwise it stays `pending` with the typed reason `outside_coverage` (ADR-0015). Intake rules "receive as pending" and "auto-accept" are account settings evaluated at creation.
 - D-4: `cod_amount` is a non-negative integer in halalas; it is non-zero only for kinds `delivery` and `exchange`.
 - D-5: only the transitions in 3.13, by the listed actor, are legal; any other request returns `409` with the current status and version (ADR-0008).
-- D-6: driver transitions are accepted only from the driver of the order's active assignment, identified by the token, during an `active` or `paused` shift.
+- D-6: driver transitions are accepted only from the driver of the order's active assignment, identified by the token, during an `active` or `paused` shift, except as D-23 allows for work completed before a reassignment.
 - D-7: an order is delivered only from `out_for_delivery` and only by its current assignee, with the proofs the account's proof policy requires recorded (upload may lag, D-17) and, when `cod_amount > 0`, CodCollections whose amounts sum exactly to `cod_amount`, in the same transaction.
 - D-8: `delivered`, `returned` and `cancelled` are terminal; corrections after a terminal state are audited notes and liability or custody entries, never a status change.
 - D-9: an order has at most one assignment with `ended_at IS NULL` (partial unique index).
@@ -388,7 +388,7 @@ stateDiagram-v2
 
 | | |
 |---|---|
-| Attributes | `site_id`, `parent_id`, `type ∈ {site_root, zone, aisle, rack, shelf, bin, tote, dock, transit, returns, quarantine}`, code, generated `path`, optional coordinates, `pickable`, `active` |
+| Attributes | `site_id`, `parent_id`, `type ∈ {site_root, zone, aisle, rack, shelf, bin, tote, dock, transit, returns, quarantine, system}`, code, generated `path`, optional coordinates, `pickable`, `active` |
 | System locations | per account, `type = system`, codes `SUPPLIER`, `CUSTOMER`, `ADJUSTMENT` (ADR-0011); no site, no parent |
 
 A tote is a movable location whose `parent_id` changes when it moves. `dock` (packed goods awaiting pickup), `transit` (goods with a driver or carrier) and `returns` are ordinary per-site locations created with the site (see open question 2).
@@ -421,7 +421,7 @@ Append-only `wms_stock_movements`: `batch_id` (one business operation), `product
 | StockSummary | `(product)`: `on_hand`, `reserved`, `available`, `version` | asynchronously by a cursor over `ledger_seq`, reading only rows below the oldest in-flight transaction so a late commit is never skipped |
 | Reservation | `(fulfilment_order_line, product, lot)`: quantity | mutable, not a ledger; created by allocation, released by pick or cancel |
 
-A nightly assertion recomputes both projections from the ledger and alerts on any difference (ADR-0011, `platform.md` §7).
+A nightly assertion recomputes both projections from the ledger and alerts on any difference (ADR-0011, `platform.md` §7). Maintaining StockLevel inside the movement's transaction refines ADR-0011 rather than departing from it: the ledger stays the only source of truth, StockLevel is a cache the ledger service keeps current so W-6 can be checked under a lock, and both projections can be dropped and rebuilt from `ledger_seq` zero at any time.
 
 ### 4.6 FulfilmentOrder and PickTask
 
