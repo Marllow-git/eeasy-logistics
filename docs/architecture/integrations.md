@@ -106,14 +106,14 @@ Columns are the same for every port. "Wave" is the first wave that needs a worki
 |---|---|
 | Methods | `signUpload(key, content_type, max_bytes, ttl_s) → {url, headers}`; `signRead(key, ttl_s, disposition) → url`; `head(key) → {size, sha256?} \| not_found`; `put(key, bytes, content_type)` (worker only: labels, exports); `deleteMany(keys[])` (only from kind `storage_lifecycle`) |
 | Owner | kernel (ADR-0015) |
-| Adapters | S3-compatible client: MinIO in Compose, the host provider's bucket in staging and production |
+| Adapters | S3-compatible client: the Silo fork of MinIO in Compose (amended 2026-10-31, roadmap A-15), the host provider's bucket in staging and production |
 | Kind | signing and `head` are sync and local (no network for signing); `put` runs inside the worker job that produced the file; deletion is outbox kind `storage_lifecycle` (§4) |
 | Timeout | 10 s `head`, 60 s `put` |
 | Layout | one bucket per environment; every key starts `acc/{account_id}/`: `proofs/{yyyy}/{mm}/{proof_id}`, `deposit-slips/{deposit_id}`, `labels/{package_id}.pdf`, `imports/{job_id}.csv`, `exports/{export_id}`; platform files under `platform/`. The API only signs keys under the caller's account prefix; the key is built server-side, never taken from the client |
 | Signed URLs | upload 15 minutes, one object, size capped (proof photo 10 MB, slip 10 MB, CSV 20 MB); read 5 minutes for staff, 60 minutes for label print |
 | Lifecycle | provider rules: abort incomplete multipart uploads after 1 day; `imports/` 30 days; `exports/` 7 days; noncurrent versions 30 days (versioning on, platform §6). Account-policy retention (proofs default two years, platform §6) and account-closure deletion run as `storage_lifecycle` rows so each deletion is audited |
 | Degraded | `/ready` fails without storage (ADR-0015); a proof upload that fails stays `pending_upload` on the device and D-17 applies |
-| Stub | MinIO in `local` and `ci` |
+| Stub | Silo (MinIO fork) in `local` and `ci` |
 | Credentials | bucket access key with rights on that bucket only, platform secret |
 | Wave | 0 |
 
@@ -456,7 +456,7 @@ The connection page shows: status (`connected`, `needs_reauth`, `disconnected`, 
 | `RouteOptimizer` | VROOM container | VROOM container | VROOM | VROOM |
 | `MessageSender` | `whatsapp-stub` | `whatsapp-stub` | provider sandbox or test number, allowlisted recipient phones only | provider |
 | `PushSender` | recorder | recorder | Expo, staging EAS channel | Expo |
-| `ObjectStorage` | MinIO | MinIO | provider bucket (staging) | provider bucket |
+| `ObjectStorage` | Silo (MinIO fork) | Silo | provider bucket (staging) | provider bucket |
 | `CarrierShipments` | recorded fixtures | recorded fixtures | Eeasy shipping sandbox key | Eeasy shipping |
 | `ChannelOrders` / `ChannelStock` | fake store and fixtures | fake store and fixtures | Salla demo store, Zid test store | live stores |
 | `MerchantWebhooks` | local receiver | receiver container | real merchant URLs (sandbox accounts) | real |
