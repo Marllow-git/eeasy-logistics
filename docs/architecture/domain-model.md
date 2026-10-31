@@ -380,7 +380,7 @@ stateDiagram-v2
 - D-21: a CashReport for a site and business date closes only when every cash collection of that date is `with_cashier` or `with_bank` and every difference has a liability entry; a closed report is immutable.
 - D-22: dispatcher writes to Order and Assignment send the `version` they read (`If-Match`); a mismatch returns `409` (section 8).
 - D-23: field facts win for completed work: a `delivered` or `attempted` event from a driver who was the assignee at its `client_ts` is accepted even if a dispatcher reassigned or unassigned the order after that `client_ts`; the dispatcher change is superseded and the dispatcher is alerted (open question 1).
-- D-24: a tracking token reveals only the order's public view (status, ETA, driver first name, last position while `out_for_delivery`) and expires per document 4 §3.5.
+- D-24: a tracking token reveals only the order's public view (status and its timestamps, ETA, slot window, merchant name, driver first name, last position while `out_for_delivery`) and expires per document 4 §3.5; it never reveals internal ids beyond the order id, other orders, or account data.
 
 ## 4. WMS context aggregates
 
