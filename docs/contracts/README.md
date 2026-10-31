@@ -24,7 +24,7 @@ The domain model is the vocabulary. Aggregate names, attributes, states and inva
 | Recipient | `/v1/recipient` | recipient | signed per-order token (HMAC over order id, purpose, expiry) in `X-Recipient-Token` | `recipientToken` |
 | Platform | `/v1/platform` | platform super admin, admin, support | access JWT in a separate cookie, TOTP mandatory, 12 h idle expiry | `platformCookie` |
 
-A credential is valid on its own surface only: a driver token on `/v1/staff` returns `401 unauthenticated`; a revoked API key, or an old key after its rotation overlap, returns `401 api_key_revoked`. The account of every request comes from the credential (K-3); no request body or parameter carries `account_id`, and responses on the four tenant surfaces omit it. Platform routes that read another account take the account id in the path, are declared `x-cross-tenant: true` (the `@CrossTenant()` handler of document 4 §5) and write an audit row per call with the `X-Support-Reason` header text.
+A credential is valid on its own surface only: a driver token on `/v1/staff` returns `401 unauthenticated`; a revoked API key, or an old key after its rotation overlap, returns `401 api_key_revoked`. The account of every request comes from the credential (K-3); no request body or parameter carries `account_id`, and responses on the four tenant surfaces omit it. OAuth callbacks and inbound provider webhooks are not on any surface: they land on `/hooks/{provider}`, verified and stored by the kernel (document 9 §3.1). Platform routes that read another account take the account id in the path, are declared `x-cross-tenant: true` (the `@CrossTenant()` handler of document 4 §5) and write an audit row per call with the `X-Support-Reason` header text.
 
 Authorization: every operation names one permission in `x-permission`, a flat string `<module>.<resource>.<action>` (document 4 §2). Site-scoped roles are further filtered by membership `site_ids`. Two pseudo-permissions mark doors without a role check: `core.auth.anonymous` (sign-in doors, rate-limited by identity and IP) and `core.auth.self` (the caller's own session; `platform.auth.self` on the platform surface). Recipient operations carry `delivery.tracking.view`, `delivery.tracking.reschedule` or `delivery.tracking.pin_address`, granted by the token's `purpose` (document 2 §3.12), not by a role. Document 4 gives the format and examples but no full list; the strings used in the OpenAPI files are the proposed catalogue in §11, for the owner to confirm with the role bundles.
 
@@ -157,7 +157,7 @@ Merchant webhooks are the domain events marked "yes" in document 2 §6.3, delive
 
 | Module | Permissions |
 |---|---|
-| core | `core.auth.anonymous`, `core.auth.self`, `core.account.read`, `core.account.manage`, `core.members.read`, `core.members.manage`, `core.sites.read`, `core.sites.manage`, `core.audit.read`, `core.api_keys.manage`, `core.webhooks.manage` |
+| core | `core.auth.anonymous`, `core.auth.self`, `core.account.read`, `core.account.manage`, `core.members.read`, `core.members.manage`, `core.sites.read`, `core.sites.manage`, `core.audit.read`, `core.api_keys.manage`, `core.webhooks.manage`, `core.channels.manage` |
 | delivery (staff) | `delivery.orders.read`, `delivery.orders.create`, `delivery.orders.import`, `delivery.orders.dispatch`, `delivery.orders.cancel`, `delivery.orders.receive`, `delivery.zones.read`, `delivery.zones.manage`, `delivery.coverage.manage`, `delivery.drivers.read`, `delivery.drivers.manage`, `delivery.drivers.clear_cash_block`, `delivery.vehicles.manage`, `delivery.shifts.manage`, `delivery.slots.manage`, `delivery.proofs.read`, `delivery.cash.read`, `delivery.cash.receive`, `delivery.cash.deposit`, `delivery.cash.close_report`, `delivery.liability.record`, `delivery.tracking.manage`, `delivery.locations.read` |
 | delivery (driver) | `delivery.driver.work`, `delivery.driver.cash`, `delivery.driver.locations` |
 | delivery (recipient token) | `delivery.tracking.view`, `delivery.tracking.reschedule`, `delivery.tracking.pin_address` |
@@ -168,7 +168,7 @@ Role bundles (proposed, document 4 §2; site-scoped roles act only on their `sit
 
 | Role | Holds |
 |---|---|
-| owner | every core, delivery and wms permission above, including `core.members.manage` (only the owner grants `owner`), `core.api_keys.manage`, `delivery.drivers.clear_cash_block`, `delivery.liability.record` and the three WMS approvals |
+| owner | every core, delivery and wms permission above, including `core.members.manage` (only the owner grants `owner`), `core.api_keys.manage`, `core.channels.manage`, `delivery.drivers.clear_cash_block`, `delivery.liability.record` and the three WMS approvals |
 | admin | the owner set; billing and owner transfer are not permission strings and stay with the owner |
 | dispatcher | `core.account.read`, `core.sites.read`, `delivery.orders.read`, `.create`, `.import`, `.dispatch`, `.cancel`, `delivery.zones.read`, `.manage`, `delivery.drivers.read`, `delivery.drivers.manage` (device revoke, PIN reset), `delivery.vehicles.manage`, `delivery.shifts.manage`, `delivery.slots.manage`, `delivery.proofs.read`, `delivery.tracking.manage`, `delivery.locations.read`, `delivery.cash.read` |
 | site staff | `core.sites.read`, `delivery.orders.read`, `delivery.orders.receive`, `delivery.proofs.read` |

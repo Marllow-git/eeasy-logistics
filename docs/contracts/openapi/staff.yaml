@@ -18,6 +18,7 @@ tags:
   - {name: members, description: "Memberships and invitations"}
   - {name: sites, description: "Sites (ADR-0018)"}
   - {name: audit, description: "Audit log (K-7)"}
+  - {name: channels, description: "Channel and carrier connections (document 9)"}
   - {name: api-keys, description: "Integrator keys (document 4 §3.4)"}
   - {name: webhooks, description: "Webhook subscriptions from the web app (webhooks.md)"}
 paths:
@@ -407,6 +408,91 @@ paths:
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/AuditLogEntry'}}}}]}}}}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /channel-connections:
+    get:
+      operationId: listChannelConnections
+      summary: "List channel and carrier connections"
+      description: 'Credentials are never returned.'
+      tags: [channels]
+      x-wave: 3
+      x-permission: core.channels.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/ChannelConnection'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createChannelConnection
+      summary: "Connect Salla, Zid or Eeasy shipping"
+      description: 'eeasy_shipping (wave 3): takes api_key, validates it through the Eeasy shipping API and stores it encrypted; the key is removed from the body before hashing and never returned (README §3). salla and zid (wave 4): returns authorize_url; the OAuth callback lands on /hooks/{provider}, outside the API surfaces (document 9 §3.1).'
+      tags: [channels]
+      x-wave: 3
+      x-permission: core.channels.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateChannelConnectionRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ChannelConnectionCreated'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: channel_credentials_invalid, limit_exceeded, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /channel-connections/{connection_id}:
+    get:
+      operationId: getChannelConnection
+      summary: "Get a connection with status, last error and last sync"
+      description: 'Credentials are never returned.'
+      tags: [channels]
+      x-wave: 3
+      x-permission: core.channels.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/ChannelConnection'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    delete:
+      operationId: deleteChannelConnection
+      summary: "Disconnect"
+      description: 'Revokes the stored credential and stops publications and intake for it; history is kept.'
+      tags: [channels]
+      x-wave: 3
+      x-permission: core.channels.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '204': {description: Done}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /channel-connections/{connection_id}/reauthorize:
+    post:
+      operationId: reauthorizeChannelConnection
+      summary: "Start a new authorization for a connection that needs it"
+      description: 'For needs_reauth or disabled channel connections: returns a fresh authorize_url.'
+      tags: [channels]
+      x-wave: 4
+      x-permission: core.channels.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ChannelConnectionCreated'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /channel-connections/{connection_id}/resync-stock:
+    post:
+      operationId: resyncChannelStock
+      summary: "Republish available stock for every product"
+      description: 'Queues one publication per product through wms_channel_publications with supersede (ADR-0013, W-18).'
+      tags: [channels]
+      x-wave: 4
+      x-permission: core.channels.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: connection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '202': {description: Done}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: feature_not_enabled.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /api-keys:
     get:
       operationId: listApiKeys
@@ -689,6 +775,21 @@ components:
       properties:
         roles: {type: array, minItems: 1, items: {$ref: './components.yaml#/components/schemas/StaffRole'}}
         site_ids: {type: array, items: {type: string, format: uuid}}
+    CreateChannelConnectionRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider: {type: string, enum: [salla, zid, eeasy_shipping]}
+        api_key: {type: string, writeOnly: true, maxLength: 512, description: eeasy_shipping only}
+        name: {type: string, maxLength: 100}
+      allOf:
+        - if: {properties: {provider: {const: eeasy_shipping}}, required: [provider]}
+          then: {required: [api_key], properties: {api_key: {type: string}}}
+    ChannelConnectionCreated:
+      type: object
+      properties:
+        connection: {$ref: './components.yaml#/components/schemas/ChannelConnection'}
+        authorize_url: {type: [string, 'null'], format: uri, description: Salla and Zid only; single use}
     CreateApiKeyRequest:
       type: object
       required: [name, scopes]

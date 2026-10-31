@@ -81,6 +81,7 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `separation_of_duties` | 403 | the approver is the counter or the requester | W-16, doc 4 §2 |
 | `package_not_measured` | 422 | choosing a fulfilment method before weight and all three dimensions are above zero | W-10 |
 | `method_change_forbidden` | 409 | a second method while one is active, or any change after `handed_over` | W-13 |
+| `channel_credentials_invalid` | 422 | the Eeasy shipping API key failed validation when connecting | document 9, ADR-0014 |
 | `carrier_unavailable` | 503 | Eeasy shipping is not configured for the account; the request is not queued | W-12, ADR-0014 |
 
 `outside_coverage` (above) is also returned when `own_fleet` is chosen for an address `CoverageQuery` does not cover (W-11).
