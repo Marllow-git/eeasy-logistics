@@ -15,7 +15,7 @@ The documents that must exist and be approved before application code is written
 | 9 | Integration architecture | `docs/architecture/integrations.md` | in review |
 | 10 | Engineering handbook | `AGENTS.md`, `docs/handbook/` | approved (PR #2) |
 | 11 | Reference censuses | `docs/references/` | not started |
-| 12 | Roadmap | `docs/roadmap.md` | not started |
+| 12 | Roadmap | `docs/roadmap.md` | in review |
 | – | Foundation plan (the brief for this phase) | `docs/foundation-plan.md` | approved (PR #1) |
 
 Order of work: 1, 4, 6 and 10 in parallel; 2 after 1; 3 after 2; 5, 7, 8, 9 after 3; 12 last.
