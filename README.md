@@ -43,7 +43,7 @@ Every setting is an environment variable declared once in `packages/config` (sch
 
 - Local: `cp .env.example .env` at the repository root. The API reads `.env` only when the process environment itself says `APP_ENV=local` (`pnpm --filter api dev` sets it; the file's own `APP_ENV` is ignored); variables already in the environment win. The web app (`NEXT_PUBLIC_*`) and the driver app (`EXPO_PUBLIC_*`) read their own files: put those lines in `apps/web/.env.local` and `apps/driver/.env`.
 - A missing or malformed variable stops the API with exit code 78 and a list of every bad variable by name, never its value.
-- `APP_ENV=production` refuses to start without the database URLs, Redis, storage, the signing key and the credentials keys, refuses any `stub` adapter, and needs a real messaging provider or `MESSAGING_DISABLED=true`.
+- `APP_ENV=production` refuses to start without the public web URL, the database URLs, Redis, storage, the signing key and the credentials keys, refuses any `stub` adapter, and needs a real messaging provider or `MESSAGING_DISABLED=true`. It also requires `rediss://` for Redis and `https://` for the storage and OTLP endpoints; plain `redis://` and `http://` are allowed only outside production, for the Compose services.
 - `ci`, `staging` and `production` never read `.env`; their values come from the environment or the host's secret store.
 
 ## Running the stack

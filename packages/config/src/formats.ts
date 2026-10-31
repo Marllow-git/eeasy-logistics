@@ -17,7 +17,26 @@ export const seconds = () => integer(1, 31_536_000);
 /** Only the literal strings `true` and `false`. */
 export const boolean = () => z.enum(['true', 'false']).transform((value) => value === 'true');
 
-export const httpUrl = () => z.url({ protocol: /^https?$/ });
+/**
+ * An http(s) URL that carries no password: these fields are not secrets and may be logged, so
+ * credentials belong in their own secret variables. (A user name alone, as in a Sentry DSN, is fine.)
+ * Database and Redis URLs are `Secret` and may carry a password.
+ */
+export const httpUrl = () =>
+  z.url({ protocol: /^https?$/ }).refine((value) => !hasPassword(value), {
+    message: 'must not carry a password; put credentials in their own secret variable',
+  });
+
+// Zod runs refinements even after the URL check failed, so an unparseable value must not throw here.
+// (No `URL.canParse`: the driver app's URL polyfill may lack it.)
+function hasPassword(value: string): boolean {
+  try {
+    return new URL(value).password !== '';
+  } catch {
+    return false;
+  }
+}
+
 export const postgresUrl = () => z.url({ protocol: /^postgres(?:ql)?$/ });
 export const redisUrl = () => z.url({ protocol: /^rediss?$/ });
 

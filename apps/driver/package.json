@@ -8,7 +8,8 @@
     "start": "expo start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "jest"
+    "test": "jest && pnpm run test:architecture",
+    "test:architecture": "depcruise app test --config .dependency-cruiser.cjs"
   },
   "jest": {
     "preset": "jest-expo",
@@ -32,6 +33,7 @@
     "@eeasy-logistics/config-ts": "workspace:*",
     "@types/jest": "30.0.0",
     "@types/react": "19.3.0",
+    "dependency-cruiser": "18.7.0",
     "eslint": "9.39.5",
     "jest": "30.5.2",
     "jest-expo": "~58.0.13",

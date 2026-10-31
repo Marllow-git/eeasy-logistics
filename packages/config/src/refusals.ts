@@ -2,10 +2,12 @@ import type { ConfigIssue } from './errors.ts';
 import type { ServerVariable } from './server.ts';
 
 /**
- * What production refuses to start without (plan 2.3, platform §3): the four database URLs, Redis,
- * object storage, the token signing key, and the credentials keys with their active key id.
+ * What production refuses to start without (plan 2.3, platform §3): the public web URL, the four
+ * database URLs, Redis, object storage, the token signing key, and the credentials keys with their
+ * active key id.
  */
 export const requiredInProduction: readonly ServerVariable[] = [
+  'PUBLIC_WEB_URL',
   'DATABASE_URL_OWNER',
   'DATABASE_URL_APP',
   'DATABASE_URL_PLATFORM',
@@ -25,6 +27,16 @@ export const requiredInProduction: readonly ServerVariable[] = [
  * Variables that select an adapter. Production refuses the value `stub` for any of them
  * (integrations §9); an INT order that adds a selector adds it here.
  */
+/**
+ * Transport security in production: TLS for Redis, https for the storage and OTLP endpoints. Local,
+ * ci and staging may use plain `redis://` and `http://` (Compose services on a private network).
+ */
+export const secureSchemeInProduction: readonly (readonly [ServerVariable, string])[] = [
+  ['REDIS_URL', 'rediss://'],
+  ['STORAGE_ENDPOINT', 'https://'],
+  ['OTEL_EXPORTER_OTLP_ENDPOINT', 'https://'],
+];
+
 export const adapterSelectors: readonly ServerVariable[] = ['MESSAGING_PROVIDER'];
 
 export interface RefusalInput {
@@ -43,6 +55,13 @@ export function productionRefusals(input: RefusalInput): ConfigIssue[] {
   for (const variable of requiredInProduction) {
     if (!input.present(variable)) {
       issues.push({ variable, problem: 'is required when APP_ENV=production' });
+    }
+  }
+  for (const [variable, scheme] of secureSchemeInProduction) {
+    const value = input.raw(variable);
+    // Only the scheme is inspected; the value (a secret for REDIS_URL) is never echoed.
+    if (input.present(variable) && !value?.startsWith(scheme)) {
+      issues.push({ variable, problem: `must use ${scheme} in production` });
     }
   }
   for (const variable of adapterSelectors) {

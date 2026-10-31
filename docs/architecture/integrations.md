@@ -466,7 +466,7 @@ Rules:
 
 - **Contract tests against recorded responses.** Each adapter has a fixture folder of recorded provider requests and responses (captured from sandboxes, redacted, committed). `ci` runs the adapter against a replay server for those fixtures; a monthly scheduled job, outside the PR checks, re-runs the same calls against the sandboxes and opens an issue on any drift. Inbound fixtures include valid, invalid-signature, replayed and duplicate deliveries for each provider.
 - **Outage simulation.** Every stub and the replay server accept a fault header or switch: latency, `5xx`, timeout, `429` with `Retry-After`, `401`. Integration tests cover for each port: breaker opens and the degraded path is taken; outbox rows retry and go `dead` at the stated count; a dead row does not block other aggregates (K-11); supersede drops the stale row.
-- Staging never holds production credentials and production never selects a stub: `packages/config` refuses a stub adapter when `NODE_ENV=production` (platform §3 startup checks).
+- Staging never holds production credentials and production never selects a stub: `packages/config` refuses a stub adapter when `APP_ENV=production` (platform §3 startup checks) (amended 2026-10-31, PLAT-4 review).
 
 ## 10. Observability per integration
 
