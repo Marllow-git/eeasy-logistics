@@ -382,7 +382,7 @@ Small changes other documents need; none is made by this roadmap. The ones that 
 | A-12 | plan §6 | W-1 to W-8 work items collide with doc 2's W-n invariants; name the work items distinctly. | the WMS-1 plan file | done 2026-10-31 |
 | A-13 | plan §8 | Record D8 brand (Q-21) and D7 pilot (Q-31) once ruled. | the PR that follows each ruling | waits on Q-21 / Q-31 |
 | A-14 | PLAT-1 plan §8, platform §2 | Move the runtime from Node 22 LTS to Node 24 LTS (Vercel knowledge update 2026-09-18: Node 24 is the current default; Node 20 deprecated 2026-10-01). Self-hosted containers are unaffected until then; do it before wave 1 exit. | PLAT-3 PR (CI matrix on 24) then a chore PR | owed |
-| A-15 | ADR-0015, platform §2, integrations §9 | Upstream MinIO is archived and its images are gone (2026-10-31); local and CI use the maintained fork `pgsty/silo` with `pgsty/mc`, pinned by digest in `compose.yaml`; production stays on the provider bucket. Wording in the three documents: "an S3-compatible store (the Silo fork of MinIO in Compose)". | PLAT-2 PR #25 (compose); wording in the next docs PR | owed (wording) |
+| A-15 | ADR-0015, platform §2, integrations §9 | Upstream MinIO is archived and its images are gone (2026-10-31); local and CI use the maintained fork `pgsty/silo` with `pgsty/mc`, pinned by digest in `compose.yaml`; production stays on the provider bucket. Wording in the three documents: "an S3-compatible store (the Silo fork of MinIO in Compose)". | PLAT-2 PR #25 (compose); wording PR | done 2026-10-31 |
 
 ## 6. Deferred and out of scope
 
