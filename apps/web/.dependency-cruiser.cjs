@@ -22,6 +22,25 @@ module.exports = {
       },
     },
     {
+      name: 'no-environment-outside-config',
+      comment:
+        'AGENTS.md hard rule, PLAT-4: only packages/config reads the environment. Forbids importing ' +
+        'the process module outside it; a global `process.env` read is caught by the shared ESLint ' +
+        'rule no-restricted-properties.',
+      severity: 'error',
+      from: { pathNot: '(?:^|/)packages/config/' },
+      to: { dependencyTypes: ['core'], path: '^(?:node:)?process$' },
+    },
+    {
+      name: 'web-imports-only-public-config',
+      comment:
+        'PLAT-4: the web app reads configuration only through @eeasy-logistics/config/web ' +
+        '(NEXT_PUBLIC_* values); the package root and /node are server code holding secrets.',
+      severity: 'error',
+      from: { path: '^src/' },
+      to: { path: '(?:^|/)packages/config/src/(?!web\\.ts$)' },
+    },
+    {
       name: 'no-unresolvable',
       comment: 'An import the cruiser cannot resolve could hide a forbidden one.',
       severity: 'error',

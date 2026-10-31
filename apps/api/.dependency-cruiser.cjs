@@ -25,6 +25,16 @@ module.exports = {
       },
     },
     {
+      name: 'no-environment-outside-config',
+      comment:
+        'AGENTS.md hard rule, PLAT-4: only packages/config reads the environment. Forbids importing ' +
+        'the process module (`import { env } from "node:process"`) outside it. A global ' +
+        '`process.env` is not an import, so the shared ESLint rule no-restricted-properties catches it.',
+      severity: 'error',
+      from: { pathNot: '(?:^|/)packages/config/' },
+      to: { dependencyTypes: ['core'], path: '^(?:node:)?process$' },
+    },
+    {
       name: 'no-unresolvable',
       comment: 'An import the cruiser cannot resolve could hide a boundary violation.',
       severity: 'error',
@@ -37,6 +47,9 @@ module.exports = {
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.json' },
     enhancedResolveOptions: {
+      // Workspace packages resolve through their package.json `exports` (@eeasy-logistics/config/node).
+      exportsFields: ['exports'],
+      conditionNames: ['import', 'require', 'node', 'default', 'types'],
       extensions: ['.ts', '.js'],
     },
   },
