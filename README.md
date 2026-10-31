@@ -2,7 +2,7 @@
 
 Standalone last-mile delivery and warehouse (WMS) product for merchants that run their own drivers and their own stock. Built as one monorepo: Next.js web app, NestJS API, Expo driver app.
 
-**Current phase: architecture.** This repository holds documents only: architecture decision records, the domain model, contracts, and the engineering handbook. No application code lands until the owner approves the foundation package (see `docs/README.md`).
+**Current phase: wave 0, foundation.** The owner approved the foundation package on 2026-10-31 (`docs/README.md`); the roadmap (`docs/roadmap.md`) orders the build. Application code lands order by order under `docs/orders/`.
 
 ## Layout
 

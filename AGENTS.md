@@ -1,6 +1,6 @@
 # AGENTS.md — eeasy-logistics
 
-Standalone last-mile delivery and WMS product for merchants with their own drivers and stock. Monorepo: Next.js web (`apps/web`), NestJS API (`apps/api`), Expo driver app (`apps/driver`), shared packages (`packages/contracts`, `packages/ui`, `packages/i18n`, `packages/config`, `packages/db`) (amended 2026-10-31, roadmap A-7). **Phase: architecture — docs only until the owner approves the foundation package (`docs/README.md`).**
+Standalone last-mile delivery and WMS product for merchants with their own drivers and stock. Monorepo: Next.js web (`apps/web`), NestJS API (`apps/api`), Expo driver app (`apps/driver`), shared packages (`packages/contracts`, `packages/ui`, `packages/i18n`, `packages/config`, `packages/db`) (amended 2026-10-31, roadmap A-7). **Phase: wave 0, foundation — the package is approved (2026-10-31); build follows `docs/roadmap.md`, one order and one PR at a time.**
 
 Long form: `docs/handbook/`. Decisions: `adr/`. Only remote: `github.com/Marllow-git/eeasy-logistics`, default branch `main`.
 
