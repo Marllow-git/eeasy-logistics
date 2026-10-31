@@ -1,8 +1,8 @@
 # ADR-0019: Use PostgreSQL 16 with PostGIS
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-31
-- **Deciders:** architecture lead, owner to accept
+- **Deciders:** owner (merged PR #1, 2026-10-31)
 - **Source:** foundation plan D1; Bolesa runs PostgreSQL
 
 ## Context

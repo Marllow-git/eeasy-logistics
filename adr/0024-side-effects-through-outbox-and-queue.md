@@ -1,8 +1,8 @@
 # ADR-0024: Route every cross-system side effect through an outbox and a queue
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-31
-- **Deciders:** architecture lead, owner to accept
+- **Deciders:** owner (merged PR #1, 2026-10-31)
 - **Source:** eeasynew MONEY-2 lesson (one poisoned outbox row blocked every month close); ADR-0013
 
 ## Context

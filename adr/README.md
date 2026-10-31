@@ -22,17 +22,17 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 | [0015](0015-provision-storage-and-coverage-before-first-use.md) | Provision object storage and own-fleet coverage before the first driver signs in | accepted |
 | [0016](0016-arabic-and-english-everywhere.md) | Ship every string in Arabic and English with Gregorian dates and Western digits | accepted |
 | [0017](0017-digital-cod-tap-to-phone-owner-gated.md) | Gate digital COD on owner approval; use tap-to-phone, never Bluetooth POS | accepted |
-| [0018](0018-one-sites-concept.md) | Model branches and warehouses as one sites concept | proposed |
-| [0019](0019-postgresql-with-postgis.md) | Use PostgreSQL 16 with PostGIS | proposed |
-| [0020](0020-drizzle-orm-and-sql-migrations.md) | Use Drizzle ORM with SQL migrations | proposed |
-| [0021](0021-driver-app-inside-the-monorepo.md) | Keep the driver app inside the monorepo as apps/driver | proposed |
-| [0022](0022-containers-on-gulf-region-host.md) | Run production as containers on a Gulf-region host, with Compose for development | proposed |
+| [0018](0018-one-sites-concept.md) | Model branches and warehouses as one sites concept | accepted |
+| [0019](0019-postgresql-with-postgis.md) | Use PostgreSQL 16 with PostGIS | accepted |
+| [0020](0020-drizzle-orm-and-sql-migrations.md) | Use Drizzle ORM with SQL migrations | accepted |
+| [0021](0021-driver-app-inside-the-monorepo.md) | Keep the driver app inside the monorepo as apps/driver | accepted |
+| [0022](0022-containers-on-gulf-region-host.md) | Run production as containers on a Gulf-region host, with Compose for development | accepted |
 | [0023](0023-own-identity-no-eeasy-dependency.md) | Run our own identity; an Eeasy sign-in link is an option, not a dependency | accepted |
-| [0024](0024-side-effects-through-outbox-and-queue.md) | Route every cross-system side effect through an outbox and a queue | proposed |
-| [0025](0025-tenancy-by-account-id-enforced-structurally.md) | Isolate tenants by account_id on every operational row, enforced structurally | proposed |
+| [0024](0024-side-effects-through-outbox-and-queue.md) | Route every cross-system side effect through an outbox and a queue | accepted |
+| [0025](0025-tenancy-by-account-id-enforced-structurally.md) | Isolate tenants by account_id on every operational row, enforced structurally | accepted |
 
 ## Groups
 
 - **Product decisions by the owner (2026-10-31):** 0001 standalone, 0002 scope, 0003 monorepo, 0004 new driver app, 0023 own identity.
 - **Rulings carried over from eeasynew:** 0005 own fleets, 0006 allowlist rollout, 0007 cash custody, 0008 offline outbox, 0009 tracking by polling and SSE, 0010 VROOM over Hudhud, 0011 stock ledger, 0012 tracking mode and locations, 0013 one-way channel sync, 0014 pack-time shipments, 0015 storage and coverage first, 0016 Arabic and English, 0017 tap-to-phone gated.
-- **Proposed by the architecture lead, awaiting the owner:** 0018 one sites concept, 0019 PostgreSQL with PostGIS, 0020 Drizzle, 0021 driver app in the monorepo, 0022 containers on a Gulf host, 0024 outbox and queue, 0025 tenancy by account_id.
+- **Proposed by the architecture lead, accepted by the owner on merging PR #1 (2026-10-31):** 0018 one sites concept, 0019 PostgreSQL with PostGIS, 0020 Drizzle, 0021 driver app in the monorepo, 0022 containers on a Gulf host, 0024 outbox and queue, 0025 tenancy by account_id.

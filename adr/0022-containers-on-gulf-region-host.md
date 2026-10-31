@@ -1,8 +1,8 @@
 # ADR-0022: Run production as containers on a Gulf-region host, with Compose for development
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-31
-- **Deciders:** architecture lead, owner to accept
+- **Deciders:** owner (merged PR #1, 2026-10-31)
 - **Source:** foundation plan D4
 
 ## Context

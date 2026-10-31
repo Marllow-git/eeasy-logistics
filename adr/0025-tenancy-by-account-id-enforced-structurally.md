@@ -1,8 +1,8 @@
 # ADR-0025: Isolate tenants by account_id on every operational row, enforced structurally
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-31
-- **Deciders:** architecture lead, owner to accept
+- **Deciders:** owner (merged PR #1, 2026-10-31)
 - **Source:** eeasynew TenantResolver port; ADR-0019
 
 ## Context
