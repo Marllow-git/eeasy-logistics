@@ -706,6 +706,7 @@ Idempotency key is the envelope `id` unless stated. "Webhook" means exposed to m
 | `core.site.updated` | kernel | Delivery, WMS (cache bust) | site, kind, point | no |
 | `core.channel_order.received` | kernel | WMS or Delivery by account flags | connection, channel order ref, recipient, address, lines, COD | no |
 | `core.carrier_update.received` | kernel | WMS | Eeasy shipment id, AWB, status, time | no |
+| `core.channel_order.changed` | kernel | WMS or Delivery by account flags | connection, channel order ref, change `∈ {cancelled, address, lines}` and the new values | no |
 | `delivery.order.created` | Delivery | WMS (if `source = wms_package`) | number, kind, source, recipient, address, COD | yes |
 | `delivery.order.accepted` | Delivery | Delivery dispatch | zone, slot | yes |
 | `delivery.order.offered` | Delivery | push effect | driver ids, expiry | no |
@@ -733,6 +734,7 @@ Idempotency key is the envelope `id` unless stated. "Webhook" means exposed to m
 | `wms.fulfilment_order.on_hold` | WMS | staff alert | short lines | yes |
 | `wms.package.packed` | WMS | none (webhook) | weight, dimensions, method | yes |
 | `wms.package.shipment_created` | WMS | none (webhook) | carrier, AWB, label link | yes |
+| `wms.package.carrier_request_dead` | WMS | staff alert | package, carrier, last error; the package is back at `packed` (§4.14) | no |
 | `wms.package.handed_over` | WMS | none (webhook) | method, time | yes |
 | `wms.fulfilment_order.completed` | WMS | none (webhook) | packages | yes |
 | `wms.return.received` | WMS | none (webhook) | lines, condition | yes |
