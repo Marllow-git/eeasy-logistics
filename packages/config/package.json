@@ -1,0 +1,22 @@
+{
+  "name": "@eeasy-logistics/config",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Validated runtime configuration; placeholder until PLAT-4.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@eeasy-logistics/config-eslint": "workspace:*",
+    "@eeasy-logistics/config-ts": "workspace:*",
+    "eslint": "9.39.5",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}
