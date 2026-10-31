@@ -955,6 +955,7 @@ paths:
     post:
       operationId: createDepositSlipUpload
       summary: "Signed upload URL for a deposit slip"
+      description: 'The ticket is bound to this account, purpose deposit_slip and the caller; the upload_id is usable once, by recordDeposit.'
       tags: [cash]
       x-wave: 2
       x-permission: delivery.cash.deposit
@@ -969,7 +970,7 @@ paths:
     post:
       operationId: recordDeposit
       summary: "Record a bank deposit"
-      description: 'Custody with_cashier → with_bank for the listed collections under a row lock on them (D-19); each collection is deposited once. amount must equal the sum of the listed collections. A negative amount is a reversing deposit and requires reverses_deposit_id.'
+      description: 'Custody with_cashier → with_bank for the listed collections under a row lock on them (D-19); each collection is deposited once. amount must equal the sum of the listed collections. A negative amount is a reversing deposit and requires reverses_deposit_id. A reversal happens once (unique reverses_deposit_id), in the same account, negates the original amount exactly over the same collections, and moves their custody back to with_cashier. slip_upload_id must be an upload of this account with purpose deposit_slip, made by the caller, not used before (422 upload_mismatch).'
       tags: [cash]
       x-wave: 2
       x-permission: delivery.cash.deposit

@@ -35,8 +35,8 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `otp_invalid` | 401 | wrong, expired or used OTP or TOTP, a code or challenge past 5 attempts or 5 minutes, or a disabled driver; one code for all so the door leaks nothing | doc 4 §3.2, §3.3 |
 | `device_limit_reached` | 409 | a third active device for a driver | doc 4 §3.2, §3.5 of document 2 |
 | `device_revoked` | 401 | refresh from a revoked device | doc 4 §3.2 |
-| `app_update_required` | 426 | `X-App-Version` below the `min_app_version` for `X-App-Platform` (proposed, document 8 open question 5); usable on every driver operation | document 8 |
-| `cash_pin_invalid` | 403 | wrong cash PIN on `cash-pin/verify`, a handover request, a PIN change, or a cash `delivered` event received within 120 s of `client_ts`; every failure, including one found at replay, counts toward the lock | doc 4 §3.2 |
+| `app_update_required` | 426 | `X-App-Version` below the `min_app_version` for `X-App-Platform` (proposed, document 8 open question 5); usable on every driver operation except the outbox-replay routes (order events, proof upload and confirm, `/locations`, shift pause, resume, end); not a security control | document 8 |
+| `cash_pin_invalid` | 403 | wrong cash PIN on `cash-pin/verify`, a handover request, a PIN change, or a live cash `delivered` event (no other authenticated call from the device after `client_ts`); not stored under the Idempotency-Key; every failure, including one found at replay, counts toward the lock | doc 4 §3.2 |
 | `cash_pin_locked` | 423 | five PIN failures; cash actions locked until a dispatcher resets; a replayed field fact is still recorded and the driver is `cash_blocked` | doc 4 §3.2, D-23 |
 
 ## 3. Delivery

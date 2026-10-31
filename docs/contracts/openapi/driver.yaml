@@ -204,7 +204,6 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
-        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /shifts/{shift_id}/resume:
     post:
@@ -220,7 +219,6 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
-        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /shifts/{shift_id}/end:
     post:
@@ -236,7 +234,6 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
-        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /offers:
     get:
@@ -317,7 +314,7 @@ paths:
     post:
       operationId: driverPostOrderEvent
       summary: "Record a field transition (replayable)"
-      description: 'assigned → picked_up, picked_up → out_for_delivery, out_for_delivery → delivered or attempted, attempted → out_for_delivery (§3.13). Dedupe: the Idempotency-Key is the outbox item key; a replay with the same principal (driver and device) and request hash returns the original result forever (D-15); the same key with another principal or hash returns 422 idempotency_key_reused. An order never on this driver''s run is 404; 403 driver_not_assignee is only for a former assignee whose event D-23 does not save. Time: client_ts must lie in [assignment.started_at, min(server_ts, assignment.ended_at + offline window)], the offline window an account setting, default 12 h; otherwise 422 client_ts_out_of_range. D-23 (field facts win after a reassignment) applies only when client_ts precedes the reassignment and the device made no authenticated call after it; otherwise 409 stale_driver_event (D-16). The business date of a collection is the Asia/Riyadh date of min(client_ts, server_ts). delivered writes proofs as pending_upload and COD collections in one transaction (D-7, D-17, D-18). Cash PIN (document 4 §3.2): required when any collection has method cash; every wrong PIN counts toward the five-failure lock. When the event arrives within 120 s of client_ts (the driver is online at the door), a wrong PIN returns 403 cash_pin_invalid and records nothing, and a locked PIN returns 423 cash_pin_locked. A later replay records the field fact (D-23), counts the failure, sets the driver cash_blocked until a supervisor clears it, and returns 200 with cash_pin_status failed. cash_pin is removed from the body before the request hash is computed and is never stored in del_order_events, the idempotency store or logs.'
+      description: 'assigned → picked_up, picked_up → out_for_delivery, out_for_delivery → delivered or attempted, attempted → out_for_delivery (§3.13). Dedupe: the Idempotency-Key is the outbox item key; a replay with the same principal (driver and device) and request hash returns the original result forever (D-15); the same key with another principal or hash returns 422 idempotency_key_reused. An order never on this driver''s run is 404; 403 driver_not_assignee is only for a former assignee whose event D-23 does not save. Time: client_ts must lie in [assignment.started_at, min(server_ts, assignment.ended_at + offline window)], the offline window an account setting, default 12 h; otherwise 422 client_ts_out_of_range. D-23 (field facts win after a reassignment) applies only when client_ts precedes the reassignment and the device made no authenticated call after it; otherwise 409 stale_driver_event (D-16). The business date of a collection is the Asia/Riyadh date of min(client_ts, server_ts). delivered writes proofs as pending_upload and COD collections in one transaction (D-7, D-17, D-18). Cash PIN (document 4 §3.2): required when any collection has method cash; every wrong PIN counts toward the five-failure lock. Live or replay is decided server-side by the H1 signal, never by client_ts age: the event is live when the device has made no other authenticated call after client_ts; then a wrong PIN returns 403 cash_pin_invalid and records nothing, and a locked PIN returns 423 cash_pin_locked. These 403 and 423 responses are not stored under the Idempotency-Key, so the retyped event with the same key can succeed. Otherwise it is a replay: the field fact is recorded (D-23), the failure counted, the driver set cash_blocked until a supervisor clears it, and the response is 200 with cash_pin_status failed. cash_pin is removed from the body before the request hash is computed and is never stored in del_order_events, the idempotency store or logs.'
       tags: [orders]
       x-wave: 1
       x-permission: delivery.driver.work
@@ -330,7 +327,6 @@ paths:
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, stale_driver_event, shift_not_active.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: proof_required, cod_amount_mismatch, cod_not_allowed, idempotency_key_reused, client_ts_out_of_range, method_not_allowed.'}
         '423': {$ref: './components.yaml#/components/responses/Locked', description: 'Codes: cash_pin_locked.'}
-        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /orders/{order_id}/address-pin:
     put:
@@ -366,7 +362,6 @@ paths:
         '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
-        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /proofs/{proof_id}/confirm:
     post:
@@ -381,7 +376,6 @@ paths:
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Proof'}}}}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: upload_mismatch, idempotency_key_reused.'}
-        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /locations:
     post:
@@ -397,7 +391,6 @@ paths:
       responses:
         '202': {description: Done}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: shift_not_active.'}
-        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /cash:
     get:

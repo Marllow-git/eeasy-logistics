@@ -120,7 +120,7 @@ components:
     XAppVersion:
       name: X-App-Version
       in: header
-      description: 'Driver app semver (proposed, document 8 open question 5); below min_app_version the call returns 426 app_update_required.'
+      description: 'Driver app semver (proposed, document 8 open question 5); below min_app_version the call returns 426 app_update_required, except on the outbox-replay routes (order events, proof upload and confirm, locations, shift pause, resume and end) so a queued outbox drains before the update. A compatibility hint, not a security control.'
       schema: {type: string, pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'}
     XAppPlatform:
       name: X-App-Platform
@@ -360,7 +360,7 @@ components:
         auto_dispatch: {type: object, properties: {enabled: {type: boolean}, offer_ttl_s: {type: integer, minimum: 30}, drivers_per_wave: {type: integer, minimum: 1}}}
         second_factor_required: {type: boolean}
         allowed_cod_methods: {type: array, items: {type: string, enum: [cash, card, mada, wallet]}, default: [cash], description: 'Digital methods only after the owner gate of ADR-0017'}
-        embed_origins: {type: array, maxItems: 10, x-wave: 2, items: {type: string, format: uri, pattern: '^https://[^/]+$'}, description: 'https origins allowed to frame the recipient tracking pages (frame-ancestors); empty means none'}
+        embed_origins: {type: array, maxItems: 10, x-wave: 2, items: {type: string, format: uri, pattern: '^https://[a-z0-9.-]+(:[0-9]{1,5})?$'}, description: 'Exact https origins, no wildcards, allowed to frame the recipient tracking pages (frame-ancestors); empty means none'}
         offline_window_hours: {type: integer, minimum: 1, maximum: 48, default: 12, description: Driver client_ts window after an assignment ends (H1)}
         receipt_tolerance_pct: {type: number, minimum: 0}
         adjustment_approval_threshold: {type: integer, minimum: 0}
@@ -875,7 +875,7 @@ components:
         deposited_at: {type: string, format: date-time}
         recorded_by: {type: string, format: uuid}
         collection_ids: {type: array, items: {type: string, format: uuid}}
-        reverses_deposit_id: {type: [string, 'null'], format: uuid}
+        reverses_deposit_id: {type: [string, 'null'], format: uuid, description: 'Unique: a deposit is reversed at most once, exactly and over the same collections'}
     CashReport:
       type: object
       description: Immutable once closed (document 2 §3.11, D-21).

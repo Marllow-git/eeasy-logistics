@@ -639,7 +639,7 @@ paths:
     patch:
       operationId: updateWebhookSubscription
       summary: "Change URL, event types or pause"
-      description: 'A URL change returns the subscription to pending_verification. Scope: each event type needs the matching read permission of the creator (delivery.order.* and delivery.cod.* → delivery.orders.read; delivery.proof.* → delivery.proofs.read; wms.stock.* → wms.stock.read; wms.fulfilment_order.* and wms.package.* → wms.fulfilment.read; wms.inbound_receipt.* and wms.return.* → wms.receipts.read), checked at create, update and every delivery; a missing scope returns 403 forbidden with details.missing_scope. The subscription is paused when the creating key is revoked or loses the scope, or the creating member is revoked.'
+      description: 'A URL change returns the subscription to pending_verification. Scope: each event type needs the matching read permission of the creator (delivery.order.* and delivery.cod.* → delivery.orders.read; delivery.proof.* → delivery.proofs.read; wms.stock.* → wms.stock.read; wms.fulfilment_order.* and wms.package.* → wms.fulfilment.read; wms.inbound_receipt.* and wms.return.* → wms.receipts.read), checked at create, update and every delivery; a missing scope returns 403 forbidden with details.missing_scope. The subscription is paused when the creating key is revoked or loses the scope, or the creating member is revoked. Resuming a paused subscription (status active) rebinds created_by_key_id or created_by_membership_id to the resuming principal, whose scopes are then checked for every event type.'
       tags: [webhooks]
       x-wave: 4
       x-permission: core.webhooks.manage
