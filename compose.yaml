@@ -98,6 +98,29 @@ x-whatsapp-stub: &whatsapp-stub
     timeout: 5s
     retries: 30
 
+# Creates the bucket with versioning (integrations §9, ADR-0015), then stays up
+# so `up --wait` can see it healthy: one-shot containers that exit are not
+# handled the same way by every Compose version.
+x-minio-init: &minio-init
+  image: pgsty/mc:RELEASE.2026-10-26T00-00-00Z
+  init: true
+  restart: on-failure
+  # environment is per service (MINIO_HOST differs); a YAML merge would not combine maps.
+  entrypoint: ['/bin/sh', '-c']
+  command:
+    - |
+      set -e
+      mc alias set local "http://$${MINIO_HOST}:9000" "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+      mc mb --ignore-existing "local/$${MINIO_BUCKET}"
+      mc version enable "local/$${MINIO_BUCKET}"
+      touch /tmp/ready
+      exec sleep infinity
+  healthcheck:
+    test: ['CMD', 'test', '-f', '/tmp/ready']
+    interval: 3s
+    timeout: 5s
+    retries: 40
+
 x-mailpit: &mailpit
   image: axllent/mailpit:v1.33.0
   healthcheck:
@@ -131,6 +154,17 @@ services:
     ports: ['127.0.0.1:9000:9000', '127.0.0.1:9001:9001']
     volumes:
       - minio-data:/data
+  minio-init:
+    <<: *minio-init
+    profiles: [dev]
+    environment:
+      MINIO_HOST: minio
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:?copy .env.example to .env}
+    depends_on:
+      minio:
+        condition: service_healthy
   mailpit:
     <<: *mailpit
     profiles: [dev]
@@ -165,6 +199,17 @@ services:
     ports: ['127.0.0.1::9000', '127.0.0.1::9001']
     tmpfs:
       - /data
+  minio-init-ci:
+    <<: *minio-init
+    profiles: [ci]
+    environment:
+      MINIO_HOST: minio-ci
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:?copy .env.example to .env}
+    depends_on:
+      minio-ci:
+        condition: service_healthy
   mailpit-ci:
     <<: *mailpit
     profiles: [ci]
@@ -198,6 +243,17 @@ services:
     ports: ['127.0.0.1:9100:9000', '127.0.0.1:9101:9001']
     volumes:
       - minio-data-a:/data
+  minio-init-a:
+    <<: *minio-init
+    profiles: [stack-a]
+    environment:
+      MINIO_HOST: minio-a
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:?copy .env.example to .env}
+    depends_on:
+      minio-a:
+        condition: service_healthy
   mailpit-a:
     <<: *mailpit
     profiles: [stack-a]
@@ -231,6 +287,17 @@ services:
     ports: ['127.0.0.1:9200:9000', '127.0.0.1:9201:9001']
     volumes:
       - minio-data-b:/data
+  minio-init-b:
+    <<: *minio-init
+    profiles: [stack-b]
+    environment:
+      MINIO_HOST: minio-b
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:?copy .env.example to .env}
+    depends_on:
+      minio-b:
+        condition: service_healthy
   mailpit-b:
     <<: *mailpit
     profiles: [stack-b]
