@@ -70,7 +70,7 @@ x-vroom: &vroom
 
 # pgsty/silo: maintained MinIO fork; upstream MinIO publishes no images any more.
 x-minio: &minio
-  image: pgsty/silo:RELEASE.2026-10-26T00-00-00Z
+  image: pgsty/silo:RELEASE.2026-10-26T00-00-00Z@sha256:7bb2aff6b89efe1cb1303c10fc21d579447434ed06649ac9ec05a5e2dbf30ad7
   command: ['server', '/data', '--console-address', ':9001']
   environment:
     MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
@@ -102,7 +102,7 @@ x-whatsapp-stub: &whatsapp-stub
 # so `up --wait` can see it healthy: one-shot containers that exit are not
 # handled the same way by every Compose version.
 x-minio-init: &minio-init
-  image: pgsty/mc:RELEASE.2026-10-26T00-00-00Z
+  image: pgsty/mc:RELEASE.2026-10-26T00-00-00Z@sha256:ce62c9053c69ce12a527a322345b5ad9f44b5f8a7b8189f82e516f2e3f30f1d8
   init: true
   restart: on-failure
   # environment is per service (MINIO_HOST differs); a YAML merge would not combine maps.

@@ -62,3 +62,9 @@ CI workflows (PLAT-3), except the smoke workflow of 2.8, the config module (PLAT
 ## 7. Owner questions
 
 None.
+
+## 8. Rulings during the build
+
+- 2026-10-31, MinIO image: upstream `minio/minio` is archived and its images are gone from Docker Hub and Quay (checked by the lead). The maintained fork `pgsty/silo` (with `pgsty/mc`) is accepted for `local` and `ci` only, pinned by digest in `compose.yaml`; production uses the provider bucket (platform §2). Recorded as roadmap amendment A-15 for ADR-0015 and integrations §9 wording.
+- 2026-10-31, service names: one Compose file cannot repeat a service name, so the `ci`, `stack-a` and `stack-b` profiles use suffixed names; the `ci` command is unchanged through `COMPOSE_PROJECT_NAME`.
+- 2026-10-31, VROOM host port 3030 (3130, 3230) because the API uses 3000.
