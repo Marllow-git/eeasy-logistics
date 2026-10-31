@@ -1,8 +1,8 @@
 # ADR-0020: Use Drizzle ORM with SQL migrations
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-31
-- **Deciders:** architecture lead, owner to accept
+- **Deciders:** owner (merged PR #1, 2026-10-31)
 - **Source:** foundation plan D2
 
 ## Context

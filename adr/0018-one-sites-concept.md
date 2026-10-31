@@ -1,8 +1,8 @@
 # ADR-0018: Model branches and warehouses as one sites concept
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-31
-- **Deciders:** architecture lead
+- **Deciders:** owner (merged PR #1, 2026-10-31)
 - **Source:** foundation plan §4 (2026-10-31)
 
 ## Context

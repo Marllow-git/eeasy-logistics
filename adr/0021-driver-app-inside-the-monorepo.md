@@ -1,8 +1,8 @@
 # ADR-0021: Keep the driver app inside the monorepo as apps/driver
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-31
-- **Deciders:** architecture lead, owner to accept
+- **Deciders:** owner (merged PR #1, 2026-10-31)
 - **Source:** foundation plan D3; ADR-0003, ADR-0004
 
 ## Context
