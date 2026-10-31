@@ -381,6 +381,7 @@ Small changes other documents need; none is made by this roadmap. The ones that 
 | A-11 | doc 4 §5 | Record doc 5 §4.5: policies from wave 0, RLS enabled at wave 1 exit, once Q-16 is ruled. | PLAT-5 PR | waits on Q-16 |
 | A-12 | plan §6 | W-1 to W-8 work items collide with doc 2's W-n invariants; name the work items distinctly. | the WMS-1 plan file | done 2026-10-31 |
 | A-13 | plan §8 | Record D8 brand (Q-21) and D7 pilot (Q-31) once ruled. | the PR that follows each ruling | waits on Q-21 / Q-31 |
+| A-14 | PLAT-1 plan §8, platform §2 | Move the runtime from Node 22 LTS to Node 24 LTS (Vercel knowledge update 2026-09-18: Node 24 is the current default; Node 20 deprecated 2026-10-01). Self-hosted containers are unaffected until then; do it before wave 1 exit. | PLAT-3 PR (CI matrix on 24) then a chore PR | owed |
 
 ## 6. Deferred and out of scope
 
