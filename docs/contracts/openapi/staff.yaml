@@ -5,7 +5,7 @@ info:
   license: {name: Proprietary, identifier: LicenseRef-Proprietary}
   description: >-
     The web app surface for merchant staff, shared-kernel part: sign-in and sessions, account and
-    settings, members, sites, audit log, API keys. The same surface continues in staff-delivery.yaml
+    settings, members, sites, audit log, API keys, webhook subscriptions. The same surface continues in staff-delivery.yaml
     (Delivery) and staff-wms.yaml (WMS); the split follows the bounded contexts of ADR-0026.
     Conventions, errors and waves: docs/contracts/README.md and errors.md.
 servers:
@@ -19,6 +19,7 @@ tags:
   - {name: sites, description: "Sites (ADR-0018)"}
   - {name: audit, description: "Audit log (K-7)"}
   - {name: api-keys, description: "Integrator keys (document 4 §3.4)"}
+  - {name: webhooks, description: "Webhook subscriptions from the web app (webhooks.md)"}
 paths:
   /auth/invitations/accept:
     post:
@@ -396,6 +397,151 @@ paths:
         '204': {description: Done}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions:
+    get:
+      operationId: listWebhookSubscriptions
+      summary: "List webhook subscriptions"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createWebhookSubscription
+      summary: "Subscribe a URL to event types; the secret is shown once"
+      description: 'Status pending_verification. A webhook.verification request with a one-time verification_token is POSTed to the URL; the subscription delivers events only after the verify call (webhooks.md §4, ADR-0030).'
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionInput'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionCreated'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, limit_exceeded, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}:
+    get:
+      operationId: getWebhookSubscription
+      summary: "Get a subscription"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updateWebhookSubscription
+      summary: "Change URL, event types or pause"
+      description: 'A URL change returns the subscription to pending_verification.'
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionInput'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    delete:
+      operationId: deleteWebhookSubscription
+      summary: "Delete a subscription"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '204': {description: Done}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/verify:
+    post:
+      operationId: verifyWebhookSubscription
+      summary: "Prove control of the URL with the verification token"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookVerifyRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: verification_token_invalid, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/rotate-secret:
+    post:
+      operationId: rotateWebhookSecret
+      summary: "Issue a new signing secret; the old one stays valid 24 h"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionCreated'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/test-deliveries:
+    post:
+      operationId: sendTestWebhook
+      summary: "Send a signed sample event now"
+      description: 'Sample payload from the catalogue, marked test: true; not counted in delivery statistics.'
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookTestRequest'}}}}
+      responses:
+        '202': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookDelivery'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      summary: "Delivery log, including dead-lettered deliveries"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/WebhookDelivery'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/deliveries/{delivery_id}/redeliver:
+    post:
+      operationId: redeliverWebhook
+      summary: "Redeliver one delivery, including a dead one"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: delivery_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '202': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookDelivery'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-event-types:
+    get:
+      operationId: listWebhookEventTypes
+      summary: "Webhook catalogue with versions and sample payloads"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{staffCookie: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/WebhookEventTypeList'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
 components:
   securitySchemes:
     staffCookie: {$ref: './components.yaml#/components/securitySchemes/staffCookie'}
@@ -457,3 +603,10 @@ components:
     RotateApiKeyRequest:
       type: object
       properties: {overlap_hours: {type: integer, minimum: 0, maximum: 168, default: 24}}
+
+    WebhookEventTypeList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {type: object, properties: {type: {type: string}, version: {type: integer}, description_ar: {type: string}, description_en: {type: string}, sample: {$ref: './components.yaml#/components/schemas/Envelope'}}}

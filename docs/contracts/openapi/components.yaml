@@ -464,6 +464,22 @@ components:
         last_error: {type: [string, 'null']}
         next_attempt_at: {type: [string, 'null'], format: date-time}
         test: {type: boolean}
+    WebhookSubscriptionInput:
+      type: object
+      required: [url, event_types]
+      properties:
+        url: {type: string, format: uri, pattern: '^https://', description: 'https only; private and loopback ranges refused (ADR-0030)'}
+        event_types: {type: array, minItems: 1, items: {type: string, description: An event type marked webhook in document 2 §6.3, example: delivery.order.delivered}}
+        description: {type: string, maxLength: 200}
+        status: {type: string, enum: [active, paused], description: Only on update}
+    WebhookVerifyRequest:
+      type: object
+      required: [verification_token]
+      properties: {verification_token: {type: string, description: One-time token from the webhook.verification delivery}}
+    WebhookTestRequest:
+      type: object
+      required: [event_type]
+      properties: {event_type: {type: string, example: delivery.order.delivered}}
 
     # ---------- Delivery (document 2 §3) ----------
     OrderKind:
