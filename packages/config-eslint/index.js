@@ -26,7 +26,7 @@ export const base = defineConfig(
     languageOptions: {
       globals: { ...globals.node },
       parserOptions: {
-        projectService: { allowDefaultProject: ['*.js', '*.cjs', '*.mjs'] },
+        projectService: { allowDefaultProject: ['*.js', '*.cjs', '*.mjs', '*.config.ts'] },
       },
     },
     rules: {
