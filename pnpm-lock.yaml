@@ -69,6 +69,9 @@ importers:
 
   apps/driver:
     dependencies:
+      '@eeasy-logistics/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@eeasy-logistics/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -127,6 +130,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@eeasy-logistics/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@eeasy-logistics/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
