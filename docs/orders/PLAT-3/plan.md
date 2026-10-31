@@ -66,3 +66,9 @@ Staging deployment and the registry secret store (OPS-1), migrations and the see
 
 1. Turborepo remote cache: Vercel Remote Cache (needs a Vercel account token in repository secrets) or the GitHub Actions cache adapter (default until a token exists).
 2. GHCR visibility for the images: private (default).
+
+## 8. Rulings during the build
+
+- 2026-10-31, Turborepo cache (2.2, owner question 1 default): no Vercel token exists, so the Turborepo local cache directory `.turbo/cache` is kept in the GitHub Actions cache by the first-party `actions/cache`, one scope per job, in the shared setup action `.github/actions/setup`. No third-party remote-cache server receives the Actions cache token. The pnpm store is cached by `actions/setup-node`; `node_modules` is never cached. Test runs against the `ci` stack are invoked directly, not through Turborepo, so a cached result can never stand in for a run against the database.
+- 2026-10-31, `gitleaks` (2.7): `gitleaks/gitleaks-action` requires a `GITLEAKS_LICENSE` secret for repositories owned by an organisation, and `Marllow-git` is one with no such secret. The job therefore runs the official gitleaks release binary (v8.30.1), checksum-pinned, over the full history on every run. Switching to the action later needs only the licence secret.
+- 2026-10-31, `expo-doctor` is a pinned dev dependency of `apps/driver` (script `doctor`), not an `npx` download; CI calls `pnpm --filter @eeasy-logistics/driver run doctor` because `pnpm doctor` is a built-in pnpm command.

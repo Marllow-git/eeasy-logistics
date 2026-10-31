@@ -1,0 +1,99 @@
+# Pull request checks (PLAT-3; platform §4, handbook 03 "CI gates per PR").
+# Each check is its own job so it reports its own status; the six required ones are
+# typecheck-lint, api-test, api-test-rls, web-build-census, driver-test and gitleaks.
+# main.yml calls this workflow on every push to main before it builds the images.
+name: pr
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per pull request, the newest wins. On main (called from main.yml) every
+  # commit gets its own group, so no merge is cancelled.
+  group: pr-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  NEXT_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+  # The pre-commit hook is for laptops; a runner never commits.
+  SKIP_INSTALL_SIMPLE_GIT_HOOKS: '1'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  typecheck-lint:
+    name: typecheck-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-scope: typecheck-lint
+      # Every workspace; lint includes the contracts Redocly lint (packages/contracts).
+      - name: Typecheck and lint every workspace
+        run: pnpm turbo run typecheck lint
+      - name: Prettier
+        run: |
+          pnpm format:check || {
+            echo "::error::files above are not Prettier-formatted; run pnpm format and commit"
+            exit 1
+          }
+
+  driver-test:
+    name: driver-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-scope: driver-test
+      # Typecheck and unit only (driver app §12.1); Maestro is DRV-6's, EAS builds DRV-1's.
+      - name: Typecheck, lint and Jest
+        run: pnpm turbo run typecheck lint test --filter=@eeasy-logistics/driver
+      - name: expo-doctor
+        run: pnpm --filter @eeasy-logistics/driver run doctor
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The official gitleaks release binary, checksum-pinned. gitleaks-action needs a
+      # licence key for organisation repositories and none is configured (plan §8).
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" version
+      # The whole history, every run: a secret committed and later deleted is still a leak.
+      # The repository's .gitleaks.toml is picked up from the checkout root.
+      - name: Scan the full history
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --redact --verbose --no-banner . || {
+            echo "::error::gitleaks found a secret (findings above, redacted). Remove it from history and rotate it."
+            exit 1
+          }
