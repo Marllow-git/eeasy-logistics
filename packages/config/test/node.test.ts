@@ -55,10 +55,10 @@ describe('loadConfig at process start (plan 2.5)', () => {
     const script = `import { loadConfig } from ${JSON.stringify(entry)};\nloadConfig();\nprocess.stdout.write('booted');\n`;
     const file = join(dir, 'boot.mjs');
     writeFileSync(file, script);
-    // A clean environment and a working directory with no .env.
+    // Only `env` (no inherited variables) and a working directory with no .env.
     return spawnSync(process.execPath, [file], {
       cwd: dir,
-      env: { PATH: process.env.PATH ?? '', ...env },
+      env,
       encoding: 'utf8',
     });
   }

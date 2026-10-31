@@ -7,6 +7,16 @@ import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+const envMessage =
+  'Read configuration through @eeasy-logistics/config, never the environment directly (AGENTS.md).';
+
+/** `process.env`, `globalThis.process` and `global.process` (the latter two reach `.env` too). */
+const envRestrictions = [
+  { object: 'process', property: 'env', message: envMessage },
+  { object: 'globalThis', property: 'process', message: envMessage },
+  { object: 'global', property: 'process', message: envMessage },
+];
+
 export const base = defineConfig(
   {
     ignores: [
@@ -33,6 +43,20 @@ export const base = defineConfig(
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       eqeqeq: ['error', 'always'],
+      // AGENTS.md hard rule (PLAT-4): only packages/config reads the environment. dependency-cruiser
+      // sees imports only, so the global `process.env` is forbidden here; packages/config exempts
+      // its documented entry points.
+      'no-restricted-properties': ['error', ...envRestrictions],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: ['process', 'node:process'].map((name) => ({
+            name,
+            importNames: ['env'],
+            message: envMessage,
+          })),
+        },
+      ],
     },
   },
   {
