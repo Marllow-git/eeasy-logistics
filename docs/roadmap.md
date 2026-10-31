@@ -341,7 +341,7 @@ Owner delegation 2026-10-31: every proposed default stands provisionally and is 
 | Q-33 | plan §8 D6 | Commercial model and pricing | limits and counters from day one; pricing before wave 2 | 2 | default (provisional) |
 | Q-34 | doc 9 §12.5 | Order status written back to the channel | read-only for orders; a write-back needs a new ADR | 4 | default (provisional) |
 | Q-35 | doc 5 §13.3 | Merchant webhook log visibility | 30 days | 4 | default (provisional) |
-| Q-36 | plan §6 wave 4 | Content of work items W-7 and W-8 | W-7 WMS returns, W-8 channel stock publication (doc 3 §10 wave 4) | 3 | default (provisional) |
+| Q-36 | plan §6 wave 4 | Content of work items WMS-W7 and WMS-W8 (renamed, A-12) | WMS-W7 WMS returns, WMS-W8 channel stock publication (doc 3 §10 wave 4) | 3 | default (provisional) |
 | Q-37 | doc 5 §13.1 | Recipient data on orders | kept for the life of the account | 1 | default (provisional) |
 | Q-38 | doc 5 §13.2 | Closed-account retention and immediate deletion | 90 days with export, then deletion | 1 | default (provisional) |
 
