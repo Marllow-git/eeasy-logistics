@@ -2,7 +2,7 @@
 
 - **Status:** proposed
 - **Date:** 2026-10-31
-- **Deciders:** architecture lead
+- **Deciders:** architecture lead, owner to accept
 - **Source:** web app architecture (foundation document 7, §5 and §6); ADR-0016 (Arabic first, mirrored from the start); ADR-0010 (Hudhud)
 
 ## Context

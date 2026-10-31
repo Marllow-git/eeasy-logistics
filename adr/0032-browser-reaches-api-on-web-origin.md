@@ -2,7 +2,7 @@
 
 - **Status:** proposed
 - **Date:** 2026-10-31
-- **Deciders:** architecture lead
+- **Deciders:** architecture lead, owner to accept
 - **Source:** web app architecture (foundation document 7, §2.2 and §3); document 4 §4 (cookies, rotation, reuse detection); document 6 §8 (edge, CSP)
 
 ## Context
