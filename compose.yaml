@@ -1,0 +1,319 @@
+# Local and CI service stack (PLAT-2; ADR-0019, ADR-0022, ADR-0010, ADR-0015).
+#
+# Profiles (platform §2, plan decision 2.2), each run under its own project name:
+#   dev      fixed ports on 127.0.0.1, named volumes        project elx (the default below)
+#   ci       random host ports, tmpfs data                  COMPOSE_PROJECT_NAME=elx-ci
+#   stack-a  dev ports +100, own volumes                     tools/stack.sh up a (project elx-stack-a)
+#   stack-b  dev ports +200, own volumes                     tools/stack.sh up b (project elx-stack-b)
+#
+# A Compose file cannot repeat a service name, so the ci and stack services carry
+# a suffix (postgres-ci, postgres-a, postgres-b). The x- blocks hold everything
+# the profiles share; each service adds only its profile, ports and storage.
+# Secrets come from .env (copy .env.example); none is committed.
+
+name: elx
+
+# Roles and extensions (tools/postgres/init), mounted in every postgres service.
+x-postgres-init: &postgres-init ./tools/postgres/init:/docker-entrypoint-initdb.d:ro
+
+x-postgres: &postgres
+  image: postgis/postgis:16-3.6
+  environment:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env}
+    POSTGRES_DB: elx
+    # Read by tools/postgres/init/01-roles.sql on first start.
+    ELX_OWNER_PASSWORD: ${ELX_OWNER_PASSWORD:?copy .env.example to .env}
+    ELX_APP_PASSWORD: ${ELX_APP_PASSWORD:?copy .env.example to .env}
+    ELX_PLATFORM_PASSWORD: ${ELX_PLATFORM_PASSWORD:?copy .env.example to .env}
+    ELX_MAINTENANCE_PASSWORD: ${ELX_MAINTENANCE_PASSWORD:?copy .env.example to .env}
+  healthcheck:
+    # TCP, not the socket: the image's init phase runs a socket-only server.
+    test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d elx']
+    interval: 3s
+    timeout: 5s
+    retries: 30
+    start_period: 30s
+
+x-redis: &redis
+  image: redis:7.4.12-alpine
+  healthcheck:
+    test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+    interval: 3s
+    timeout: 5s
+    retries: 30
+
+x-vroom: &vroom
+  image: ghcr.io/vroom-project/vroom-docker:v1.15.0
+  environment:
+    VROOM_ROUTER: osrm
+    OSRM_HOST: ${OSRM_HOST:-}
+    OSRM_PORT: ${OSRM_PORT:-}
+  volumes:
+    - ./tools/vroom/config.yml:/etc/elx/vroom-config.yml:ro
+  tmpfs:
+    - /conf
+  entrypoint: ['/bin/bash', '-c']
+  command:
+    - >-
+      sed -e "s|__OSRM_HOST__|$${OSRM_HOST:-osrm.invalid}|"
+      -e "s|__OSRM_PORT__|$${OSRM_PORT:-5000}|"
+      /etc/elx/vroom-config.yml > /conf/config.yml
+      && exec bash /docker-entrypoint.sh
+  healthcheck:
+    # /health solves a bundled fixed-matrix problem: no OSRM needed (decision 2.5).
+    test: ['CMD-SHELL', 'curl --fail -s http://localhost:3000/health']
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 20s
+
+# pgsty/silo: maintained MinIO fork; upstream MinIO publishes no images any more.
+x-minio: &minio
+  image: pgsty/silo:RELEASE.2026-10-26T00-00-00Z@sha256:7bb2aff6b89efe1cb1303c10fc21d579447434ed06649ac9ec05a5e2dbf30ad7
+  command: ['server', '/data', '--console-address', ':9001']
+  environment:
+    MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
+    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+  healthcheck:
+    test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:9000/minio/health/live']
+    interval: 3s
+    timeout: 5s
+    retries: 30
+
+x-whatsapp-stub: &whatsapp-stub
+  image: node:22.23.4-alpine
+  init: true
+  user: node
+  working_dir: /stub
+  command: ['node', 'server.mjs']
+  environment:
+    WHATSAPP_STUB_PORT: '8080'
+    WHATSAPP_STUB_LOG: /tmp/whatsapp-stub/sent.jsonl
+  volumes:
+    - ./tools/whatsapp-stub:/stub:ro
+  healthcheck:
+    test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health']
+    interval: 3s
+    timeout: 5s
+    retries: 30
+
+# Creates the bucket with versioning (integrations §9, ADR-0015), then stays up
+# so `up --wait` can see it healthy: one-shot containers that exit are not
+# handled the same way by every Compose version.
+x-minio-init: &minio-init
+  image: pgsty/mc:RELEASE.2026-10-26T00-00-00Z@sha256:ce62c9053c69ce12a527a322345b5ad9f44b5f8a7b8189f82e516f2e3f30f1d8
+  init: true
+  restart: on-failure
+  # environment is per service (MINIO_HOST differs); a YAML merge would not combine maps.
+  entrypoint: ['/bin/sh', '-c']
+  command:
+    - |
+      set -e
+      mc alias set local "http://$${MINIO_HOST}:9000" "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+      mc mb --ignore-existing "local/$${MINIO_BUCKET}"
+      mc version enable "local/$${MINIO_BUCKET}"
+      touch /tmp/ready
+      exec sleep infinity
+  healthcheck:
+    test: ['CMD', 'test', '-f', '/tmp/ready']
+    interval: 3s
+    timeout: 5s
+    retries: 40
+
+x-mailpit: &mailpit
+  image: axllent/mailpit:v1.33.0
+  healthcheck:
+    test: ['CMD', '/mailpit', 'readyz']
+    interval: 3s
+    timeout: 5s
+    retries: 30
+
+services:
+  # ---------------------------------------------------------------- dev
+  postgres:
+    <<: *postgres
+    profiles: [dev]
+    ports: ['127.0.0.1:5432:5432']
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - *postgres-init
+  redis:
+    <<: *redis
+    profiles: [dev]
+    ports: ['127.0.0.1:6379:6379']
+    volumes:
+      - redis-data:/data
+  vroom:
+    <<: *vroom
+    profiles: [dev]
+    ports: ['127.0.0.1:3030:3000']
+  minio:
+    <<: *minio
+    profiles: [dev]
+    ports: ['127.0.0.1:9000:9000', '127.0.0.1:9001:9001']
+    volumes:
+      - minio-data:/data
+  minio-init:
+    <<: *minio-init
+    profiles: [dev]
+    environment:
+      MINIO_HOST: minio
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:?copy .env.example to .env}
+    depends_on:
+      minio:
+        condition: service_healthy
+  mailpit:
+    <<: *mailpit
+    profiles: [dev]
+    ports: ['127.0.0.1:8025:8025', '127.0.0.1:1025:1025']
+  whatsapp-stub:
+    <<: *whatsapp-stub
+    profiles: [dev]
+    ports: ['127.0.0.1:8080:8080']
+
+  # ---------------------------------------------------------------- ci
+  postgres-ci:
+    <<: *postgres
+    profiles: [ci]
+    ports: ['127.0.0.1::5432']
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - *postgres-init
+  redis-ci:
+    <<: *redis
+    profiles: [ci]
+    ports: ['127.0.0.1::6379']
+    tmpfs:
+      - /data
+  vroom-ci:
+    <<: *vroom
+    profiles: [ci]
+    ports: ['127.0.0.1::3000']
+  minio-ci:
+    <<: *minio
+    profiles: [ci]
+    ports: ['127.0.0.1::9000', '127.0.0.1::9001']
+    tmpfs:
+      - /data
+  minio-init-ci:
+    <<: *minio-init
+    profiles: [ci]
+    environment:
+      MINIO_HOST: minio-ci
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:?copy .env.example to .env}
+    depends_on:
+      minio-ci:
+        condition: service_healthy
+  mailpit-ci:
+    <<: *mailpit
+    profiles: [ci]
+    ports: ['127.0.0.1::8025', '127.0.0.1::1025']
+  whatsapp-stub-ci:
+    <<: *whatsapp-stub
+    profiles: [ci]
+    ports: ['127.0.0.1::8080']
+
+  # ---------------------------------------------------------------- stack-a (+100)
+  postgres-a:
+    <<: *postgres
+    profiles: [stack-a]
+    ports: ['127.0.0.1:5532:5432']
+    volumes:
+      - postgres-data-a:/var/lib/postgresql/data
+      - *postgres-init
+  redis-a:
+    <<: *redis
+    profiles: [stack-a]
+    ports: ['127.0.0.1:6479:6379']
+    volumes:
+      - redis-data-a:/data
+  vroom-a:
+    <<: *vroom
+    profiles: [stack-a]
+    ports: ['127.0.0.1:3130:3000']
+  minio-a:
+    <<: *minio
+    profiles: [stack-a]
+    ports: ['127.0.0.1:9100:9000', '127.0.0.1:9101:9001']
+    volumes:
+      - minio-data-a:/data
+  minio-init-a:
+    <<: *minio-init
+    profiles: [stack-a]
+    environment:
+      MINIO_HOST: minio-a
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:?copy .env.example to .env}
+    depends_on:
+      minio-a:
+        condition: service_healthy
+  mailpit-a:
+    <<: *mailpit
+    profiles: [stack-a]
+    ports: ['127.0.0.1:8125:8025', '127.0.0.1:1125:1025']
+  whatsapp-stub-a:
+    <<: *whatsapp-stub
+    profiles: [stack-a]
+    ports: ['127.0.0.1:8180:8080']
+
+  # ---------------------------------------------------------------- stack-b (+200)
+  postgres-b:
+    <<: *postgres
+    profiles: [stack-b]
+    ports: ['127.0.0.1:5632:5432']
+    volumes:
+      - postgres-data-b:/var/lib/postgresql/data
+      - *postgres-init
+  redis-b:
+    <<: *redis
+    profiles: [stack-b]
+    ports: ['127.0.0.1:6579:6379']
+    volumes:
+      - redis-data-b:/data
+  vroom-b:
+    <<: *vroom
+    profiles: [stack-b]
+    ports: ['127.0.0.1:3230:3000']
+  minio-b:
+    <<: *minio
+    profiles: [stack-b]
+    ports: ['127.0.0.1:9200:9000', '127.0.0.1:9201:9001']
+    volumes:
+      - minio-data-b:/data
+  minio-init-b:
+    <<: *minio-init
+    profiles: [stack-b]
+    environment:
+      MINIO_HOST: minio-b
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?copy .env.example to .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:?copy .env.example to .env}
+    depends_on:
+      minio-b:
+        condition: service_healthy
+  mailpit-b:
+    <<: *mailpit
+    profiles: [stack-b]
+    ports: ['127.0.0.1:8225:8025', '127.0.0.1:1225:1025']
+  whatsapp-stub-b:
+    <<: *whatsapp-stub
+    profiles: [stack-b]
+    ports: ['127.0.0.1:8280:8080']
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  postgres-data-a:
+  redis-data-a:
+  minio-data-a:
+  postgres-data-b:
+  redis-data-b:
+  minio-data-b:
