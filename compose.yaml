@@ -81,6 +81,23 @@ x-minio: &minio
     timeout: 5s
     retries: 30
 
+x-whatsapp-stub: &whatsapp-stub
+  image: node:22.23.4-alpine
+  init: true
+  user: node
+  working_dir: /stub
+  command: ['node', 'server.mjs']
+  environment:
+    WHATSAPP_STUB_PORT: '8080'
+    WHATSAPP_STUB_LOG: /tmp/whatsapp-stub/sent.jsonl
+  volumes:
+    - ./tools/whatsapp-stub:/stub:ro
+  healthcheck:
+    test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health']
+    interval: 3s
+    timeout: 5s
+    retries: 30
+
 x-mailpit: &mailpit
   image: axllent/mailpit:v1.33.0
   healthcheck:
@@ -118,6 +135,10 @@ services:
     <<: *mailpit
     profiles: [dev]
     ports: ['127.0.0.1:8025:8025', '127.0.0.1:1025:1025']
+  whatsapp-stub:
+    <<: *whatsapp-stub
+    profiles: [dev]
+    ports: ['127.0.0.1:8080:8080']
 
   # ---------------------------------------------------------------- ci
   postgres-ci:
@@ -148,6 +169,10 @@ services:
     <<: *mailpit
     profiles: [ci]
     ports: ['127.0.0.1::8025', '127.0.0.1::1025']
+  whatsapp-stub-ci:
+    <<: *whatsapp-stub
+    profiles: [ci]
+    ports: ['127.0.0.1::8080']
 
   # ---------------------------------------------------------------- stack-a (+100)
   postgres-a:
@@ -177,6 +202,10 @@ services:
     <<: *mailpit
     profiles: [stack-a]
     ports: ['127.0.0.1:8125:8025', '127.0.0.1:1125:1025']
+  whatsapp-stub-a:
+    <<: *whatsapp-stub
+    profiles: [stack-a]
+    ports: ['127.0.0.1:8180:8080']
 
   # ---------------------------------------------------------------- stack-b (+200)
   postgres-b:
@@ -206,6 +235,10 @@ services:
     <<: *mailpit
     profiles: [stack-b]
     ports: ['127.0.0.1:8225:8025', '127.0.0.1:1225:1025']
+  whatsapp-stub-b:
+    <<: *whatsapp-stub
+    profiles: [stack-b]
+    ports: ['127.0.0.1:8280:8080']
 
 volumes:
   postgres-data:
