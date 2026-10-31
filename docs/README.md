@@ -10,7 +10,7 @@ The documents that must exist and be approved before application code is written
 | 4 | Tenancy, identity and authorization | `docs/architecture/identity-and-tenancy.md` | approved (PR #1) |
 | 5 | Data architecture | `docs/architecture/data.md` | in review |
 | 6 | Platform blueprint | `docs/architecture/platform.md` | approved (PR #1) |
-| 7 | Web app architecture | `docs/architecture/web.md` | not started |
+| 7 | Web app architecture | `docs/architecture/web.md` | in review |
 | 8 | Driver app architecture | `docs/architecture/driver-app.md` | not started |
 | 9 | Integration architecture | `docs/architecture/integrations.md` | not started |
 | 10 | Engineering handbook | `AGENTS.md`, `docs/handbook/` | approved (PR #2) |
