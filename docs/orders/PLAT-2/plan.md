@@ -27,6 +27,7 @@ One `compose.yaml` runs the full local stack and the CI stack, and two executors
 | 2.5 | VROOM | the container runs with a config pointing at an OSRM endpoint variable that is unset in wave 0 (OSRM is INT-5's, platform A-1); the health check only proves the container starts |
 | 2.6 | Secrets | `.env.example` with every variable the stack needs and placeholder values; `.env` is gitignored; gitleaks is PLAT-3's |
 | 2.7 | Apps in Compose | the api, worker and web images are NOT built in this order; the apps run on the host against the Compose services (platform §2 production parity is PLAT-3's image build) |
+| 2.8 | Verification without local Docker (ruled 2026-10-31) | the exit criteria run in a GitHub Actions smoke workflow `.github/workflows/compose-smoke.yml` on ubuntu-latest, triggered on pull requests that touch `compose.yaml`, `tools/` or the workflow; PLAT-3 replaces it with the full lanes |
 
 ## 3. Build list
 
@@ -38,6 +39,7 @@ One `compose.yaml` runs the full local stack and the CI stack, and two executors
 | D | MinIO bootstrap job: bucket `elx-local` with versioning | `mc ls` shows it |
 | E | `tools/stack.sh` and the two isolated profiles | `stack-a` and `stack-b` up at the same time, different ports |
 | F | `.env.example`, README "Running the stack" | fresh clone follows the README to a healthy stack |
+| G | `.github/workflows/compose-smoke.yml` (decision 2.8) | the workflow run on the PR is green: every exit criterion asserted |
 
 ## 4. Commit plan
 
@@ -53,7 +55,7 @@ One commit per item, `PLAT-2: <item>`.
 
 ## 6. Not in this order
 
-CI workflows (PLAT-3), the config module (PLAT-4), any schema, migration or seed (PLAT-5), app images, OSRM, production compose.
+CI workflows (PLAT-3), except the smoke workflow of 2.8, the config module (PLAT-4), any schema, migration or seed (PLAT-5), app images, OSRM, production compose.
 
 ## 7. Owner questions
 
