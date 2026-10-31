@@ -2,21 +2,27 @@
   "name": "@eeasy-logistics/config",
   "version": "0.0.0",
   "private": true,
-  "description": "Validated runtime configuration; placeholder until PLAT-4.",
+  "description": "Validated runtime configuration: the only code that reads environment variables (PLAT-4).",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@eeasy-logistics/config-eslint": "workspace:*",
     "@eeasy-logistics/config-ts": "workspace:*",
+    "@types/node": "22.20.5",
     "eslint": "9.39.5",
     "typescript": "6.0.3",
     "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "dotenv": "18.0.9",
+    "zod": "4.6.7"
   }
 }
