@@ -32,7 +32,12 @@ export const productionEnv: Record<string, string> = {
   CREDENTIALS_ACTIVE_KEY_ID: 'k2',
 };
 
-/** Every value in `env` that is long enough to be recognisable if it leaked into a message. */
+/**
+ * Every value in `env` long enough to be recognisable if it leaked into a message. `APP_ENV` is left
+ * out: messages legitimately say `APP_ENV=production`.
+ */
 export function valuesOf(env: Record<string, string>): string[] {
-  return Object.values(env).filter((value) => value.length >= 8);
+  return Object.entries(env)
+    .filter(([variable, value]) => variable !== 'APP_ENV' && value.length >= 8)
+    .map(([, value]) => value);
 }
