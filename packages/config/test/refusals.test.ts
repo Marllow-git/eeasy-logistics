@@ -71,6 +71,34 @@ describe('production refusals (plan 2.3)', () => {
     });
   });
 
+  it('requires TLS for Redis and https for the storage and OTLP endpoints', () => {
+    const found = problems({
+      ...productionEnv,
+      REDIS_URL: 'redis://:fake-redis-pw@redis.internal:6379',
+      STORAGE_ENDPOINT: 'http://s3.example.test',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel.internal:4318',
+    });
+    expect(found).toEqual({
+      REDIS_URL: 'must use rediss:// in production',
+      STORAGE_ENDPOINT: 'must use https:// in production',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'must use https:// in production',
+    });
+  });
+
+  it('allows plain redis:// and http:// outside production (Compose services)', () => {
+    const env = {
+      REDIS_URL: 'redis://localhost:6379',
+      STORAGE_ENDPOINT: 'http://localhost:9000',
+      STORAGE_BUCKET: 'b',
+      STORAGE_ACCESS_KEY_ID: 'id',
+      STORAGE_SECRET_ACCESS_KEY: 'fake-storage-secret',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318',
+    };
+    for (const appEnv of ['local', 'ci', 'staging']) {
+      expect(problems({ APP_ENV: appEnv, ...env })).toEqual({});
+    }
+  });
+
   it.each(['local', 'ci', 'staging'])('does not apply production rules in %s', (appEnv) => {
     expect(problems({ APP_ENV: appEnv })).toEqual({});
     expect(problems({ APP_ENV: appEnv, MESSAGING_PROVIDER: 'stub' })).toEqual({});

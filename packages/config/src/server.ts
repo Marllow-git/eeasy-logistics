@@ -86,7 +86,14 @@ export const serverVariables = {
   STORAGE_PUBLIC_URL: httpUrl().optional(),
   // auth
   AUTH_SIGNING_KEY_ID: keyId().optional(),
-  AUTH_SIGNING_KEY: secret(z.string().min(32)).optional(),
+  AUTH_SIGNING_KEY: secret(
+    z
+      .string()
+      .min(32)
+      .refine((value) => new Set(value).size >= 16, {
+        message: 'has fewer than 16 distinct characters; generate one with openssl rand -base64 48',
+      }),
+  ).optional(),
   AUTH_ACCESS_TOKEN_TTL_SECONDS: seconds().default(900),
   AUTH_STAFF_REFRESH_TTL_SECONDS: seconds().default(2_592_000),
   AUTH_DRIVER_REFRESH_TTL_SECONDS: seconds().default(7_776_000),
@@ -132,7 +139,7 @@ export const serverExpectations = {
   STORAGE_SECRET_ACCESS_KEY: 'a secret access key',
   STORAGE_PUBLIC_URL: 'an http(s) URL',
   AUTH_SIGNING_KEY_ID: keyIdExpectation,
-  AUTH_SIGNING_KEY: 'a key of at least 32 characters',
+  AUTH_SIGNING_KEY: 'a key of at least 32 characters, at least 16 of them distinct',
   AUTH_ACCESS_TOKEN_TTL_SECONDS: seconds1y,
   AUTH_STAFF_REFRESH_TTL_SECONDS: seconds1y,
   AUTH_DRIVER_REFRESH_TTL_SECONDS: seconds1y,

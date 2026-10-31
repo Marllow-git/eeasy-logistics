@@ -9,8 +9,9 @@ import type { Secret } from './secret.ts';
 // Blob layout (one `bytea`):
 //   version (1 byte, = 1) | key id length (1 byte) | key id (UTF-8) | nonce (12) | tag (16) | ciphertext
 // The header (version, length, key id) is authenticated as additional data, so changing the key id
-// in a blob fails decryption. An optional `context` (for example `core_channel_connections:<id>`)
-// is authenticated too: a blob copied to another row or column then fails to decrypt.
+// in a blob fails decryption. A required `context`, `<table>:<row id>` (for example
+// `core_channel_connections:01J…`), is authenticated too: a blob copied to another row or table then
+// fails to decrypt.
 
 const formatVersion = 1;
 const nonceBytes = 12;
@@ -30,7 +31,9 @@ export type CredentialsErrorCode =
   /** The blob is not in the format above (truncated, wrong version, bad key id). */
   | 'malformed'
   /** The tag did not verify: the blob, the key id or the context was altered, or the key is wrong. */
-  | 'authentication_failed';
+  | 'authentication_failed'
+  /** The context is missing or not of the form `<table>:<row id>`. */
+  | 'invalid_context';
 
 /** A typed failure. Its message never contains plaintext, key material or ciphertext. */
 export class CredentialsError extends Error {
@@ -52,11 +55,11 @@ export interface CredentialsKeys {
 export interface CredentialsCipher {
   readonly activeKeyId: string;
   /** Encrypts under the active key with a fresh random nonce. */
-  encrypt(plaintext: string, context?: string): EncryptedCredential;
+  encrypt(plaintext: string, context: string): EncryptedCredential;
   /** Picks the key by the id in the blob; throws `CredentialsError` on any failure. */
-  decrypt(blob: Uint8Array, context?: string): string;
+  decrypt(blob: Uint8Array, context: string): string;
   /** Decrypts with whichever key the blob names and re-encrypts under the active key. */
-  rotate(blob: Uint8Array, context?: string): EncryptedCredential;
+  rotate(blob: Uint8Array, context: string): EncryptedCredential;
 }
 
 export function createCredentialsCipher(credentials: CredentialsKeys): CredentialsCipher {
@@ -79,7 +82,8 @@ export function createCredentialsCipher(credentials: CredentialsKeys): Credentia
   }
   const activeKey: Buffer = configuredActiveKey;
 
-  function encrypt(plaintext: string, context = ''): EncryptedCredential {
+  function encrypt(plaintext: string, context: string): EncryptedCredential {
+    checkContext(context);
     const header = encodeHeader(activeKeyId);
     const nonce = randomBytes(nonceBytes);
     const cipher = createCipheriv('aes-256-gcm', activeKey, nonce, {
@@ -91,7 +95,8 @@ export function createCredentialsCipher(credentials: CredentialsKeys): Credentia
     return { keyId: activeKeyId, blob };
   }
 
-  function decrypt(blob: Uint8Array, context = ''): string {
+  function decrypt(blob: Uint8Array, context: string): string {
+    checkContext(context);
     const { header, keyId, nonce, tag, ciphertext } = parseBlob(Buffer.from(blob));
     const key = keys.get(keyId);
     if (key === undefined) {
@@ -121,6 +126,18 @@ export function createCredentialsCipher(credentials: CredentialsKeys): Credentia
 function encodeHeader(keyId: string): Buffer {
   const id = Buffer.from(keyId, 'utf8');
   return Buffer.concat([Buffer.from([formatVersion, id.length]), id]);
+}
+
+/** `<table>:<row id>`: a lower-case table name, a colon, and a row id without spaces. */
+const contextPattern = /^[a-z][a-z0-9_]*:\S+$/;
+
+function checkContext(context: unknown): void {
+  if (typeof context !== 'string' || !contextPattern.test(context)) {
+    throw new CredentialsError(
+      'invalid_context',
+      'A context of the form <table>:<row id> is required',
+    );
+  }
 }
 
 function additionalData(header: Buffer, context: string): Buffer {

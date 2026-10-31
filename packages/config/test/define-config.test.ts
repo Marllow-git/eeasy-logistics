@@ -165,6 +165,35 @@ describe('defineConfig: missing and malformed input', () => {
     ]);
   });
 
+  it('refuses a password in a URL that is not a secret; a user name alone is fine', () => {
+    const env = {
+      APP_ENV: 'local',
+      VROOM_URL: 'http://user:fake-url-password@vroom.internal:3000',
+      SENTRY_DSN: 'https://publickey@o1.ingest.example.test/1',
+    };
+    const error = configError(() => defineConfig(env));
+    expect(error.issues).toEqual([
+      {
+        variable: 'VROOM_URL',
+        problem:
+          'is invalid: must not carry a password; put credentials in their own secret variable',
+      },
+    ]);
+    expect(error.message).not.toContain('fake-url-password');
+    const dsnOnly = { APP_ENV: 'local', SENTRY_DSN: env.SENTRY_DSN };
+    expect(defineConfig(dsnOnly).observability.sentryDsn).toBe(env.SENTRY_DSN);
+  });
+
+  it('refuses a signing key with fewer than 16 distinct characters', () => {
+    const weak = 'ab'.repeat(20);
+    const error = configError(() =>
+      defineConfig({ APP_ENV: 'local', AUTH_SIGNING_KEY_ID: 'k1', AUTH_SIGNING_KEY: weak }),
+    );
+    expect(error.issues.map((issue) => issue.variable)).toEqual(['AUTH_SIGNING_KEY']);
+    expect(error.issues[0]?.problem).toContain('fewer than 16 distinct characters');
+    expect(error.message).not.toContain(weak);
+  });
+
   it('rejects an unknown role', () => {
     const error = configError(() => defineConfig(minimalEnv, { role: 'scheduler' as 'api' }));
     expect(error.issues.map((issue) => issue.variable)).toEqual(['--role']);

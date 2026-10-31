@@ -40,14 +40,15 @@ export function parseVariables<Shape extends VariableShape>(
       issues.push({ variable, problem: `is required (${expected})` });
       continue;
     }
-    // Custom issues carry messages written in this package (e.g. `credentialsKeys` in server.ts).
-    const custom = result.error.issues
-      .filter((issue) => issue.code === 'custom')
-      .map((issue) => issue.message);
+    // Custom issues carry messages written in this package (refinements and `credentialsKeys` in
+    // server.ts); they are shown only when nothing else failed, otherwise the expectation is.
+    const custom = result.error.issues.filter((issue) => issue.code === 'custom');
     issues.push({
       variable,
       problem:
-        custom.length > 0 ? `is invalid: ${custom.join('; ')}` : `is invalid: expected ${expected}`,
+        custom.length > 0 && custom.length === result.error.issues.length
+          ? `is invalid: ${custom.map((issue) => issue.message).join('; ')}`
+          : `is invalid: expected ${expected}`,
     });
   }
   return { values: values as ParsedVariables<Shape>, issues };

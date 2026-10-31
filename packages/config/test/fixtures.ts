@@ -24,7 +24,7 @@ export const productionEnv: Record<string, string> = {
   STORAGE_ACCESS_KEY_ID: 'FAKEACCESSKEYID',
   STORAGE_SECRET_ACCESS_KEY: 'fake-storage-secret',
   AUTH_SIGNING_KEY_ID: 'auth-2026-10',
-  AUTH_SIGNING_KEY: 'fake-signing-key-fake-signing-key-0123',
+  AUTH_SIGNING_KEY: 'fake-signing-key-abcdefghijklmnopqrstuvwxyz-0123456789',
   MESSAGING_PROVIDER: 'meta',
   MESSAGING_ACCESS_TOKEN: 'fake-messaging-token',
   MESSAGING_SENDER_ID: '100000000000001',

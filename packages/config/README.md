@@ -28,7 +28,7 @@ Next.js and Expo inline a public variable at build time only where the code says
 
 ## Per-account credentials at rest
 
-`createCredentialsCipher(config.credentials)` gives `encrypt`, `decrypt` and `rotate` (plan 2.4, data §10): AES-256-GCM with a random 12-byte nonce. `encrypt` uses the active key and returns `{ keyId, blob }`: `blob` holds version, key id, nonce, tag and ciphertext for one `bytea` column, `keyId` goes in the row's `*_key_id` column. `decrypt` picks the key by the id inside the blob and throws a typed `CredentialsError` (`unknown_key_id`, `malformed`, `authentication_failed`). Pass the same optional `context` (for example `core_channel_connections:<id>`) to bind a blob to its row. `CREDENTIALS_KEYS` holds every key that must still decrypt; rotation adds a key, makes it active, re-encrypts with `rotate`, then removes the old key.
+`createCredentialsCipher(config.credentials)` gives `encrypt`, `decrypt` and `rotate` (plan 2.4, data §10): AES-256-GCM with a random 12-byte nonce. `encrypt` uses the active key and returns `{ keyId, blob }`: `blob` holds version, key id, nonce, tag and ciphertext for one `bytea` column, `keyId` goes in the row's `*_key_id` column. `decrypt` picks the key by the id inside the blob and throws a typed `CredentialsError` (`unknown_key_id`, `malformed`, `authentication_failed`, `invalid_context`). Every call takes a required `context` of the form `<table>:<row id>` (for example `core_channel_connections:<id>`), authenticated with the blob, so a blob copied to another row fails to decrypt. `CREDENTIALS_KEYS` holds every key that must still decrypt; rotation adds a key, makes it active, re-encrypts with `rotate`, then removes the old key.
 
 ## Runtime
 
