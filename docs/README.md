@@ -4,12 +4,12 @@ The documents that must exist and be approved before application code is written
 
 | # | Document | Path | Status |
 |---|---|---|---|
-| 1 | Architecture decision records | `adr/` | in review |
+| 1 | Architecture decision records | `adr/` | approved (PR #1) |
 | 2 | Domain model | `docs/architecture/domain-model.md` | not started |
 | 3 | API contracts | `docs/contracts/` | not started |
-| 4 | Tenancy, identity and authorization | `docs/architecture/identity-and-tenancy.md` | not started |
+| 4 | Tenancy, identity and authorization | `docs/architecture/identity-and-tenancy.md` | in progress |
 | 5 | Data architecture | `docs/architecture/data.md` | not started |
-| 6 | Platform blueprint | `docs/architecture/platform.md` | not started |
+| 6 | Platform blueprint | `docs/architecture/platform.md` | in progress |
 | 7 | Web app architecture | `docs/architecture/web.md` | not started |
 | 8 | Driver app architecture | `docs/architecture/driver-app.md` | not started |
 | 9 | Integration architecture | `docs/architecture/integrations.md` | not started |
