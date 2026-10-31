@@ -1,6 +1,6 @@
 # ARCH-1 · Complete the foundation package
 
-- **Status:** in progress
+- **Status:** done pending owner review
 - **Date:** 2026-10-31
 - **Owner ruling:** "create goal for these and complete the docs; skip the login-gated censuses currently" (2026-10-31)
 - **Lead:** architecture lead (Fable). **Executors:** Opus, one per document, each in its own worktree. **Research:** Haiku.
@@ -66,3 +66,17 @@ One branch and one PR per item, stacked on the previous: `docs/arch-1-contracts`
 
 1. Public API shape: Logestechs-style static `X-API-Key` (plan section 9) is the default; OTO's one-hour bearer tokens are the alternative. Default stands unless you object.
 2. Should the public API expose WMS resources in `/v1` from wave 4, or only Delivery until the WMS has a pilot? Default: Delivery only in the first public release; WMS paths marked `x-wave: 4`.
+
+## 8. Outcome
+
+| Item | Document | PR |
+|---|---|---|
+| A | Plan file (this), issue | – |
+| B | 3 · API contracts: `docs/contracts/` | PR #12 |
+| C | 5 · Data architecture: `docs/architecture/data.md` | PR #11 |
+| D | 7 · Web app architecture: `docs/architecture/web.md` | PR #10 |
+| E | 8 · Driver app architecture: `docs/architecture/driver-app.md` | PR #8 |
+| F | 9 · Integration architecture: `docs/architecture/integrations.md` | PR #9 |
+| G | 12 · Roadmap: `docs/roadmap.md`; this plan closed | PR #TBD-roadmap |
+
+Proposed ADRs from this order: 0029 and 0030 (B), 0031 (C), 0032 and 0033 (D), 0034 and 0035 (E), 0036 and 0037 (F). The owner questions of section 7, and every open question of the foundation documents, are consolidated in the roadmap's decision register (`docs/roadmap.md` §4; section 7 is Q-13 and Q-14).
