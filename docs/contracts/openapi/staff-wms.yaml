@@ -1,0 +1,1198 @@
+openapi: 3.1.0
+info:
+  title: "eeasy-logistics staff API: WMS"
+  version: 1.0.0
+  license: {name: Proprietary, identifier: LicenseRef-Proprietary}
+  description: >-
+    The web app surface for warehouse staff, WMS part (waves 3 and 4), at operation level with the
+    aggregate schemas of document 2 §4. Same base path and session as staff.yaml (ADR-0026 split by
+    context). Stock movements are read only: the ledger service writes them as a side effect of the
+    operations below (ADR-0011, W-5). Conventions, errors and waves: docs/contracts/README.md.
+servers:
+  - url: /v1/staff
+security:
+  - staffCookie: []
+tags:
+  - {name: locations, description: "Location tree and totes (§4.1, ADR-0012)"}
+  - {name: products, description: "Products, lots, serials (§4.2)"}
+  - {name: purchasing, description: "Suppliers and purchase orders (§4.3)"}
+  - {name: receiving, description: "Inbound receipts (§4.11)"}
+  - {name: stock, description: "Ledger and projections, read only (§4.4, §4.5, ADR-0011)"}
+  - {name: fulfilment, description: "Fulfilment orders (§4.12)"}
+  - {name: picking, description: "Pick tasks (§4.13)"}
+  - {name: packing, description: "Packages and pack-time handoff (§4.14, ADR-0014)"}
+  - {name: returns, description: "Returns (§4.8, W-17)"}
+  - {name: adjustments, description: "Adjustments (§4.8, W-16)"}
+  - {name: counting, description: "Count sessions (§4.15)"}
+  - {name: channels, description: "Channel publications (§4.9, ADR-0013)"}
+paths:
+  /locations:
+    get:
+      operationId: listLocations
+      summary: "List locations"
+      tags: [locations]
+      x-wave: 3
+      x-permission: wms.locations.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {name: type, in: query, schema: {type: string}}, {name: parent_id, in: query, schema: {type: string, format: uuid}}, {name: pickable, in: query, schema: {type: boolean}}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Location'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createLocation
+      summary: "Create a location or tote"
+      description: 'W-1: same site as the parent, no cycles; warehouse or both sites only (K-4).'
+      tags: [locations]
+      x-wave: 3
+      x-permission: wms.locations.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Location'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Location'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: location_tree_invalid, site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /locations/{location_id}:
+    get:
+      operationId: getLocation
+      summary: "Get a location"
+      tags: [locations]
+      x-wave: 3
+      x-permission: wms.locations.read
+      security: [{staffCookie: []}]
+      parameters: [{name: location_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Location'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updateLocation
+      summary: "Change code, pickable or active"
+      description: 'parent_id of a tote changes only through the move operation (W-2).'
+      tags: [locations]
+      x-wave: 3
+      x-permission: wms.locations.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: location_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateLocationRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Location'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: location_tree_invalid, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /totes/{tote_id}/move:
+    post:
+      operationId: moveTote
+      summary: "Move a tote to a new parent location"
+      description: 'Writes one transfer movement batch for the tote contents (W-2, ADR-0011).'
+      tags: [locations]
+      x-wave: 3
+      x-permission: wms.locations.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: tote_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/MoveToteRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Location'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: location_tree_invalid, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /products:
+    get:
+      operationId: listProducts
+      summary: "List products"
+      tags: [products]
+      x-wave: 3
+      x-permission: wms.products.read
+      security: [{staffCookie: []}]
+      parameters: [{name: barcode, in: query, schema: {type: string}}, {name: sku, in: query, schema: {type: string}}, {name: active, in: query, schema: {type: boolean}}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Product'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createProduct
+      summary: "Create a product"
+      tags: [products]
+      x-wave: 3
+      x-permission: wms.products.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Product'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Product'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /products/{product_id}:
+    get:
+      operationId: getProduct
+      summary: "Get a product"
+      tags: [products]
+      x-wave: 3
+      x-permission: wms.products.read
+      security: [{staffCookie: []}]
+      parameters: [{name: product_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Product'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updateProduct
+      summary: "Change a product"
+      description: 'tracking_mode cannot change once the product has a movement (W-3).'
+      tags: [products]
+      x-wave: 3
+      x-permission: wms.products.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: product_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Product'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Product'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: tracking_mode_locked.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /products/{product_id}/lots:
+    get:
+      operationId: listLots
+      summary: "Lots of a product"
+      tags: [products]
+      x-wave: 3
+      x-permission: wms.products.read
+      security: [{staffCookie: []}]
+      parameters: [{name: product_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: expiring_before, in: query, schema: {type: string, format: date}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Lot'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /products/{product_id}/serials:
+    get:
+      operationId: listSerials
+      summary: "Serials of a product with their location"
+      tags: [products]
+      x-wave: 3
+      x-permission: wms.products.read
+      security: [{staffCookie: []}]
+      parameters: [{name: product_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Serial'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /suppliers:
+    get:
+      operationId: listSuppliers
+      summary: "List suppliers"
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.purchase_orders.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Supplier'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createSupplier
+      summary: "Create a supplier"
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.suppliers.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Supplier'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Supplier'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /suppliers/{supplier_id}:
+    patch:
+      operationId: updateSupplier
+      summary: "Change a supplier"
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.suppliers.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: supplier_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Supplier'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Supplier'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /purchase-orders:
+    get:
+      operationId: listPurchaseOrders
+      summary: "List purchase orders"
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.purchase_orders.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {name: supplier_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createPurchaseOrder
+      summary: "Create a draft purchase order"
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.purchase_orders.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /purchase-orders/{purchase_order_id}:
+    get:
+      operationId: getPurchaseOrder
+      summary: "Get a purchase order"
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.purchase_orders.read
+      security: [{staffCookie: []}]
+      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updatePurchaseOrder
+      summary: "Change a draft purchase order"
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.purchase_orders.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /purchase-orders/{purchase_order_id}/send:
+    post:
+      operationId: sendPurchaseOrder
+      summary: "Mark a purchase order sent"
+      description: 'draft → sent (§4.3).'
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.purchase_orders.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /purchase-orders/{purchase_order_id}/close:
+    post:
+      operationId: closePurchaseOrder
+      summary: "Close a purchase order"
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.purchase_orders.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /purchase-orders/{purchase_order_id}/cancel:
+    post:
+      operationId: cancelPurchaseOrder
+      summary: "Cancel a purchase order"
+      tags: [purchasing]
+      x-wave: 3
+      x-permission: wms.purchase_orders.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /receipts:
+    get:
+      operationId: listReceipts
+      summary: "List inbound receipts"
+      tags: [receiving]
+      x-wave: 3
+      x-permission: wms.receipts.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {name: purchase_order_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createReceipt
+      summary: "Expect a receipt, from a purchase order or blind"
+      tags: [receiving]
+      x-wave: 3
+      x-permission: wms.receipts.write
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateReceiptRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /receipts/{receipt_id}:
+    get:
+      operationId: getReceipt
+      summary: "Get a receipt"
+      tags: [receiving]
+      x-wave: 3
+      x-permission: wms.receipts.read
+      security: [{staffCookie: []}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /receipts/{receipt_id}/lines:
+    post:
+      operationId: receiveReceiptLine
+      summary: "Record a scanned received quantity"
+      description: 'expected → receiving on the first scan (§4.11). Movement SUPPLIER → receiving location (W-15); above PO plus tolerance needs approval.'
+      tags: [receiving]
+      x-wave: 3
+      x-permission: wms.receipts.write
+      security: [{staffCookie: []}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReceiveLineRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: tracking_mode_mismatch, approval_required, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /receipts/{receipt_id}/approve-over-receipt:
+    post:
+      operationId: approveOverReceipt
+      summary: "Approve receiving above the purchase order tolerance"
+      description: 'W-15.'
+      tags: [receiving]
+      x-wave: 3
+      x-permission: wms.receipts.approve
+      security: [{staffCookie: []}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: separation_of_duties.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /receipts/{receipt_id}/close:
+    post:
+      operationId: closeReceipt
+      summary: "Close receiving"
+      description: 'receiving → received. Emits wms.inbound_receipt.received.'
+      tags: [receiving]
+      x-wave: 3
+      x-permission: wms.receipts.write
+      security: [{staffCookie: []}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /receipts/{receipt_id}/put-away:
+    post:
+      operationId: putAwayReceipt
+      summary: "Move received goods to storage"
+      description: 'putaway movements; received → put_away when every line is moved (§4.11).'
+      tags: [receiving]
+      x-wave: 3
+      x-permission: wms.receipts.write
+      security: [{staffCookie: []}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PutAwayRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, insufficient_stock.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: tracking_mode_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /receipts/{receipt_id}/cancel:
+    post:
+      operationId: cancelReceipt
+      summary: "Cancel an expected receipt"
+      description: 'expected → cancelled.'
+      tags: [receiving]
+      x-wave: 3
+      x-permission: wms.receipts.write
+      security: [{staffCookie: []}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /movements:
+    get:
+      operationId: listMovements
+      summary: "Read the stock ledger"
+      description: 'Read only: movements are written only by the ledger service as a side effect of business operations (W-5, ADR-0011).'
+      tags: [stock]
+      x-wave: 3
+      x-permission: wms.movements.read
+      security: [{staffCookie: []}]
+      parameters: [{name: product_id, in: query, schema: {type: string, format: uuid}}, {name: location_id, in: query, schema: {type: string, format: uuid}}, {name: batch_id, in: query, schema: {type: string, format: uuid}}, {name: reason, in: query, schema: {type: string}}, {name: ref_id, in: query, schema: {type: string, format: uuid}}, {name: after_ledger_seq, in: query, schema: {type: integer}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/StockMovement'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /stock-levels:
+    get:
+      operationId: listStockLevels
+      summary: "On hand per location, product, lot and serial"
+      tags: [stock]
+      x-wave: 3
+      x-permission: wms.stock.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {name: location_id, in: query, schema: {type: string, format: uuid}}, {name: product_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/StockLevel'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /stock-summaries:
+    get:
+      operationId: listStockSummaries
+      summary: "On hand, reserved and available per product"
+      description: 'Trails the ledger by the cursor lag; as_of_ledger_seq says how far (W-7).'
+      tags: [stock]
+      x-wave: 3
+      x-permission: wms.stock.read
+      security: [{staffCookie: []}]
+      parameters: [{name: product_id, in: query, schema: {type: string, format: uuid}}, {name: below_available, in: query, schema: {type: integer}}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/StockSummary'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /fulfilment-orders:
+    get:
+      operationId: listFulfilmentOrders
+      summary: "List fulfilment orders"
+      tags: [fulfilment]
+      x-wave: 3
+      x-permission: wms.fulfilment.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {name: source_ref, in: query, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createFulfilmentOrder
+      summary: "Create a manual fulfilment order"
+      tags: [fulfilment]
+      x-wave: 3
+      x-permission: wms.fulfilment.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateFulfilmentOrderRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /fulfilment-orders/{fulfilment_order_id}:
+    get:
+      operationId: getFulfilmentOrder
+      summary: "Get a fulfilment order"
+      tags: [fulfilment]
+      x-wave: 3
+      x-permission: wms.fulfilment.read
+      security: [{staffCookie: []}]
+      parameters: [{name: fulfilment_order_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /fulfilment-orders/{fulfilment_order_id}/reservations:
+    get:
+      operationId: listReservations
+      summary: "Reservations of a fulfilment order"
+      tags: [fulfilment]
+      x-wave: 3
+      x-permission: wms.fulfilment.read
+      security: [{staffCookie: []}]
+      parameters: [{name: fulfilment_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Reservation'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /fulfilment-orders/{fulfilment_order_id}/allocate:
+    post:
+      operationId: allocateFulfilmentOrder
+      summary: "Reserve stock for a fulfilment order"
+      description: 'received or on_hold → allocated, or → on_hold when short (§4.12, W-8).'
+      tags: [fulfilment]
+      x-wave: 3
+      x-permission: wms.fulfilment.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: fulfilment_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, insufficient_stock.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /fulfilment-orders/{fulfilment_order_id}/cancel:
+    post:
+      operationId: cancelFulfilmentOrder
+      summary: "Cancel a fulfilment order"
+      description: 'received, allocated or on_hold → cancelled; reservations released once (W-8).'
+      tags: [fulfilment]
+      x-wave: 3
+      x-permission: wms.fulfilment.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: fulfilment_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /pick-tasks:
+    get:
+      operationId: listPickTasks
+      summary: "List pick tasks"
+      tags: [picking]
+      x-wave: 3
+      x-permission: wms.fulfilment.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {name: picker_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/PickTask'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createPickTask
+      summary: "Create a pick task for one or a wave of fulfilment orders"
+      tags: [picking]
+      x-wave: 3
+      x-permission: wms.picking.write
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreatePickTaskRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /pick-tasks/{pick_task_id}:
+    get:
+      operationId: getPickTask
+      summary: "Get a pick task"
+      tags: [picking]
+      x-wave: 3
+      x-permission: wms.fulfilment.read
+      security: [{staffCookie: []}]
+      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /pick-tasks/{pick_task_id}/start:
+    post:
+      operationId: startPickTask
+      summary: "Picker starts a task"
+      description: 'open → in_progress; fulfilment allocated → picking.'
+      tags: [picking]
+      x-wave: 3
+      x-permission: wms.picking.write
+      security: [{staffCookie: []}]
+      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /pick-tasks/{pick_task_id}/picks:
+    post:
+      operationId: recordPick
+      summary: "Record a pick from a location into the tote"
+      description: 'Movement bin → tote and reservation release in one transaction (W-9).'
+      tags: [picking]
+      x-wave: 3
+      x-permission: wms.picking.write
+      security: [{staffCookie: []}]
+      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PickRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, insufficient_stock.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: tracking_mode_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /pick-tasks/{pick_task_id}/report-short:
+    post:
+      operationId: reportShortPick
+      summary: "Report a line not found"
+      description: 'in_progress → short; fulfilment order → on_hold (W-9).'
+      tags: [picking]
+      x-wave: 3
+      x-permission: wms.picking.write
+      security: [{staffCookie: []}]
+      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ShortPickRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /pick-tasks/{pick_task_id}/complete:
+    post:
+      operationId: completePickTask
+      summary: "Complete a fully picked task"
+      description: 'in_progress → done; fulfilment picking → picked.'
+      tags: [picking]
+      x-wave: 3
+      x-permission: wms.picking.write
+      security: [{staffCookie: []}]
+      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /packages:
+    get:
+      operationId: listPackages
+      summary: "List packages"
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.fulfilment.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {name: fulfilment_order_id, in: query, schema: {type: string, format: uuid}}, {name: fulfilment_method, in: query, schema: {type: string, enum: [own_fleet, carrier]}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Package'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: openPackage
+      summary: "Open a package at the pack bench"
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.packing.write
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OpenPackageRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /packages/{package_id}:
+    get:
+      operationId: getPackage
+      summary: "Get a package"
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.fulfilment.read
+      security: [{staffCookie: []}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /packages/{package_id}/pack:
+    post:
+      operationId: packPackage
+      summary: "Record contents, consumables, weight and dimensions"
+      description: 'open → packed; movement tote → dock and consumption movements (W-14, §4.8).'
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.packing.write
+      security: [{staffCookie: []}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PackRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, insufficient_stock.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: tracking_mode_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /packages/{package_id}/fulfilment-options:
+    get:
+      operationId: getFulfilmentOptions
+      summary: "Methods available for this package"
+      description: 'The own-fleet card appears only when CoverageQuery covers the address from this site (ADR-0015, §1.1).'
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.packing.write
+      security: [{staffCookie: []}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/FulfilmentOptions'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /packages/{package_id}/fulfilment-method:
+    post:
+      operationId: chooseFulfilmentMethod
+      summary: "Choose own fleet or carrier"
+      description: 'own_fleet: OwnFleetOrderPort in the same transaction, packed → ready (W-11). carrier: outbox row for Eeasy shipping, packed → awaiting_label (W-12). W-10, W-13.'
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.packing.write
+      security: [{staffCookie: []}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChooseMethodRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: method_change_forbidden, invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: package_not_measured, outside_coverage, idempotency_key_reused.'}
+        '503': {$ref: './components.yaml#/components/responses/ServiceUnavailable', description: 'Codes: carrier_unavailable.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    delete:
+      operationId: clearFulfilmentMethod
+      summary: "Cancel the chosen method before pickup"
+      description: 'ready → packed after cancelling the Delivery order or voiding the AWB; forbidden after handed_over (W-13).'
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.packing.write
+      security: [{staffCookie: []}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: method_change_forbidden, invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /packages/{package_id}/label:
+    get:
+      operationId: getPackageLabel
+      summary: "Signed URL for the package label"
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.fulfilment.read
+      security: [{staffCookie: []}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SignedUrl'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /packages/{package_id}/hand-over:
+    post:
+      operationId: handOverPackage
+      summary: "Record a carrier pickup of a ready package"
+      description: 'ready → handed_over for carrier packages; own-fleet packages move on delivery.order.picked_up (W-14).'
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.packing.write
+      security: [{staffCookie: []}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /packages/{package_id}/cancel:
+    post:
+      operationId: cancelPackage
+      summary: "Cancel an open or packed package"
+      tags: [packing]
+      x-wave: 3
+      x-permission: wms.packing.write
+      security: [{staffCookie: []}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /returns:
+    get:
+      operationId: listReturns
+      summary: "List returns"
+      tags: [returns]
+      x-wave: 4
+      x-permission: wms.stock.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Return'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createReturn
+      summary: "Expect a walk-in or carrier return"
+      tags: [returns]
+      x-wave: 4
+      x-permission: wms.returns.write
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateReturnRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Return'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /returns/{return_id}:
+    get:
+      operationId: getReturn
+      summary: "Get a return"
+      tags: [returns]
+      x-wave: 4
+      x-permission: wms.stock.read
+      security: [{staffCookie: []}]
+      parameters: [{name: return_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Return'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /returns/{return_id}/receive:
+    post:
+      operationId: receiveReturn
+      summary: "Receive returned goods"
+      description: 'expected → received; movement CUSTOMER → returns (W-17).'
+      tags: [returns]
+      x-wave: 4
+      x-permission: wms.returns.write
+      security: [{staffCookie: []}]
+      parameters: [{name: return_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReceiveReturnRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Return'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: tracking_mode_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /returns/{return_id}/disposition:
+    post:
+      operationId: dispositionReturn
+      summary: "Restock, quarantine or scrap each line"
+      description: 'received → dispositioned; one further movement per line (W-17).'
+      tags: [returns]
+      x-wave: 4
+      x-permission: wms.returns.write
+      security: [{staffCookie: []}]
+      parameters: [{name: return_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DispositionRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Return'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, insufficient_stock.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /adjustments:
+    get:
+      operationId: listAdjustments
+      summary: "List adjustments"
+      tags: [adjustments]
+      x-wave: 3
+      x-permission: wms.stock.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Adjustment'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: requestAdjustment
+      summary: "Request a stock adjustment"
+      description: 'Below the account threshold it posts at once; above, it waits for approval (W-16).'
+      tags: [adjustments]
+      x-wave: 3
+      x-permission: wms.adjustments.request
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateAdjustmentRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Adjustment'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: insufficient_stock.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: tracking_mode_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /adjustments/{adjustment_id}/approve:
+    post:
+      operationId: approveAdjustment
+      summary: "Approve and post an adjustment"
+      description: 'The approver is never the requester (document 4 §2).'
+      tags: [adjustments]
+      x-wave: 3
+      x-permission: wms.adjustments.approve
+      security: [{staffCookie: []}]
+      parameters: [{name: adjustment_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Adjustment'}}}}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: separation_of_duties.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: insufficient_stock, invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /adjustments/{adjustment_id}/reject:
+    post:
+      operationId: rejectAdjustment
+      summary: "Reject an adjustment"
+      tags: [adjustments]
+      x-wave: 3
+      x-permission: wms.adjustments.approve
+      security: [{staffCookie: []}]
+      parameters: [{name: adjustment_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Adjustment'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /count-sessions:
+    get:
+      operationId: listCountSessions
+      summary: "List count sessions"
+      tags: [counting]
+      x-wave: 3
+      x-permission: wms.stock.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/CountSession'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: planCountSession
+      summary: "Plan a count over locations or products"
+      tags: [counting]
+      x-wave: 3
+      x-permission: wms.counts.write
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlanCountRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /count-sessions/{count_session_id}:
+    get:
+      operationId: getCountSession
+      summary: "Get a count session (system quantities hidden while blind)"
+      tags: [counting]
+      x-wave: 3
+      x-permission: wms.stock.read
+      security: [{staffCookie: []}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /count-sessions/{count_session_id}/counts:
+    post:
+      operationId: recordCounts
+      summary: "Record counted quantities"
+      description: 'planned → counting on the first count.'
+      tags: [counting]
+      x-wave: 3
+      x-permission: wms.counts.write
+      security: [{staffCookie: []}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecordCountsRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: tracking_mode_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /count-sessions/{count_session_id}/submit:
+    post:
+      operationId: submitCountSession
+      summary: "Counter submits for review"
+      description: 'counting → review.'
+      tags: [counting]
+      x-wave: 3
+      x-permission: wms.counts.write
+      security: [{staffCookie: []}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /count-sessions/{count_session_id}/recount:
+    post:
+      operationId: requestRecount
+      summary: "Reviewer requests a recount"
+      description: 'review → counting.'
+      tags: [counting]
+      x-wave: 3
+      x-permission: wms.counts.approve
+      security: [{staffCookie: []}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /count-sessions/{count_session_id}/post:
+    post:
+      operationId: postCountSession
+      summary: "Post variances as adjustment movements"
+      description: 'review → posted; above the threshold the approver is not the counter (W-16).'
+      tags: [counting]
+      x-wave: 3
+      x-permission: wms.counts.approve
+      security: [{staffCookie: []}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: separation_of_duties.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: approval_required, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /count-sessions/{count_session_id}/cancel:
+    post:
+      operationId: cancelCountSession
+      summary: "Cancel a count session"
+      tags: [counting]
+      x-wave: 3
+      x-permission: wms.counts.approve
+      security: [{staffCookie: []}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /channel-publications:
+    get:
+      operationId: listChannelPublications
+      summary: "Stock publications to Salla and Zid"
+      description: 'Read only (ADR-0013, W-18); dead rows are replayed from the platform surface.'
+      tags: [channels]
+      x-wave: 4
+      x-permission: wms.channel_publications.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {name: product_id, in: query, schema: {type: string, format: uuid}}, {name: connection_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/ChannelPublication'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+components:
+  securitySchemes:
+    staffCookie: {$ref: './components.yaml#/components/securitySchemes/staffCookie'}
+  schemas:
+
+    WmsReasonRequest:
+      type: object
+      required: [reason_code]
+      properties: {reason_code: {type: string, x-extensible-enum: true}, note: {type: string, maxLength: 1000}}
+    UpdateLocationRequest:
+      type: object
+      properties: {code: {type: string}, pickable: {type: boolean}, active: {type: boolean}, coordinates: {type: object}}
+    MoveToteRequest:
+      type: object
+      required: [to_parent_id]
+      properties: {to_parent_id: {type: string, format: uuid}}
+    StockRef:
+      type: object
+      description: 'A product quantity; lot_id or lot_code iff tracking_mode lot, serial iff serial with quantity 1 (W-4).'
+      required: [product_id, quantity]
+      properties:
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer, minimum: 1}
+        lot_id: {type: string, format: uuid}
+        lot_code: {type: string}
+        expiry_date: {type: string, format: date}
+        serial_id: {type: string, format: uuid}
+        serial_number: {type: string}
+    CreateReceiptRequest:
+      type: object
+      required: [site_id, receiving_location_id]
+      properties:
+        site_id: {type: string, format: uuid}
+        purchase_order_id: {type: string, format: uuid}
+        receiving_location_id: {type: string, format: uuid}
+        lines: {type: array, items: {$ref: '#/components/schemas/StockRef'}}
+    ReceiveLineRequest:
+      allOf:
+        - $ref: '#/components/schemas/StockRef'
+        - type: object
+          properties: {line_id: {type: string, format: uuid}, damaged: {type: integer, minimum: 0}}
+    PutAwayRequest:
+      type: object
+      required: [moves]
+      properties:
+        moves:
+          type: array
+          minItems: 1
+          items:
+            allOf:
+              - $ref: '#/components/schemas/StockRef'
+              - type: object
+                required: [to_location_id]
+                properties: {to_location_id: {type: string, format: uuid}}
+    CreateFulfilmentOrderRequest:
+      type: object
+      required: [site_id, recipient, address, lines]
+      properties:
+        site_id: {type: string, format: uuid}
+        source_ref: {type: string}
+        recipient: {$ref: './components.yaml#/components/schemas/Recipient'}
+        address: {$ref: './components.yaml#/components/schemas/Address'}
+        cod_amount: {$ref: './components.yaml#/components/schemas/Money'}
+        lines: {type: array, minItems: 1, items: {type: object, required: [product_id, quantity], properties: {product_id: {type: string, format: uuid}, quantity: {type: integer, minimum: 1}}}}
+    CreatePickTaskRequest:
+      type: object
+      required: [fulfilment_order_ids]
+      properties:
+        fulfilment_order_ids: {type: array, minItems: 1, items: {type: string, format: uuid}}
+        picker_id: {type: string, format: uuid}
+        target_tote_id: {type: string, format: uuid}
+    PickRequest:
+      allOf:
+        - $ref: '#/components/schemas/StockRef'
+        - type: object
+          required: [line_id, from_location_id]
+          properties: {line_id: {type: string, format: uuid}, from_location_id: {type: string, format: uuid}}
+    ShortPickRequest:
+      type: object
+      required: [line_id]
+      properties: {line_id: {type: string, format: uuid}, picked: {type: integer, minimum: 0}, note: {type: string}}
+    OpenPackageRequest:
+      type: object
+      required: [fulfilment_order_id]
+      properties: {fulfilment_order_id: {type: string, format: uuid}}
+    PackRequest:
+      type: object
+      required: [contents, weight_g, length_mm, width_mm, height_mm]
+      properties:
+        contents: {type: array, minItems: 1, items: {allOf: [{$ref: '#/components/schemas/StockRef'}, {type: object, properties: {fulfilment_order_line_id: {type: string, format: uuid}, from_tote_id: {type: string, format: uuid}}}]}}
+        consumables: {type: array, items: {type: object, properties: {product_id: {type: string, format: uuid}, quantity: {type: integer, minimum: 1}}}}
+        weight_g: {type: integer, minimum: 1}
+        length_mm: {type: integer, minimum: 1}
+        width_mm: {type: integer, minimum: 1}
+        height_mm: {type: integer, minimum: 1}
+    FulfilmentOptions:
+      type: object
+      properties:
+        own_fleet: {type: object, properties: {available: {type: boolean}, reason: {type: [string, 'null'], enum: [outside_coverage, feature_not_enabled, null]}, site_id: {type: string, format: uuid}}}
+        carriers: {type: array, items: {type: object, properties: {carrier_code: {type: string}, name_ar: {type: string}, name_en: {type: string}}}, description: From Eeasy shipping; this product never prices (ADR-0014)}
+    ChooseMethodRequest:
+      type: object
+      required: [method]
+      properties:
+        method: {type: string, enum: [own_fleet, carrier]}
+        carrier_code: {type: string, description: Required for carrier}
+        slot_id: {type: string, format: uuid, description: Optional own-fleet slot}
+    CreateReturnRequest:
+      type: object
+      required: [site_id, source]
+      properties:
+        site_id: {type: string, format: uuid}
+        source: {type: string, enum: [carrier_return, walk_in]}
+        source_ref: {type: string}
+        lines: {type: array, items: {$ref: '#/components/schemas/StockRef'}}
+    ReceiveReturnRequest:
+      type: object
+      required: [lines]
+      properties:
+        lines: {type: array, items: {allOf: [{$ref: '#/components/schemas/StockRef'}, {type: object, properties: {condition: {type: string}}}]}}
+    DispositionRequest:
+      type: object
+      required: [lines]
+      properties:
+        lines:
+          type: array
+          items: {type: object, required: [line_id, disposition], properties: {line_id: {type: string, format: uuid}, disposition: {type: string, enum: [restock, quarantine, scrap]}, to_location_id: {type: string, format: uuid}}}
+    CreateAdjustmentRequest:
+      type: object
+      required: [site_id, reason_code, lines]
+      properties:
+        site_id: {type: string, format: uuid}
+        reason_code: {type: string}
+        note: {type: string}
+        lines:
+          type: array
+          minItems: 1
+          items: {type: object, required: [location_id, product_id, delta], properties: {location_id: {type: string, format: uuid}, product_id: {type: string, format: uuid}, lot_id: {type: string, format: uuid}, serial_id: {type: string, format: uuid}, delta: {type: integer, not: {const: 0}}}}
+    PlanCountRequest:
+      type: object
+      required: [site_id]
+      properties:
+        site_id: {type: string, format: uuid}
+        location_ids: {type: array, items: {type: string, format: uuid}}
+        product_ids: {type: array, items: {type: string, format: uuid}}
+        blind: {type: boolean, default: true}
+    RecordCountsRequest:
+      type: object
+      required: [lines]
+      properties:
+        lines:
+          type: array
+          minItems: 1
+          items: {type: object, required: [location_id, product_id, counted], properties: {location_id: {type: string, format: uuid}, product_id: {type: string, format: uuid}, lot_id: {type: string, format: uuid}, serial_id: {type: string, format: uuid}, counted: {type: integer, minimum: 0}}}

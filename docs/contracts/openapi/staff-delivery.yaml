@@ -1,0 +1,1232 @@
+openapi: 3.1.0
+info:
+  title: "eeasy-logistics staff API: Delivery"
+  version: 1.0.0
+  license: {name: Proprietary, identifier: LicenseRef-Proprietary}
+  description: >-
+    The web app surface for merchant staff, Delivery part (waves 1 and 2): zones, coverage, drivers,
+    vehicles, shifts, orders, imports, dispatch, slots, proofs, cash custody, tracking tokens and the
+    dispatch SSE stream. Same base path and session as staff.yaml (ADR-0026 split by context).
+    Conventions, errors and waves: docs/contracts/README.md and errors.md.
+servers:
+  - url: /v1/staff
+security:
+  - staffCookie: []
+tags:
+  - {name: zones, description: "Zones (document 2 §3.4)"}
+  - {name: coverage, description: "Coverage (ADR-0015)"}
+  - {name: drivers, description: "Drivers and devices"}
+  - {name: vehicles, description: "Vehicles"}
+  - {name: shifts, description: "Driver shifts (§3.17)"}
+  - {name: locations, description: "Driver positions (ADR-0028)"}
+  - {name: orders, description: "Orders (§3.1, §3.13)"}
+  - {name: order-imports, description: "CSV import jobs"}
+  - {name: dispatch, description: "Offers and assignments"}
+  - {name: slots, description: "Slots (§3.9)"}
+  - {name: proofs, description: "Proofs (§3.10)"}
+  - {name: cash, description: "COD, custody, handovers, deposits, reports (ADR-0007)"}
+  - {name: tracking, description: "Recipient tracking tokens (§3.12)"}
+  - {name: streams, description: "Server-sent events (ADR-0009)"}
+paths:
+  /zones:
+    get:
+      operationId: listZones
+      summary: "List zones"
+      tags: [zones]
+      x-wave: 1
+      x-permission: delivery.zones.read
+      security: [{staffCookie: []}]
+      parameters: [{name: active, in: query, schema: {type: boolean}}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Zone'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createZone
+      summary: "Create a zone from an official boundary or a drawn polygon"
+      tags: [zones]
+      x-wave: 1
+      x-permission: delivery.zones.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Zone'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Zone'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /zones/{zone_id}:
+    get:
+      operationId: getZone
+      summary: "Get a zone with its boundary"
+      tags: [zones]
+      x-wave: 1
+      x-permission: delivery.zones.read
+      security: [{staffCookie: []}]
+      parameters: [{name: zone_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Zone'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updateZone
+      summary: "Change a zone"
+      tags: [zones]
+      x-wave: 1
+      x-permission: delivery.zones.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: zone_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Zone'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Zone'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /coverage:
+    get:
+      operationId: listCoverage
+      summary: "List (site, zone) coverage rows"
+      tags: [coverage]
+      x-wave: 1
+      x-permission: delivery.zones.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Coverage'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /sites/{site_id}/coverage:
+    put:
+      operationId: replaceSiteCoverage
+      summary: "Replace the zones a site covers"
+      description: 'Created first by the provisioning door (ADR-0015); later edits are audited. K-4: branch or both only.'
+      tags: [coverage]
+      x-wave: 1
+      x-permission: delivery.coverage.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SiteCoverageRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/SiteCoverage'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /coverage/check:
+    post:
+      operationId: checkCoverage
+      summary: "Resolve an address to a zone and the sites that cover it"
+      description: 'Read-only computation; no Idempotency-Key.'
+      tags: [coverage]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CoverageCheckRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CoverageCheck'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /drivers:
+    get:
+      operationId: listDrivers
+      summary: "List drivers"
+      tags: [drivers]
+      x-wave: 1
+      x-permission: delivery.drivers.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {name: cash_blocked, in: query, schema: {type: boolean}}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Driver'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createDriver
+      summary: "Create a driver and send the app invitation over WhatsApp"
+      description: 'Creates the user, a driver membership and the del_drivers row. Refused with role_combination_forbidden when the phone already belongs to a member of this account holding a cash permission.'
+      tags: [drivers]
+      x-wave: 1
+      x-permission: delivery.drivers.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateDriverRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Driver'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, site_kind_mismatch, idempotency_key_reused, role_combination_forbidden.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /drivers/{driver_id}:
+    get:
+      operationId: getDriver
+      summary: "Get a driver"
+      tags: [drivers]
+      x-wave: 1
+      x-permission: delivery.drivers.read
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Driver'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updateDriver
+      summary: "Change a driver (home site, status, capacity limit)"
+      tags: [drivers]
+      x-wave: 1
+      x-permission: delivery.drivers.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateDriverRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Driver'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: capacity_exceeded, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /drivers/{driver_id}/devices:
+    get:
+      operationId: listDriverDevices
+      summary: "List a driver devices"
+      tags: [drivers]
+      x-wave: 1
+      x-permission: delivery.drivers.read
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/DriverDevice'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /drivers/{driver_id}/devices/{device_id}/revoke:
+    post:
+      operationId: revokeDriverDevice
+      summary: "Revoke a driver device and its refresh tokens"
+      description: 'Access ends within one access-token lifetime (document 4 §9).'
+      tags: [drivers]
+      x-wave: 1
+      x-permission: delivery.drivers.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: device_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverDevice'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /drivers/{driver_id}/cash-pin/reset:
+    post:
+      operationId: resetDriverCashPin
+      summary: "Unlock and reset a driver cash PIN"
+      description: 'After five failures cash actions stay locked until this reset (document 4 §3.2). Audited.'
+      tags: [drivers]
+      x-wave: 1
+      x-permission: delivery.drivers.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '204': {description: Done}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /drivers/{driver_id}/clear-cash-block:
+    post:
+      operationId: clearDriverCashBlock
+      summary: "Clear a cash block after review"
+      description: 'D-11: supervisor clearance with an audit row.'
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.drivers.clear_cash_block
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NoteRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Driver'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /drivers/{driver_id}/cash:
+    get:
+      operationId: getDriverCash
+      summary: "Cash in hand, liability balance and block state"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverCashSummary'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /drivers/{driver_id}/liability-entries:
+    get:
+      operationId: listDriverLiability
+      summary: "List a driver liability entries"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/DriverLiabilityEntry'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: recordDriverLiability
+      summary: "Record a clearance or correction entry"
+      description: 'Append-only (D-20); a correction is a new signed entry, never an edit. A negative entry (surplus, clearance, write-off) is approved by the caller, recorded as approved_by, who must not be the cashier of the related handover (403 separation_of_duties). Audited with before and after balance.'
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.liability.record
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LiabilityEntryRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverLiabilityEntry'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: separation_of_duties.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /drivers/{driver_id}/trail:
+    get:
+      operationId: getDriverTrail
+      summary: "Daily simplified trail for one business day"
+      description: 'Trails are kept 90 days (document 2 §7).'
+      tags: [locations]
+      x-wave: 1
+      x-permission: delivery.locations.read
+      security: [{staffCookie: []}]
+      parameters: [{name: driver_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/BusinessDate'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DriverTrail'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /driver-locations/latest:
+    get:
+      operationId: listLatestDriverPositions
+      summary: "Latest position per on-shift driver (polling twin of the stream)"
+      tags: [locations]
+      x-wave: 1
+      x-permission: delivery.locations.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DriverPositionList'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /vehicles:
+    get:
+      operationId: listVehicles
+      summary: "List vehicles"
+      tags: [vehicles]
+      x-wave: 1
+      x-permission: delivery.drivers.read
+      security: [{staffCookie: []}]
+      parameters: [{name: active, in: query, schema: {type: boolean}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Vehicle'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createVehicle
+      summary: "Create a vehicle"
+      tags: [vehicles]
+      x-wave: 1
+      x-permission: delivery.vehicles.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Vehicle'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Vehicle'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /vehicles/{vehicle_id}:
+    patch:
+      operationId: updateVehicle
+      summary: "Change a vehicle"
+      tags: [vehicles]
+      x-wave: 1
+      x-permission: delivery.vehicles.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: vehicle_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Vehicle'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Vehicle'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /shifts:
+    get:
+      operationId: listShifts
+      summary: "List shifts"
+      tags: [shifts]
+      x-wave: 1
+      x-permission: delivery.drivers.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/DriverIdQuery'}, {$ref: './components.yaml#/components/parameters/BusinessDate'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: planShift
+      summary: "Plan a shift for a driver"
+      tags: [shifts]
+      x-wave: 2
+      x-permission: delivery.shifts.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlanShiftRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /shifts/{shift_id}:
+    get:
+      operationId: getShift
+      summary: "Get a shift"
+      tags: [shifts]
+      x-wave: 1
+      x-permission: delivery.drivers.read
+      security: [{staffCookie: []}]
+      parameters: [{name: shift_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /shifts/{shift_id}/cancel:
+    post:
+      operationId: cancelShift
+      summary: "Cancel a planned shift"
+      description: 'planned → cancelled (§3.17).'
+      tags: [shifts]
+      x-wave: 2
+      x-permission: delivery.shifts.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: shift_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NoteRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /shifts/{shift_id}/end:
+    post:
+      operationId: endShift
+      summary: "End a driver shift"
+      description: 'active or paused → ended by dispatcher (§3.17); position reporting stops.'
+      tags: [shifts]
+      x-wave: 1
+      x-permission: delivery.shifts.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: shift_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NoteRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders:
+    post:
+      operationId: createOrder
+      summary: "Create an order"
+      description: 'Number allocated in the transaction (D-2). The intake rule decides pending or accepted; outside coverage stays pending with pending_reason outside_coverage (D-3). Emits delivery.order.created.'
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.create
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CreateOrderRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: slot_full.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: cod_not_allowed, limit_exceeded, site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    get:
+      operationId: listOrders
+      summary: "List orders"
+      description: 'Sort fields: created_at, updated_at, number, status.'
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/DriverIdQuery'}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/UpdatedFrom'}, {$ref: './components.yaml#/components/parameters/Q'}, {name: kind, in: query, schema: {$ref: './components.yaml#/components/schemas/OrderKind'}}, {name: number, in: query, schema: {type: string}}, {name: source_ref, in: query, schema: {type: string}}, {name: zone_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Order'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}:
+    get:
+      operationId: getOrder
+      summary: "Get an order (ETag carries version)"
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updateOrder
+      summary: "Edit recipient, address, items, COD or notes before pickup"
+      description: 'Items and cod_amount are locked from picked_up (§3.2, 409 order_locked). Every change of cod_amount writes an audit row with before and after (K-7).'
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.create
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/IfMatch'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateOrderRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: order_locked, version_conflict.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: cod_not_allowed, idempotency_key_reused.'}
+        '428': {$ref: './components.yaml#/components/responses/PreconditionRequired', description: 'Codes: version_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/events:
+    get:
+      operationId: listOrderEvents
+      summary: "Order event history"
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/OrderEvent'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/transitions:
+    post:
+      operationId: transitionOrder
+      summary: "Dispatcher transition: accept or fail"
+      description: 'pending → accepted (D-3 coverage check), out_for_delivery → failed, attempted → failed (§3.13). Illegal arrows return 409 with current_status and version (D-5).'
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.dispatch
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/IfMatch'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TransitionRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, version_conflict.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: outside_coverage, idempotency_key_reused.'}
+        '428': {$ref: './components.yaml#/components/responses/PreconditionRequired', description: 'Codes: version_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/cancel:
+    post:
+      operationId: cancelOrder
+      summary: "Cancel an order before pickup"
+      description: 'pending, accepted, offered or assigned → cancelled (§3.13). After pickup use fail then check-in-return.'
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.cancel
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/IfMatch'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, version_conflict.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '428': {$ref: './components.yaml#/components/responses/PreconditionRequired', description: 'Codes: version_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/reschedule:
+    post:
+      operationId: rescheduleOrder
+      summary: "Reschedule an attempted order or change its slot"
+      description: 'attempted → accepted with a new slot (§3.13), or a slot change before pickup. Emits delivery.order.rescheduled.'
+      tags: [orders]
+      x-wave: 2
+      x-permission: delivery.orders.dispatch
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/IfMatch'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RescheduleRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, slot_full, version_conflict.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '428': {$ref: './components.yaml#/components/responses/PreconditionRequired', description: 'Codes: version_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/address-pin:
+    put:
+      operationId: pinOrderAddress
+      summary: "Set the address point manually"
+      description: 'pin_source manual; re-resolves zone and coverage (D-3).'
+      tags: [orders]
+      x-wave: 2
+      x-permission: delivery.orders.dispatch
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/IfMatch'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AddressPinRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: order_locked, version_conflict.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '428': {$ref: './components.yaml#/components/responses/PreconditionRequired', description: 'Codes: version_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/check-in-return:
+    post:
+      operationId: checkInReturn
+      summary: "Site staff receive a failed order back"
+      description: 'failed → returned (§3.13). Emits delivery.order.returned.'
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.receive
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NoteRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/attempts:
+    get:
+      operationId: listOrderAttempts
+      summary: "Attempts of an order"
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Attempt'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/attempts/{attempt_id}/void:
+    post:
+      operationId: voidAttempt
+      summary: "Void an attempt as a dispatcher correction"
+      description: 'open → voided with audit (§3.15).'
+      tags: [orders]
+      x-wave: 2
+      x-permission: delivery.orders.dispatch
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: attempt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Attempt'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/proofs:
+    get:
+      operationId: listOrderProofs
+      summary: "Proofs of an order"
+      tags: [proofs]
+      x-wave: 1
+      x-permission: delivery.proofs.read
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Proof'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /proofs/{proof_id}/download-url:
+    get:
+      operationId: getProofDownloadUrl
+      summary: "Expiring signed URL for a stored proof"
+      description: 'ADR-0015: proofs are read only through expiring signed URLs.'
+      tags: [proofs]
+      x-wave: 1
+      x-permission: delivery.proofs.read
+      security: [{staffCookie: []}]
+      parameters: [{name: proof_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SignedUrl'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/cod-collections:
+    get:
+      operationId: listOrderCollections
+      summary: "COD collections of an order"
+      tags: [cash]
+      x-wave: 1
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/StaffCodCollection'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/label:
+    get:
+      operationId: getOrderLabel
+      summary: "Signed URL for the own-fleet label PDF"
+      tags: [orders]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SignedUrl'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /order-imports:
+    post:
+      operationId: createOrderImport
+      summary: "Start a CSV import: returns the job and a signed upload URL"
+      tags: [order-imports]
+      x-wave: 1
+      x-permission: delivery.orders.import
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateOrderImportRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/OrderImportCreated'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /order-imports/{import_id}/submit:
+    post:
+      operationId: submitOrderImport
+      summary: "Queue the uploaded file for processing"
+      tags: [order-imports]
+      x-wave: 1
+      x-permission: delivery.orders.import
+      security: [{staffCookie: []}]
+      parameters: [{name: import_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '202': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Job'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: upload_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /order-imports/{import_id}:
+    get:
+      operationId: getOrderImport
+      summary: "Import job status and counts"
+      tags: [order-imports]
+      x-wave: 1
+      x-permission: delivery.orders.import
+      security: [{staffCookie: []}]
+      parameters: [{name: import_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Job'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /order-imports/{import_id}/errors:
+    get:
+      operationId: listOrderImportErrors
+      summary: "Row errors of an import"
+      tags: [order-imports]
+      x-wave: 1
+      x-permission: delivery.orders.import
+      security: [{staffCookie: []}]
+      parameters: [{name: import_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: '#/components/schemas/ImportRowError'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /order-imports/{import_id}/stream:
+    get:
+      operationId: streamOrderImport
+      summary: "SSE progress of an import job"
+      description: 'Events job.progress and job.completed.'
+      tags: [order-imports]
+      x-wave: 1
+      x-permission: delivery.orders.import
+      security: [{staffCookie: []}]
+      parameters: [{name: import_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {$ref: './components.yaml#/components/responses/EventStream'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/offers:
+    post:
+      operationId: offerOrder
+      summary: "Send offers to one or more drivers"
+      description: 'accepted → offered (§3.13); one sent offer per driver (D-13); only eligible drivers (D-11, D-12).'
+      tags: [dispatch]
+      x-wave: 1
+      x-permission: delivery.orders.dispatch
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/IfMatch'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OfferRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/OfferList'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, version_conflict.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: outside_coverage, driver_cash_blocked, driver_not_eligible, capacity_exceeded, idempotency_key_reused.'}
+        '428': {$ref: './components.yaml#/components/responses/PreconditionRequired', description: 'Codes: version_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    get:
+      operationId: listOrderOffers
+      summary: "Offers of an order"
+      tags: [dispatch]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Offer'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /offers/{offer_id}/withdraw:
+    post:
+      operationId: withdrawOffer
+      summary: "Withdraw a sent offer"
+      description: 'sent → withdrawn (§3.14); the order returns to accepted when no sent offer remains.'
+      tags: [dispatch]
+      x-wave: 1
+      x-permission: delivery.orders.dispatch
+      security: [{staffCookie: []}]
+      parameters: [{name: offer_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Offer'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/assignment:
+    put:
+      operationId: assignOrder
+      summary: "Assign directly or transfer to another driver"
+      description: 'accepted → assigned, or a transfer while assigned or picked_up (an Assignment change, not a status change). D-9, D-10, D-11, D-12.'
+      tags: [dispatch]
+      x-wave: 1
+      x-permission: delivery.orders.dispatch
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/IfMatch'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AssignRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Assignment'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, version_conflict.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: outside_coverage, driver_cash_blocked, driver_not_eligible, capacity_exceeded, idempotency_key_reused.'}
+        '428': {$ref: './components.yaml#/components/responses/PreconditionRequired', description: 'Codes: version_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    delete:
+      operationId: unassignOrder
+      summary: "Unassign an order"
+      description: 'assigned → accepted (§3.13); capacity decremented in the same transaction (D-10).'
+      tags: [dispatch]
+      x-wave: 1
+      x-permission: delivery.orders.dispatch
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/IfMatch'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, version_conflict.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '428': {$ref: './components.yaml#/components/responses/PreconditionRequired', description: 'Codes: version_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /assignments:
+    get:
+      operationId: listAssignments
+      summary: "List assignments"
+      tags: [dispatch]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/DriverIdQuery'}, {name: open, in: query, schema: {type: boolean}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Assignment'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /slot-days:
+    get:
+      operationId: listSlotDays
+      summary: "List slot days"
+      tags: [slots]
+      x-wave: 2
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {name: zone_id, in: query, schema: {type: string, format: uuid}}, {name: from, in: query, schema: {type: string, format: date}}, {name: to, in: query, schema: {type: string, format: date}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/SlotDay'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createSlotDay
+      summary: "Open or close a slot day"
+      tags: [slots]
+      x-wave: 2
+      x-permission: delivery.slots.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SlotDay'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SlotDay'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /slot-days/{slot_day_id}:
+    patch:
+      operationId: updateSlotDay
+      summary: "Change a slot day"
+      tags: [slots]
+      x-wave: 2
+      x-permission: delivery.slots.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: slot_day_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SlotDay'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SlotDay'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /slots:
+    get:
+      operationId: listSlots
+      summary: "Slots with remaining capacity"
+      tags: [slots]
+      x-wave: 2
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{name: slot_day_id, in: query, schema: {type: string, format: uuid}}, {name: zone_id, in: query, schema: {type: string, format: uuid}}, {name: date, in: query, schema: {type: string, format: date}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Slot'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /slot-days/{slot_day_id}/slots:
+    post:
+      operationId: createSlot
+      summary: "Add a slot window"
+      tags: [slots]
+      x-wave: 2
+      x-permission: delivery.slots.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: slot_day_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Slot'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Slot'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /slots/{slot_id}:
+    patch:
+      operationId: updateSlot
+      summary: "Change a slot capacity or window"
+      tags: [slots]
+      x-wave: 2
+      x-permission: delivery.slots.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: slot_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Slot'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Slot'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: slot_full.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/collections:
+    get:
+      operationId: listCollections
+      summary: "List COD collections"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/DriverIdQuery'}, {$ref: './components.yaml#/components/parameters/BusinessDate'}, {name: method, in: query, schema: {type: string, enum: [cash, card, mada, wallet]}}, {name: custody, in: query, schema: {type: string, enum: [collected, with_cashier, with_bank, not_held]}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/StaffCodCollection'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/collections/{collection_id}/custody:
+    get:
+      operationId: listCustodyEntries
+      summary: "Custody ledger of one collection"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{name: collection_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/CustodyEntry'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/handovers:
+    get:
+      operationId: listHandovers
+      summary: "List handovers"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/DriverIdQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/CashHandover'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/handovers/{handover_id}:
+    get:
+      operationId: getHandover
+      summary: "Get a handover"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{name: handover_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashHandover'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/handovers/{handover_id}/confirm:
+    post:
+      operationId: confirmHandover
+      summary: "Cashier confirms the counted amount"
+      description: 'requested → confirmed under a row lock on the handover and its collections. Custody entries to with_cashier for every collection and one liability entry for any difference, in one transaction (D-19, D-20). The cashier is never the driver.'
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.receive
+      security: [{staffCookie: []}]
+      parameters: [{name: handover_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ConfirmHandoverRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashHandover'}}}}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: handover_amount_required, idempotency_key_reused, collection_not_eligible.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/handovers/{handover_id}/reject:
+    post:
+      operationId: rejectHandover
+      summary: "Cashier rejects a handover request"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.receive
+      security: [{staffCookie: []}]
+      parameters: [{name: handover_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashHandover'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/deposits/slip-uploads:
+    post:
+      operationId: createDepositSlipUpload
+      summary: "Signed upload URL for a deposit slip"
+      description: 'The ticket is bound to this account, purpose deposit_slip and the caller; the upload_id is usable once, by recordDeposit.'
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.deposit
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UploadRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/UploadTicket'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/deposits:
+    post:
+      operationId: recordDeposit
+      summary: "Record a bank deposit"
+      description: 'Custody with_cashier → with_bank for the listed collections under a row lock on them (D-19); each collection is deposited once. amount must equal the sum of the listed collections. A negative amount is a reversing deposit and requires reverses_deposit_id. A reversal happens once (unique reverses_deposit_id), in the same account, negates the original amount exactly over the same collections, and moves their custody back to with_cashier. slip_upload_id must be an upload of this account with purpose deposit_slip, made by the caller, not used before (422 upload_mismatch).'
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.deposit
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DepositRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashDeposit'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: method_not_allowed_for_cash, upload_mismatch, idempotency_key_reused, collection_not_eligible, deposit_sum_mismatch.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    get:
+      operationId: listDeposits
+      summary: "List deposits"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/BusinessDate'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/CashDeposit'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/reports:
+    get:
+      operationId: listCashReports
+      summary: "List cash reports"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {name: from, in: query, schema: {type: string, format: date}}, {name: to, in: query, schema: {type: string, format: date}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/CashReport'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/reports/{site_id}/{business_date}:
+    get:
+      operationId: getCashReport
+      summary: "Cash report of a site and business date"
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.read
+      security: [{staffCookie: []}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: business_date, in: path, required: true, schema: {type: string, format: date}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashReport'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash/reports/{site_id}/{business_date}/close:
+    post:
+      operationId: closeCashReport
+      summary: "Close a cash report"
+      description: 'D-21; a closed report is immutable.'
+      tags: [cash]
+      x-wave: 2
+      x-permission: delivery.cash.close_report
+      security: [{staffCookie: []}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: business_date, in: path, required: true, schema: {type: string, format: date}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashReport'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: cash_report_unbalanced, invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/tracking-tokens:
+    get:
+      operationId: listTrackingTokens
+      summary: "Tracking tokens of an order"
+      tags: [tracking]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/TrackingToken'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: issueTrackingToken
+      summary: "Issue a recipient link"
+      description: 'Purposes track (order close + 30 days), reschedule and address_pin (48 h) (document 4 §3.5). Optional WhatsApp send goes through the outbox. The link is returned once; a replay returns 409 secret_already_issued and the link is not kept in the idempotency store.'
+      tags: [tracking]
+      x-wave: 1
+      x-permission: delivery.tracking.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/IssueTrackingTokenRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/TrackingToken'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, secret_already_issued.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /tracking-tokens/{token_id}/revoke:
+    post:
+      operationId: revokeTrackingToken
+      summary: "Revoke a recipient link"
+      tags: [tracking]
+      x-wave: 1
+      x-permission: delivery.tracking.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: token_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/TrackingToken'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /streams/dispatch:
+    get:
+      operationId: streamDispatch
+      summary: "SSE stream for the dispatch board and map"
+      description: 'Events delivery.order.*, delivery.offer.expired, delivery.driver.cash_blocked, delivery.shift.started, delivery.shift.ended, telemetry.driver_location, stream.resync (README §6, ADR-0029).'
+      tags: [streams]
+      x-wave: 1
+      x-permission: delivery.orders.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/LastEventId'}]
+      responses:
+        '200': {$ref: './components.yaml#/components/responses/EventStream'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+components:
+  securitySchemes:
+    staffCookie: {$ref: './components.yaml#/components/securitySchemes/staffCookie'}
+  schemas:
+    SiteCoverageRequest:
+      type: object
+      required: [zone_ids]
+      properties: {zone_ids: {type: array, items: {type: string, format: uuid}}}
+    SiteCoverage:
+      type: object
+      properties: {site_id: {type: string, format: uuid}, zone_ids: {type: array, items: {type: string, format: uuid}}}
+    CoverageCheckRequest:
+      type: object
+      properties:
+        address: {$ref: './components.yaml#/components/schemas/Address'}
+        point: {$ref: './components.yaml#/components/schemas/Point'}
+        site_id: {type: string, format: uuid}
+    CreateDriverRequest:
+      type: object
+      required: [name, phone, home_site_id]
+      properties:
+        name: {type: string}
+        phone: {type: string, description: Normalised to E.164 (document 4 §3.2)}
+        home_site_id: {type: string, format: uuid}
+        capacity_limit: {type: integer, minimum: 1, default: 30}
+        locale: {type: string, enum: [ar, en]}
+    UpdateDriverRequest:
+      type: object
+      properties:
+        name: {type: string}
+        home_site_id: {type: string, format: uuid}
+        status: {type: string, enum: [active, suspended, archived]}
+        capacity_limit: {type: integer, minimum: 0}
+    NoteRequest:
+      type: object
+      properties: {note: {type: string, maxLength: 1000}}
+    ReasonRequest:
+      type: object
+      required: [reason_code]
+      properties: {reason_code: {type: string, x-extensible-enum: true}, note: {type: string, maxLength: 1000}}
+    LiabilityEntryRequest:
+      type: object
+      required: [amount, reason]
+      properties:
+        amount: {$ref: './components.yaml#/components/schemas/SignedMoney'}
+        reason: {type: string, enum: [handover_deficit, handover_surplus, clearance, write_off, correction]}
+        handover_id: {type: string, format: uuid}
+        reference: {type: string, maxLength: 200, description: Required when no handover_id}
+        note: {type: string, maxLength: 1000}
+      anyOf: [{required: [handover_id]}, {required: [reference]}]
+    DriverTrail:
+      type: object
+      properties:
+        driver_id: {type: string, format: uuid}
+        business_date: {type: string, format: date}
+        line: {type: object, description: 'GeoJSON LineString, simplified'}
+    DriverPositionList:
+      type: object
+      properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/DriverPosition'}}}
+    PlanShiftRequest:
+      type: object
+      required: [driver_id, site_id, planned_start, planned_end]
+      properties:
+        driver_id: {type: string, format: uuid}
+        site_id: {type: string, format: uuid}
+        vehicle_id: {type: string, format: uuid}
+        planned_start: {type: string, format: date-time}
+        planned_end: {type: string, format: date-time}
+    UpdateOrderRequest:
+      type: object
+      properties:
+        recipient: {$ref: './components.yaml#/components/schemas/Recipient'}
+        address: {$ref: './components.yaml#/components/schemas/Address'}
+        items: {type: array, items: {$ref: './components.yaml#/components/schemas/OrderItem'}}
+        cod_amount: {$ref: './components.yaml#/components/schemas/Money'}
+        notes: {type: string}
+    TransitionRequest:
+      type: object
+      required: [to_status]
+      properties:
+        to_status: {type: string, enum: [accepted, failed]}
+        reason_code: {type: string}
+        note: {type: string, maxLength: 1000}
+    RescheduleRequest:
+      type: object
+      required: [slot_id]
+      properties: {slot_id: {type: string, format: uuid}, note: {type: string}}
+    AddressPinRequest:
+      type: object
+      required: [point]
+      properties: {point: {$ref: './components.yaml#/components/schemas/Point'}, note: {type: string}}
+    CreateOrderImportRequest:
+      type: object
+      required: [file_name, site_id, sha256, size_bytes]
+      properties: {file_name: {type: string, pattern: '\.csv$'}, site_id: {type: string, format: uuid}, sha256: {type: string, pattern: '^[a-f0-9]{64}$'}, size_bytes: {type: integer, minimum: 1, maximum: 20971520}}
+    OrderImportCreated:
+      type: object
+      properties:
+        job: {$ref: './components.yaml#/components/schemas/Job'}
+        upload: {$ref: './components.yaml#/components/schemas/UploadTicket'}
+    ImportRowError:
+      type: object
+      properties: {row: {type: integer}, column: {type: string}, code: {type: string}, message: {type: string}}
+    OfferRequest:
+      type: object
+      required: [driver_ids]
+      properties:
+        driver_ids: {type: array, minItems: 1, maxItems: 20, items: {type: string, format: uuid}}
+        expires_in_s: {type: integer, minimum: 30, maximum: 1800, default: 120}
+    OfferList:
+      type: object
+      properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Offer'}}}
+    AssignRequest:
+      type: object
+      required: [driver_id]
+      properties: {driver_id: {type: string, format: uuid}, vehicle_id: {type: string, format: uuid}, note: {type: string}}
+    ConfirmHandoverRequest:
+      type: object
+      required: [counted_amount]
+      properties: {counted_amount: {$ref: './components.yaml#/components/schemas/Money'}, note: {type: string}}
+    UploadRequest:
+      type: object
+      required: [content_type, sha256]
+      properties: {content_type: {type: string, enum: [image/jpeg, image/png, application/pdf]}, sha256: {type: string, pattern: '^[a-f0-9]{64}$'}, size_bytes: {type: integer, minimum: 1, maximum: 10485760}}
+    DepositRequest:
+      type: object
+      required: [site_id, amount, bank_reference, deposited_at, collection_ids]
+      properties:
+        site_id: {type: string, format: uuid}
+        amount: {$ref: './components.yaml#/components/schemas/SignedMoney'}
+        bank_reference: {type: string}
+        deposited_at: {type: string, format: date-time}
+        slip_upload_id: {type: string, format: uuid, description: From createDepositSlipUpload}
+        collection_ids: {type: array, items: {type: string, format: uuid}}
+        reverses_deposit_id: {type: string, format: uuid}
+      allOf:
+        - if: {required: [amount], properties: {amount: {required: [amount], properties: {amount: {exclusiveMaximum: 0}}}}}
+          then: {required: [reverses_deposit_id], properties: {reverses_deposit_id: {type: string}}}
+    IssueTrackingTokenRequest:
+      type: object
+      required: [purpose]
+      properties:
+        purpose: {type: string, enum: [track, reschedule, address_pin]}
+        send_via_whatsapp: {type: boolean, default: false}

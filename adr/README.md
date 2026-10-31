@@ -30,9 +30,27 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 | [0023](0023-own-identity-no-eeasy-dependency.md) | Run our own identity; an Eeasy sign-in link is an option, not a dependency | accepted |
 | [0024](0024-side-effects-through-outbox-and-queue.md) | Route every cross-system side effect through an outbox and a queue | accepted |
 | [0025](0025-tenancy-by-account-id-enforced-structurally.md) | Isolate tenants by account_id on every operational row, enforced structurally | accepted |
+| [0026](0026-bounded-contexts-and-module-boundaries.md) | Split the API into three bounded contexts with enforced module boundaries | proposed |
+| [0027](0027-domain-event-envelope-and-versioning.md) | Publish domain events in one versioned envelope, ordered per aggregate | proposed |
+| [0028](0028-driver-location-pings-bypass-the-outbox.md) | Write driver location pings to a bounded ring and fan out by Redis, not through the outbox | proposed |
+| [0029](0029-cursor-pagination-and-sse-event-names.md) | Page lists by opaque cursor and name SSE events after domain event types | proposed |
+| [0030](0030-merchant-webhook-signing-and-delivery.md) | Sign merchant webhooks with a timestamped HMAC and verify each subscription by token | proposed |
+| [0031](0031-database-roles-and-ledger-single-writer.md) | Separate database roles by duty and keep ledger writes in the application's ledger services | proposed |
+| [0032](0032-browser-reaches-api-on-web-origin.md) | Serve the API to the browser on the web origin and refresh staff sessions in web middleware | proposed |
+| [0033](0033-radix-tailwind-design-system-and-maplibre.md) | Build the design system on Radix primitives and Tailwind, with MapLibre behind a MapProvider | proposed |
+| [0034](0034-offline-cash-pin-device-verifier.md) | Check the cash PIN on the device offline and again on the server at replay | proposed |
+| [0035](0035-driver-app-end-to-end-with-maestro.md) | Run the driver app's end-to-end flows and census with Maestro | proposed |
+| [0036](0036-outbox-kinds-and-worker-queues.md) | Run one worker queue per outbox kind and add a storage lifecycle kind | proposed |
+| [0037](0037-messaging-templates-only-no-sms-before-wave-3.md) | Send messages as approved WhatsApp templates only, with no SMS fallback before wave 3 | proposed |
 
 ## Groups
 
 - **Product decisions by the owner (2026-10-31):** 0001 standalone, 0002 scope, 0003 monorepo, 0004 new driver app, 0023 own identity.
 - **Rulings carried over from eeasynew:** 0005 own fleets, 0006 allowlist rollout, 0007 cash custody, 0008 offline outbox, 0009 tracking by polling and SSE, 0010 VROOM over Hudhud, 0011 stock ledger, 0012 tracking mode and locations, 0013 one-way channel sync, 0014 pack-time shipments, 0015 storage and coverage first, 0016 Arabic and English, 0017 tap-to-phone gated.
 - **Proposed by the architecture lead, accepted by the owner on merging PR #1 (2026-10-31):** 0018 one sites concept, 0019 PostgreSQL with PostGIS, 0020 Drizzle, 0021 driver app in the monorepo, 0022 containers on a Gulf host, 0024 outbox and queue, 0025 tenancy by account_id.
+- **Proposed with the domain model (document 2):** 0026 bounded contexts and module boundaries, 0027 domain event envelope and versioning, 0028 driver location pings bypass the outbox.
+- **Proposed with the API contracts (document 3):** 0029 cursor pagination and SSE event names, 0030 merchant webhook signing and delivery.
+- **Proposed with the data architecture (document 5):** 0031 database roles and the ledger single writer.
+- **Proposed with the web app architecture (document 7):** 0032 browser reaches the API on the web origin, 0033 design system base and map provider.
+- **Proposed with the driver app architecture (document 8):** 0034 offline cash PIN verifier, 0035 Maestro end-to-end flows.
+- **Proposed with the integration architecture (document 9):** 0036 outbox kinds and worker queues, 0037 messaging templates only, no SMS before wave 3.

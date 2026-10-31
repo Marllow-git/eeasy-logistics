@@ -1,0 +1,118 @@
+openapi: 3.1.0
+info:
+  title: "eeasy-logistics recipient API"
+  version: 1.0.0
+  license: {name: Proprietary, identifier: LicenseRef-Proprietary}
+  description: >-
+    Public recipient pages opened from a link that carries a signed per-order token (document 4 §3.5,
+    document 2 §3.12). The token purpose grants the permission; no account data beyond the order public
+    view is reachable (D-24). Purpose to permission: track grants delivery.tracking.view; reschedule grants
+    delivery.tracking.reschedule; address_pin grants delivery.tracking.pin_address. Every request re-checks
+    the TrackingToken row (expiry, revoked_at). Pages are served with Referrer-Policy: no-referrer, frame-ancestors limited to the account embed_origins (wave 2), and
+    query strings are excluded from logs. Conventions, errors and waves: docs/contracts/README.md.
+servers:
+  - url: /v1/recipient
+security:
+  - recipientToken: []
+tags:
+  - {name: tracking, description: "Tracking page (D-24, ADR-0009)"}
+  - {name: reschedule, description: "Recipient reschedule"}
+  - {name: address-pin, description: "Recipient address pin"}
+paths:
+  /tracking:
+    get:
+      operationId: recipientGetTracking
+      summary: "The public view of the order"
+      description: 'Status, ETA, driver first name and the last position while out_for_delivery, nothing else (D-24). Polling twin of the stream at 10 to 15 s (ADR-0009).'
+      tags: [tracking]
+      x-wave: 1
+      x-permission: delivery.tracking.view
+      security: [{recipientToken: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/AcceptLanguage'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PublicTrackingView'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /tracking/stream:
+    get:
+      operationId: recipientStreamTracking
+      summary: "SSE stream of this order"
+      description: 'Events delivery.order.* for this order reduced to the public view, telemetry.driver_location only while out_for_delivery, stream.resync (README §6). The token is read from the header or the token query parameter.'
+      tags: [tracking]
+      x-wave: 1
+      x-permission: delivery.tracking.view
+      security: [{recipientToken: []}]
+      parameters: [{name: token, in: query, description: 'Alternative to the X-Recipient-Token header, because EventSource cannot set headers; purpose track only; never logged', schema: {type: string}}, {$ref: './components.yaml#/components/parameters/LastEventId'}]
+      responses:
+        '200': {$ref: './components.yaml#/components/responses/EventStream'}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /tracking/slots:
+    get:
+      operationId: recipientListSlots
+      summary: "Slots the recipient may choose"
+      description: 'Only open slots with remaining capacity in the order zone (§3.9).'
+      tags: [reschedule]
+      x-wave: 2
+      x-permission: delivery.tracking.reschedule
+      security: [{recipientToken: []}]
+      parameters: [{name: date, in: query, schema: {type: string, format: date}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PublicSlotList'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /tracking/reschedule:
+    post:
+      operationId: recipientReschedule
+      summary: "Choose a new slot"
+      description: 'Allowed before pickup or after an attempt; the slot must belong to the orders site and zone (422 slot_not_available otherwise). Emits delivery.order.rescheduled. Purpose reschedule, 48 h (document 4 §3.5).'
+      tags: [reschedule]
+      x-wave: 2
+      x-permission: delivery.tracking.reschedule
+      security: [{recipientToken: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecipientRescheduleRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PublicTrackingView'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: slot_full, invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused, slot_not_available.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /tracking/address-pin:
+    put:
+      operationId: recipientPinAddress
+      summary: "Drop a pin for the delivery address"
+      description: 'pin_source recipient_pin; re-resolves zone and coverage (D-3). Purpose address_pin, 48 h (document 4 §3.5).'
+      tags: [address-pin]
+      x-wave: 2
+      x-permission: delivery.tracking.pin_address
+      security: [{recipientToken: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecipientPinRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PublicTrackingView'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: order_locked.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: outside_coverage, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+components:
+  securitySchemes:
+    recipientToken: {$ref: './components.yaml#/components/securitySchemes/recipientToken'}
+  schemas:
+
+    PublicSlotList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {type: object, properties: {slot_id: {type: string, format: uuid}, starts_at: {type: string, format: date-time}, ends_at: {type: string, format: date-time}}}
+    RecipientRescheduleRequest:
+      type: object
+      required: [slot_id]
+      properties: {slot_id: {type: string, format: uuid}}
+    RecipientPinRequest:
+      type: object
+      required: [point]
+      properties:
+        point: {$ref: './components.yaml#/components/schemas/Point'}
+        note: {type: string, maxLength: 300, description: Directions for the driver}
