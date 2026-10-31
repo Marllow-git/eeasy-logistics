@@ -24,6 +24,8 @@ The domain model is the vocabulary. Aggregate names, attributes, states and inva
 | Recipient | `/v1/recipient` | recipient | signed per-order token (HMAC over order id, purpose, expiry) in `X-Recipient-Token` | `recipientToken` |
 | Platform | `/v1/platform` | platform super admin, admin, support | access JWT in a separate cookie, TOTP mandatory, 12 h idle expiry | `platformCookie` |
 
+Every non-GET call on the staff and platform surfaces carries `X-EL-Client: web` and an `Origin` that is one of the web origins; anything else is `403 forbidden` (proposed ADR-0032, on branch `docs/arch-1-web`). The header is the shared `ElClient` parameter on each write.
+
 A credential is valid on its own surface only: a driver token on `/v1/staff` returns `401 unauthenticated`; a revoked API key, or an old key after its rotation overlap, returns `401 api_key_revoked`. The account of every request comes from the credential (K-3); no request body or parameter carries `account_id`, and responses on the four tenant surfaces omit it. OAuth callbacks and inbound provider webhooks are not on any surface: they land on `/hooks/{provider}`, verified and stored by the kernel (document 9 §3.1). Platform routes that read another account take the account id in the path, are declared `x-cross-tenant: true` (the `@CrossTenant()` handler of document 4 §5) and write an audit row per call with the `X-Support-Reason` header text.
 
 Authorization: every operation names one permission in `x-permission`, a flat string `<module>.<resource>.<action>` (document 4 §2). Site-scoped roles are further filtered by membership `site_ids`. Two pseudo-permissions mark doors without a role check: `core.auth.anonymous` (sign-in doors, rate-limited by identity and IP) and `core.auth.self` (the caller's own session; `platform.auth.self` on the platform surface). Recipient operations carry `delivery.tracking.view`, `delivery.tracking.reschedule` or `delivery.tracking.pin_address`, granted by the token's `purpose` (document 2 §3.12), not by a role. Document 4 gives the format and examples but no full list; the strings used in the OpenAPI files are the proposed catalogue in §11, for the owner to confirm with the role bundles.
@@ -53,6 +55,7 @@ Authorization: every operation names one permission in `x-permission`, a flat st
 | Uploads | never in the API body: the API returns a write-once signed upload URL (ADR-0015) valid 10 minutes, with content type, sha256 and maximum size (photos and slips 10 MB, CSV 20 MB) bound into the signature; the server picks the object key under the account prefix and clients refer to the file by `upload_id`; the client `PUT`s the file, then confirms (proofs, deposit slips, CSV imports). Reads are expiring signed URLs on a separate file domain with `Content-Disposition: attachment` |
 | Async jobs | long work (CSV import) returns `202` with a job resource; poll it or stream it |
 | Codes and challenges | OTP, second-factor and TOTP codes: at most 5 verification attempts per code or challenge, then invalidated; challenges expire after 5 minutes; a used TOTP code is refused for its whole window (document 4 §3) |
+| Web client marker | staff and platform writes require `X-EL-Client: web` plus a web `Origin` (§1, proposed ADR-0032) |
 | Request ids | every response carries `X-Request-Id`; error bodies repeat it as `request_id` |
 
 ## 4. Error model (plan 2.4)
@@ -98,7 +101,7 @@ Rules (ADR-0029):
 - The server sends `retry: 5000` once and a comment line (`: keep-alive`) every 20 s.
 - A stream lives no longer than its credential: the server closes it when the access token expires (the client reconnects with a fresh token and `Last-Event-ID`), when the member or device is revoked, and when the account is suspended. The recipient stream re-reads the TrackingToken row (expiry and `revoked_at`) on connect and every 60 s.
 - Polling fallback at 10 to 15 s (ADR-0009): every stream has a REST twin: `GET /v1/staff/driver-locations/latest` and `GET /v1/staff/orders?updated_from=`, `GET /v1/driver/offers` and `GET /v1/driver/orders`, `GET /v1/recipient/tracking`.
-- The recipient stream also accepts the token as `?token=` because `EventSource` cannot set headers; only purpose `track` is accepted there. Recipient pages send `Referrer-Policy: no-referrer`, and query strings are excluded from access logs, traces and error reports on every surface.
+- The recipient stream also accepts the token as `?token=` because `EventSource` cannot set headers; only purpose `track` is accepted there. Recipient pages send `Referrer-Policy: no-referrer` and may be framed only by the account's `embed_origins` (account settings, wave 2, at most 10 https origins); and query strings are excluded from access logs, traces and error reports on every surface.
 
 On the wire (dispatch board, one domain event then one position):
 

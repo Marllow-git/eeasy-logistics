@@ -46,7 +46,7 @@ paths:
       x-wave: 3
       x-permission: wms.locations.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Location'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Location'}}}}
@@ -73,7 +73,7 @@ paths:
       x-wave: 3
       x-permission: wms.locations.manage
       security: [{staffCookie: []}]
-      parameters: [{name: location_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: location_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateLocationRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Location'}}}}
@@ -88,7 +88,7 @@ paths:
       x-wave: 3
       x-permission: wms.locations.manage
       security: [{staffCookie: []}]
-      parameters: [{name: tote_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: tote_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/MoveToteRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Location'}}}}
@@ -113,7 +113,7 @@ paths:
       x-wave: 3
       x-permission: wms.products.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Product'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Product'}}}}
@@ -140,7 +140,7 @@ paths:
       x-wave: 3
       x-permission: wms.products.manage
       security: [{staffCookie: []}]
-      parameters: [{name: product_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: product_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Product'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Product'}}}}
@@ -190,7 +190,7 @@ paths:
       x-wave: 3
       x-permission: wms.suppliers.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Supplier'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Supplier'}}}}
@@ -205,7 +205,7 @@ paths:
       x-wave: 3
       x-permission: wms.suppliers.manage
       security: [{staffCookie: []}]
-      parameters: [{name: supplier_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: supplier_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Supplier'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Supplier'}}}}
@@ -230,7 +230,7 @@ paths:
       x-wave: 3
       x-permission: wms.purchase_orders.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
@@ -256,7 +256,7 @@ paths:
       x-wave: 3
       x-permission: wms.purchase_orders.manage
       security: [{staffCookie: []}]
-      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
@@ -272,7 +272,7 @@ paths:
       x-wave: 3
       x-permission: wms.purchase_orders.manage
       security: [{staffCookie: []}]
-      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
@@ -286,7 +286,7 @@ paths:
       x-wave: 3
       x-permission: wms.purchase_orders.manage
       security: [{staffCookie: []}]
-      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
@@ -300,7 +300,7 @@ paths:
       x-wave: 3
       x-permission: wms.purchase_orders.manage
       security: [{staffCookie: []}]
-      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: purchase_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PurchaseOrder'}}}}
@@ -326,7 +326,7 @@ paths:
       x-wave: 3
       x-permission: wms.receipts.write
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateReceiptRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
@@ -354,7 +354,7 @@ paths:
       x-wave: 3
       x-permission: wms.receipts.write
       security: [{staffCookie: []}]
-      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReceiveLineRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
@@ -370,7 +370,7 @@ paths:
       x-wave: 3
       x-permission: wms.receipts.approve
       security: [{staffCookie: []}]
-      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
@@ -386,7 +386,7 @@ paths:
       x-wave: 3
       x-permission: wms.receipts.write
       security: [{staffCookie: []}]
-      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
@@ -401,7 +401,7 @@ paths:
       x-wave: 3
       x-permission: wms.receipts.write
       security: [{staffCookie: []}]
-      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PutAwayRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
@@ -417,7 +417,7 @@ paths:
       x-wave: 3
       x-permission: wms.receipts.write
       security: [{staffCookie: []}]
-      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: receipt_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/InboundReceipt'}}}}
@@ -481,7 +481,7 @@ paths:
       x-wave: 3
       x-permission: wms.fulfilment.manage
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateFulfilmentOrderRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}
@@ -521,7 +521,7 @@ paths:
       x-wave: 3
       x-permission: wms.fulfilment.manage
       security: [{staffCookie: []}]
-      parameters: [{name: fulfilment_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: fulfilment_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, insufficient_stock.'}
@@ -536,7 +536,7 @@ paths:
       x-wave: 3
       x-permission: wms.fulfilment.manage
       security: [{staffCookie: []}]
-      parameters: [{name: fulfilment_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: fulfilment_order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}
@@ -562,7 +562,7 @@ paths:
       x-wave: 3
       x-permission: wms.picking.write
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreatePickTaskRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
@@ -590,7 +590,7 @@ paths:
       x-wave: 3
       x-permission: wms.picking.write
       security: [{staffCookie: []}]
-      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
@@ -605,7 +605,7 @@ paths:
       x-wave: 3
       x-permission: wms.picking.write
       security: [{staffCookie: []}]
-      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PickRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
@@ -621,7 +621,7 @@ paths:
       x-wave: 3
       x-permission: wms.picking.write
       security: [{staffCookie: []}]
-      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ShortPickRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
@@ -637,7 +637,7 @@ paths:
       x-wave: 3
       x-permission: wms.picking.write
       security: [{staffCookie: []}]
-      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: pick_task_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PickTask'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
@@ -662,7 +662,7 @@ paths:
       x-wave: 3
       x-permission: wms.packing.write
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OpenPackageRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
@@ -690,7 +690,7 @@ paths:
       x-wave: 3
       x-permission: wms.packing.write
       security: [{staffCookie: []}]
-      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PackRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
@@ -719,7 +719,7 @@ paths:
       x-wave: 3
       x-permission: wms.packing.write
       security: [{staffCookie: []}]
-      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChooseMethodRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
@@ -735,7 +735,7 @@ paths:
       x-wave: 3
       x-permission: wms.packing.write
       security: [{staffCookie: []}]
-      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: method_change_forbidden, invalid_transition.'}
@@ -763,7 +763,7 @@ paths:
       x-wave: 3
       x-permission: wms.packing.write
       security: [{staffCookie: []}]
-      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
@@ -777,7 +777,7 @@ paths:
       x-wave: 3
       x-permission: wms.packing.write
       security: [{staffCookie: []}]
-      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: package_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Package'}}}}
@@ -803,7 +803,7 @@ paths:
       x-wave: 4
       x-permission: wms.returns.write
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateReturnRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Return'}}}}
@@ -831,7 +831,7 @@ paths:
       x-wave: 4
       x-permission: wms.returns.write
       security: [{staffCookie: []}]
-      parameters: [{name: return_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: return_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReceiveReturnRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Return'}}}}
@@ -847,7 +847,7 @@ paths:
       x-wave: 4
       x-permission: wms.returns.write
       security: [{staffCookie: []}]
-      parameters: [{name: return_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: return_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DispositionRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Return'}}}}
@@ -874,7 +874,7 @@ paths:
       x-wave: 3
       x-permission: wms.adjustments.request
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateAdjustmentRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Adjustment'}}}}
@@ -891,7 +891,7 @@ paths:
       x-wave: 3
       x-permission: wms.adjustments.approve
       security: [{staffCookie: []}]
-      parameters: [{name: adjustment_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: adjustment_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Adjustment'}}}}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: separation_of_duties.'}
@@ -906,7 +906,7 @@ paths:
       x-wave: 3
       x-permission: wms.adjustments.approve
       security: [{staffCookie: []}]
-      parameters: [{name: adjustment_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: adjustment_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Adjustment'}}}}
@@ -932,7 +932,7 @@ paths:
       x-wave: 3
       x-permission: wms.counts.write
       security: [{staffCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlanCountRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
@@ -960,7 +960,7 @@ paths:
       x-wave: 3
       x-permission: wms.counts.write
       security: [{staffCookie: []}]
-      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecordCountsRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
@@ -976,7 +976,7 @@ paths:
       x-wave: 3
       x-permission: wms.counts.write
       security: [{staffCookie: []}]
-      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
@@ -991,7 +991,7 @@ paths:
       x-wave: 3
       x-permission: wms.counts.approve
       security: [{staffCookie: []}]
-      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
@@ -1007,7 +1007,7 @@ paths:
       x-wave: 3
       x-permission: wms.counts.approve
       security: [{staffCookie: []}]
-      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: separation_of_duties.'}
@@ -1022,7 +1022,7 @@ paths:
       x-wave: 3
       x-permission: wms.counts.approve
       security: [{staffCookie: []}]
-      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: count_session_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WmsReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CountSession'}}}}
