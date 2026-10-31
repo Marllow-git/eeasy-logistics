@@ -748,6 +748,14 @@ components:
         item_count: {type: integer}
         cod_amount: {$ref: '#/components/schemas/Money'}
         window: {type: [object, 'null'], properties: {starts_at: {type: string, format: date-time}, ends_at: {type: string, format: date-time}}}
+    OrderOfferedPayload:
+      type: object
+      description: 'Payload of delivery.order.offered on the driver stream and in offer push notifications: the reduced OfferOrderView only (N4).'
+      required: [offer_id, expires_at, order]
+      properties:
+        offer_id: {type: string, format: uuid}
+        expires_at: {type: string, format: date-time}
+        order: {$ref: '#/components/schemas/OfferOrderView'}
     SlotDay:
       type: object
       description: Document 2 §3.9.

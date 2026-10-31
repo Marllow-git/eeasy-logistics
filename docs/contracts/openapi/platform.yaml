@@ -706,7 +706,7 @@ paths:
     post:
       operationId: platformResetStaffTotp
       summary: "Clear a platform user TOTP so they re-enrol"
-      description: 'Super admin only; revokes every session of the user; audited with the reason.'
+      description: 'Super admin only and never on oneself (403 forbidden). Revokes every session of the user, notifies them by email, and audits the reason; the user re-enrols through the invitation-style challenge flow.'
       tags: [staff]
       x-wave: 0
       x-permission: platform.staff.manage
