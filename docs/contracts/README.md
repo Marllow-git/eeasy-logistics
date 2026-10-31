@@ -23,7 +23,7 @@ The domain model is the vocabulary. Aggregate names, attributes, states and inva
 | Recipient | `/v1/recipient` | recipient | signed per-order token (HMAC over order id, purpose, expiry) in `X-Recipient-Token` | `recipientToken` |
 | Platform | `/v1/platform` | platform super admin, admin, support | access JWT in a separate cookie, TOTP mandatory, 12 h idle expiry | `platformCookie` |
 
-A credential is valid on its own surface only: a driver token on `/v1/staff` returns `401 unauthenticated`. The account of every request comes from the credential (K-3); no request body or parameter carries `account_id`, and responses on the four tenant surfaces omit it. Platform routes that read another account take the account id in the path, are declared `x-cross-tenant: true` (the `@CrossTenant()` handler of document 4 §5) and write an audit row per call with the `X-Support-Reason` header text.
+A credential is valid on its own surface only: a driver token on `/v1/staff` returns `401 unauthenticated`; a revoked API key, or an old key after its rotation overlap, returns `401 api_key_revoked`. The account of every request comes from the credential (K-3); no request body or parameter carries `account_id`, and responses on the four tenant surfaces omit it. Platform routes that read another account take the account id in the path, are declared `x-cross-tenant: true` (the `@CrossTenant()` handler of document 4 §5) and write an audit row per call with the `X-Support-Reason` header text.
 
 Authorization: every operation names one permission in `x-permission`, a flat string `<module>.<resource>.<action>` (document 4 §2). Site-scoped roles are further filtered by membership `site_ids`. Two pseudo-permissions mark doors without a role check: `core.auth.anonymous` (sign-in doors, rate-limited by identity and IP) and `core.auth.self` (the caller's own session; `platform.auth.self` on the platform surface). Recipient operations carry `delivery.tracking.view`, `delivery.tracking.reschedule` or `delivery.tracking.pin_address`, granted by the token's `purpose` (document 2 §3.12), not by a role. Document 4 gives the format and examples but no full list; the strings used in the OpenAPI files are the proposed catalogue in §11, for the owner to confirm with the role bundles.
 
@@ -43,7 +43,7 @@ Authorization: every operation names one permission in `x-permission`, a flat st
 | Time | ISO 8601 with offset (`2026-10-31T14:05:00+03:00`); business dates (cash day, slot day) are `YYYY-MM-DD` in Asia/Riyadh (document 2 §8) |
 | Money | `{ "amount": 15000, "currency": "SAR" }`: integer halalas, never floats (`Money` schema, document 2 §8) |
 | Ids | UUIDv7 strings for every resource (document 2 §8); human numbers (`D-000123`) are display fields and filterable |
-| Idempotency | `Idempotency-Key` (UUID, client-generated) on every `POST`, `PUT`, `PATCH` and `DELETE` a client may retry; stored 24 h per principal (K-8); a replay with the same body returns the stored response; the same key with a different body returns `422 idempotency_key_reused`; a missing key returns `400 idempotency_key_required`. Driver order events stay deduplicated forever (D-15). Exempt: the anonymous sign-in doors (single-use by design, no principal to scope a key) and `POST /v1/driver/locations` (document 2 §7) |
+| Idempotency | `Idempotency-Key` (UUID, client-generated) on every `POST`, `PUT`, `PATCH` and `DELETE` a client may retry; stored 24 h per principal (K-8); a replay with the same body returns the stored response; the same key with a different body returns `422 idempotency_key_reused`; a missing key returns `400 idempotency_key_required`. Driver order events stay deduplicated forever (D-15). Exempt, and listed by the CI rule: the session doors under `/auth/` on every surface (sign-in, OTP, TOTP, invitation, password reset, refresh, logout: single-use or naturally idempotent, and most have no principal to scope a key), `POST /v1/driver/locations` (document 2 §7), and the read-only computations sent as `POST` because of their body (`/coverage/check`, `/v1/public/labels`) |
 | Concurrency | dispatcher writes to Order and Assignment send `If-Match: "<version>"` with the `version` they read (D-22); missing returns `428 version_required`, a mismatch returns `409 version_conflict` with `details.current_status` and `details.version`. Responses for those aggregates carry `ETag: "<version>"` |
 | Pagination | cursor only (ADR-0029): `?cursor=<opaque>&limit=<1..200, default 50>`; response `{ "data": [...], "next_cursor": "..." or null }`; a cursor is valid 24 h and only with the same filters and sort |
 | Filtering | named query parameters per field (`status`, `site_id`, `driver_id`, `created_from`, `created_to`, `updated_from`); a comma list means "any of" (`status=assigned,picked_up`); `q` for free text where offered |
@@ -66,6 +66,20 @@ Transitions are the domain model state machines (§3.13 to §3.17, §4.11 to §4
 - An illegal arrow, or a legal arrow by the wrong actor, returns `409 invalid_transition` with `{ "current_status", "version" }` in `details` (D-5). A terminal order never transitions (D-8).
 - A successful transition returns the updated aggregate with its new `version`.
 
+Example: a dispatcher assigns from a board that read version 7 while another dispatcher had already cancelled the order.
+
+```http
+PUT /v1/staff/orders/0192f100-1111-7222-8333-444455556666/assignment
+Idempotency-Key: 0192f3b0-2a1c-7d00-9e00-0000000000a1
+If-Match: "7"
+Content-Type: application/json
+
+{"driver_id":"0192e500-0000-7000-8000-0000000000d1"}
+
+HTTP/1.1 409 Conflict
+{"code":"version_conflict","message":"تغيّر الطلب منذ آخر تحميل","details":{"current_status":"cancelled","version":8},"request_id":"req_7Hq2"}
+```
+
 ## 6. Server-sent events
 
 | Stream | Path | Who | Event names |
@@ -82,6 +96,21 @@ Rules (ADR-0029):
 - The server sends `retry: 5000` once and a comment line (`: keep-alive`) every 20 s.
 - Polling fallback at 10 to 15 s (ADR-0009): every stream has a REST twin: `GET /v1/staff/driver-locations/latest` and `GET /v1/staff/orders?updated_from=`, `GET /v1/driver/offers` and `GET /v1/driver/orders`, `GET /v1/recipient/tracking`.
 - The recipient stream also accepts the token as `?token=` because `EventSource` cannot set headers; only purpose `track` is accepted there and the query string is never logged.
+
+On the wire (dispatch board, one domain event then one position):
+
+```text
+retry: 5000
+
+id: 0192f3a1-7c4e-7b11-9a2b-6f0d1c2e3a4b
+event: delivery.order.picked_up
+data: {"id":"0192f3a1-…","type":"delivery.order.picked_up","version":1,"aggregate_id":"0192f100-…","sequence":6,"payload":{…}}
+
+event: telemetry.driver_location
+data: {"driver_id":"0192e500-…","lat":24.7136,"lng":46.6753,"client_ts":"2026-10-31T14:05:00+03:00"}
+
+: keep-alive
+```
 
 ## 7. Rate limits by surface
 
@@ -129,7 +158,7 @@ Merchant webhooks are the domain events marked "yes" in document 2 §6.3, delive
 | delivery (staff) | `delivery.orders.read`, `delivery.orders.create`, `delivery.orders.import`, `delivery.orders.dispatch`, `delivery.orders.cancel`, `delivery.orders.receive`, `delivery.zones.read`, `delivery.zones.manage`, `delivery.coverage.manage`, `delivery.drivers.read`, `delivery.drivers.manage`, `delivery.drivers.clear_cash_block`, `delivery.vehicles.manage`, `delivery.shifts.manage`, `delivery.slots.manage`, `delivery.proofs.read`, `delivery.cash.read`, `delivery.cash.receive`, `delivery.cash.deposit`, `delivery.cash.close_report`, `delivery.liability.record`, `delivery.tracking.manage`, `delivery.locations.read` |
 | delivery (driver) | `delivery.driver.work`, `delivery.driver.cash`, `delivery.driver.locations` |
 | delivery (recipient token) | `delivery.tracking.view`, `delivery.tracking.reschedule`, `delivery.tracking.pin_address` |
-| wms | `wms.locations.read`, `wms.locations.manage`, `wms.products.read`, `wms.products.manage`, `wms.suppliers.manage`, `wms.purchase_orders.manage`, `wms.receipts.write`, `wms.receipts.approve`, `wms.movements.read`, `wms.stock.read`, `wms.fulfilment.read`, `wms.fulfilment.manage`, `wms.picking.write`, `wms.packing.write`, `wms.returns.write`, `wms.adjustments.request`, `wms.adjustments.approve`, `wms.counts.write`, `wms.counts.approve`, `wms.channel_publications.read` |
+| wms | `wms.locations.read`, `wms.locations.manage`, `wms.products.read`, `wms.products.manage`, `wms.suppliers.manage`, `wms.purchase_orders.read`, `wms.purchase_orders.manage`, `wms.receipts.read`, `wms.receipts.write`, `wms.receipts.approve`, `wms.movements.read`, `wms.stock.read`, `wms.fulfilment.read`, `wms.fulfilment.manage`, `wms.picking.write`, `wms.packing.write`, `wms.returns.write`, `wms.adjustments.request`, `wms.adjustments.approve`, `wms.counts.write`, `wms.counts.approve`, `wms.channel_publications.read` |
 | platform | `platform.auth.self`, `platform.accounts.read`, `platform.accounts.provision`, `platform.accounts.suspend`, `platform.rollout.manage`, `platform.flags.manage`, `platform.tenants.read`, `platform.outbox.read`, `platform.outbox.replay`, `platform.diagnose.run`, `platform.staff.manage`, `platform.audit.read` |
 
 An API key may hold only `delivery.orders.read`, `delivery.orders.create`, `delivery.orders.cancel`, `core.webhooks.manage` and, after the WMS pilot, `wms.products.read`, `wms.stock.read`, `wms.fulfilment.read`, `wms.fulfilment.manage` (document 4 §3.4).

@@ -1,0 +1,39 @@
+# Lint configuration for the API contracts (README §9). Run from docs/contracts: npx @redocly/cli lint
+extends:
+  - recommended
+apis:
+  components:
+    root: openapi/components.yaml
+    rules:
+      no-unused-components: off
+  staff:
+    root: openapi/staff.yaml
+  staff-delivery:
+    root: openapi/staff-delivery.yaml
+  staff-wms:
+    root: openapi/staff-wms.yaml
+  driver:
+    root: openapi/driver.yaml
+  recipient:
+    root: openapi/recipient.yaml
+  public:
+    root: openapi/public.yaml
+  platform:
+    root: openapi/platform.yaml
+rules:
+  operation-4xx-response: error
+  operation-operationId-unique: error
+  rule/operation-x-wave:
+    subject: {type: Operation, property: x-wave}
+    assertions: {defined: true}
+    message: Every operation declares x-wave (0 to 4; the range is checked by the contract test).
+    severity: error
+  rule/operation-x-permission:
+    subject: {type: Operation, property: x-permission}
+    assertions: {defined: true, pattern: '/^[a-z]+\.[a-z_]+\.[a-z_]+$/'}
+    message: Every operation declares x-permission as <module>.<resource>.<action>.
+    severity: error
+  rule/operation-tags:
+    subject: {type: Operation, property: tags}
+    assertions: {defined: true, nonEmpty: true}
+    severity: error
