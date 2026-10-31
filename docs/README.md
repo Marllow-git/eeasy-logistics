@@ -13,7 +13,7 @@ The documents that must exist and be approved before application code is written
 | 7 | Web app architecture | `docs/architecture/web.md` | not started |
 | 8 | Driver app architecture | `docs/architecture/driver-app.md` | not started |
 | 9 | Integration architecture | `docs/architecture/integrations.md` | not started |
-| 10 | Engineering handbook | `AGENTS.md`, `docs/handbook/` | in review |
+| 10 | Engineering handbook | `AGENTS.md`, `docs/handbook/` | in review (PR #2) |
 | 11 | Reference censuses | `docs/references/` | not started |
 | 12 | Roadmap | `docs/roadmap.md` | not started |
 
