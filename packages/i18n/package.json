@@ -1,0 +1,23 @@
+{
+  "name": "@eeasy-logistics/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Arabic and English catalogues (<locale>/<namespace>.json) and the typed t() helper.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@eeasy-logistics/config-eslint": "workspace:*",
+    "@eeasy-logistics/config-ts": "workspace:*",
+    "@types/node": "22.20.5",
+    "eslint": "9.39.5",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  }
+}

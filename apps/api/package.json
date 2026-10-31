@@ -1,0 +1,36 @@
+{
+  "name": "@eeasy-logistics/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "NestJS API: kernel, delivery and wms contexts (ADR-0003, ADR-0026).",
+  "type": "module",
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run && pnpm run test:architecture",
+    "test:architecture": "depcruise src test/architecture --config .dependency-cruiser.cjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.3.2",
+    "@nestjs/core": "12.3.2",
+    "@nestjs/platform-express": "12.3.2",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@eeasy-logistics/config-eslint": "workspace:*",
+    "@eeasy-logistics/config-ts": "workspace:*",
+    "@nestjs/cli": "12.0.11",
+    "@nestjs/testing": "12.3.2",
+    "@types/node": "22.20.5",
+    "@types/supertest": "7.2.1",
+    "dependency-cruiser": "18.7.0",
+    "eslint": "9.39.5",
+    "supertest": "7.3.1",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  }
+}
