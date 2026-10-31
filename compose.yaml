@@ -13,12 +13,20 @@
 
 name: elx
 
+# Roles and extensions (tools/postgres/init), mounted in every postgres service.
+x-postgres-init: &postgres-init ./tools/postgres/init:/docker-entrypoint-initdb.d:ro
+
 x-postgres: &postgres
   image: postgis/postgis:16-3.6
   environment:
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env}
     POSTGRES_DB: elx
+    # Read by tools/postgres/init/01-roles.sql on first start.
+    ELX_OWNER_PASSWORD: ${ELX_OWNER_PASSWORD:?copy .env.example to .env}
+    ELX_APP_PASSWORD: ${ELX_APP_PASSWORD:?copy .env.example to .env}
+    ELX_PLATFORM_PASSWORD: ${ELX_PLATFORM_PASSWORD:?copy .env.example to .env}
+    ELX_MAINTENANCE_PASSWORD: ${ELX_MAINTENANCE_PASSWORD:?copy .env.example to .env}
   healthcheck:
     # TCP, not the socket: the image's init phase runs a socket-only server.
     test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d elx']
@@ -89,6 +97,7 @@ services:
     ports: ['127.0.0.1:5432:5432']
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - *postgres-init
   redis:
     <<: *redis
     profiles: [dev]
@@ -117,6 +126,8 @@ services:
     ports: ['127.0.0.1::5432']
     tmpfs:
       - /var/lib/postgresql/data
+    volumes:
+      - *postgres-init
   redis-ci:
     <<: *redis
     profiles: [ci]
@@ -145,6 +156,7 @@ services:
     ports: ['127.0.0.1:5532:5432']
     volumes:
       - postgres-data-a:/var/lib/postgresql/data
+      - *postgres-init
   redis-a:
     <<: *redis
     profiles: [stack-a]
@@ -173,6 +185,7 @@ services:
     ports: ['127.0.0.1:5632:5432']
     volumes:
       - postgres-data-b:/var/lib/postgresql/data
+      - *postgres-init
   redis-b:
     <<: *redis
     profiles: [stack-b]
