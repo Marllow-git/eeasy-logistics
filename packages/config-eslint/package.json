@@ -1,0 +1,22 @@
+{
+  "name": "@eeasy-logistics/config-eslint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared ESLint flat configuration for every workspace.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

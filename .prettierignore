@@ -1,0 +1,5 @@
+# Documentation is hand-formatted; Prettier owns code and configuration only.
+*.md
+adr/
+docs/
+pnpm-lock.yaml
