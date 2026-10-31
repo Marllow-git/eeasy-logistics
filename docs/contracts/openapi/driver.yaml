@@ -234,7 +234,7 @@ paths:
     post:
       operationId: driverAcceptOffer
       summary: "Accept an offer"
-      description: 'sent → accepted and order offered → assigned under a row lock on the order; other sent offers become withdrawn (D-13). Online only: not queued in the outbox.'
+      description: 'sent → accepted and order offered → assigned under a row lock on the order; other sent offers become withdrawn (D-13). An offer sent to another driver is 404. Online only: not queued in the outbox.'
       tags: [offers]
       x-wave: 1
       x-permission: delivery.driver.work
@@ -242,7 +242,7 @@ paths:
       parameters: [{name: offer_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Assignment'}}}}
-        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: driver_not_assignee.'}
+        '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: offer_expired, offer_withdrawn, shift_not_active.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: driver_cash_blocked, capacity_exceeded, idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
@@ -278,6 +278,7 @@ paths:
     get:
       operationId: driverGetOrder
       summary: "One order of my run"
+      description: 'Orders that are not on this drivers run are 404, never 403 (document 4 §9).'
       tags: [orders]
       x-wave: 1
       x-permission: delivery.driver.work
@@ -285,13 +286,13 @@ paths:
       parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/RunStop'}}}}
-        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: driver_not_assignee.'}
+        '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /orders/{order_id}/events:
     post:
       operationId: driverPostOrderEvent
       summary: "Record a field transition (replayable)"
-      description: 'assigned → picked_up, picked_up → out_for_delivery, out_for_delivery → delivered or attempted, attempted → out_for_delivery (§3.13). Dedupe: the Idempotency-Key is the outbox item key; a replay with the same principal (driver and device) and request hash returns the original result forever (D-15). Time: client_ts must lie in [assignment.started_at, min(server_ts, assignment.ended_at + offline window)], the offline window an account setting, default 12 h; otherwise 422 client_ts_out_of_range. D-23 (field facts win after a reassignment) applies only when client_ts precedes the reassignment and the device made no authenticated call after it; otherwise 409 stale_driver_event (D-16). The business date of a collection is the Asia/Riyadh date of min(client_ts, server_ts). delivered writes proofs as pending_upload and COD collections in one transaction (D-7, D-17, D-18). Cash PIN (document 4 §3.2): required when any collection has method cash; every wrong PIN counts toward the five-failure lock. When the event arrives within 120 s of client_ts (the driver is online at the door), a wrong PIN returns 403 cash_pin_invalid and records nothing, and a locked PIN returns 423 cash_pin_locked. A later replay records the field fact (D-23), counts the failure, sets the driver cash_blocked until a supervisor clears it, and returns 200 with cash_pin_status failed. cash_pin is removed from the body before the request hash is computed and is never stored in del_order_events, the idempotency store or logs.'
+      description: 'assigned → picked_up, picked_up → out_for_delivery, out_for_delivery → delivered or attempted, attempted → out_for_delivery (§3.13). Dedupe: the Idempotency-Key is the outbox item key; a replay with the same principal (driver and device) and request hash returns the original result forever (D-15); the same key with another principal or hash returns 422 idempotency_key_reused. An order never on this driver''s run is 404; 403 driver_not_assignee is only for a former assignee whose event D-23 does not save. Time: client_ts must lie in [assignment.started_at, min(server_ts, assignment.ended_at + offline window)], the offline window an account setting, default 12 h; otherwise 422 client_ts_out_of_range. D-23 (field facts win after a reassignment) applies only when client_ts precedes the reassignment and the device made no authenticated call after it; otherwise 409 stale_driver_event (D-16). The business date of a collection is the Asia/Riyadh date of min(client_ts, server_ts). delivered writes proofs as pending_upload and COD collections in one transaction (D-7, D-17, D-18). Cash PIN (document 4 §3.2): required when any collection has method cash; every wrong PIN counts toward the five-failure lock. When the event arrives within 120 s of client_ts (the driver is online at the door), a wrong PIN returns 403 cash_pin_invalid and records nothing, and a locked PIN returns 423 cash_pin_locked. A later replay records the field fact (D-23), counts the failure, sets the driver cash_blocked until a supervisor clears it, and returns 200 with cash_pin_status failed. cash_pin is removed from the body before the request hash is computed and is never stored in del_order_events, the idempotency store or logs.'
       tags: [orders]
       x-wave: 1
       x-permission: delivery.driver.work
@@ -309,7 +310,7 @@ paths:
     put:
       operationId: driverPinAddress
       summary: "Pin the address point at the door"
-      description: 'pin_source driver_pin.'
+      description: 'pin_source driver_pin. Orders off this drivers run are 404.'
       tags: [orders]
       x-wave: 2
       x-permission: delivery.driver.work
@@ -318,7 +319,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DriverPinRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
-        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: driver_not_assignee.'}
+        '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: order_locked.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
@@ -335,7 +336,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProofUploadRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/UploadTicket'}}}}
-        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: driver_not_assignee.'}
+        '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}

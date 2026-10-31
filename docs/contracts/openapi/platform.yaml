@@ -244,7 +244,7 @@ paths:
     put:
       operationId: platformProvisionCoverage
       summary: "Set own-fleet coverage (site, zone) for the account"
-      description: 'ADR-0015: coverage is explicit data created by the provisioning door before first use. K-4: branch or both sites only.'
+      description: 'ADR-0015: coverage is explicit data created by the provisioning door before first use. K-4: branch or both sites only. Every site_id and zone_id must belong to the path account (404 not_found otherwise).'
       tags: [provisioning]
       x-wave: 0
       x-permission: platform.accounts.provision
@@ -254,6 +254,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CoverageProvisionRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/CoverageList'}}}}
+        '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: site_kind_mismatch, idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /rollout-modes:
@@ -622,7 +623,7 @@ components:
     PlatformLoginRequest:
       type: object
       required: [email, password]
-      properties: {email: {type: string, format: email}, password: {type: string}}
+      properties: {email: {type: string, format: email}, password: {type: string, maxLength: 256}}
     TotpChallenge:
       type: object
       properties: {challenge_id: {type: string}, totp_enrolment_required: {type: boolean}}

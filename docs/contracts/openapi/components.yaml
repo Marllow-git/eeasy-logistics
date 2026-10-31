@@ -267,6 +267,19 @@ components:
         causation_id: {type: [string, 'null'], format: uuid}
         correlation_id: {type: string, format: uuid}
         payload: {type: object}
+    ReducedEnvelope:
+      type: object
+      description: Envelope sent on the driver and recipient streams; account_id, causation_id and correlation_id are removed.
+      required: [id, type, version, occurred_at, aggregate_type, aggregate_id, sequence, payload]
+      properties:
+        id: {type: string, format: uuid}
+        type: {type: string}
+        version: {type: integer}
+        occurred_at: {type: string, format: date-time}
+        aggregate_type: {type: string}
+        aggregate_id: {type: string, format: uuid}
+        sequence: {type: integer}
+        payload: {type: object}
     Job:
       type: object
       description: Asynchronous job resource (not a domain aggregate).
@@ -861,7 +874,7 @@ components:
         can_reschedule: {type: boolean}
         can_pin_address: {type: boolean}
         merchant_name: {type: string}
-        history: {type: array, items: {type: object, properties: {status: {$ref: '#/components/schemas/OrderStatus'}, at: {type: string, format: date-time}}}}
+        history: {type: array, description: 'Status and time only; no actor, reason or position', items: {type: object, properties: {status: {$ref: '#/components/schemas/OrderStatus'}, at: {type: string, format: date-time}}}}
 
     # ---------- WMS (document 2 §4) ----------
     Location:

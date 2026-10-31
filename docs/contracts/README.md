@@ -56,7 +56,7 @@ Authorization: every operation names one permission in `x-permission`, a flat st
 
 ## 4. Error model (plan 2.4)
 
-Every non-2xx body is the `Error` schema: `{ "code", "message", "details"?, "request_id" }`. `code` is a stable snake_case string from `errors.md`; clients branch on `code`, never on `message`, which is localised by `Accept-Language`. `details` is code-specific: `fields[]` with JSON pointers for `validation_failed`; `current_status` and `version` for `409` transition and version conflicts (D-5, D-22); `retry_after_s` for `rate_limited`. Each operation lists the codes it can return in the `description` of each specific status; the generic `4XX` response covers `validation_failed`, `idempotency_key_required`, `unauthenticated`, `token_expired`, `forbidden`, `feature_not_enabled`, `account_suspended`, `not_found` and `rate_limited` everywhere. A resource in another account is `404 not_found`, never `403` (document 4 §9, check 2).
+Every non-2xx body is the `Error` schema: `{ "code", "message", "details"?, "request_id" }`. `code` is a stable snake_case string from `errors.md`; clients branch on `code`, never on `message`, which is localised by `Accept-Language`. `details` is code-specific: `fields[]` with JSON pointers for `validation_failed`; `current_status` and `version` for `409` transition and version conflicts (D-5, D-22); `retry_after_s` for `rate_limited`. Each operation lists the codes it can return in the `description` of each specific status; the generic `4XX` response covers `validation_failed`, `idempotency_key_required`, `unauthenticated`, `token_expired`, `forbidden`, `feature_not_enabled`, `account_suspended`, `not_found` and `rate_limited` everywhere. A resource in another account, outside the member's `site_ids`, or off the driver's run is `404 not_found`, never `403` (document 4 §9, check 2); `403 driver_not_assignee` is kept only for a former assignee (D-23).
 
 ## 5. State transitions
 
@@ -92,12 +92,12 @@ HTTP/1.1 409 Conflict
 
 Rules (ADR-0029):
 
-- The SSE `event:` is the domain event `type` (document 2 §6.3) and `data:` is the envelope (§6.1) with the payload reduced to what the reader may see. Driver positions are not domain events (ADR-0028): they use `event: telemetry.driver_location` and carry no `id:`.
+- The SSE `event:` is the domain event `type` (document 2 §6.3) and `data:` is the envelope (§6.1) with the payload reduced to what the reader may see; driver and recipient streams send `ReducedEnvelope` (no `account_id`, `causation_id` or `correlation_id`). Driver positions are not domain events (ADR-0028): they use `event: telemetry.driver_location` and carry no `id:`.
 - `id:` is the envelope `id` (UUIDv7, time-ordered). On reconnect the client sends `Last-Event-ID`; the server replays the reader's events after that id from a 15-minute buffer. If the id is older than the buffer, it sends one `stream.resync` event and the client refetches through REST.
 - The server sends `retry: 5000` once and a comment line (`: keep-alive`) every 20 s.
 - A stream lives no longer than its credential: the server closes it when the access token expires (the client reconnects with a fresh token and `Last-Event-ID`), when the member or device is revoked, and when the account is suspended. The recipient stream re-reads the TrackingToken row (expiry and `revoked_at`) on connect and every 60 s.
 - Polling fallback at 10 to 15 s (ADR-0009): every stream has a REST twin: `GET /v1/staff/driver-locations/latest` and `GET /v1/staff/orders?updated_from=`, `GET /v1/driver/offers` and `GET /v1/driver/orders`, `GET /v1/recipient/tracking`.
-- The recipient stream also accepts the token as `?token=` because `EventSource` cannot set headers; only purpose `track` is accepted there and the query string is never logged.
+- The recipient stream also accepts the token as `?token=` because `EventSource` cannot set headers; only purpose `track` is accepted there. Recipient pages send `Referrer-Policy: no-referrer`, and query strings are excluded from access logs, traces and error reports on every surface.
 
 On the wire (dispatch board, one domain event then one position):
 
@@ -171,3 +171,4 @@ An API key may hold only `delivery.orders.read`, `delivery.orders.create`, `deli
 2. Cash PIN on a cash delivery (document 4 §3.2 unchanged): `cash_pin` travels in the `delivered` event and is never persisted. Online at the door (event within 120 s of `client_ts`) a wrong PIN is refused with `cash_pin_invalid` so the driver can retype; on an offline replay the field fact is recorded (D-23), the failure counts toward the lock and the driver is `cash_blocked` until a supervisor clears it. The 120 s online window is a proposal.
 3. Document 2 has no event for an assignment ending (unassign or transfer); the driver stream uses `delivery.order.accepted` and the driver app refetches its run. A `delivery.assignment.ended` event would be clearer.
 4. Route sequencing (wave 2, VROOM) has no attribute for stop order in document 2; its contract is left to the wave 2 order.
+5. D-24 wording: the recipient view also shows the merchant name and the slot window. Proposed D-24 text: "status, ETA, driver first name, last position while out_for_delivery, merchant name, slot window"; the lead amends the domain model.

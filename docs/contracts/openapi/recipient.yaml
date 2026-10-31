@@ -6,7 +6,10 @@ info:
   description: >-
     Public recipient pages opened from a link that carries a signed per-order token (document 4 §3.5,
     document 2 §3.12). The token purpose grants the permission; no account data beyond the order public
-    view is reachable (D-24). Conventions, errors and waves: docs/contracts/README.md.
+    view is reachable (D-24). Purpose to permission: track grants delivery.tracking.view; reschedule grants
+    delivery.tracking.reschedule; address_pin grants delivery.tracking.pin_address. Every request re-checks
+    the TrackingToken row (expiry, revoked_at). Pages are served with Referrer-Policy: no-referrer and
+    query strings are excluded from logs. Conventions, errors and waves: docs/contracts/README.md.
 servers:
   - url: /v1/recipient
 security:
@@ -62,7 +65,7 @@ paths:
     post:
       operationId: recipientReschedule
       summary: "Choose a new slot"
-      description: 'Allowed before pickup or after an attempt; emits delivery.order.rescheduled. Purpose reschedule, 48 h (document 4 §3.5).'
+      description: 'Allowed before pickup or after an attempt; the slot must belong to the orders site and zone (422 slot_not_available otherwise). Emits delivery.order.rescheduled. Purpose reschedule, 48 h (document 4 §3.5).'
       tags: [reschedule]
       x-wave: 2
       x-permission: delivery.tracking.reschedule
@@ -73,7 +76,7 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/PublicTrackingView'}}}}
         '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: slot_full, invalid_transition.'}
-        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused, slot_not_available.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /tracking/address-pin:
     put:
