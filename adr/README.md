@@ -33,6 +33,8 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 | [0026](0026-bounded-contexts-and-module-boundaries.md) | Split the API into three bounded contexts with enforced module boundaries | proposed |
 | [0027](0027-domain-event-envelope-and-versioning.md) | Publish domain events in one versioned envelope, ordered per aggregate | proposed |
 | [0028](0028-driver-location-pings-bypass-the-outbox.md) | Write driver location pings to a bounded ring and fan out by Redis, not through the outbox | proposed |
+| [0029](0029-cursor-pagination-and-sse-event-names.md) | Page lists by opaque cursor and name SSE events after domain event types | proposed |
+| [0030](0030-merchant-webhook-signing-and-delivery.md) | Sign merchant webhooks with a timestamped HMAC and verify each subscription by token | proposed |
 
 ## Groups
 
@@ -40,3 +42,4 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 - **Rulings carried over from eeasynew:** 0005 own fleets, 0006 allowlist rollout, 0007 cash custody, 0008 offline outbox, 0009 tracking by polling and SSE, 0010 VROOM over Hudhud, 0011 stock ledger, 0012 tracking mode and locations, 0013 one-way channel sync, 0014 pack-time shipments, 0015 storage and coverage first, 0016 Arabic and English, 0017 tap-to-phone gated.
 - **Proposed by the architecture lead, accepted by the owner on merging PR #1 (2026-10-31):** 0018 one sites concept, 0019 PostgreSQL with PostGIS, 0020 Drizzle, 0021 driver app in the monorepo, 0022 containers on a Gulf host, 0024 outbox and queue, 0025 tenancy by account_id.
 - **Proposed with the domain model (document 2):** 0026 bounded contexts and module boundaries, 0027 domain event envelope and versioning, 0028 driver location pings bypass the outbox.
+- **Proposed with the API contracts (document 3):** 0029 cursor pagination and SSE event names, 0030 merchant webhook signing and delivery.
