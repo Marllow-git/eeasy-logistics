@@ -8,7 +8,7 @@ The documents that must exist and be approved before application code is written
 | 2 | Domain model | `docs/architecture/domain-model.md` | in review (PR #5) |
 | 3 | API contracts | `docs/contracts/` | in review |
 | 4 | Tenancy, identity and authorization | `docs/architecture/identity-and-tenancy.md` | approved (PR #1) |
-| 5 | Data architecture | `docs/architecture/data.md` | not started |
+| 5 | Data architecture | `docs/architecture/data.md` | in review |
 | 6 | Platform blueprint | `docs/architecture/platform.md` | approved (PR #1) |
 | 7 | Web app architecture | `docs/architecture/web.md` | not started |
 | 8 | Driver app architecture | `docs/architecture/driver-app.md` | not started |
