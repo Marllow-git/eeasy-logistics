@@ -302,46 +302,48 @@ At the eeasynew cadence (foundation plan §6): wave 0 two to three weeks, wave 1
 
 Every open question still unanswered across the foundation documents, merged where they repeat. Doc 3 §12 items 3 (`delivery.assignment.ended`) and 5 (D-24 wording) are already applied in doc 2 (PR #5) and are not listed; item 1 is Q-13 and Q-14, item 2 and 6 are Q-15 and Q-24, item 4 is Q-18. "By" is the wave by which it must be ruled; the order that needs it is in its "Depends on" column.
 
+Owner delegation 2026-10-31: every proposed default stands provisionally and is built on until the owner rules otherwise; a ruling that changes a default is recorded here and triggers the amendment in §5.
+
 | Id | Source | Question | Proposed default | By | Ruling |
 |---|---|---|---|---|---|
-| Q-1 | doc 2 §9.1 | Offline delivery versus a dispatcher reassignment (D-23): who wins? | field fact wins; dispatcher alerted | 1 | |
-| Q-2 | doc 2 §9.2 | When stock leaves the books (W-14) | per-site `transit` at pickup, CUSTOMER on delivery | 3 | |
-| Q-3 | doc 2 §9.3 | Maximum attempts (D-14) and per-order override | three, account setting; override question open | 1 | |
-| Q-4 | doc 2 §9.4 | Exchange as one order or two linked orders | one order of kind `exchange` | 1 | |
-| Q-5 | doc 2 §9.5 | Daily location trail retention | 90 days | 1 | |
-| Q-6 | doc 2 §9.6 | Cancel after pickup; does refusal at the door count as an attempt? | cancel becomes `failed` then `returned` | 1 | |
-| Q-7 | doc 4 §10.1 | Mandatory second factor for merchant owners | optional per account, enforceable by the owner (doc 4 §3.1) | 0 | |
-| Q-8 | doc 4 §10.2 | Active driver devices per driver | two | 1 | |
-| Q-9 | doc 4 §10.3 | Read-only support impersonation | yes, read-only, one hour, banner | 0 | |
-| Q-10 | doc 6 §10.1; doc 5 §13.4; doc 9 §6.5 | Hosting provider, with the database conditions (four roles, PostGIS, `citext`, triggers and policies without superuser) and OSRM memory | Saudi or Bahraini region with managed PostgreSQL meeting the conditions | 0 | |
-| Q-11 | doc 6 §10.2 | Web on the same host or an edge platform | same host; revisit after wave 4 | 4 | |
-| Q-12 | doc 6 §10.3 | Container registry | GitHub Container Registry | 0 | |
-| Q-13 | ARCH-1 plan §7.1; doc 3 §12.1 | Public API credential shape | static `X-API-Key` | 4 | |
-| Q-14 | ARCH-1 plan §7.2; doc 3 §12.1 | Public WMS paths in `/v1` | Delivery only; WMS `x-availability: after-wms-pilot` | 4 | |
-| Q-15 | doc 3 §12.2, §12.6; doc 8 §13.1 | Cash PIN: the 120-second online window in which a wrong PIN is refused rather than recorded; the device verifier of ADR-0034 with `driverVerifyCashPin`; six digits only? | 120 s; device verifier plus server re-check; length stays four to six | 1 | |
-| Q-16 | doc 4 §5; doc 5 §4.5 | Confirm RLS policies from wave 0 with RLS switched on at wave 1 exit | as doc 5 §4.5 | 0 | |
-| Q-17 | doc 4 §2 | Separation-of-duties threshold for stock adjustments | per-account setting, set in WMS-5 | 3 | |
-| Q-18 | doc 3 §12.4; doc 8 §9; doc 9 §6.4 | Where the stop sequence and ETA live | decided in INT-6 as an additive doc 2 and contract change | 2 | |
-| Q-19 | doc 7 §12.3 | Map tiles: Hudhud, self-hosted Protomaps, or licensed | Hudhud if included, else Protomaps after a boundary check | 1 | |
-| Q-20 | doc 7 §12.4 | Recipient page embedding | off by default; `embed_origins`; tracking only | 1 | |
-| Q-21 | plan §8 D8; doc 7 §12.1 | Brand name for the merchant UI | "Eeasy Logistics" plus a working Arabic name, one key | 0 | |
-| Q-22 | doc 7 §12.2 | Platform area on its own hostname | yes, `admin.<domain>` | 0 | |
-| Q-23 | doc 7 §12.5; doc 8 §13.2 | Refresh-token reuse grace | 30 seconds, same family, same pair returned | 0 | |
-| Q-24 | doc 8 §13.5; doc 3 §12.6 | Minimum app version signal | `min_app_version` on `driverGetMe` and `426 app_update_required` (already in `driver.yaml` as proposed) | 1 | |
-| Q-25 | doc 8 §13.3 | Keep rejected driver events with cash and show them to dispatch and cashiers | yes | 1 | |
-| Q-26 | doc 8 §13.4 | Shift start without background location | allowed with a warning to dispatch | 1 | |
-| Q-27 | doc 9 §12.1 | WhatsApp provider | Meta Cloud API or a Saudi BSP: no default; needed for wave 0 | 0 | |
-| Q-28 | doc 9 §12.2 | Hudhud agreement: signer, quota, price, short-code lookup | – (commercial) | 1 | |
-| Q-29 | doc 9 §12.3, §7.7 | #885 go or no-go for carriers, and ADR-0030 signing asked of Eeasy shipping | 2027-01-15; yes | 2 | |
-| Q-30 | doc 9 §12.4 | New Salla and Zid partner apps for this product | new apps | 3 | |
-| Q-31 | plan §8 D7 | Pilot merchant and go-live target | – (owner names one before UAT-2) | 1 | |
-| Q-32 | plan §6 waves 2 and 4 | Driver pay statements and SLA scorecards have no aggregate in doc 2 | read-only reports over existing ledgers and events; no new ledger | 2 | |
-| Q-33 | plan §8 D6 | Commercial model and pricing | limits and counters from day one; pricing before wave 2 | 2 | |
-| Q-34 | doc 9 §12.5 | Order status written back to the channel | read-only for orders; a write-back needs a new ADR | 4 | |
-| Q-35 | doc 5 §13.3 | Merchant webhook log visibility | 30 days | 4 | |
-| Q-36 | plan §6 wave 4 | Content of work items W-7 and W-8 | W-7 WMS returns, W-8 channel stock publication (doc 3 §10 wave 4) | 3 | |
-| Q-37 | doc 5 §13.1 | Recipient data on orders | kept for the life of the account | 1 | |
-| Q-38 | doc 5 §13.2 | Closed-account retention and immediate deletion | 90 days with export, then deletion | 1 | |
+| Q-1 | doc 2 §9.1 | Offline delivery versus a dispatcher reassignment (D-23): who wins? | field fact wins; dispatcher alerted | 1 | default (provisional) |
+| Q-2 | doc 2 §9.2 | When stock leaves the books (W-14) | per-site `transit` at pickup, CUSTOMER on delivery | 3 | default (provisional) |
+| Q-3 | doc 2 §9.3 | Maximum attempts (D-14) and per-order override | three, account setting; override question open | 1 | default (provisional) |
+| Q-4 | doc 2 §9.4 | Exchange as one order or two linked orders | one order of kind `exchange` | 1 | default (provisional) |
+| Q-5 | doc 2 §9.5 | Daily location trail retention | 90 days | 1 | default (provisional) |
+| Q-6 | doc 2 §9.6 | Cancel after pickup; does refusal at the door count as an attempt? | cancel becomes `failed` then `returned` | 1 | default (provisional) |
+| Q-7 | doc 4 §10.1 | Mandatory second factor for merchant owners | optional per account, enforceable by the owner (doc 4 §3.1) | 0 | default (provisional) |
+| Q-8 | doc 4 §10.2 | Active driver devices per driver | two | 1 | default (provisional) |
+| Q-9 | doc 4 §10.3 | Read-only support impersonation | yes, read-only, one hour, banner | 0 | default (provisional) |
+| Q-10 | doc 6 §10.1; doc 5 §13.4; doc 9 §6.5 | Hosting provider, with the database conditions (four roles, PostGIS, `citext`, triggers and policies without superuser) and OSRM memory | Saudi or Bahraini region with managed PostgreSQL meeting the conditions | 0 | default (provisional) |
+| Q-11 | doc 6 §10.2 | Web on the same host or an edge platform | same host; revisit after wave 4 | 4 | default (provisional) |
+| Q-12 | doc 6 §10.3 | Container registry | GitHub Container Registry | 0 | default (provisional) |
+| Q-13 | ARCH-1 plan §7.1; doc 3 §12.1 | Public API credential shape | static `X-API-Key` | 4 | default (provisional) |
+| Q-14 | ARCH-1 plan §7.2; doc 3 §12.1 | Public WMS paths in `/v1` | Delivery only; WMS `x-availability: after-wms-pilot` | 4 | default (provisional) |
+| Q-15 | doc 3 §12.2, §12.6; doc 8 §13.1 | Cash PIN: the 120-second online window in which a wrong PIN is refused rather than recorded; the device verifier of ADR-0034 with `driverVerifyCashPin`; six digits only? | 120 s; device verifier plus server re-check; length stays four to six | 1 | default (provisional) |
+| Q-16 | doc 4 §5; doc 5 §4.5 | Confirm RLS policies from wave 0 with RLS switched on at wave 1 exit | as doc 5 §4.5 | 0 | default (provisional) |
+| Q-17 | doc 4 §2 | Separation-of-duties threshold for stock adjustments | per-account setting, set in WMS-5 | 3 | default (provisional) |
+| Q-18 | doc 3 §12.4; doc 8 §9; doc 9 §6.4 | Where the stop sequence and ETA live | decided in INT-6 as an additive doc 2 and contract change | 2 | default (provisional) |
+| Q-19 | doc 7 §12.3 | Map tiles: Hudhud, self-hosted Protomaps, or licensed | Hudhud if included, else Protomaps after a boundary check | 1 | default (provisional) |
+| Q-20 | doc 7 §12.4 | Recipient page embedding | off by default; `embed_origins`; tracking only | 1 | default (provisional) |
+| Q-21 | plan §8 D8; doc 7 §12.1 | Brand name for the merchant UI | "Eeasy Logistics" plus a working Arabic name, one key | 0 | default (provisional) |
+| Q-22 | doc 7 §12.2 | Platform area on its own hostname | yes, `admin.<domain>` | 0 | default (provisional) |
+| Q-23 | doc 7 §12.5; doc 8 §13.2 | Refresh-token reuse grace | 30 seconds, same family, same pair returned | 0 | default (provisional) |
+| Q-24 | doc 8 §13.5; doc 3 §12.6 | Minimum app version signal | `min_app_version` on `driverGetMe` and `426 app_update_required` (already in `driver.yaml` as proposed) | 1 | default (provisional) |
+| Q-25 | doc 8 §13.3 | Keep rejected driver events with cash and show them to dispatch and cashiers | yes | 1 | default (provisional) |
+| Q-26 | doc 8 §13.4 | Shift start without background location | allowed with a warning to dispatch | 1 | default (provisional) |
+| Q-27 | doc 9 §12.1 | WhatsApp provider | Meta Cloud API or a Saudi BSP: no default; needed for wave 0 | 0 | default (provisional) |
+| Q-28 | doc 9 §12.2 | Hudhud agreement: signer, quota, price, short-code lookup | – (commercial) | 1 | default (provisional) |
+| Q-29 | doc 9 §12.3, §7.7 | #885 go or no-go for carriers, and ADR-0030 signing asked of Eeasy shipping | 2027-01-15; yes | 2 | default (provisional) |
+| Q-30 | doc 9 §12.4 | New Salla and Zid partner apps for this product | new apps | 3 | default (provisional) |
+| Q-31 | plan §8 D7 | Pilot merchant and go-live target | – (owner names one before UAT-2) | 1 | default (provisional) |
+| Q-32 | plan §6 waves 2 and 4 | Driver pay statements and SLA scorecards have no aggregate in doc 2 | read-only reports over existing ledgers and events; no new ledger | 2 | default (provisional) |
+| Q-33 | plan §8 D6 | Commercial model and pricing | limits and counters from day one; pricing before wave 2 | 2 | default (provisional) |
+| Q-34 | doc 9 §12.5 | Order status written back to the channel | read-only for orders; a write-back needs a new ADR | 4 | default (provisional) |
+| Q-35 | doc 5 §13.3 | Merchant webhook log visibility | 30 days | 4 | default (provisional) |
+| Q-36 | plan §6 wave 4 | Content of work items W-7 and W-8 | W-7 WMS returns, W-8 channel stock publication (doc 3 §10 wave 4) | 3 | default (provisional) |
+| Q-37 | doc 5 §13.1 | Recipient data on orders | kept for the life of the account | 1 | default (provisional) |
+| Q-38 | doc 5 §13.2 | Closed-account retention and immediate deletion | 90 days with export, then deletion | 1 | default (provisional) |
 
 Proposed ADRs and the wave by which each must be accepted (or replaced):
 
