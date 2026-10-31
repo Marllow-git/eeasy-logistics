@@ -23,6 +23,7 @@ No environment shares a database, a Redis or a bucket with another. The developm
 | postgres | PostgreSQL 16 + PostGIS | managed service in production where available; self-run in Compose |
 | redis | Redis 7 | queues, rate limits, short caches; not a source of truth |
 | vroom | official VROOM image | route optimisation; private network only |
+| osrm | official OSRM image on a Saudi OpenStreetMap extract | distance-matrix fallback behind Hudhud; private network only; from wave 2 (integrations §6.5) (amended 2026-10-31, roadmap A-1) |
 | storage | S3-compatible (MinIO in Compose, provider bucket in production) | proofs, labels, exports; signed URLs only |
 | whatsapp-stub | small HTTP stub | local and ci only: records OTP and message sends for tests |
 | mail-stub | Mailpit | local and ci only |
@@ -41,7 +42,7 @@ One `compose.yaml` with profiles `dev`, `ci`, `stack-a` and `stack-b` (two isola
 Pull request pipeline, five required checks (handbook 03):
 
 1. `typecheck-lint`: every workspace, Turborepo cached.
-2. `api-test`: unit plus integration against the `ci` profile (PostgreSQL + Redis + stubs); migrations applied from zero; the tenancy schema test and the ledger trigger tests included.
+2. `api-test`: unit plus integration against the `ci` profile (PostgreSQL + Redis + stubs); migrations applied from zero; the tenancy schema test and the ledger trigger tests included; an RLS-enabled integration lane runs the integration suite with row-level security switched on (data §4.5) (amended 2026-10-31, roadmap A-6).
 3. `web-build-census`: standalone build, isolated stack on the `ci` profile, Playwright census in `ar` and `en`; screenshots uploaded as artifacts.
 4. `driver-test`: Expo typecheck and unit; EAS builds are manual.
 5. `gitleaks`.
@@ -76,7 +77,7 @@ Images are built once per merge to `main`, tagged with the commit, scanned, push
 
 ## 9. Runbooks (written as the pieces land)
 
-Provision an account · rotate token signing key · rotate the credentials key · restore from backup · drain and redeploy workers · replay a dead-lettered outbox row · revoke a driver device · pause messaging · switch a rollout mode · monthly restore drill.
+Provision an account · rotate token signing key · rotate the credentials key · restore from backup · drain and redeploy workers · replay a dead-lettered outbox row · revoke a driver device · pause messaging · switch a rollout mode · monthly restore drill · replay an inbound webhook · rotate a channel token · re-sync channel stock · rebuild projections · reset the stock-summary cursor after a logical restore (integrations §10, data §3.3, §3.5) (amended 2026-10-31, roadmap A-8).
 
 ## 10. Open decisions
 

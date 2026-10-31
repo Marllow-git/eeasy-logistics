@@ -45,7 +45,7 @@ See `adr/README.md`, group "Rulings carried over from eeasynew" (ADR-0005 to ADR
 
 | Layer | Choice | ADR |
 |---|---|---|
-| Monorepo | pnpm + Turborepo; `apps/web`, `apps/api`, `apps/driver`, `packages/contracts`, `packages/ui`, `packages/i18n`, `packages/config` | 0003, 0021 |
+| Monorepo | pnpm + Turborepo; `apps/web`, `apps/api`, `apps/driver`, `packages/contracts`, `packages/ui`, `packages/i18n`, `packages/config`, `packages/db` (data §1.2) (amended 2026-10-31, roadmap A-7) | 0003, 0021 |
 | Database | PostgreSQL 16 + PostGIS | 0019 |
 | ORM and migrations | Drizzle + SQL migrations | 0020 |
 | Jobs and outbox | BullMQ on Redis; outbox row in the same transaction as the business write | 0024 |
@@ -89,8 +89,10 @@ Three bounded contexts in one database, separated by schema prefix and module fo
 | 0 · Foundation | Scaffold, CI, Compose, PostgreSQL + PostGIS, auth and tenancy, accounts and sites, roles, platform admin with provisioning and rollout mode, design system and AR/EN i18n, audit, outbox, observability | Admin provisions a merchant; merchant signs in, creates a site and a staff user, both languages, CI green |
 | 1 · Delivery core | Orders (manual, CSV), zones, drivers and vehicles, manual dispatch with offers, driver app field loop, offline outbox, recipient tracking and messages, driver push; intake rules: coverage before carrier, receive as pending, auto-override | UAT-2: the UAT-1 script on this product, all PASS including own-fleet coverage |
 | 2 · Dispatch and money | Auto-dispatch, slots and shifts, cash custody handover deposits and reports, driver pay statements, routing rung 1, reschedule and address-pin pages (recipient pin over WhatsApp), diagnose console | A cash day closes with zero unexplained deficit; stops sequenced by VROOM |
-| 3 · WMS core | W-1 locations, W-2 catalog, W-4 ledger, then W-3 inbound and counting, then W-5 picking and W-6 packing with pack-time handoff | Stock in, pick, pack, ship; nightly ledger assertion green |
-| 4 · Network | Public API and webhooks (catalogue, samples, test, one-time token), Salla and Zid intake and publish, routing rungs 2 and 3, SLA and scorecards, returns and exchange, W-7, W-8 | A channel order flows to a delivered parcel without a human copying anything |
+| 3 · WMS core | WMS-W1 locations, WMS-W2 catalog, WMS-W4 ledger, then WMS-W3 inbound and counting, then WMS-W5 picking and WMS-W6 packing with pack-time handoff (amended 2026-10-31, roadmap A-12) | Stock in, pick, pack, ship; nightly ledger assertion green |
+| 4 · Network | Public API and webhooks (catalogue, samples, test, one-time token), Salla and Zid intake and publish, routing rungs 2 and 3, SLA and scorecards, returns and exchange, WMS-W7, WMS-W8 (amended 2026-10-31, roadmap A-12) | A channel order flows to a delivered parcel without a human copying anything |
+
+The WMS work items were named W-1 to W-8 until 2026-10-31 and are now WMS-W1 to WMS-W8, so they do not collide with the W-n invariants of the domain model (amended 2026-10-31, roadmap A-12).
 
 Rough sizing at the eeasynew cadence: wave 0 two to three weeks, wave 1 six to eight, wave 2 four, wave 3 six, wave 4 open-ended; waves 2 and 3 may overlap once wave 1 is in UAT.
 
