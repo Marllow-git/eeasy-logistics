@@ -58,3 +58,28 @@ Reading secrets from a host secret store (OPS-1), key rotation runbook (OPS-2), 
 ## 7. Owner questions
 
 None.
+
+## 8. Executor notes (filled by the executor)
+
+### 8.1 Skills and documents consulted
+
+- `vercel:knowledge-update` (dated 2026-09-18) and `vercel:nextjs` (plugin 0.50.0), before touching `apps/web`. The Next.js guide "Environment variables" (nextjs.org, last updated 2026-08-25): a `NEXT_PUBLIC_*` value is inlined at `next build` only where the code says `process.env.NEXT_PUBLIC_<NAME>` literally. Dynamic lookups (`process.env[name]`, `const env = process.env`) are not inlined, and the value is fixed at build time.
+- `expo:expo-overview`, before touching `apps/driver`. The Expo guide "Environment variables": only static dot notation `process.env.EXPO_PUBLIC_<NAME>` is inlined. Bracket access and destructuring are not. Code under `node_modules` is not inlined. SDK 58 loads only `.env`, `.env.local`, `.env.development*` and `.env.production*`.
+- Verified on real builds rather than taken from the docs. A scratch client page and a scratch driver screen (both deleted afterwards) called `publicConfig()`. `next build` with `NEXT_PUBLIC_POSTHOG_KEY` set put the value in a client chunk, with no `process.env.NEXT_PUBLIC_*` left behind. `expo export --platform android --no-bytecode` produced `EXPO_PUBLIC_API_URL: "https://inline-probe-7731.example.test"` and `undefined` for the unset variables. Inlining therefore works inside the workspace package: Metro resolves it to `packages/config`, outside `node_modules`.
+- npm registry on 2026-10-31: zod 4.6.7 and dotenv 18.0.9, the latest stable versions, pinned exactly.
+
+### 8.2 Interpretations the lead should check
+
+1. **Three files read `process.env`, not one.** The server entry `src/node.ts` (`loadConfig()`, used by `main.ts`) is the only one on the server side. The browser and app bundlers inline only literal `process.env.NEXT_PUBLIC_X` and `process.env.EXPO_PUBLIC_X` reads (8.1), so `src/web.ts` and `src/driver.ts` spell their variables out. Each passes a plain record to a pure schema in `src/public.ts`, the same shape `defineConfig(env)` takes. The ESLint exemption lists exactly these three files.
+2. **The rule is two tools.** dependency-cruiser sees imports only, so it cannot see a global `process.env`. The `no-environment-outside-config` rule in `apps/api` and `apps/web` forbids importing the `process` module outside the package. The shared ESLint config forbids `process.env`, `globalThis.process`, `global.process` and `import { env } from 'node:process'` in every workspace, `apps/driver` included. The red run shows both. `apps/web` also may import only `@eeasy-logistics/config/web`.
+3. **Role.** `app.role` comes from `--role`, as `main.ts` already parses it (platform §2), and is passed as `defineConfig(env, { role })`. It is not an environment variable. The config type allows `migrate`, but `parseRole` still accepts only `api|worker` until PLAT-5 adds the migrate job.
+4. **Messaging provider.** When unset it resolves to `stub` in `local` and `ci` and to `null` in `staging` and `production`. Production refuses an explicit `stub` even with `MESSAGING_DISABLED=true`, and with no provider set it needs `MESSAGING_DISABLED=true`. `MESSAGING_PROVIDER` is the only adapter selector today; `adapterSelectors` in `refusals.ts` is where INT orders add theirs.
+5. **Required versus production-required.** Only `APP_ENV` is required in every environment. The 2.3 list is required in production only, so the API still boots locally before PLAT-2 and PLAT-5 exist. Variables that make sense only together are enforced in every environment: the signing key and its id, the credentials keys and the active id, and the four storage variables. `meta` and `bsp` need a token and a sender id.
+6. **Credentials blob** (2.4). Layout: `version | key id length | key id | nonce(12) | tag(16) | ciphertext`. The header is authenticated as additional data, so relabelling the key id fails. An optional `context` string (for example `<table>:<row id>`) is also authenticated, which stops a blob being copied between rows. `rotate` always re-encrypts. Callers that want to skip blobs already under the active key compare `*_key_id` first.
+7. **Secrets are wrapped** in `Secret` (prints `[redacted]`, read with `reveal()`), so logging the config object cannot leak a secret.
+8. **Runtime of the package.** It ships TypeScript source with `.ts` relative imports. The compiled API runs it through Node's type stripping (Node ≥ 22.18, no warning on 22.23.4), and the package sets `erasableSyntaxOnly`. Consumers accept the `.ts` imports because the shared tsconfig now sets `rewriteRelativeImportExtensions`.
+9. **`.env.example`.** No file existed on this branch or on `origin/feat/PLAT-2-compose-profiles` at the time, so this order created it. The lead reconciles it with PLAT-2's Compose ports and MinIO credentials. The storage lines are empty because the four go together and the file must boot as copied. Web and driver lines go in `apps/web/.env.local` and `apps/driver/.env`, because those tools read their own directories.
+
+### 8.3 Not done here
+
+The web server's own variables (`API_INTERNAL_URL`, web §2) are not in this order. 2.6 limits `apps/web` to `NEXT_PUBLIC_*`, so the order that adds server-side fetches adds them.
