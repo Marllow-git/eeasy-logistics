@@ -111,6 +111,16 @@ components:
       in: header
       description: Envelope id of the last event received; the server replays from a 15-minute buffer or sends `stream.resync` (ADR-0029).
       schema: {type: string, format: uuid}
+    XAppVersion:
+      name: X-App-Version
+      in: header
+      description: 'Driver app semver (proposed, document 8 open question 5); below min_app_version the call returns 426 app_update_required.'
+      schema: {type: string, pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'}
+    XAppPlatform:
+      name: X-App-Platform
+      in: header
+      description: Driver app platform, paired with X-App-Version.
+      schema: {type: string, enum: [ios, android]}
     SupportReason:
       name: X-Support-Reason
       in: header
@@ -139,6 +149,9 @@ components:
       content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
     Unprocessable:
       description: A business rule refused the request.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    UpgradeRequired:
+      description: The app version is below min_app_version (proposed).
       content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
     Locked:
       description: Locked.
