@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "Eeasy Logistics Driver",
+    "slug": "eeasy-logistics-driver",
+    "scheme": "eeasy-logistics-driver",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router", "expo-status-bar"]
+  }
+}
