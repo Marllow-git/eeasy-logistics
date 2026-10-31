@@ -1,0 +1,12 @@
+{
+  "app": {
+    "name": "Eeasy Logistics"
+  },
+  "placeholder": {
+    "auth": "The sign-in page is under construction.",
+    "merchant": "The merchant dashboard is under construction.",
+    "platform": "The platform console is under construction.",
+    "recipient": "The order tracking page is under construction.",
+    "driver": "The driver app is under construction."
+  }
+}
