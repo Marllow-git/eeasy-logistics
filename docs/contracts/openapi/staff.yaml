@@ -40,7 +40,7 @@ paths:
     post:
       operationId: login
       summary: "Sign in with email and password"
-      description: 'Same body and timing for unknown and disabled users (document 4 §8). When a second factor is required the response carries challenge_id and no cookies.'
+      description: 'Same body and timing for unknown and disabled users (document 4 §8). When a second factor is required the response carries challenge_id and no cookies. When the user has more than one active membership the response is account_selection_required with the memberships and a selection_token, and no cookies (G1).'
       tags: [auth]
       x-wave: 0
       x-permission: core.auth.anonymous
@@ -76,9 +76,69 @@ paths:
       security: []
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChallengeVerifyRequest'}}}}
       responses:
-        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/LoginResponse'}}}}
         '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid, token_expired.'}
         '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/select-account:
+    post:
+      operationId: selectAccount
+      summary: "Choose the account after sign-in"
+      description: 'Called with the selection_token from login or second-factor verification when the user has more than one membership. Issues the session; the access token acc claim comes only from this call or switch-account (K-3). The selection token is single use and valid 5 minutes.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SelectAccountRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid, token_expired.'}
+        '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/switch-account:
+    post:
+      operationId: switchAccount
+      summary: "Switch the signed-in user to another of their memberships"
+      description: 'Rotates the session cookies with the new acc claim; the old refresh family is revoked. Only memberships of the same user, status active, on an account that is not suspended.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.self
+      security: [{staffCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SwitchAccountRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: account_suspended.'}
+        '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/second-factor/enrol:
+    post:
+      operationId: enrolSecondFactor
+      summary: "Start phone OTP enrolment"
+      description: 'Only inside a fresh password-authenticated session (password entered within 5 minutes, else 401 reauthentication_required) and only when no second factor is enrolled (409 second_factor_already_enrolled; changing it needs an owner or admin reset). Sends an OTP to the phone.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.self
+      security: [{staffCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EnrolSecondFactorRequest'}}}}
+      responses:
+        '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/EnrolChallenge'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: reauthentication_required.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: second_factor_already_enrolled.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/second-factor/confirm:
+    post:
+      operationId: confirmSecondFactor
+      summary: "Confirm phone OTP enrolment"
+      description: 'At most 5 attempts per challenge; the challenge expires after 5 minutes. Audited.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.self
+      security: [{staffCookie: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChallengeVerifyRequest'}}}}
+      responses:
+        '204': {description: Done}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid, reauthentication_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /auth/refresh:
     post:
@@ -578,7 +638,28 @@ components:
       properties:
         second_factor_required: {type: boolean}
         challenge_id: {type: [string, 'null']}
+        account_selection_required: {type: boolean}
+        selection_token: {type: [string, 'null'], description: 'Single use, 5 minutes; only with account_selection_required'}
+        memberships:
+          type: array
+          description: Only with account_selection_required
+          items: {type: object, properties: {membership_id: {type: string, format: uuid}, account_id: {type: string, format: uuid}, account_name: {type: string}, roles: {type: array, items: {$ref: './components.yaml#/components/schemas/Role'}}}}
         me: {oneOf: [{$ref: './components.yaml#/components/schemas/Me'}, {type: 'null'}]}
+    SelectAccountRequest:
+      type: object
+      required: [selection_token, membership_id]
+      properties: {selection_token: {type: string}, membership_id: {type: string, format: uuid}}
+    SwitchAccountRequest:
+      type: object
+      required: [membership_id]
+      properties: {membership_id: {type: string, format: uuid}}
+    EnrolSecondFactorRequest:
+      type: object
+      required: [phone]
+      properties: {phone: {type: string, description: Normalised to E.164}}
+    EnrolChallenge:
+      type: object
+      properties: {challenge_id: {type: string}, expires_at: {type: string, format: date-time}}
     ChallengeRequest:
       type: object
       required: [challenge_id]
