@@ -77,6 +77,24 @@ docker compose exec minio-init mc version info local/elx-local
 
 The smoke workflow `.github/workflows/compose-smoke.yml` runs these checks on every pull request that touches `compose.yaml` or `tools/`. The stub's own tests run with `node --test tools/whatsapp-stub/server.test.mjs`.
 
+### Without Docker: the native stack
+
+On a Mac without a container runtime, `tools/native-stack.sh` runs the same services from Homebrew, on the same dev ports and with the same `.env` (plan decision 2.9). It needs `postgresql@17`, `postgis`, `redis`, `minio`, `minio-mc` and `mailpit` from Homebrew, plus Node 22.
+
+```sh
+cp .env.example .env              # if not done already
+tools/native-stack.sh up          # start, create roles, extensions and the versioned bucket
+tools/native-stack.sh status
+tools/native-stack.sh down        # stop what up started; data is kept in .local/native-stack
+tools/native-stack.sh reset       # down, then delete the data and the elx database and roles up created
+```
+
+- PostgreSQL: if 5432 is free, `up` starts its own cluster in `.local/native-stack/postgres` (superuser `postgres` with `POSTGRES_PASSWORD`). If your own PostgreSQL already answers on 5432, `up` creates the database `elx` and the four roles in it instead. It needs a superuser login over 127.0.0.1 (your OS user by default; set `ELX_NATIVE_PG_ADMIN` to use another). `template1` and every other database stay untouched, and `up` refuses to run if an `elx` database it did not create already exists.
+- Redis: a server already on 6379 is reused and never stopped. If there is none, `up` starts one.
+- MinIO, Mailpit and the WhatsApp stub run as background processes, with their data and logs under `.local/native-stack/`. For `mc`, set `MC_CONFIG_DIR=.local/native-stack/mc` to use the alias `local`.
+- There is no VROOM here. Use the Compose stack or CI for it.
+- Known differences from Compose and CI, accepted until a container runtime is installed: PostgreSQL 17 instead of 16 (ADR-0019 governs CI and production), Homebrew's MinIO (the last upstream build) instead of the `pgsty/silo` fork, and whatever Redis version is running (8 on this machine) instead of 7.
+
 Images, checked on 2026-10-31 against Docker Hub and GHCR:
 
 | Image | Tag | Note |
