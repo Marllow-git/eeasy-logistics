@@ -38,6 +38,8 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 | [0031](0031-database-roles-and-ledger-single-writer.md) | Separate database roles by duty and keep ledger writes in the application's ledger services | proposed |
 | [0032](0032-browser-reaches-api-on-web-origin.md) | Serve the API to the browser on the web origin and refresh staff sessions in web middleware | proposed |
 | [0033](0033-radix-tailwind-design-system-and-maplibre.md) | Build the design system on Radix primitives and Tailwind, with MapLibre behind a MapProvider | proposed |
+| [0034](0034-offline-cash-pin-device-verifier.md) | Check the cash PIN on the device offline and again on the server at replay | proposed |
+| [0035](0035-driver-app-end-to-end-with-maestro.md) | Run the driver app's end-to-end flows and census with Maestro | proposed |
 
 ## Groups
 
@@ -48,3 +50,4 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 - **Proposed with the API contracts (document 3):** 0029 cursor pagination and SSE event names, 0030 merchant webhook signing and delivery.
 - **Proposed with the data architecture (document 5):** 0031 database roles and the ledger single writer.
 - **Proposed with the web app architecture (document 7):** 0032 browser reaches the API on the web origin, 0033 design system base and map provider.
+- **Proposed with the driver app architecture (document 8):** 0034 offline cash PIN verifier, 0035 Maestro end-to-end flows.
