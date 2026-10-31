@@ -1,0 +1,1145 @@
+openapi: 3.1.0
+info:
+  title: eeasy-logistics shared components
+  version: 1.0.0
+  license: {name: Proprietary, identifier: LicenseRef-Proprietary}
+  description: >-
+    Shared schemas, parameters, responses and security schemes for every surface
+    (foundation document 3, docs/contracts/README.md). Aggregate schemas mirror
+    docs/architecture/domain-model.md (document 2) section by section; they do not
+    redefine it. Money is integer halalas plus currency; ids are UUIDv7; times are
+    ISO 8601 with offset.
+servers:
+  - url: https://api.eeasy-logistics.example/v1
+paths: {}
+components:
+  securitySchemes:
+    staffCookie:
+      type: apiKey
+      in: cookie
+      name: el_staff_at
+      description: Staff access JWT (15 min) in an httpOnly SameSite=Lax cookie; rotating refresh cookie 30 days (document 4 §4).
+    driverBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Driver access JWT (15 min) with the `dev` claim; device-bound rotating refresh token 90 days (document 4 §3.2, §4).
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Per-account integrator key, shown once, stored as SHA-256 with a public prefix, scoped (document 4 §3.4).
+    recipientToken:
+      type: apiKey
+      in: header
+      name: X-Recipient-Token
+      description: HMAC token over order id, purpose and expiry from the recipient link (document 4 §3.5, document 2 §3.12).
+    platformCookie:
+      type: apiKey
+      in: cookie
+      name: el_platform_at
+      description: Platform staff access JWT after password and TOTP; 12 h idle expiry (document 4 §3.3).
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated UUID; stored 24 h per principal (K-8). Replays return the stored response.
+      schema: {type: string, format: uuid}
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: The aggregate `version` the dispatcher read, quoted (D-22). Missing returns 428 version_required.
+      schema: {type: string, example: '"7"'}
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from `next_cursor` (ADR-0029).
+      schema: {type: string}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+    Sort:
+      name: sort
+      in: query
+      description: Field from the operation's list, `-` prefix for descending; default `-created_at`.
+      schema: {type: string}
+    Q:
+      name: q
+      in: query
+      description: Free-text search over the resource's display fields.
+      schema: {type: string, maxLength: 200}
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      schema: {type: string, enum: [ar, en]}
+    SiteIdQuery:
+      name: site_id
+      in: query
+      schema: {type: string, format: uuid}
+    DriverIdQuery:
+      name: driver_id
+      in: query
+      schema: {type: string, format: uuid}
+    StatusQuery:
+      name: status
+      in: query
+      description: One status or a comma list of statuses from the resource's state machine.
+      schema: {type: string}
+    CreatedFrom:
+      name: created_from
+      in: query
+      schema: {type: string, format: date-time}
+    CreatedTo:
+      name: created_to
+      in: query
+      schema: {type: string, format: date-time}
+    UpdatedFrom:
+      name: updated_from
+      in: query
+      description: Polling fallback for SSE (ADR-0009); returns rows changed at or after this time.
+      schema: {type: string, format: date-time}
+    BusinessDate:
+      name: business_date
+      in: query
+      schema: {type: string, format: date}
+    LastEventId:
+      name: Last-Event-ID
+      in: header
+      description: Envelope id of the last event received; the server replays from a 15-minute buffer or sends `stream.resync` (ADR-0029).
+      schema: {type: string, format: uuid}
+    ElClient:
+      name: X-EL-Client
+      in: header
+      required: true
+      description: 'Must be web on every non-GET call of the staff and platform surfaces, together with an Origin header that is one of the web origins; otherwise 403 forbidden (proposed ADR-0032, branch docs/arch-1-web).'
+      schema: {type: string, enum: [web]}
+    XAppVersion:
+      name: X-App-Version
+      in: header
+      description: 'Driver app semver (proposed, document 8 open question 5); below min_app_version the call returns 426 app_update_required, except on the outbox-replay routes (order events, proof upload and confirm, locations, shift pause, resume and end) so a queued outbox drains before the update. A compatibility hint, not a security control.'
+      schema: {type: string, pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'}
+    XAppPlatform:
+      name: X-App-Platform
+      in: header
+      description: Driver app platform, paired with X-App-Version.
+      schema: {type: string, enum: [ios, android]}
+    SupportReason:
+      name: X-Support-Reason
+      in: header
+      required: true
+      description: Free-text reason written to the audit row of every cross-tenant platform call (document 4 §5, §7).
+      schema: {type: string, minLength: 5, maxLength: 500}
+
+  responses:
+    ClientError:
+      description: 'Common codes: validation_failed, idempotency_key_required, unauthenticated, token_expired, forbidden, feature_not_enabled, account_suspended, not_found, version_required, rate_limited.'
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    BadRequest:
+      description: Bad request.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    Unauthorized:
+      description: Unauthenticated.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    Forbidden:
+      description: Forbidden.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    NotFound:
+      description: Not found in the caller's account.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    Conflict:
+      description: 'State or version conflict; `details` carries `current_status` and `version` (D-5, D-22).'
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    Unprocessable:
+      description: A business rule refused the request.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    UpgradeRequired:
+      description: The app version is below min_app_version (proposed).
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    Locked:
+      description: Locked.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    PreconditionRequired:
+      description: If-Match missing (D-22).
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    TooManyRequests:
+      description: Rate limited; see Retry-After.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    ServiceUnavailable:
+      description: A required external system is not configured.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    EventStream:
+      description: 'text/event-stream; `event:` is the domain event type, `data:` the envelope, `id:` the envelope id (ADR-0029).'
+      content: {text/event-stream: {schema: {type: string}}}
+
+  schemas:
+    # ---------- common ----------
+    Error:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code: {type: string, description: Stable code from docs/contracts/errors.md, example: invalid_transition}
+        message: {type: string, description: Localised by Accept-Language}
+        details:
+          type: object
+          additionalProperties: true
+          properties:
+            fields: {type: array, items: {$ref: '#/components/schemas/FieldError'}}
+            current_status: {type: string}
+            version: {type: integer}
+            retry_after_s: {type: integer}
+        request_id: {type: string}
+    FieldError:
+      type: object
+      required: [pointer, code]
+      properties:
+        pointer: {type: string, example: /recipient/phone}
+        code: {type: string, example: invalid_format}
+        message: {type: string}
+    Base:
+      type: object
+      required: [id, created_at]
+      properties:
+        id: {type: string, format: uuid, description: UUIDv7}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: {type: integer, minimum: 0, description: Integer halalas}
+        currency: {type: string, enum: [SAR], default: SAR}
+    SignedMoney:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: {type: integer, description: 'Integer halalas; positive deficit, negative surplus or clearance'}
+        currency: {type: string, enum: [SAR]}
+    Point:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat: {type: number, minimum: -90, maximum: 90}
+        lng: {type: number, minimum: -180, maximum: 180}
+    Address:
+      type: object
+      description: Order address (document 2 §3.1).
+      required: [text, city]
+      properties:
+        text: {type: string, maxLength: 500}
+        city: {type: string}
+        district: {type: string}
+        national_address_short_code: {type: string, pattern: '^[A-Z]{4}[0-9]{4}$', example: RRRD2929}
+        point: {$ref: '#/components/schemas/Point'}
+        pin_source: {type: string, enum: [geocoded, recipient_pin, driver_pin, manual], readOnly: true}
+        geocode_confidence: {type: number, minimum: 0, maximum: 1, readOnly: true}
+    Recipient:
+      type: object
+      required: [name, phone]
+      properties:
+        name: {type: string, maxLength: 200}
+        phone: {type: string, description: E.164, pattern: '^\+[1-9][0-9]{7,14}$'}
+        alternate_phone: {type: string, pattern: '^\+[1-9][0-9]{7,14}$'}
+        preferred_language: {type: string, enum: [ar, en]}
+    Page:
+      type: object
+      required: [data, next_cursor]
+      properties:
+        data: {type: array, items: {}}
+        next_cursor: {type: [string, 'null']}
+    UploadTicket:
+      type: object
+      description: 'Signed, write-once upload URL (ADR-0015). The server chooses the object key under the account prefix; content type, sha256 and maximum size are bound into the signature; the URL expires after 10 minutes. Clients refer to the file only by upload_id.'
+      required: [upload_id, upload_url, method, expires_at, max_bytes, content_type, sha256]
+      properties:
+        upload_id: {type: string, format: uuid}
+        upload_url: {type: string, format: uri}
+        method: {type: string, enum: [PUT]}
+        headers: {type: object, additionalProperties: {type: string}, description: Headers the client must send unchanged (content type and checksum)}
+        expires_at: {type: string, format: date-time, description: Issue time plus 10 minutes}
+        max_bytes: {type: integer, description: 'Photos and slips 10 MB, CSV 20 MB'}
+        content_type: {type: string}
+        sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+    SignedUrl:
+      type: object
+      description: 'Expiring read URL on a separate file domain, served with Content-Disposition: attachment.'
+      required: [url, expires_at]
+      properties:
+        url: {type: string, format: uri}
+        expires_at: {type: string, format: date-time}
+    Envelope:
+      type: object
+      description: Domain event envelope (document 2 §6.1, ADR-0027).
+      required: [id, type, version, occurred_at, account_id, aggregate_type, aggregate_id, sequence, correlation_id, payload]
+      properties:
+        id: {type: string, format: uuid}
+        type: {type: string, pattern: '^[a-z_]+\.[a-z_]+\.[a-z_]+$', example: delivery.order.delivered}
+        version: {type: integer, minimum: 1}
+        occurred_at: {type: string, format: date-time}
+        account_id: {type: string, format: uuid}
+        aggregate_type: {type: string}
+        aggregate_id: {type: string, format: uuid}
+        sequence: {type: integer, minimum: 1}
+        causation_id: {type: [string, 'null'], format: uuid}
+        correlation_id: {type: string, format: uuid}
+        payload: {type: object}
+    ReducedEnvelope:
+      type: object
+      description: Envelope sent on the driver and recipient streams; account_id, causation_id and correlation_id are removed.
+      required: [id, type, version, occurred_at, aggregate_type, aggregate_id, sequence, payload]
+      properties:
+        id: {type: string, format: uuid}
+        type: {type: string}
+        version: {type: integer}
+        occurred_at: {type: string, format: date-time}
+        aggregate_type: {type: string}
+        aggregate_id: {type: string, format: uuid}
+        sequence: {type: integer}
+        payload: {type: object}
+    Job:
+      type: object
+      description: Asynchronous job resource (not a domain aggregate).
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        status: {type: string, enum: [awaiting_upload, queued, running, completed, failed]}
+        total_rows: {type: integer}
+        processed_rows: {type: integer}
+        created_count: {type: integer}
+        error_count: {type: integer}
+        errors_url: {type: [string, 'null'], format: uri}
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, expires_in]
+      properties:
+        access_token: {type: string}
+        refresh_token: {type: string}
+        expires_in: {type: integer, example: 900}
+
+    # ---------- shared kernel (document 2 §2) ----------
+    Account:
+      type: object
+      description: Document 2 §2.1. Platform table.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        name: {type: string}
+        country: {type: string, enum: [SA]}
+        default_locale: {type: string, enum: [ar, en]}
+        timezone: {type: string, enum: [Asia/Riyadh]}
+        status: {type: string, enum: [provisioned, active, suspended, closed]}
+        limits: {$ref: '#/components/schemas/AccountLimits'}
+        usage: {$ref: '#/components/schemas/AccountLimits'}
+        provisioned_by: {type: string, format: uuid, readOnly: true}
+    AccountLimits:
+      type: object
+      properties:
+        orders_per_month: {type: integer, minimum: 0}
+        drivers: {type: integer, minimum: 0}
+        sites: {type: integer, minimum: 0}
+        api_keys: {type: integer, minimum: 0}
+    AccountSettings:
+      type: object
+      description: Account settings referenced by D-3 (intake rules), D-7 (proof policy), D-14 (max attempts), W-15 and W-16 (tolerances).
+      properties:
+        intake_rule: {type: string, enum: [receive_as_pending, auto_accept]}
+        max_attempts: {type: integer, minimum: 1, maximum: 10, default: 3}
+        proof_policy:
+          type: object
+          properties:
+            delivery: {type: array, items: {type: string, enum: [photo, signature, recipient_otp, id_check]}}
+            cod: {type: array, items: {type: string, enum: [photo, signature, recipient_otp, id_check]}}
+        reason_codes:
+          type: array
+          x-extensible-enum: true
+          items:
+            type: object
+            required: [code, label_ar, label_en]
+            properties: {code: {type: string}, label_ar: {type: string}, label_en: {type: string}, active: {type: boolean}}
+        auto_dispatch: {type: object, properties: {enabled: {type: boolean}, offer_ttl_s: {type: integer, minimum: 30}, drivers_per_wave: {type: integer, minimum: 1}}}
+        second_factor_required: {type: boolean}
+        allowed_cod_methods: {type: array, items: {type: string, enum: [cash, card, mada, wallet]}, default: [cash], description: 'Digital methods only after the owner gate of ADR-0017'}
+        embed_origins: {type: array, maxItems: 10, x-wave: 2, items: {type: string, format: uri, pattern: '^https://[a-z0-9.-]+(:[0-9]{1,5})?$'}, description: 'Exact https origins, no wildcards, allowed to frame the recipient tracking pages (frame-ancestors); empty means none'}
+        offline_window_hours: {type: integer, minimum: 1, maximum: 48, default: 12, description: Driver client_ts window after an assignment ends (H1)}
+        receipt_tolerance_pct: {type: number, minimum: 0}
+        adjustment_approval_threshold: {type: integer, minimum: 0}
+    User:
+      type: object
+      description: A person (document 2 §2.2, document 4 §1). Platform table.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        name: {type: string}
+        email: {type: [string, 'null'], format: email}
+        phone: {type: [string, 'null']}
+        locale: {type: string, enum: [ar, en]}
+        second_factor_enabled: {type: boolean}
+    Role:
+      type: string
+      enum: [owner, admin, dispatcher, site_staff, warehouse_staff, cashier, viewer, driver]
+    StaffRole:
+      type: string
+      description: Roles grantable on the staff surface; driver memberships are created only through the drivers resource.
+      enum: [owner, admin, dispatcher, site_staff, warehouse_staff, cashier, viewer]
+    Membership:
+      type: object
+      description: Binds a user to one account with roles and site_ids (document 4 §2).
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        user: {$ref: '#/components/schemas/User'}
+        roles: {type: array, items: {$ref: '#/components/schemas/Role'}}
+        site_ids: {type: array, items: {type: string, format: uuid}}
+        status: {type: string, enum: [invited, active, revoked]}
+    Me:
+      type: object
+      properties:
+        user: {$ref: '#/components/schemas/User'}
+        membership: {$ref: '#/components/schemas/Membership'}
+        account: {$ref: '#/components/schemas/Account'}
+        permissions: {type: array, items: {type: string}}
+        features: {type: array, items: {type: string}, description: Feature keys visible to this account (K-6)}
+    Site:
+      type: object
+      description: Document 2 §2.3, ADR-0018.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      required: [kind, name_ar, name_en]
+      properties:
+        kind: {type: string, enum: [branch, warehouse, both]}
+        name_ar: {type: string}
+        name_en: {type: string}
+        address_text: {type: string}
+        national_address_short_code: {type: string}
+        point: {$ref: '#/components/schemas/Point'}
+        opening_hours:
+          type: array
+          items: {type: object, properties: {weekday: {type: integer, minimum: 0, maximum: 6}, opens: {type: string, example: '08:00'}, closes: {type: string, example: '22:00'}}}
+        status: {type: string, enum: [active, inactive], readOnly: true}
+    RolloutMode:
+      type: object
+      description: Platform row per feature key (document 2 §2.4).
+      properties:
+        feature_key: {type: string, x-extensible-enum: true, example: delivery}
+        mode: {type: string, enum: ['off', allowlist, all], default: allowlist}
+        updated_by: {type: string, format: uuid}
+        updated_at: {type: string, format: date-time}
+    FeatureFlag:
+      type: object
+      description: Per account and feature key (document 2 §2.4, K-6).
+      properties:
+        feature_key: {type: string}
+        enabled: {type: boolean}
+        provisioned_by: {type: [string, 'null'], format: uuid}
+        enabled_at: {type: [string, 'null'], format: date-time}
+    AuditLogEntry:
+      type: object
+      description: Append-only (document 2 §2.5, K-7).
+      properties:
+        id: {type: string, format: uuid}
+        occurred_at: {type: string, format: date-time}
+        actor_type: {type: string, enum: [user, api_key, driver, system, platform_user]}
+        actor_id: {type: string, format: uuid}
+        account_id: {type: [string, 'null'], format: uuid}
+        target_type: {type: string}
+        target_id: {type: string}
+        action: {type: string}
+        before: {type: [object, 'null']}
+        after: {type: [object, 'null']}
+        request_id: {type: string}
+        ip: {type: string}
+        user_agent: {type: string}
+        reason: {type: [string, 'null'], description: X-Support-Reason on cross-tenant calls}
+    ChannelConnection:
+      type: object
+      description: Kernel channel connection (document 2 §1, document 9). Credentials are stored encrypted and never returned.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        provider: {type: string, enum: [salla, zid, eeasy_shipping]}
+        name: {type: string}
+        external_store_id: {type: [string, 'null']}
+        status: {type: string, enum: [pending_authorization, active, needs_reauth, disabled]}
+        last_error: {type: [string, 'null'], description: Fixed error class}
+        last_sync_at: {type: [string, 'null'], format: date-time}
+    ApiKey:
+      type: object
+      description: Document 4 §3.4. The secret is never returned after creation.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        name: {type: string}
+        prefix: {type: string, example: elk_live_3f9a}
+        scopes: {type: array, items: {type: string}}
+        last_used_at: {type: [string, 'null'], format: date-time}
+        expires_at: {type: [string, 'null'], format: date-time, description: Set on the old key during a rotation overlap}
+        revoked_at: {type: [string, 'null'], format: date-time}
+    ApiKeyWithSecret:
+      allOf:
+        - $ref: '#/components/schemas/ApiKey'
+        - type: object
+          required: [secret]
+          properties:
+            secret: {type: string, description: Shown once}
+    OutboxRow:
+      type: object
+      description: core_outbox row (document 2 §2.7). Platform surface only.
+      properties:
+        envelope: {$ref: '#/components/schemas/Envelope'}
+        kind: {type: string, enum: [internal_event, webhook, message, push, channel_publish, carrier_call, storage_lifecycle]}
+        status: {type: string, enum: [pending, enqueued, done, dead, superseded]}
+        attempts: {type: integer}
+        next_attempt_at: {type: [string, 'null'], format: date-time}
+        last_error: {type: [string, 'null']}
+        supersede_key: {type: [string, 'null']}
+    WebhookSubscription:
+      type: object
+      description: Merchant webhook subscription (webhooks.md, ADR-0030).
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        url: {type: string, format: uri}
+        event_types: {type: array, items: {type: string}}
+        status: {type: string, enum: [pending_verification, active, paused, disabled]}
+        secret_prefix: {type: string}
+        description: {type: string}
+        created_by_key_id: {type: [string, 'null'], format: uuid, readOnly: true, description: 'API key that created it; its scopes gate every event type (H3)'}
+        created_by_membership_id: {type: [string, 'null'], format: uuid, readOnly: true, description: Set when created from the web app}
+        paused_reason: {type: [string, 'null'], enum: [merchant, key_revoked, scope_lost, member_revoked, failing, null], readOnly: true}
+    WebhookSubscriptionCreated:
+      allOf:
+        - $ref: '#/components/schemas/WebhookSubscription'
+        - type: object
+          required: [secret]
+          properties:
+            secret: {type: string, description: 'Signing secret, shown once'}
+    WebhookDelivery:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        subscription_id: {type: string, format: uuid}
+        event_id: {type: string, format: uuid}
+        event_type: {type: string}
+        status: {type: string, enum: [pending, delivered, retrying, dead]}
+        attempts: {type: integer}
+        last_status_code: {type: [integer, 'null']}
+        error_class: {type: [string, 'null'], enum: [timeout, dns_error, connection_refused, tls_error, address_refused, redirect_refused, http_status, null], description: Fixed class; the receiver response body is never stored or shown}
+        next_attempt_at: {type: [string, 'null'], format: date-time}
+        test: {type: boolean}
+    WebhookSubscriptionInput:
+      type: object
+      required: [url, event_types]
+      properties:
+        url: {type: string, format: uri, pattern: '^https://', description: 'https only; private and loopback ranges refused (ADR-0030)'}
+        event_types: {type: array, minItems: 1, items: {type: string, description: An event type marked webhook in document 2 §6.3, example: delivery.order.delivered}}
+        description: {type: string, maxLength: 200}
+        status: {type: string, enum: [active, paused], description: Only on update}
+    WebhookVerifyRequest:
+      type: object
+      required: [verification_token]
+      properties: {verification_token: {type: string, description: One-time token from the webhook.verification delivery}}
+    WebhookTestRequest:
+      type: object
+      required: [event_type]
+      properties: {event_type: {type: string, example: delivery.order.delivered}}
+
+    # ---------- Delivery (document 2 §3) ----------
+    OrderKind:
+      type: string
+      enum: [delivery, return_pickup, exchange, pickup_request]
+    OrderStatus:
+      type: string
+      description: State machine document 2 §3.13.
+      enum: [pending, accepted, offered, assigned, picked_up, out_for_delivery, attempted, delivered, failed, returned, cancelled]
+    OrderItem:
+      type: object
+      description: Document 2 §3.2; immutable after picked_up.
+      required: [name_ar, name_en, quantity]
+      properties:
+        id: {type: string, format: uuid, readOnly: true}
+        name_ar: {type: string}
+        name_en: {type: string}
+        sku: {type: string}
+        quantity: {type: integer, minimum: 1}
+        direction: {type: string, enum: [out, in], default: out}
+        wms_product_id: {type: [string, 'null'], format: uuid}
+        declared_value: {$ref: '#/components/schemas/Money'}
+    Order:
+      type: object
+      description: Document 2 §3.1.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        number: {type: string, readOnly: true, example: D-000123}
+        kind: {$ref: '#/components/schemas/OrderKind'}
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        pending_reason: {type: [string, 'null'], enum: [outside_coverage, awaiting_review, null], readOnly: true, description: D-3}
+        site_id: {type: string, format: uuid}
+        source: {type: string, enum: [manual, csv, api, channel, wms_package], readOnly: true}
+        source_ref: {type: [string, 'null']}
+        recipient: {$ref: '#/components/schemas/Recipient'}
+        address: {$ref: '#/components/schemas/Address'}
+        items: {type: array, items: {$ref: '#/components/schemas/OrderItem'}}
+        zone_id: {type: [string, 'null'], format: uuid, readOnly: true}
+        slot_id: {type: [string, 'null'], format: uuid}
+        cod_amount: {$ref: '#/components/schemas/Money', description: 'Locked from picked_up (409 order_locked); every change is audited'}
+        current_assignment_id: {type: [string, 'null'], format: uuid, readOnly: true}
+        attempt_count: {type: integer, readOnly: true}
+        max_attempts: {type: integer, readOnly: true}
+        notes: {type: [string, 'null']}
+        version: {type: integer, readOnly: true, description: Optimistic concurrency (document 2 §8)}
+    CreateOrderRequest:
+      type: object
+      description: Shared by staff and public intake. D-4 rejects non-zero COD on return_pickup and pickup_request.
+      required: [kind, site_id, recipient, address]
+      properties:
+        kind: {$ref: '#/components/schemas/OrderKind'}
+        site_id: {type: string, format: uuid}
+        source_ref: {type: string, maxLength: 120}
+        recipient: {$ref: '#/components/schemas/Recipient'}
+        address: {$ref: '#/components/schemas/Address'}
+        items: {type: array, items: {$ref: '#/components/schemas/OrderItem'}}
+        cod_amount: {$ref: '#/components/schemas/Money'}
+        slot_id: {type: string, format: uuid}
+        notes: {type: string, maxLength: 1000}
+    OrderEvent:
+      type: object
+      description: Append-only del_order_events (document 2 §3.3).
+      properties:
+        id: {type: string, format: uuid}
+        type: {type: string, enum: [transition, note]}
+        from_status: {type: [string, 'null']}
+        to_status: {type: [string, 'null']}
+        actor_type: {type: string, enum: [user, driver, system, api_key]}
+        actor_id: {type: [string, 'null'], format: uuid}
+        device_id: {type: [string, 'null'], format: uuid}
+        client_ts: {type: [string, 'null'], format: date-time}
+        server_ts: {type: string, format: date-time}
+        point: {$ref: '#/components/schemas/Point'}
+        reason_code: {type: [string, 'null']}
+        note: {type: [string, 'null']}
+        proof_ids: {type: array, items: {type: string, format: uuid}}
+        collection_ids: {type: array, items: {type: string, format: uuid}}
+    Zone:
+      type: object
+      description: Document 2 §3.4.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        name_ar: {type: string}
+        name_en: {type: string}
+        boundary: {type: object, description: 'GeoJSON MultiPolygon, EPSG 4326'}
+        source: {type: string, enum: [official, drawn]}
+        active: {type: boolean}
+    Coverage:
+      type: object
+      description: (site_id, zone_id) rows created by provisioning (ADR-0015).
+      properties:
+        site_id: {type: string, format: uuid}
+        zone_id: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+    CoverageCheck:
+      type: object
+      properties:
+        covered: {type: boolean}
+        zone_id: {type: [string, 'null'], format: uuid}
+        site_ids: {type: array, items: {type: string, format: uuid}}
+        point: {$ref: '#/components/schemas/Point'}
+    Driver:
+      type: object
+      description: Document 2 §3.5.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        user_id: {type: string, format: uuid}
+        name: {type: string}
+        phone: {type: string}
+        home_site_id: {type: string, format: uuid}
+        status: {type: string, enum: [active, suspended, archived]}
+        cash_blocked_at: {type: [string, 'null'], format: date-time, readOnly: true}
+        cash_blocked_reason: {type: [string, 'null'], readOnly: true}
+        capacity_limit: {type: integer, minimum: 0}
+        active_orders: {type: integer, readOnly: true, description: CapacityCounter (D-10)}
+        cash_pin_locked: {type: boolean, readOnly: true}
+    Vehicle:
+      type: object
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        plate: {type: string}
+        kind: {type: string, enum: [car, van, motorbike]}
+        capacity_parcels: {type: integer, minimum: 0}
+        active: {type: boolean}
+    DriverDevice:
+      type: object
+      description: At most two active per driver (document 4 §3.2).
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        device_id: {type: string}
+        platform: {type: string, enum: [ios, android]}
+        app_version: {type: string}
+        push_token: {type: [string, 'null']}
+        revoked_at: {type: [string, 'null'], format: date-time}
+    ShiftStatus:
+      type: string
+      description: State machine document 2 §3.17.
+      enum: [planned, active, paused, ended, cancelled, no_show]
+    DriverShift:
+      type: object
+      description: Document 2 §3.6.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        driver_id: {type: string, format: uuid}
+        site_id: {type: string, format: uuid}
+        vehicle_id: {type: [string, 'null'], format: uuid}
+        planned_start: {type: string, format: date-time}
+        planned_end: {type: string, format: date-time}
+        started_at: {type: [string, 'null'], format: date-time}
+        ended_at: {type: [string, 'null'], format: date-time}
+        status: {$ref: '#/components/schemas/ShiftStatus'}
+    DriverLocationPoint:
+      type: object
+      description: One telemetry point (document 2 §7, ADR-0028).
+      required: [client_ts, lat, lng]
+      properties:
+        client_ts: {type: string, format: date-time}
+        lat: {type: number}
+        lng: {type: number}
+        accuracy_m: {type: number}
+        speed_mps: {type: number}
+        heading_deg: {type: number}
+        battery_pct: {type: integer, minimum: 0, maximum: 100}
+    DriverPosition:
+      type: object
+      description: Latest point per driver from Redis (10-minute TTL).
+      properties:
+        driver_id: {type: string, format: uuid}
+        point: {$ref: '#/components/schemas/Point'}
+        client_ts: {type: string, format: date-time}
+        server_ts: {type: string, format: date-time}
+        shift_status: {$ref: '#/components/schemas/ShiftStatus'}
+    Assignment:
+      type: object
+      description: Document 2 §3.8.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        order_id: {type: string, format: uuid}
+        driver_id: {type: string, format: uuid}
+        vehicle_id: {type: string, format: uuid}
+        shift_id: {type: string, format: uuid}
+        assigned_by: {type: string, format: uuid}
+        started_at: {type: string, format: date-time}
+        ended_at: {type: [string, 'null'], format: date-time}
+        end_reason: {type: [string, 'null'], enum: [completed, reassigned, unassigned, returned, null]}
+        version: {type: integer}
+    Offer:
+      type: object
+      description: Document 2 §3.8; state machine §3.14.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        order_id: {type: string, format: uuid}
+        driver_id: {type: string, format: uuid}
+        status: {type: string, enum: [sent, accepted, declined, expired, withdrawn]}
+        sent_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        responded_at: {type: [string, 'null'], format: date-time}
+        wave: {type: integer}
+        order: {$ref: '#/components/schemas/OfferOrderView', description: 'Driver surface only; the full order is visible after acceptance'}
+    OfferOrderView:
+      type: object
+      description: What a driver sees of an order before accepting its offer (no recipient name, phone or full address).
+      properties:
+        order_id: {type: string, format: uuid}
+        kind: {$ref: '#/components/schemas/OrderKind'}
+        site_id: {type: string, format: uuid}
+        zone_id: {type: [string, 'null'], format: uuid}
+        district: {type: [string, 'null']}
+        item_count: {type: integer}
+        cod_amount: {$ref: '#/components/schemas/Money'}
+        window: {type: [object, 'null'], properties: {starts_at: {type: string, format: date-time}, ends_at: {type: string, format: date-time}}}
+    OrderOfferedPayload:
+      type: object
+      description: 'Payload of delivery.order.offered on the driver stream and in offer push notifications: the reduced OfferOrderView only (N4).'
+      required: [offer_id, expires_at, order]
+      properties:
+        offer_id: {type: string, format: uuid}
+        expires_at: {type: string, format: date-time}
+        order: {$ref: '#/components/schemas/OfferOrderView'}
+    SlotDay:
+      type: object
+      description: Document 2 §3.9.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        site_id: {type: string, format: uuid}
+        zone_id: {type: string, format: uuid}
+        date: {type: string, format: date}
+        open: {type: boolean}
+    Slot:
+      type: object
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        slot_day_id: {type: string, format: uuid}
+        starts_at: {type: string, format: date-time}
+        ends_at: {type: string, format: date-time}
+        capacity: {type: integer, minimum: 0}
+        booked: {type: integer, readOnly: true}
+    Attempt:
+      type: object
+      description: Document 2 §3.10; state machine §3.15.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        order_id: {type: string, format: uuid}
+        assignment_id: {type: string, format: uuid}
+        number: {type: integer}
+        status: {type: string, enum: [open, succeeded, failed, voided]}
+        reason_code: {type: [string, 'null']}
+        note: {type: [string, 'null']}
+        point: {$ref: '#/components/schemas/Point'}
+        client_ts: {type: string, format: date-time}
+    Proof:
+      type: object
+      description: Document 2 §3.10; read only through expiring signed URLs.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        order_id: {type: string, format: uuid}
+        attempt_id: {type: [string, 'null'], format: uuid}
+        kind: {type: string, enum: [photo, signature, recipient_otp, id_check]}
+        upload_status: {type: string, enum: [pending_upload, stored, failed]}
+        sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+    CodCollection:
+      type: object
+      description: Insert-only (document 2 §3.11, D-18).
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        order_id: {type: string, format: uuid}
+        driver_id: {type: string, format: uuid}
+        amount: {$ref: '#/components/schemas/Money'}
+        method: {type: string, enum: [cash, card, mada, wallet]}
+        external_reference: {type: [string, 'null']}
+        custody: {type: string, enum: [collected, with_cashier, with_bank, not_held], readOnly: true, description: Latest custody entry (§3.16)}
+    StaffCodCollection:
+      description: Staff view of a collection; pin_review never appears on the driver surface.
+      allOf:
+        - $ref: '#/components/schemas/CodCollection'
+        - type: object
+          properties:
+            pin_review: {type: boolean, readOnly: true, description: 'Set when a replayed cash PIN failed; the driver is cash_blocked until a supervisor clears it'}
+    CustodyEntry:
+      type: object
+      description: Append-only custody ledger (document 2 §3.11, D-19).
+      properties:
+        id: {type: string, format: uuid}
+        collection_id: {type: string, format: uuid}
+        from_custody: {type: [string, 'null'], enum: [collected, with_cashier, with_bank, not_held, null]}
+        to_custody: {type: string, enum: [collected, with_cashier, with_bank, not_held]}
+        holder_type: {type: string, enum: [driver, cashier, bank_account]}
+        holder_id: {type: string}
+        handover_id: {type: [string, 'null'], format: uuid}
+        deposit_id: {type: [string, 'null'], format: uuid}
+        recorded_by: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+    CashHandover:
+      type: object
+      description: Document 2 §3.11, D-20.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        driver_id: {type: string, format: uuid}
+        site_id: {type: string, format: uuid}
+        cashier_id: {type: [string, 'null'], format: uuid}
+        expected_amount: {$ref: '#/components/schemas/Money'}
+        counted_amount: {$ref: '#/components/schemas/Money'}
+        status: {type: string, enum: [requested, confirmed, rejected]}
+        pin_checked_at: {type: [string, 'null'], format: date-time}
+        collection_ids: {type: array, items: {type: string, format: uuid}}
+    DriverLiabilityEntry:
+      type: object
+      description: Append-only (document 2 §3.11, D-20).
+      properties:
+        id: {type: string, format: uuid}
+        driver_id: {type: string, format: uuid}
+        amount: {$ref: '#/components/schemas/SignedMoney'}
+        reason: {type: string, enum: [handover_deficit, handover_surplus, clearance, write_off, correction]}
+        handover_id: {type: [string, 'null'], format: uuid}
+        reference: {type: [string, 'null']}
+        recorded_by: {type: string, format: uuid}
+        approved_by: {type: [string, 'null'], format: uuid, description: Required for negative entries; never the cashier of the related handover}
+        created_at: {type: string, format: date-time}
+    DriverCashSummary:
+      type: object
+      description: Cash in hand from the custody ledger, liability balance, block state (ADR-0007).
+      properties:
+        cash_in_hand: {$ref: '#/components/schemas/Money'}
+        oldest_collected_business_date: {type: [string, 'null'], format: date}
+        liability_balance: {$ref: '#/components/schemas/SignedMoney'}
+        cash_blocked: {type: boolean}
+    CashDeposit:
+      type: object
+      description: Insert-only; corrections are reversing deposits (document 2 §3.11).
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        site_id: {type: string, format: uuid}
+        amount: {$ref: '#/components/schemas/SignedMoney'}
+        bank_reference: {type: string}
+        slip_upload_id: {type: [string, 'null'], format: uuid}
+        deposited_at: {type: string, format: date-time}
+        recorded_by: {type: string, format: uuid}
+        collection_ids: {type: array, items: {type: string, format: uuid}}
+        reverses_deposit_id: {type: [string, 'null'], format: uuid, description: 'Unique: a deposit is reversed at most once, exactly and over the same collections'}
+    CashReport:
+      type: object
+      description: Immutable once closed (document 2 §3.11, D-21).
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        site_id: {type: string, format: uuid}
+        business_date: {type: string, format: date}
+        totals_by_method:
+          type: object
+          properties: {cash: {$ref: '#/components/schemas/Money'}, card: {$ref: '#/components/schemas/Money'}, mada: {$ref: '#/components/schemas/Money'}, wallet: {$ref: '#/components/schemas/Money'}}
+        deficits: {$ref: '#/components/schemas/SignedMoney'}
+        status: {type: string, enum: [open, closed]}
+        closed_by: {type: [string, 'null'], format: uuid}
+    TrackingToken:
+      type: object
+      description: Document 2 §3.12; the token string is returned only on issue.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        order_id: {type: string, format: uuid}
+        purpose: {type: string, enum: [track, reschedule, address_pin]}
+        expires_at: {type: string, format: date-time}
+        revoked_at: {type: [string, 'null'], format: date-time}
+        link: {type: string, format: uri, description: Returned only on issue}
+    PublicTrackingView:
+      type: object
+      description: The only data a recipient token reveals (D-24).
+      properties:
+        order_number: {type: string}
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        eta: {type: [string, 'null'], format: date-time}
+        driver_first_name: {type: [string, 'null']}
+        last_position: {oneOf: [{$ref: '#/components/schemas/Point'}, {type: 'null'}], description: Only while out_for_delivery}
+        position_updated_at: {type: [string, 'null'], format: date-time}
+        slot: {type: [object, 'null'], properties: {starts_at: {type: string, format: date-time}, ends_at: {type: string, format: date-time}}}
+        can_reschedule: {type: boolean}
+        can_pin_address: {type: boolean}
+        merchant_name: {type: string}
+        history: {type: array, description: 'Status and time only; no actor, reason or position', items: {type: object, properties: {status: {$ref: '#/components/schemas/OrderStatus'}, at: {type: string, format: date-time}}}}
+
+    # ---------- WMS (document 2 §4) ----------
+    Location:
+      type: object
+      description: Document 2 §4.1, ADR-0012, W-1, W-2.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        site_id: {type: [string, 'null'], format: uuid}
+        parent_id: {type: [string, 'null'], format: uuid}
+        type: {type: string, enum: [site_root, zone, aisle, rack, shelf, bin, tote, dock, transit, returns, quarantine, system]}
+        code: {type: string}
+        path: {type: string, readOnly: true}
+        coordinates: {type: [object, 'null']}
+        pickable: {type: boolean}
+        active: {type: boolean}
+    TrackingMode:
+      type: string
+      enum: [none, lot, serial]
+    Product:
+      type: object
+      description: Document 2 §4.2; tracking_mode locked after the first movement (W-3).
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        sku: {type: string}
+        barcodes: {type: array, items: {type: string}}
+        name_ar: {type: string}
+        name_en: {type: string}
+        tracking_mode: {$ref: '#/components/schemas/TrackingMode'}
+        unit: {type: string}
+        weight_g: {type: integer, minimum: 0}
+        length_mm: {type: integer, minimum: 0}
+        width_mm: {type: integer, minimum: 0}
+        height_mm: {type: integer, minimum: 0}
+        is_consumable: {type: boolean}
+        active: {type: boolean}
+    Lot:
+      type: object
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        product_id: {type: string, format: uuid}
+        lot_code: {type: string}
+        expiry_date: {type: [string, 'null'], format: date}
+        received_at: {type: string, format: date-time}
+    Serial:
+      type: object
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        product_id: {type: string, format: uuid}
+        serial_number: {type: string}
+        location_id: {type: [string, 'null'], format: uuid, readOnly: true, description: 'W-4: in exactly one location'}
+    Supplier:
+      type: object
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        name: {type: string}
+        contact: {type: string}
+        vat_number: {type: string}
+    PurchaseOrder:
+      type: object
+      description: Document 2 §4.3.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        number: {type: string, readOnly: true}
+        supplier_id: {type: string, format: uuid}
+        site_id: {type: string, format: uuid}
+        status: {type: string, enum: [draft, sent, partially_received, received, closed, cancelled]}
+        lines:
+          type: array
+          items: {type: object, required: [product_id, quantity], properties: {product_id: {type: string, format: uuid}, quantity: {type: integer, minimum: 1}, unit_cost: {$ref: '#/components/schemas/Money'}, received: {type: integer, readOnly: true}}}
+    InboundReceipt:
+      type: object
+      description: Document 2 §4.3; state machine §4.11; W-15.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        number: {type: string, readOnly: true}
+        site_id: {type: string, format: uuid}
+        purchase_order_id: {type: [string, 'null'], format: uuid}
+        receiving_location_id: {type: string, format: uuid}
+        status: {type: string, enum: [expected, receiving, received, put_away, cancelled]}
+        lines:
+          type: array
+          items: {type: object, properties: {id: {type: string, format: uuid}, product_id: {type: string, format: uuid}, lot_code: {type: [string, 'null']}, serial_number: {type: [string, 'null']}, expected: {type: integer}, received: {type: integer}, damaged: {type: integer}}}
+    StockMovement:
+      type: object
+      description: Append-only ledger row (document 2 §4.4, W-5). Read only over the API.
+      properties:
+        id: {type: string, format: uuid}
+        batch_id: {type: string, format: uuid}
+        product_id: {type: string, format: uuid}
+        lot_id: {type: [string, 'null'], format: uuid}
+        serial_id: {type: [string, 'null'], format: uuid}
+        quantity: {type: integer, minimum: 1}
+        from_location_id: {type: string, format: uuid}
+        to_location_id: {type: string, format: uuid}
+        reason: {type: string, enum: [receipt, putaway, pick, pack, handover, delivery, return, adjustment, count, consumption, transfer]}
+        ref_type: {type: [string, 'null']}
+        ref_id: {type: [string, 'null'], format: uuid}
+        ledger_seq: {type: integer}
+        recorded_by: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+    StockLevel:
+      type: object
+      description: Projection (location, product, lot, serial) (document 2 §4.5, W-6, W-7).
+      properties:
+        location_id: {type: string, format: uuid}
+        product_id: {type: string, format: uuid}
+        lot_id: {type: [string, 'null'], format: uuid}
+        serial_id: {type: [string, 'null'], format: uuid}
+        on_hand: {type: integer, minimum: 0}
+    StockSummary:
+      type: object
+      description: Projection per product, trails by cursor lag (document 2 §4.5, W-7).
+      properties:
+        product_id: {type: string, format: uuid}
+        on_hand: {type: integer}
+        reserved: {type: integer}
+        available: {type: integer}
+        version: {type: integer}
+        as_of_ledger_seq: {type: integer}
+    Reservation:
+      type: object
+      description: Mutable, not a ledger (document 2 §4.5, W-8).
+      properties:
+        id: {type: string, format: uuid}
+        fulfilment_order_line_id: {type: string, format: uuid}
+        product_id: {type: string, format: uuid}
+        lot_id: {type: [string, 'null'], format: uuid}
+        quantity: {type: integer, minimum: 1}
+    FulfilmentOrder:
+      type: object
+      description: Document 2 §4.6; state machine §4.12.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        number: {type: string, readOnly: true}
+        site_id: {type: string, format: uuid}
+        source: {type: string, enum: [channel, manual, api]}
+        source_ref: {type: [string, 'null']}
+        recipient: {$ref: '#/components/schemas/Recipient'}
+        address: {$ref: '#/components/schemas/Address'}
+        cod_amount: {$ref: '#/components/schemas/Money'}
+        status: {type: string, enum: [received, allocated, on_hold, picking, picked, packed, handed_over, completed, returned, cancelled]}
+        lines:
+          type: array
+          items: {type: object, properties: {id: {type: string, format: uuid}, product_id: {type: string, format: uuid}, quantity: {type: integer, minimum: 1}, picked: {type: integer}, packed: {type: integer}}}
+        version: {type: integer}
+    PickTask:
+      type: object
+      description: Document 2 §4.6; state machine §4.13; W-9.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        fulfilment_order_ids: {type: array, items: {type: string, format: uuid}}
+        picker_id: {type: [string, 'null'], format: uuid}
+        target_tote_id: {type: [string, 'null'], format: uuid}
+        status: {type: string, enum: [open, in_progress, done, short, cancelled]}
+        lines:
+          type: array
+          items: {type: object, properties: {id: {type: string, format: uuid}, location_id: {type: string, format: uuid}, product_id: {type: string, format: uuid}, lot_id: {type: [string, 'null']}, serial_id: {type: [string, 'null']}, quantity: {type: integer}, picked: {type: integer}}}
+    Package:
+      type: object
+      description: Document 2 §4.7; state machine §4.14; W-10 to W-14; ADR-0014.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        fulfilment_order_id: {type: string, format: uuid}
+        contents: {type: array, items: {type: object, properties: {fulfilment_order_line_id: {type: string, format: uuid}, product_id: {type: string, format: uuid}, lot_id: {type: [string, 'null']}, serial_id: {type: [string, 'null']}, quantity: {type: integer}}}}
+        weight_g: {type: [integer, 'null'], minimum: 1}
+        length_mm: {type: [integer, 'null'], minimum: 1}
+        width_mm: {type: [integer, 'null'], minimum: 1}
+        height_mm: {type: [integer, 'null'], minimum: 1}
+        fulfilment_method: {type: [string, 'null'], enum: [own_fleet, carrier, null]}
+        delivery_order_id: {type: [string, 'null'], format: uuid}
+        delivery_order_number: {type: [string, 'null']}
+        carrier_code: {type: [string, 'null']}
+        awb: {type: [string, 'null']}
+        eeasy_shipment_id: {type: [string, 'null']}
+        has_label: {type: boolean}
+        status: {type: string, enum: [open, packed, awaiting_label, ready, handed_over, delivered, returned, cancelled]}
+    Return:
+      type: object
+      description: Document 2 §4.8; W-17.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        site_id: {type: string, format: uuid}
+        source: {type: string, enum: [delivery_return, carrier_return, walk_in]}
+        source_ref: {type: [string, 'null']}
+        status: {type: string, enum: [expected, received, dispositioned]}
+        lines:
+          type: array
+          items: {type: object, properties: {id: {type: string, format: uuid}, product_id: {type: string, format: uuid}, lot_id: {type: [string, 'null']}, serial_id: {type: [string, 'null']}, quantity: {type: integer}, condition: {type: string}, disposition: {type: [string, 'null'], enum: [restock, quarantine, scrap, null]}}}
+    Adjustment:
+      type: object
+      description: Document 2 §4.8; posts ADJUSTMENT movements; W-16.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        site_id: {type: string, format: uuid}
+        reason_code: {type: string}
+        status: {type: string, enum: [requested, approved, posted, rejected]}
+        requested_by: {type: string, format: uuid}
+        approved_by: {type: [string, 'null'], format: uuid}
+        lines:
+          type: array
+          items: {type: object, required: [location_id, product_id, delta], properties: {location_id: {type: string, format: uuid}, product_id: {type: string, format: uuid}, lot_id: {type: [string, 'null']}, serial_id: {type: [string, 'null']}, delta: {type: integer, not: {const: 0}}}}
+    CountSession:
+      type: object
+      description: Document 2 §4.8; state machine §4.15; W-16.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        site_id: {type: string, format: uuid}
+        scope: {type: object, properties: {location_ids: {type: array, items: {type: string, format: uuid}}, product_ids: {type: array, items: {type: string, format: uuid}}}}
+        blind: {type: boolean}
+        status: {type: string, enum: [planned, counting, review, posted, cancelled]}
+        counted_by: {type: [string, 'null'], format: uuid}
+        approved_by: {type: [string, 'null'], format: uuid}
+        lines:
+          type: array
+          items: {type: object, properties: {id: {type: string, format: uuid}, location_id: {type: string, format: uuid}, product_id: {type: string, format: uuid}, lot_id: {type: [string, 'null']}, system_quantity: {type: [integer, 'null'], description: Hidden while blind}, counted: {type: [integer, 'null']}, variance: {type: [integer, 'null']}}}
+    ChannelPublication:
+      type: object
+      description: wms_channel_publications (document 2 §4.9, ADR-0013, W-18). Read only.
+      properties:
+        id: {type: string, format: uuid}
+        connection_id: {type: string, format: uuid}
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer}
+        status: {type: string, enum: [pending, sent, failed, dead, superseded]}
+        attempts: {type: integer}
+        next_attempt_at: {type: [string, 'null'], format: date-time}
+        superseded_by: {type: [string, 'null'], format: uuid}
+        channel_response: {type: [object, 'null']}
+        created_at: {type: string, format: date-time}

@@ -1,0 +1,923 @@
+openapi: 3.1.0
+info:
+  title: "eeasy-logistics public API"
+  version: 1.0.0
+  license: {name: Proprietary, identifier: LicenseRef-Proprietary}
+  description: >-
+    The integrator surface (wave 4): one static X-API-Key per key, scoped to a permission subset
+    (document 4 §3.4, plan owner question 1 default). Delivery orders and tracking in full, webhook
+    subscriptions, and the webhook catalogue in the top-level webhooks section. WMS paths are present
+    and marked x-availability after-wms-pilot (owner question 2 default). API keys are managed only on
+    the staff surface. Conventions, errors and waves: docs/contracts/README.md; webhooks: webhooks.md.
+servers:
+  - url: /v1/public
+security:
+  - apiKey: []
+tags:
+  - {name: reference, description: "Sites, statuses and reason codes"}
+  - {name: orders, description: "Orders (§3.1, §3.13)"}
+  - {name: tracking, description: "Tracking"}
+  - {name: webhooks, description: "Webhook subscriptions (webhooks.md, ADR-0030)"}
+  - {name: wms, description: "WMS, after the WMS pilot (owner question 2)"}
+  - {name: webhook-events, description: "Events POSTed to subscribers (document 2 §6.3)"}
+paths:
+  /sites:
+    get:
+      operationId: publicListSites
+      summary: "Dispatching sites of the account (for site_id on create)"
+      tags: [reference]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Site'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /reference/order-statuses:
+    get:
+      operationId: publicListOrderStatuses
+      summary: "Order statuses with Arabic and English labels"
+      description: 'The state machine of document 2 §3.13; terminal flags included.'
+      tags: [reference]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/LabelList'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /reference/reason-codes:
+    get:
+      operationId: publicListReasonCodes
+      summary: "Account reason codes with labels"
+      tags: [reference]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/LabelList'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /coverage/check:
+    post:
+      operationId: publicCheckCoverage
+      summary: "Is this address covered by own fleet"
+      description: 'Read-only computation (ADR-0015); no Idempotency-Key.'
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PublicCoverageRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CoverageCheck'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders:
+    post:
+      operationId: publicCreateOrder
+      summary: "Create an order"
+      description: 'source api; source_ref is the integrator reference and is unique per account while the order is open. Outside coverage stays pending with pending_reason (D-3).'
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.orders.create
+      security: [{apiKey: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CreateOrderRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: slot_full.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: cod_not_allowed, limit_exceeded, site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    get:
+      operationId: publicListOrders
+      summary: "List orders"
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/UpdatedFrom'}, {name: source_ref, in: query, schema: {type: string}}, {name: number, in: query, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Order'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}:
+    get:
+      operationId: publicGetOrder
+      summary: "Get an order"
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/events:
+    get:
+      operationId: publicListOrderEvents
+      summary: "Status history"
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: '#/components/schemas/PublicOrderEvent'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/cancel:
+    post:
+      operationId: publicCancelOrder
+      summary: "Cancel an order before pickup"
+      description: 'pending, accepted, offered or assigned → cancelled (§3.13). After pickup the merchant asks the dispatcher; the order then goes failed → returned.'
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.orders.cancel
+      security: [{apiKey: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PublicReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/tracking:
+    get:
+      operationId: publicGetTracking
+      summary: "Tracking view and the recipient link"
+      tags: [tracking]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PublicOrderTracking'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/label:
+    get:
+      operationId: publicGetLabel
+      summary: "Signed URL for the label PDF"
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SignedUrl'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /labels:
+    post:
+      operationId: publicBatchLabels
+      summary: "One PDF with up to 100 labels"
+      description: 'Read-only rendering; no Idempotency-Key. Every order must belong to the key account.'
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.orders.read
+      security: [{apiKey: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LabelBatchRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SignedUrl'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/proofs:
+    get:
+      operationId: publicListProofs
+      summary: "Proofs of an order"
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.proofs.read
+      security: [{apiKey: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Proof'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /orders/{order_id}/proofs/{proof_id}/download-url:
+    get:
+      operationId: publicGetProofUrl
+      summary: "Expiring signed URL of a stored proof"
+      description: 'delivery.proof.stored webhooks carry no URL; integrators fetch it here (document 2 §6.3).'
+      tags: [orders]
+      x-wave: 4
+      x-permission: delivery.proofs.read
+      security: [{apiKey: []}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: proof_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/SignedUrl'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions:
+    get:
+      operationId: publicListWebhookSubscriptions
+      summary: "List webhook subscriptions"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: publicCreateWebhookSubscription
+      summary: "Subscribe a URL to event types; the secret is shown once"
+      description: 'Status pending_verification. The URL check and a webhook.verification request with a one-time verification_token go through the outbox; the subscription delivers events only after the verify call (webhooks.md §4, ADR-0030). Scope: each event type needs the matching read permission of the creator (delivery.order.* and delivery.cod.* → delivery.orders.read; delivery.proof.* → delivery.proofs.read; wms.stock.* → wms.stock.read; wms.fulfilment_order.* and wms.package.* → wms.fulfilment.read; wms.inbound_receipt.* and wms.return.* → wms.receipts.read), checked at create, update and every delivery; a missing scope returns 403 forbidden with details.missing_scope. The subscription is paused when the creating key is revoked or loses the scope, or the creating member is revoked.'
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionInput'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionCreated'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, limit_exceeded, idempotency_key_reused.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}:
+    get:
+      operationId: publicGetWebhookSubscription
+      summary: "Get a subscription"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: publicUpdateWebhookSubscription
+      summary: "Change URL, event types or pause"
+      description: 'A URL change returns the subscription to pending_verification. Scope: each event type needs the matching read permission of the creator (delivery.order.* and delivery.cod.* → delivery.orders.read; delivery.proof.* → delivery.proofs.read; wms.stock.* → wms.stock.read; wms.fulfilment_order.* and wms.package.* → wms.fulfilment.read; wms.inbound_receipt.* and wms.return.* → wms.receipts.read), checked at create, update and every delivery; a missing scope returns 403 forbidden with details.missing_scope. The subscription is paused when the creating key is revoked or loses the scope, or the creating member is revoked. Resuming a paused subscription (status active) rebinds created_by_key_id or created_by_membership_id to the resuming principal, whose scopes are then checked for every event type.'
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionInput'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: webhook_url_invalid, idempotency_key_reused.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    delete:
+      operationId: publicDeleteWebhookSubscription
+      summary: "Delete a subscription"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '204': {description: Done}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/verify:
+    post:
+      operationId: publicVerifyWebhookSubscription
+      summary: "Prove control of the URL with the verification token"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookVerifyRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscription'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: verification_token_invalid, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/rotate-secret:
+    post:
+      operationId: publicRotateWebhookSecret
+      summary: "Issue a new signing secret; the old one stays valid 24 h"
+      description: 'Both secrets sign for 24 h. A replay returns 409 secret_already_issued; the secret is never stored in the idempotency store.'
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookSubscriptionCreated'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: secret_already_issued.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/test-deliveries:
+    post:
+      operationId: publicSendTestWebhook
+      summary: "Send a signed sample event now"
+      description: 'Sample payload from the catalogue, marked test: true; not counted in delivery statistics.'
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookTestRequest'}}}}
+      responses:
+        '202': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookDelivery'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/deliveries:
+    get:
+      operationId: publicListWebhookDeliveries
+      summary: "Delivery log, including dead-lettered deliveries"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/WebhookDelivery'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-subscriptions/{subscription_id}/deliveries/{delivery_id}/redeliver:
+    post:
+      operationId: publicRedeliverWebhook
+      summary: "Redeliver one delivery, including a dead one"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      parameters: [{name: subscription_id, in: path, required: true, schema: {type: string, format: uuid}}, {name: delivery_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '202': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/WebhookDelivery'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /webhook-event-types:
+    get:
+      operationId: publicListWebhookEventTypes
+      summary: "Webhook catalogue with versions and sample payloads"
+      tags: [webhooks]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: [{apiKey: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/WebhookEventTypeList'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /products:
+    get:
+      operationId: publicListProducts
+      summary: "List products"
+      tags: [wms]
+      x-wave: 4
+      x-permission: wms.products.read
+      x-availability: after-wms-pilot
+      security: [{apiKey: []}]
+      parameters: [{name: sku, in: query, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Product'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /stock-summaries:
+    get:
+      operationId: publicListStock
+      summary: "Available quantity per product"
+      tags: [wms]
+      x-wave: 4
+      x-permission: wms.stock.read
+      x-availability: after-wms-pilot
+      security: [{apiKey: []}]
+      parameters: [{name: product_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/StockSummary'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /fulfilment-orders:
+    get:
+      operationId: publicListFulfilmentOrders
+      summary: "List fulfilment orders"
+      tags: [wms]
+      x-wave: 4
+      x-permission: wms.fulfilment.read
+      x-availability: after-wms-pilot
+      security: [{apiKey: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {name: source_ref, in: query, schema: {type: string}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: publicCreateFulfilmentOrder
+      summary: "Create a fulfilment order"
+      tags: [wms]
+      x-wave: 4
+      x-permission: wms.fulfilment.manage
+      x-availability: after-wms-pilot
+      security: [{apiKey: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PublicFulfilmentOrderRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: site_kind_mismatch, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /fulfilment-orders/{fulfilment_order_id}:
+    get:
+      operationId: publicGetFulfilmentOrder
+      summary: "Get a fulfilment order"
+      tags: [wms]
+      x-wave: 4
+      x-permission: wms.fulfilment.read
+      x-availability: after-wms-pilot
+      security: [{apiKey: []}]
+      parameters: [{name: fulfilment_order_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/FulfilmentOrder'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+webhooks:
+  delivery.order.created:
+    post:
+      operationId: webhookDeliveryOrderCreated
+      summary: "An order is created by any intake (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.created}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderCreated'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.accepted:
+    post:
+      operationId: webhookDeliveryOrderAccepted
+      summary: "pending → accepted, or an order taken back to accepted (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.accepted}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderAccepted'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.assigned:
+    post:
+      operationId: webhookDeliveryOrderAssigned
+      summary: "A driver accepts an offer or is assigned (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.assigned}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderAssigned'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.picked_up:
+    post:
+      operationId: webhookDeliveryOrderPickedUp
+      summary: "assigned → picked_up (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.picked_up}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderPickedUp'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.out_for_delivery:
+    post:
+      operationId: webhookDeliveryOrderOutForDelivery
+      summary: "picked_up → out_for_delivery (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.out_for_delivery}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderOutForDelivery'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.attempted:
+    post:
+      operationId: webhookDeliveryOrderAttempted
+      summary: "out_for_delivery → attempted (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.attempted}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderAttempted'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.delivered:
+    post:
+      operationId: webhookDeliveryOrderDelivered
+      summary: "out_for_delivery → delivered (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.delivered}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderDelivered'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.failed:
+    post:
+      operationId: webhookDeliveryOrderFailed
+      summary: "out_for_delivery or attempted → failed (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.failed}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderFailed'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.returned:
+    post:
+      operationId: webhookDeliveryOrderReturned
+      summary: "failed → returned at the site (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.returned}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderReturned'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.cancelled:
+    post:
+      operationId: webhookDeliveryOrderCancelled
+      summary: "A pre-pickup order is cancelled (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.cancelled}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderCancelled'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.order.rescheduled:
+    post:
+      operationId: webhookDeliveryOrderRescheduled
+      summary: "A new slot is booked (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.rescheduled}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderRescheduled'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.proof.stored:
+    post:
+      operationId: webhookDeliveryProofStored
+      summary: "A proof file is stored (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.proof.stored}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryProofStored'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  delivery.cod.collected:
+    post:
+      operationId: webhookDeliveryCodCollected
+      summary: "A COD collection is recorded (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.cod.collected}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryCodCollected'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  wms.inbound_receipt.received:
+    post:
+      operationId: webhookWmsInboundReceiptReceived
+      summary: "A receipt is closed (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.inbound_receipt.received}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsInboundReceiptReceived'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  wms.stock.available_changed:
+    post:
+      operationId: webhookWmsStockAvailableChanged
+      summary: "Available quantity of a product changes (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.stock.available_changed}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsStockAvailableChanged'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  wms.fulfilment_order.created:
+    post:
+      operationId: webhookWmsFulfilmentOrderCreated
+      summary: "A fulfilment order is received (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.fulfilment_order.created}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsFulfilmentOrderCreated'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  wms.fulfilment_order.on_hold:
+    post:
+      operationId: webhookWmsFulfilmentOrderOnHold
+      summary: "Allocation or picking falls short (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.fulfilment_order.on_hold}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsFulfilmentOrderOnHold'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  wms.package.packed:
+    post:
+      operationId: webhookWmsPackagePacked
+      summary: "open → packed (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.package.packed}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsPackagePacked'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  wms.package.shipment_created:
+    post:
+      operationId: webhookWmsPackageShipmentCreated
+      summary: "The carrier AWB and label are stored (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.package.shipment_created}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsPackageShipmentCreated'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  wms.package.handed_over:
+    post:
+      operationId: webhookWmsPackageHandedOver
+      summary: "ready → handed_over (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.package.handed_over}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsPackageHandedOver'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  wms.fulfilment_order.completed:
+    post:
+      operationId: webhookWmsFulfilmentOrderCompleted
+      summary: "Every package delivered (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.fulfilment_order.completed}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsFulfilmentOrderCompleted'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+  wms.return.received:
+    post:
+      operationId: webhookWmsReturnReceived
+      summary: "Returned goods are received (version 1)"
+      tags: [webhook-events]
+      x-wave: 4
+      x-permission: core.webhooks.manage
+      security: []
+      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.return.received}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsReturnReceived'}}}]}}}}
+      responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
+components:
+  parameters:
+    XEeasySignature:
+      name: X-Eeasy-Signature
+      in: header
+      required: true
+      description: 'v1=<hex HMAC-SHA256 of "<timestamp>.<raw body>"> with the subscription secret; two values during a secret rotation (ADR-0030)'
+      schema: {type: string}
+    XEeasyTimestamp:
+      name: X-Eeasy-Timestamp
+      in: header
+      required: true
+      description: Unix seconds; reject when more than 300 s from now
+      schema: {type: integer}
+  securitySchemes:
+    apiKey: {$ref: './components.yaml#/components/securitySchemes/apiKey'}
+  schemas:
+
+    WebhookEventTypeList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {type: object, properties: {type: {type: string}, version: {type: integer}, description_ar: {type: string}, description_en: {type: string}, sample: {$ref: './components.yaml#/components/schemas/Envelope'}}}
+
+    LabelList:
+      type: object
+      properties:
+        data: {type: array, items: {type: object, properties: {key: {type: string}, label_ar: {type: string}, label_en: {type: string}, terminal: {type: boolean}}}}
+    PublicCoverageRequest:
+      type: object
+      properties:
+        address: {$ref: './components.yaml#/components/schemas/Address'}
+        point: {$ref: './components.yaml#/components/schemas/Point'}
+    PublicOrderEvent:
+      type: object
+      description: The integrator view of an order event; actor ids are not exposed.
+      properties:
+        status: {$ref: './components.yaml#/components/schemas/OrderStatus'}
+        at: {type: string, format: date-time}
+        reason_code: {type: [string, 'null']}
+        attempt_number: {type: [integer, 'null']}
+    PublicReasonRequest:
+      type: object
+      required: [reason_code]
+      properties: {reason_code: {type: string}, note: {type: string, maxLength: 1000}}
+    PublicOrderTracking:
+      type: object
+      properties:
+        view: {$ref: './components.yaml#/components/schemas/PublicTrackingView'}
+        tracking_url: {type: string, format: uri}
+    LabelBatchRequest:
+      type: object
+      required: [order_ids]
+      properties: {order_ids: {type: array, minItems: 1, maxItems: 100, items: {type: string, format: uuid}}, size: {type: string, enum: [a6, label_10x15], default: label_10x15}}
+    PublicFulfilmentOrderRequest:
+      type: object
+      required: [site_id, recipient, address, lines]
+      properties:
+        site_id: {type: string, format: uuid}
+        source_ref: {type: string}
+        recipient: {$ref: './components.yaml#/components/schemas/Recipient'}
+        address: {$ref: './components.yaml#/components/schemas/Address'}
+        cod_amount: {$ref: './components.yaml#/components/schemas/Money'}
+        lines: {type: array, minItems: 1, items: {type: object, required: [product_id, quantity], properties: {product_id: {type: string, format: uuid}, quantity: {type: integer, minimum: 1}}}}
+
+    WhOrder:
+      type: object
+      description: Common order block of every delivery.order.* payload.
+      required: [id, number, kind, status, version]
+      properties:
+        id: {type: string, format: uuid}
+        number: {type: string}
+        kind: {$ref: './components.yaml#/components/schemas/OrderKind'}
+        status: {$ref: './components.yaml#/components/schemas/OrderStatus'}
+        source_ref: {type: [string, 'null']}
+        site_id: {type: string, format: uuid}
+        cod_amount: {$ref: './components.yaml#/components/schemas/Money'}
+        version: {type: integer}
+    WhDriver:
+      type: object
+      properties: {id: {type: string, format: uuid}, first_name: {type: string}}
+    WhLines:
+      type: array
+      items: {type: object, properties: {product_id: {type: string, format: uuid}, sku: {type: string}, quantity: {type: integer}, condition: {type: string}, expected: {type: integer}, received: {type: integer}, damaged: {type: integer}}}
+    DeliveryOrderCreated:
+      type: object
+      description: Payload of delivery.order.created version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        source: {type: string, enum: [manual, csv, api, channel, wms_package]}
+        recipient: {$ref: './components.yaml#/components/schemas/Recipient'}
+        address: {$ref: './components.yaml#/components/schemas/Address'}
+    DeliveryOrderAccepted:
+      type: object
+      description: Payload of delivery.order.accepted version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        zone_id: {type: string, format: uuid}
+        slot: {type: [object, 'null'], properties: {starts_at: {type: string, format: date-time}, ends_at: {type: string, format: date-time}}}
+    DeliveryOrderAssigned:
+      type: object
+      description: Payload of delivery.order.assigned version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        driver: {$ref: '#/components/schemas/WhDriver'}
+        vehicle_kind: {type: string, enum: [car, van, motorbike]}
+    DeliveryOrderPickedUp:
+      type: object
+      description: Payload of delivery.order.picked_up version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        driver: {$ref: '#/components/schemas/WhDriver'}
+        picked_up_at: {type: string, format: date-time}
+    DeliveryOrderOutForDelivery:
+      type: object
+      description: Payload of delivery.order.out_for_delivery version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        eta: {type: [string, 'null'], format: date-time}
+        tracking_url: {type: string, format: uri}
+    DeliveryOrderAttempted:
+      type: object
+      description: Payload of delivery.order.attempted version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        attempt_number: {type: integer}
+        reason_code: {type: string}
+        attempted_at: {type: string, format: date-time}
+    DeliveryOrderDelivered:
+      type: object
+      description: Payload of delivery.order.delivered version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        delivered_at: {type: string, format: date-time}
+        point: {$ref: './components.yaml#/components/schemas/Point'}
+        proof_ids: {type: array, items: {type: string, format: uuid}}
+        cod: {type: object, properties: {amount: {$ref: './components.yaml#/components/schemas/Money'}, collections: {type: array, items: {type: object, properties: {method: {type: string, enum: [cash, card, mada, wallet]}, amount: {$ref: './components.yaml#/components/schemas/Money'}}}}}}
+    DeliveryOrderFailed:
+      type: object
+      description: Payload of delivery.order.failed version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        reason_code: {type: string}
+    DeliveryOrderReturned:
+      type: object
+      description: Payload of delivery.order.returned version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        returned_at: {type: string, format: date-time}
+        items: {type: array, items: {type: object, properties: {sku: {type: string}, quantity: {type: integer}}}}
+    DeliveryOrderCancelled:
+      type: object
+      description: Payload of delivery.order.cancelled version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        reason_code: {type: string}
+        actor_type: {type: string, enum: [user, api_key, system]}
+    DeliveryOrderRescheduled:
+      type: object
+      description: Payload of delivery.order.rescheduled version 1.
+      properties:
+        order: {$ref: '#/components/schemas/WhOrder'}
+        slot: {type: object, properties: {starts_at: {type: string, format: date-time}, ends_at: {type: string, format: date-time}}}
+        by: {type: string, enum: [dispatcher, recipient]}
+    DeliveryProofStored:
+      type: object
+      description: Payload of delivery.proof.stored version 1.
+      properties:
+        order_id: {type: string, format: uuid}
+        order_number: {type: string}
+        proof_id: {type: string, format: uuid}
+        kind: {type: string, enum: [photo, signature, recipient_otp, id_check]}
+        stored_at: {type: string, format: date-time}
+    DeliveryCodCollected:
+      type: object
+      description: Payload of delivery.cod.collected version 1.
+      properties:
+        order_id: {type: string, format: uuid}
+        order_number: {type: string}
+        collection_id: {type: string, format: uuid}
+        amount: {$ref: './components.yaml#/components/schemas/Money'}
+        method: {type: string, enum: [cash, card, mada, wallet]}
+        custody: {type: string, enum: [collected, not_held]}
+    WmsInboundReceiptReceived:
+      type: object
+      description: Payload of wms.inbound_receipt.received version 1.
+      properties:
+        receipt_id: {type: string, format: uuid}
+        number: {type: string}
+        purchase_order_id: {type: [string, 'null'], format: uuid}
+        lines: {$ref: '#/components/schemas/WhLines'}
+    WmsStockAvailableChanged:
+      type: object
+      description: Payload of wms.stock.available_changed version 1.
+      properties:
+        product_id: {type: string, format: uuid}
+        sku: {type: string}
+        available: {type: integer}
+        on_hand: {type: integer}
+        as_of_ledger_seq: {type: integer}
+    WmsFulfilmentOrderCreated:
+      type: object
+      description: Payload of wms.fulfilment_order.created version 1.
+      properties:
+        fulfilment_order_id: {type: string, format: uuid}
+        number: {type: string}
+        source: {type: string, enum: [channel, manual, api]}
+        source_ref: {type: [string, 'null']}
+    WmsFulfilmentOrderOnHold:
+      type: object
+      description: Payload of wms.fulfilment_order.on_hold version 1.
+      properties:
+        fulfilment_order_id: {type: string, format: uuid}
+        number: {type: string}
+        short_lines: {type: array, items: {type: object, properties: {product_id: {type: string, format: uuid}, sku: {type: string}, missing: {type: integer}}}}
+    WmsPackagePacked:
+      type: object
+      description: Payload of wms.package.packed version 1.
+      properties:
+        package_id: {type: string, format: uuid}
+        fulfilment_order_id: {type: string, format: uuid}
+        weight_g: {type: integer}
+        length_mm: {type: integer}
+        width_mm: {type: integer}
+        height_mm: {type: integer}
+        fulfilment_method: {type: [string, 'null'], enum: [own_fleet, carrier, null]}
+    WmsPackageShipmentCreated:
+      type: object
+      description: Payload of wms.package.shipment_created version 1.
+      properties:
+        package_id: {type: string, format: uuid}
+        fulfilment_order_id: {type: string, format: uuid}
+        carrier_code: {type: string}
+        awb: {type: string}
+        label_url: {type: string, format: uri, description: Expiring signed URL}
+    WmsPackageHandedOver:
+      type: object
+      description: Payload of wms.package.handed_over version 1.
+      properties:
+        package_id: {type: string, format: uuid}
+        fulfilment_method: {type: string, enum: [own_fleet, carrier]}
+        handed_over_at: {type: string, format: date-time}
+        delivery_order_number: {type: [string, 'null']}
+        awb: {type: [string, 'null']}
+    WmsFulfilmentOrderCompleted:
+      type: object
+      description: Payload of wms.fulfilment_order.completed version 1.
+      properties:
+        fulfilment_order_id: {type: string, format: uuid}
+        number: {type: string}
+        packages: {type: array, items: {type: object, properties: {package_id: {type: string, format: uuid}, fulfilment_method: {type: string}, delivery_order_number: {type: [string, 'null']}, awb: {type: [string, 'null']}}}}
+    WmsReturnReceived:
+      type: object
+      description: Payload of wms.return.received version 1.
+      properties:
+        return_id: {type: string, format: uuid}
+        source: {type: string, enum: [delivery_return, carrier_return, walk_in]}
+        source_ref: {type: [string, 'null']}
+        lines: {$ref: '#/components/schemas/WhLines'}
