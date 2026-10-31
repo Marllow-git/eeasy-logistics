@@ -28,6 +28,7 @@ One `compose.yaml` runs the full local stack and the CI stack, and two executors
 | 2.6 | Secrets | `.env.example` with every variable the stack needs and placeholder values; `.env` is gitignored; gitleaks is PLAT-3's |
 | 2.7 | Apps in Compose | the api, worker and web images are NOT built in this order; the apps run on the host against the Compose services (platform §2 production parity is PLAT-3's image build) |
 | 2.8 | Verification without local Docker (ruled 2026-10-31) | the exit criteria run in a GitHub Actions smoke workflow `.github/workflows/compose-smoke.yml` on ubuntu-latest, triggered on pull requests that touch `compose.yaml`, `tools/` or the workflow; PLAT-3 replaces it with the full lanes |
+| 2.9 | Native local stack (owner ruling 2026-10-31) | `tools/native-stack.sh up\|down\|status\|reset` runs the dev services from Homebrew on this Mac on the `dev` ports with the same `.env`: PostgreSQL 17 + PostGIS through the same `tools/postgres/init/*.sql`, in a dedicated cluster under `.local/` when 5432 is free, else as the `elx` database and four roles inside the developer's running server (template1 and other databases untouched; `reset` drops only what `up` created); a running Redis on 6379 is reused, else one is started; MinIO with the versioned bucket via `mc`; Mailpit; the WhatsApp stub under `node`. No VROOM natively. All state under `.local/` (gitignored). Known, accepted difference until the owner installs a container runtime: PostgreSQL 17 and upstream MinIO locally versus PostgreSQL 16 and the pgsty fork in Compose and CI; ADR-0019 governs CI and production |
 
 ## 3. Build list
 
@@ -40,6 +41,7 @@ One `compose.yaml` runs the full local stack and the CI stack, and two executors
 | E | `tools/stack.sh` and the two isolated profiles | `stack-a` and `stack-b` up at the same time, different ports |
 | F | `.env.example`, README "Running the stack" | fresh clone follows the README to a healthy stack |
 | G | `.github/workflows/compose-smoke.yml` (decision 2.8) | the workflow run on the PR is green: every exit criterion asserted |
+| H | `tools/native-stack.sh` (decision 2.9) | on this Mac: roles and extensions via `psql`, stub round trip, `mc` shows the versioned bucket, Mailpit answers, `down` leaves no process |
 
 ## 4. Commit plan
 
