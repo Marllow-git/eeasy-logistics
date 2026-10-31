@@ -18,6 +18,7 @@ import {
   seconds,
   secret,
 } from './formats.ts';
+import { productionRefusals } from './refusals.ts';
 import { Secret } from './secret.ts';
 
 export const appRoles = ['api', 'worker', 'migrate'] as const;
@@ -248,6 +249,16 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       });
     }
   }
+
+  // Production refusals (plan 2.3); a variable already reported above is not reported twice.
+  const reported = new Set(issues.map((issue) => issue.variable));
+  const refusals = productionRefusals({
+    appEnv: v.APP_ENV,
+    present,
+    raw: (variable) => (Object.hasOwn(env, variable) ? env[variable] : undefined),
+    messagingDisabled: v.MESSAGING_DISABLED,
+  });
+  issues.push(...refusals.filter((issue) => !reported.has(issue.variable)));
 
   if (issues.length > 0) throw new ConfigError(issues);
 
