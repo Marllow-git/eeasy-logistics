@@ -1,0 +1,459 @@
+openapi: 3.1.0
+info:
+  title: "eeasy-logistics staff API: kernel"
+  version: 1.0.0
+  license: {name: Proprietary, identifier: LicenseRef-Proprietary}
+  description: >-
+    The web app surface for merchant staff, shared-kernel part: sign-in and sessions, account and
+    settings, members, sites, audit log, API keys. The same surface continues in staff-delivery.yaml
+    (Delivery) and staff-wms.yaml (WMS); the split follows the bounded contexts of ADR-0026.
+    Conventions, errors and waves: docs/contracts/README.md and errors.md.
+servers:
+  - url: /v1/staff
+security:
+  - staffCookie: []
+tags:
+  - {name: auth, description: "Staff sign-in, second factor, sessions (document 4 §3.1)"}
+  - {name: account, description: "Account and settings"}
+  - {name: members, description: "Memberships and invitations"}
+  - {name: sites, description: "Sites (ADR-0018)"}
+  - {name: audit, description: "Audit log (K-7)"}
+  - {name: api-keys, description: "Integrator keys (document 4 §3.4)"}
+paths:
+  /auth/invitations/accept:
+    post:
+      operationId: acceptInvitation
+      summary: "Accept a staff invitation and set the password"
+      description: 'One-time token valid 72 h (document 4 §3.1). Sets the session cookies.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AcceptInvitationRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/login:
+    post:
+      operationId: login
+      summary: "Sign in with email and password"
+      description: 'Same body and timing for unknown and disabled users (document 4 §8). When a second factor is required the response carries challenge_id and no cookies.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LoginRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/LoginResponse'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: invalid_credentials, second_factor_required.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/second-factor/request:
+    post:
+      operationId: requestSecondFactor
+      summary: "Send the phone OTP for a login challenge"
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChallengeRequest'}}}}
+      responses:
+        '202': {description: Done}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/second-factor/verify:
+    post:
+      operationId: verifySecondFactor
+      summary: "Verify the phone OTP and start the session"
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChallengeVerifyRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid, token_expired.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      summary: "Rotate the refresh cookie and issue a new access cookie"
+      description: 'Reuse of a rotated refresh token revokes the whole family (document 4 §4).'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.self
+      security: []
+      responses:
+        '204': {description: Done}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid, token_expired.'}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: account_suspended.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: "End the session and revoke the refresh token"
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.self
+      security: [{staffCookie: []}]
+      responses:
+        '204': {description: Done}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/password-reset/request:
+    post:
+      operationId: requestPasswordReset
+      summary: "Email a password reset link"
+      description: 'Always 202, whether or not the email exists.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PasswordResetRequest'}}}}
+      responses:
+        '202': {description: Done}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/password-reset/confirm:
+    post:
+      operationId: confirmPasswordReset
+      summary: "Set a new password from a reset link"
+      description: 'Token valid 30 min, single use; invalidates every session (document 4 §3.1).'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PasswordResetConfirm'}}}}
+      responses:
+        '204': {description: Done}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /me:
+    get:
+      operationId: getMe
+      summary: "Current user, membership, permissions and visible features"
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.self
+      security: [{staffCookie: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /account:
+    get:
+      operationId: getAccount
+      summary: "The caller account with limits and usage"
+      tags: [account]
+      x-wave: 0
+      x-permission: core.account.read
+      security: [{staffCookie: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Account'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /account/settings:
+    get:
+      operationId: getAccountSettings
+      summary: "Account settings (intake rule, proof policy, attempts, reason codes)"
+      tags: [account]
+      x-wave: 0
+      x-permission: core.account.read
+      security: [{staffCookie: []}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/AccountSettings'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updateAccountSettings
+      summary: "Change account settings"
+      description: 'Audited with before and after (K-7).'
+      tags: [account]
+      x-wave: 0
+      x-permission: core.account.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/AccountSettings'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/AccountSettings'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /members:
+    get:
+      operationId: listMembers
+      summary: "List memberships"
+      tags: [members]
+      x-wave: 0
+      x-permission: core.members.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/Q'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Membership'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /members/invitations:
+    post:
+      operationId: inviteMember
+      summary: "Invite a staff member by email"
+      tags: [members]
+      x-wave: 0
+      x-permission: core.members.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/InviteMemberRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Membership'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /members/{membership_id}:
+    get:
+      operationId: getMember
+      summary: "Get a membership"
+      tags: [members]
+      x-wave: 0
+      x-permission: core.members.read
+      security: [{staffCookie: []}]
+      parameters: [{name: membership_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Membership'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updateMember
+      summary: "Change roles and site_ids"
+      description: 'Re-reads token_version (document 4 §4); the owner role is transferred only by the owner.'
+      tags: [members]
+      x-wave: 0
+      x-permission: core.members.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: membership_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateMemberRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Membership'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    delete:
+      operationId: revokeMember
+      summary: "Revoke a membership and its sessions"
+      tags: [members]
+      x-wave: 0
+      x-permission: core.members.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: membership_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '204': {description: Done}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /sites:
+    get:
+      operationId: listSites
+      summary: "List sites"
+      tags: [sites]
+      x-wave: 0
+      x-permission: core.sites.read
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {name: kind, in: query, schema: {type: string, enum: [branch, warehouse, both]}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Site'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createSite
+      summary: "Create a site"
+      tags: [sites]
+      x-wave: 0
+      x-permission: core.sites.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /sites/{site_id}:
+    get:
+      operationId: getSite
+      summary: "Get a site"
+      tags: [sites]
+      x-wave: 0
+      x-permission: core.sites.read
+      security: [{staffCookie: []}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    patch:
+      operationId: updateSite
+      summary: "Change a site"
+      description: 'Changing kind is refused with site_in_use while references of the old kind exist (K-4).'
+      tags: [sites]
+      x-wave: 0
+      x-permission: core.sites.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: site_in_use.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /sites/{site_id}/deactivate:
+    post:
+      operationId: deactivateSite
+      summary: "Deactivate a site"
+      description: 'K-5: refused while the site has non-terminal orders, unsettled cash or stock on hand.'
+      tags: [sites]
+      x-wave: 0
+      x-permission: core.sites.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: site_in_use.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /sites/{site_id}/activate:
+    post:
+      operationId: activateSite
+      summary: "Reactivate a site"
+      tags: [sites]
+      x-wave: 0
+      x-permission: core.sites.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /audit-log:
+    get:
+      operationId: listAuditLog
+      summary: "Read the account audit log"
+      tags: [audit]
+      x-wave: 0
+      x-permission: core.audit.read
+      security: [{staffCookie: []}]
+      parameters: [{name: target_type, in: query, schema: {type: string}}, {name: target_id, in: query, schema: {type: string}}, {name: actor_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/AuditLogEntry'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /api-keys:
+    get:
+      operationId: listApiKeys
+      summary: "List API keys (prefix only)"
+      tags: [api-keys]
+      x-wave: 4
+      x-permission: core.api_keys.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/ApiKey'}}}}]}}}}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+    post:
+      operationId: createApiKey
+      summary: "Create an API key; the secret is shown once"
+      description: 'Scopes must be a subset of the integrator permissions in README §11 (document 4 §3.4).'
+      tags: [api-keys]
+      x-wave: 4
+      x-permission: core.api_keys.manage
+      security: [{staffCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateApiKeyRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/ApiKeyWithSecret'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /api-keys/{api_key_id}/rotate:
+    post:
+      operationId: rotateApiKey
+      summary: "Rotate a key with an overlap window"
+      tags: [api-keys]
+      x-wave: 4
+      x-permission: core.api_keys.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: api_key_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RotateApiKeyRequest'}}}}
+      responses:
+        '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/ApiKeyWithSecret'}}}}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /api-keys/{api_key_id}:
+    delete:
+      operationId: revokeApiKey
+      summary: "Revoke a key"
+      tags: [api-keys]
+      x-wave: 4
+      x-permission: core.api_keys.manage
+      security: [{staffCookie: []}]
+      parameters: [{name: api_key_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      responses:
+        '204': {description: Done}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+components:
+  securitySchemes:
+    staffCookie: {$ref: './components.yaml#/components/securitySchemes/staffCookie'}
+  schemas:
+
+    AcceptInvitationRequest:
+      type: object
+      required: [token, name, password]
+      properties:
+        token: {type: string}
+        name: {type: string}
+        password: {type: string, minLength: 12, description: Argon2id; breached-password check (document 4 §3.1)}
+        locale: {type: string, enum: [ar, en]}
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties: {email: {type: string, format: email}, password: {type: string}}
+    LoginResponse:
+      type: object
+      properties:
+        second_factor_required: {type: boolean}
+        challenge_id: {type: [string, 'null']}
+        me: {oneOf: [{$ref: './components.yaml#/components/schemas/Me'}, {type: 'null'}]}
+    ChallengeRequest:
+      type: object
+      required: [challenge_id]
+      properties: {challenge_id: {type: string}}
+    ChallengeVerifyRequest:
+      type: object
+      required: [challenge_id, code]
+      properties: {challenge_id: {type: string}, code: {type: string, pattern: '^[0-9]{6}$'}}
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties: {email: {type: string, format: email}}
+    PasswordResetConfirm:
+      type: object
+      required: [token, password]
+      properties: {token: {type: string}, password: {type: string, minLength: 12}}
+    InviteMemberRequest:
+      type: object
+      required: [email, name, roles]
+      properties:
+        email: {type: string, format: email}
+        name: {type: string}
+        roles: {type: array, minItems: 1, items: {$ref: './components.yaml#/components/schemas/Role'}}
+        site_ids: {type: array, items: {type: string, format: uuid}}
+    UpdateMemberRequest:
+      type: object
+      properties:
+        roles: {type: array, minItems: 1, items: {$ref: './components.yaml#/components/schemas/Role'}}
+        site_ids: {type: array, items: {type: string, format: uuid}}
+    CreateApiKeyRequest:
+      type: object
+      required: [name, scopes]
+      properties:
+        name: {type: string}
+        scopes: {type: array, minItems: 1, items: {type: string, enum: [delivery.orders.read, delivery.orders.create, delivery.orders.cancel, core.webhooks.manage, wms.products.read, wms.stock.read, wms.fulfilment.read, wms.fulfilment.manage]}}
+    RotateApiKeyRequest:
+      type: object
+      properties: {overlap_hours: {type: integer, minimum: 0, maximum: 168, default: 24}}

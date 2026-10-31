@@ -10,7 +10,7 @@ The domain model is the vocabulary. Aggregate names, attributes, states and inva
 | `errors.md` | the stable error `code` list |
 | `webhooks.md` | the merchant webhook catalogue, signing and delivery |
 | `openapi/components.yaml` | shared schemas (every aggregate of document 2), parameters, responses, security schemes |
-| `openapi/staff.yaml`, `openapi/staff-wms.yaml` | the web app surface: kernel and Delivery; WMS (split for size, same base path) |
+| `openapi/staff.yaml`, `openapi/staff-delivery.yaml`, `openapi/staff-wms.yaml` | the web app surface, one file per bounded context (ADR-0026): kernel, Delivery, WMS; same base path and session |
 | `openapi/driver.yaml`, `openapi/recipient.yaml`, `openapi/public.yaml`, `openapi/platform.yaml` | the other four surfaces |
 
 ## 1. Surfaces and base paths
@@ -103,7 +103,7 @@ Merchant webhooks are the domain events marked "yes" in document 2 §6.3, delive
 
 ## 9. OpenAPI files and validation
 
-- OpenAPI 3.1, one file per surface (plan 2.1); the staff surface is split into `staff.yaml` and `staff-wms.yaml` to stay under 1,200 lines a file. Each file starts with `openapi: 3.1.0`, `info` and `servers` and references shared parts as `./components.yaml#/components/schemas/Order`. Operation-specific request bodies live in the surface file's own `components.schemas`.
+- OpenAPI 3.1, one file per surface (plan 2.1); the staff surface is split by bounded context (ADR-0026) into `staff.yaml` (kernel), `staff-delivery.yaml` and `staff-wms.yaml`, which keeps each file under about 1,200 lines and lets each context own its contract. Each file starts with `openapi: 3.1.0`, `info` and `servers` and references shared parts as `./components.yaml#/components/schemas/Order`. Operation-specific request bodies live in the surface file's own `components.schemas`.
 - Every operation has `operationId` (unique across all files), `summary`, `tags`, `x-wave`, `x-permission`, `security`, parameters, a request body for writes, a success response and typed error responses. Writes carry the `Idempotency-Key` parameter; dispatcher Order and Assignment writes carry `If-Match`.
 - Extensions: `x-wave` (0 to 4), `x-permission`, `x-cross-tenant` (platform), `x-availability: after-wms-pilot` (public WMS paths, owner question 2), `x-extensible-enum`.
 - CI (wave 0, `packages/contracts`): `redocly lint` with the recommended ruleset plus repository rules (operationId present and unique, `x-wave` and `x-permission` present, permission matches `^[a-z]+\.[a-z_]+\.[a-z_]+$`, every write declares `Idempotency-Key` unless listed as exempt, every `$ref` resolves); `redocly bundle` produces one file per surface; TypeScript types and clients are generated from the bundles for `apps/web` and `apps/driver`; contract tests generated from the bundles run against the API in Compose and fail on any undocumented status, field or error code.
