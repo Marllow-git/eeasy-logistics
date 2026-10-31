@@ -14,7 +14,7 @@ The documents that must exist and be approved before application code is written
 | 8 | Driver app architecture | `docs/architecture/driver-app.md` | not started |
 | 9 | Integration architecture | `docs/architecture/integrations.md` | not started |
 | 10 | Engineering handbook | `AGENTS.md`, `docs/handbook/` | approved (PR #2) |
-| 11 | Reference censuses | `docs/references/` | not started |
+| 11 | Reference censuses | `docs/references/` | in review (PR #6, public material); login-gated censuses owed |
 | 12 | Roadmap | `docs/roadmap.md` | not started |
 | – | Foundation plan (the brief for this phase) | `docs/foundation-plan.md` | approved (PR #1) |
 
