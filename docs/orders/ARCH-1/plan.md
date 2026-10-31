@@ -77,6 +77,6 @@ One branch and one PR per item, stacked on the previous: `docs/arch-1-contracts`
 | D | 7 · Web app architecture: `docs/architecture/web.md` | PR #10 |
 | E | 8 · Driver app architecture: `docs/architecture/driver-app.md` | PR #8 |
 | F | 9 · Integration architecture: `docs/architecture/integrations.md` | PR #9 |
-| G | 12 · Roadmap: `docs/roadmap.md`; this plan closed | PR #TBD-roadmap |
+| G | 12 · Roadmap: `docs/roadmap.md`; this plan closed | PR #13 |
 
 Proposed ADRs from this order: 0029 and 0030 (B), 0031 (C), 0032 and 0033 (D), 0034 and 0035 (E), 0036 and 0037 (F). The owner questions of section 7, and every open question of the foundation documents, are consolidated in the roadmap's decision register (`docs/roadmap.md` §4; section 7 is Q-13 and Q-14).
