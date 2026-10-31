@@ -15,7 +15,7 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `forbidden` | 403 | the principal lacks the operation's `x-permission` or the site is outside its `site_ids` | doc 4 §2 |
 | `feature_not_enabled` | 403 | the module or feature is `off`, or `allowlist` without the account flag | K-6, ADR-0006 |
 | `account_suspended` | 403 | any write, refresh or API key call on a suspended account | K-2 |
-| `not_found` | 404 | no such resource in the caller's account; also returned for another account's id | K-3, ADR-0025 |
+| `not_found` | 404 | no such resource in the caller's account; also returned for another account's id, for a site outside the member's `site_ids`, and for orders and offers that are not on the driver's run | K-3, ADR-0025 |
 | `version_required` | 428 | dispatcher write to Order or Assignment without `If-Match` | D-22 |
 | `version_conflict` | 409 | `If-Match` differs from the current `version`; `details` holds `current_status`, `version` | D-22 |
 | `invalid_transition` | 409 | the arrow is not in the state machine or not for this actor, or the aggregate is terminal; `details` holds `current_status`, `version` | D-5, D-8, §3.14 to §3.17, §4.11 to §4.15 |
@@ -46,7 +46,7 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `driver_cash_blocked` | 422 | offer or assignment to a driver holding cash from a previous business day | D-11, D-12 |
 | `driver_not_eligible` | 422 | driver not `active`, no active shift with a vehicle, or site does not cover the zone | D-12 |
 | `capacity_exceeded` | 422 | the driver's `active_orders` would exceed `limit` | D-10 |
-| `driver_not_assignee` | 403 | driver event or offer response from a driver who is not the current assignee or offeree (and D-23 does not apply) | D-6, D-23 |
+| `driver_not_assignee` | 403 | an event from the order's former assignee that D-23 does not save; orders never on the driver's run are `404 not_found` | D-6, D-23 |
 | `shift_not_active` | 409 | driver transition or location batch outside an `active` or `paused` shift; shift action from the wrong shift state | D-6, §3.17 |
 | `offer_expired` | 409 | accepting an offer past `expires_at` | §3.14 |
 | `offer_withdrawn` | 409 | accepting an offer after another driver won or the dispatcher withdrew it | D-13 |
@@ -59,6 +59,7 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `deposit_sum_mismatch` | 422 | deposit `amount` differs from the sum of its collections | D-19, D-21 |
 | `method_not_allowed` | 422 | a collection method outside the account `allowed_cod_methods`, or a non-cash collection without `external_reference` | D-18, ADR-0017 |
 | `upload_mismatch` | 422 | proof or slip confirmation whose stored object is missing or whose `sha256` differs | §3.10, D-17 |
+| `slot_not_available` | 422 | a chosen slot is outside the order's site and zone, or its day is closed | §3.9 |
 | `slot_full` | 409 | booking a slot with `booked = capacity` or on a closed slot day | §3.9 |
 | `handover_amount_required` | 422 | confirming a handover without `counted_amount` | D-20 |
 | `cash_report_unbalanced` | 409 | closing a report while a cash collection of the day is still `collected` or a difference has no liability entry | D-21 |

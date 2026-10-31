@@ -567,12 +567,12 @@ components:
       properties:
         token: {type: string}
         name: {type: string}
-        password: {type: string, minLength: 12, description: Argon2id; breached-password check (document 4 §3.1)}
+        password: {type: string, minLength: 12, maxLength: 256, description: Argon2id; breached-password check (document 4 §3.1)}
         locale: {type: string, enum: [ar, en]}
     LoginRequest:
       type: object
       required: [email, password]
-      properties: {email: {type: string, format: email}, password: {type: string}}
+      properties: {email: {type: string, format: email}, password: {type: string, maxLength: 256}}
     LoginResponse:
       type: object
       properties:
@@ -594,7 +594,7 @@ components:
     PasswordResetConfirm:
       type: object
       required: [token, password]
-      properties: {token: {type: string}, password: {type: string, minLength: 12}}
+      properties: {token: {type: string}, password: {type: string, minLength: 12, maxLength: 256}}
     InviteMemberRequest:
       type: object
       required: [email, name, roles]
