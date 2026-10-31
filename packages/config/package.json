@@ -16,7 +16,7 @@
     "@eeasy-logistics/config-eslint": "workspace:*",
     "@eeasy-logistics/config-ts": "workspace:*",
     "eslint": "9.39.5",
-    "typescript": "5.9.3",
+    "typescript": "6.0.3",
     "vitest": "5.0.5"
   }
 }
