@@ -4,7 +4,7 @@
 - **Date:** 2026-10-31
 - **Wave:** 0 (roadmap §1.1). **Depends on:** PLAT-1 (merged, PR #22), PLAT-2.
 - **Lead:** architecture lead. **Executor:** Opus, own worktree. **Adversary:** no.
-- **Context:** the lead's Mac has no Docker runtime (2026-10-31), so CI is the only place integration checks run until the owner installs one. This order is therefore on the critical path for every later order.
+- **Context:** the owner's Mac has no Docker runtime and none is planned (ruling 2026-10-31: verify locally). Local verification uses the native Homebrew stack of PLAT-2 item H; CI is the only place the Compose profiles and the production-shaped stack run. This order is therefore on the critical path for every later order.
 
 ## 0. Goal
 
