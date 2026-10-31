@@ -5,3 +5,8 @@ packages:
 # pnpm 10 runs no dependency install scripts unless the package is listed here.
 onlyBuiltDependencies:
   - esbuild
+
+# Install scripts deliberately not run: both ship prebuilt binaries through optional dependencies.
+ignoredBuiltDependencies:
+  - '@parcel/watcher'
+  - unrs-resolver
