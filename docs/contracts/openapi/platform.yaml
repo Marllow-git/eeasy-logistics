@@ -280,7 +280,7 @@ paths:
       operationId: platformProvisionZone
       summary: "Create a zone from an official boundary"
       tags: [provisioning]
-      x-wave: 0
+      x-wave: 1
       x-permission: platform.accounts.provision
       x-cross-tenant: true
       security: [{platformCookie: []}]
@@ -297,7 +297,7 @@ paths:
       summary: "Set own-fleet coverage (site, zone) for the account"
       description: 'ADR-0015: coverage is explicit data created by the provisioning door before first use. K-4: branch or both sites only. Every site_id and zone_id must belong to the path account (404 not_found otherwise).'
       tags: [provisioning]
-      x-wave: 0
+      x-wave: 1
       x-permission: platform.accounts.provision
       x-cross-tenant: true
       security: [{platformCookie: []}]

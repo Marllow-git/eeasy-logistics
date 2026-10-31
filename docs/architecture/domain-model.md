@@ -166,7 +166,7 @@ Append-only `core_audit_log` (document 4 §7): actor, acting account, target typ
 
 | | |
 |---|---|
-| `core_outbox` | the event envelope (section 6) plus delivery state: `kind` (internal event, webhook, message, push, channel publish, carrier call), `status ∈ {pending, enqueued, done, dead, superseded}`, attempts, `next_attempt_at`, last error, `supersede_key` |
+| `core_outbox` | the event envelope (section 6) plus delivery state: `kind` (internal event, webhook, message, push, channel publish, carrier call, `storage_lifecycle` (ADR-0036)), `status ∈ {pending, enqueued, done, dead, superseded}`, attempts, `next_attempt_at`, last error, `supersede_key` (amended 2026-10-31, roadmap A-10) |
 | `core_consumer_receipts` | `(consumer, event_id)` unique; written in the consumer's transaction so a redelivered event is a no-op |
 
 - K-10: an outbox row is written in the same transaction as the business change; envelope columns are immutable (trigger); only delivery-state columns change.

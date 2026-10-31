@@ -364,23 +364,23 @@ Proposed ADRs and the wave by which each must be accepted (or replaced):
 
 ## 5. Foundation amendments owed
 
-Small changes other documents need; none is made by this roadmap. Already done and so not listed: the contract additions from docs 7, 8 and 9 (`X-EL-Client`, `embed_origins`, `driverVerifyCashPin`, `min_app_version`, inbound-webhook and channel-connection operations; contracts PR #12) and the doc 2 events for an assignment ending, a channel-side order change and a carrier request going dead (PR #5).
+Small changes other documents need; none is made by this roadmap. The ones that need no ruling were applied on 2026-10-31 (Status column); the rest wait on the ruling or ADR named. Already done and so not listed: the contract additions from docs 7, 8 and 9 (`X-EL-Client`, `embed_origins`, `driverVerifyCashPin`, `min_app_version`, inbound-webhook and channel-connection operations; contracts PR #12) and the doc 2 events for an assignment ending, a channel-side order change and a carrier request going dead (PR #5).
 
-| # | Document | Change | Carried by |
-|---|---|---|---|
-| A-1 | doc 6 §2 | Add an `osrm` container from wave 2 (doc 9 §6.5). | INT-5 PR |
-| A-2 | doc 6 §7 | Replace "any dead-lettered job" with the per-kind thresholds and rate alerts of ADR-0036 (doc 9 §4.5). | PLAT-14 PR, after ADR-0036 is accepted |
-| A-3 | doc 4 §4 | One sentence on the refresh reuse grace, once Q-23 is ruled. | PLAT-11 PR |
-| A-4 | doc 4 §3.2 | The PIN is required for a COD collection only when the delivery has a cash line (doc 3, doc 8 §12.1), and for a handover request. | DEL-4 PR |
-| A-5 | doc 9 §4 and §5 | Adopt doc 5 §10 and §5.2: an OTP `message` outbox row carries the code encrypted with the credentials key and is deleted 1 hour after sending, not after 7 days. | PLAT-9 PR |
-| A-6 | doc 6 §4 | Add the RLS-enabled integration lane (doc 5 §4.5) to the required checks. | PLAT-3 PR |
-| A-7 | plan §3, AGENTS.md | List `packages/db` (doc 5 §1.2) among the shared packages. | PLAT-1 PR |
-| A-8 | doc 6 §9 | Add the integration runbooks of doc 9 §10. | OPS-7 PR (channel ones), INT PRs otherwise |
-| A-9 | doc 3 `platform.yaml` | `platformProvisionZone` and `platformProvisionCoverage` carry `x-wave: 0`, but zones are built in DEL-1 (wave 1); retag to 1. | DEL-1 PR |
-| A-10 | doc 2 §2.7 | The outbox `kind` list lacks `storage_lifecycle` (ADR-0036, doc 9 §4.1), already in `components.yaml`. | PLAT-8 PR |
-| A-11 | doc 4 §5 | Record doc 5 §4.5: policies from wave 0, RLS enabled at wave 1 exit, once Q-16 is ruled. | PLAT-5 PR |
-| A-12 | plan §6 | W-1 to W-8 work items collide with doc 2's W-n invariants; name the work items distinctly. | the WMS-1 plan file |
-| A-13 | plan §8 | Record D8 brand (Q-21) and D7 pilot (Q-31) once ruled. | the PR that follows each ruling |
+| # | Document | Change | Carried by | Status |
+|---|---|---|---|---|
+| A-1 | doc 6 §2 | Add an `osrm` container from wave 2 (doc 9 §6.5). | INT-5 PR | done 2026-10-31 |
+| A-2 | doc 6 §7 | Replace "any dead-lettered job" with the per-kind thresholds and rate alerts of ADR-0036 (doc 9 §4.5). | PLAT-14 PR, after ADR-0036 is accepted | waits on ADR-0036 |
+| A-3 | doc 4 §4 | One sentence on the refresh reuse grace, once Q-23 is ruled. | PLAT-11 PR | waits on Q-23 |
+| A-4 | doc 4 §3.2 | The PIN is required for a COD collection only when the delivery has a cash line (doc 3, doc 8 §12.1), and for a handover request. | DEL-4 PR | done 2026-10-31 |
+| A-5 | doc 9 §4 and §5 | Adopt doc 5 §10 and §5.2: an OTP `message` outbox row carries the code encrypted with the credentials key and is deleted 1 hour after sending, not after 7 days. | PLAT-9 PR | done 2026-10-31 |
+| A-6 | doc 6 §4 | Add the RLS-enabled integration lane (doc 5 §4.5) to the required checks. | PLAT-3 PR | done 2026-10-31 |
+| A-7 | plan §3, AGENTS.md | List `packages/db` (doc 5 §1.2) among the shared packages. | PLAT-1 PR | done 2026-10-31 |
+| A-8 | doc 6 §9 | Add the integration runbooks of doc 9 §10. | OPS-7 PR (channel ones), INT PRs otherwise | done 2026-10-31 |
+| A-9 | doc 3 `platform.yaml` | `platformProvisionZone` and `platformProvisionCoverage` carry `x-wave: 0`, but zones are built in DEL-1 (wave 1); retag to 1. | DEL-1 PR | done 2026-10-31 |
+| A-10 | doc 2 §2.7 | The outbox `kind` list lacks `storage_lifecycle` (ADR-0036, doc 9 §4.1), already in `components.yaml`. | PLAT-8 PR | done 2026-10-31 |
+| A-11 | doc 4 §5 | Record doc 5 §4.5: policies from wave 0, RLS enabled at wave 1 exit, once Q-16 is ruled. | PLAT-5 PR | waits on Q-16 |
+| A-12 | plan §6 | W-1 to W-8 work items collide with doc 2's W-n invariants; name the work items distinctly. | the WMS-1 plan file | done 2026-10-31 |
+| A-13 | plan §8 | Record D8 brand (Q-21) and D7 pilot (Q-31) once ruled. | the PR that follows each ruling | waits on Q-21 / Q-31 |
 
 ## 6. Deferred and out of scope
 
