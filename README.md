@@ -41,7 +41,7 @@ Useful commands: `pnpm --filter api dev` (API on port 3000, `GET /health`), `pnp
 
 Every setting is an environment variable declared once in `packages/config` (schema, format, default) and read once at boot; nothing else reads the environment, and lint plus the architecture tests fail on a raw `process.env` (AGENTS.md). `.env.example` lists every variable with a comment.
 
-- Local: `cp .env.example .env` at the repository root. The API reads `.env` only when `APP_ENV=local`; variables already in the environment win. The web app (`NEXT_PUBLIC_*`) and the driver app (`EXPO_PUBLIC_*`) read their own files: put those lines in `apps/web/.env.local` and `apps/driver/.env`.
+- Local: `cp .env.example .env` at the repository root. The API reads `.env` only when the process environment itself says `APP_ENV=local` (`pnpm --filter api dev` sets it; the file's own `APP_ENV` is ignored); variables already in the environment win. The web app (`NEXT_PUBLIC_*`) and the driver app (`EXPO_PUBLIC_*`) read their own files: put those lines in `apps/web/.env.local` and `apps/driver/.env`.
 - A missing or malformed variable stops the API with exit code 78 and a list of every bad variable by name, never its value.
 - `APP_ENV=production` refuses to start without the database URLs, Redis, storage, the signing key and the credentials keys, refuses any `stub` adapter, and needs a real messaging provider or `MESSAGING_DISABLED=true`.
 - `ci`, `staging` and `production` never read `.env`; their values come from the environment or the host's secret store.

@@ -17,17 +17,15 @@ afterEach(() => {
 });
 
 describe('readEnvironment (.env only when APP_ENV=local, plan 2.7)', () => {
-  it('reads .env when the file says local; the process environment wins', () => {
-    writeFileSync(
-      join(dir, '.env'),
-      'APP_ENV=local\nPORT=4000\nREDIS_URL=redis://localhost:6379\n',
-    );
-    const env = readEnvironment({ PORT: '5000' }, dir);
-    expect(env).toMatchObject({
-      APP_ENV: 'local',
-      PORT: '5000',
-      REDIS_URL: 'redis://localhost:6379',
-    });
+  it('reads .env when the process says local; the process environment wins', () => {
+    writeFileSync(join(dir, '.env'), 'PORT=4000\nREDIS_URL=redis://localhost:6379\n');
+    const env = readEnvironment({ APP_ENV: 'local', PORT: '5000' }, dir);
+    expect(env).toEqual({ APP_ENV: 'local', PORT: '5000', REDIS_URL: 'redis://localhost:6379' });
+  });
+
+  it('never takes APP_ENV from the file', () => {
+    writeFileSync(join(dir, '.env'), 'APP_ENV=production\nPORT=4000\n');
+    expect(readEnvironment({ APP_ENV: 'local' }, dir)).toEqual({ APP_ENV: 'local', PORT: '4000' });
   });
 
   it.each(['ci', 'staging', 'production'])('ignores .env when the process says %s', (appEnv) => {
@@ -35,8 +33,8 @@ describe('readEnvironment (.env only when APP_ENV=local, plan 2.7)', () => {
     expect(readEnvironment({ APP_ENV: appEnv }, dir)).toEqual({ APP_ENV: appEnv });
   });
 
-  it('ignores .env that does not say local, so the missing APP_ENV still fails boot', () => {
-    writeFileSync(join(dir, '.env'), 'APP_ENV=production\nREDIS_URL=redis://localhost:6379\n');
+  it('ignores .env when the process has no APP_ENV, even if the file says local', () => {
+    writeFileSync(join(dir, '.env'), 'APP_ENV=local\nREDIS_URL=redis://localhost:6379\n');
     expect(readEnvironment({}, dir)).toEqual({});
   });
 

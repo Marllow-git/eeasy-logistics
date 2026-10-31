@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "nest build",
-    "dev": "nest start --watch",
+    "dev": "APP_ENV=local nest start --watch",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
