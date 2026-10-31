@@ -1,0 +1,12 @@
+{
+  "name": "@eeasy-logistics/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lints docs/contracts/openapi with Redocly; bundling and generated clients arrive in PLAT-15.",
+  "scripts": {
+    "lint": "redocly lint --config ../../docs/contracts/redocly.yaml"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.72.1"
+  }
+}

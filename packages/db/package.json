@@ -1,0 +1,26 @@
+{
+  "name": "@eeasy-logistics/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared Drizzle helpers (data architecture §1.2); placeholder until PLAT-5.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@eeasy-logistics/config-eslint": "workspace:*",
+    "@eeasy-logistics/config-ts": "workspace:*",
+    "drizzle-kit": "0.31.11",
+    "eslint": "9.39.5",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4"
+  }
+}

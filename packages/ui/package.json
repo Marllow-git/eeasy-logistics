@@ -1,0 +1,22 @@
+{
+  "name": "@eeasy-logistics/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Design system components and tokens; placeholder until WEB-1.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@eeasy-logistics/config-eslint": "workspace:*",
+    "@eeasy-logistics/config-ts": "workspace:*",
+    "eslint": "9.39.5",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  }
+}
