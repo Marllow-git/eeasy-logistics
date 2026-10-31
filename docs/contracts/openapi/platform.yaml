@@ -19,6 +19,7 @@ tags:
   - {name: rollout, description: "Rollout modes and flags (§2.4, ADR-0006)"}
   - {name: support, description: "Cross-tenant reads, audited (document 4 §5)"}
   - {name: outbox, description: "Outbox, consumers, dead letters (ADR-0024)"}
+  - {name: inbound, description: "Inbound channel and carrier webhooks (document 9)"}
   - {name: diagnose, description: "Diagnose console"}
   - {name: staff, description: "Platform staff"}
   - {name: audit, description: "Platform audit log"}
@@ -456,7 +457,7 @@ paths:
       x-permission: platform.outbox.read
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {name: account_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {name: kind, in: query, schema: {type: string}}, {name: type, in: query, schema: {type: string}}, {name: aggregate_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {name: account_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/StatusQuery'}, {name: kind, in: query, schema: {type: string, enum: [internal_event, webhook, message, push, channel_publish, carrier_call, storage_lifecycle]}}, {name: type, in: query, schema: {type: string}}, {name: aggregate_id, in: query, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/CreatedFrom'}, {$ref: './components.yaml#/components/parameters/CreatedTo'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/OutboxRow'}}}}]}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
@@ -505,6 +506,71 @@ paths:
       security: [{platformCookie: []}]
       parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayRequest'}}}}
+      responses:
+        '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayResult'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /inbound-webhooks:
+    get:
+      operationId: platformListInboundWebhooks
+      summary: "Inbound channel and carrier webhooks"
+      description: '@CrossTenant, audited per call with X-Support-Reason. Without account_id the rows carry metadata only; raw bodies are never listed (document 9).'
+      tags: [inbound]
+      x-wave: 4
+      x-permission: platform.outbox.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {name: account_id, in: query, schema: {type: string, format: uuid}}, {name: provider, in: query, schema: {type: string, enum: [salla, zid, eeasy_shipping]}}, {name: status, in: query, schema: {type: string, enum: [emitted, ignored, duplicate, rejected, unmappable]}}, {name: from, in: query, schema: {type: string, format: date-time}}, {name: to, in: query, schema: {type: string, format: date-time}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}]
+      responses:
+        '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: '#/components/schemas/InboundWebhook'}}}}]}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /inbound-webhooks/{inbound_webhook_id}:
+    get:
+      operationId: platformGetInboundWebhook
+      summary: "One inbound webhook"
+      description: 'The raw body is returned only when account_id is given and matches the row; that read writes its own audit row with X-Support-Reason.'
+      tags: [inbound]
+      x-wave: 4
+      x-permission: platform.outbox.read
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: inbound_webhook_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {name: account_id, in: query, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/InboundWebhook'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /inbound-webhooks/{inbound_webhook_id}/remap:
+    post:
+      operationId: platformRemapInboundWebhook
+      summary: "Re-run the adapter mapping and emit"
+      description: 'For rows unmappable or rejected after an adapter fix: re-runs the mapping and emits the kernel event through the outbox; idempotent per inbound row (consumer receipts). Audited.'
+      tags: [inbound]
+      x-wave: 4
+      x-permission: platform.outbox.replay
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{name: inbound_webhook_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/InboundWebhook'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: replay_not_allowed.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /inbound-webhooks/refetch:
+    post:
+      operationId: platformRefetchChannelOrders
+      summary: "Fetch channel orders and emit them"
+      description: 'Fetches the listed channel orders from the provider through the account connection (an outbox effect) and emits core.channel_order.received for each; duplicates are dropped by the inbound idempotency rule. Audited.'
+      tags: [inbound]
+      x-wave: 4
+      x-permission: platform.outbox.replay
+      x-cross-tenant: true
+      security: [{platformCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RefetchRequest'}}}}
       responses:
         '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayResult'}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
@@ -755,10 +821,32 @@ components:
       required: [reason]
       properties:
         account_id: {type: string, format: uuid}
-        kind: {type: string, enum: [internal_event, webhook, message, push, channel_publish, carrier_call]}
+        kind: {type: string, enum: [internal_event, webhook, message, push, channel_publish, carrier_call, storage_lifecycle]}
         type: {type: string}
         created_from: {type: string, format: date-time}
         created_to: {type: string, format: date-time}
+        reason: {type: string, minLength: 5}
+    InboundWebhook:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        account_id: {type: [string, 'null'], format: uuid}
+        provider: {type: string, enum: [salla, zid, eeasy_shipping]}
+        connection_id: {type: [string, 'null'], format: uuid}
+        received_at: {type: string, format: date-time}
+        provider_event: {type: string}
+        external_ref: {type: [string, 'null']}
+        status: {type: string, enum: [emitted, ignored, duplicate, rejected, unmappable]}
+        emitted_event_id: {type: [string, 'null'], format: uuid}
+        error_class: {type: [string, 'null']}
+        raw_body: {type: [object, 'null'], description: Only on the single read with a matching account_id}
+    RefetchRequest:
+      type: object
+      required: [account_id, provider, channel_order_refs, reason]
+      properties:
+        account_id: {type: string, format: uuid}
+        provider: {type: string, enum: [salla, zid]}
+        channel_order_refs: {type: array, minItems: 1, maxItems: 100, items: {type: string}}
         reason: {type: string, minLength: 5}
     BulkReplayResult:
       type: object

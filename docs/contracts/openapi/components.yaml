@@ -441,6 +441,17 @@ components:
         ip: {type: string}
         user_agent: {type: string}
         reason: {type: [string, 'null'], description: X-Support-Reason on cross-tenant calls}
+    ChannelConnection:
+      type: object
+      description: Kernel channel connection (document 2 §1, document 9). Credentials are stored encrypted and never returned.
+      allOf: [{$ref: '#/components/schemas/Base'}]
+      properties:
+        provider: {type: string, enum: [salla, zid, eeasy_shipping]}
+        name: {type: string}
+        external_store_id: {type: [string, 'null']}
+        status: {type: string, enum: [pending_authorization, active, needs_reauth, disabled]}
+        last_error: {type: [string, 'null'], description: Fixed error class}
+        last_sync_at: {type: [string, 'null'], format: date-time}
     ApiKey:
       type: object
       description: Document 4 §3.4. The secret is never returned after creation.
@@ -464,7 +475,7 @@ components:
       description: core_outbox row (document 2 §2.7). Platform surface only.
       properties:
         envelope: {$ref: '#/components/schemas/Envelope'}
-        kind: {type: string, enum: [internal_event, webhook, message, push, channel_publish, carrier_call]}
+        kind: {type: string, enum: [internal_event, webhook, message, push, channel_publish, carrier_call, storage_lifecycle]}
         status: {type: string, enum: [pending, enqueued, done, dead, superseded]}
         attempts: {type: integer}
         next_attempt_at: {type: [string, 'null'], format: date-time}
