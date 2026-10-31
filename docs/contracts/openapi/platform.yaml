@@ -537,7 +537,7 @@ paths:
     get:
       operationId: platformGetInboundWebhook
       summary: "One inbound webhook"
-      description: 'The raw body is returned only when account_id is given and matches the row; that read writes its own audit row with X-Support-Reason.'
+      description: 'The raw body is returned only when account_id is given and matches the row and the caller holds platform.inbound.raw_read (platform admin and above); that read writes its own audit row with X-Support-Reason.'
       tags: [inbound]
       x-wave: 4
       x-permission: platform.outbox.read
@@ -566,7 +566,7 @@ paths:
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: replay_not_allowed.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
-  /inbound-webhooks/refetch:
+  /accounts/{account_id}/inbound-webhooks/refetch:
     post:
       operationId: platformRefetchChannelOrders
       summary: "Fetch channel orders and emit them"
@@ -576,7 +576,7 @@ paths:
       x-permission: platform.outbox.replay
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      parameters: [{name: account_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RefetchRequest'}}}}
       responses:
         '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayResult'}}}}
@@ -849,11 +849,10 @@ components:
         raw_body: {type: [object, 'null'], description: Only on the single read with a matching account_id}
     RefetchRequest:
       type: object
-      required: [account_id, provider, channel_order_refs, reason]
+      required: [provider, channel_order_refs, reason]
       properties:
-        account_id: {type: string, format: uuid}
         provider: {type: string, enum: [salla, zid]}
-        channel_order_refs: {type: array, minItems: 1, maxItems: 100, items: {type: string}}
+        channel_order_refs: {type: array, minItems: 1, maxItems: 100, items: {type: string, pattern: '^[A-Za-z0-9_-]{1,64}$'}}
         reason: {type: string, minLength: 5}
     BulkReplayResult:
       type: object
