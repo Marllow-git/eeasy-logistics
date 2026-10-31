@@ -40,6 +40,8 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 | [0033](0033-radix-tailwind-design-system-and-maplibre.md) | Build the design system on Radix primitives and Tailwind, with MapLibre behind a MapProvider | proposed |
 | [0034](0034-offline-cash-pin-device-verifier.md) | Check the cash PIN on the device offline and again on the server at replay | proposed |
 | [0035](0035-driver-app-end-to-end-with-maestro.md) | Run the driver app's end-to-end flows and census with Maestro | proposed |
+| [0036](0036-outbox-kinds-and-worker-queues.md) | Run one worker queue per outbox kind and add a storage lifecycle kind | proposed |
+| [0037](0037-messaging-templates-only-no-sms-before-wave-3.md) | Send messages as approved WhatsApp templates only, with no SMS fallback before wave 3 | proposed |
 
 ## Groups
 
@@ -51,3 +53,4 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 - **Proposed with the data architecture (document 5):** 0031 database roles and the ledger single writer.
 - **Proposed with the web app architecture (document 7):** 0032 browser reaches the API on the web origin, 0033 design system base and map provider.
 - **Proposed with the driver app architecture (document 8):** 0034 offline cash PIN verifier, 0035 Maestro end-to-end flows.
+- **Proposed with the integration architecture (document 9):** 0036 outbox kinds and worker queues, 0037 messaging templates only, no SMS before wave 3.
