@@ -4,3 +4,17 @@ node_modules/
 .env.*
 !.env.example
 *.log
+
+# Agent and editor tooling state
+.claude/
+.serena/
+
+# Build and cache output
+.turbo/
+.next/
+.expo/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+expo-env.d.ts
