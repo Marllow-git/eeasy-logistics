@@ -32,9 +32,11 @@ paths:
       x-wave: 1
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OtpRequest'}}}}
       responses:
         '202': {description: Done}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /auth/otp/verify:
@@ -46,11 +48,13 @@ paths:
       x-wave: 1
       x-permission: core.auth.anonymous
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OtpVerifyRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DriverSession'}}}}
         '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: device_limit_reached.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /auth/refresh:
@@ -62,11 +66,13 @@ paths:
       x-wave: 1
       x-permission: core.auth.self
       security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DriverRefreshRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/TokenPair'}}}}
         '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid, token_expired, device_revoked.'}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: account_suspended.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /auth/logout:
     post:
@@ -76,8 +82,10 @@ paths:
       x-wave: 1
       x-permission: core.auth.self
       security: [{driverBearer: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '204': {description: Done}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /me:
     get:
@@ -87,8 +95,10 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DriverMe'}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /devices/current/push-token:
     put:
@@ -98,11 +108,12 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PushTokenRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverDevice'}}}}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /cash-pin:
     put:
@@ -113,7 +124,7 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.cash
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CashPinRequest'}}}}
       responses:
         '204': {description: Done}
@@ -121,6 +132,7 @@ paths:
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: cash_pin_invalid.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '423': {$ref: './components.yaml#/components/responses/Locked', description: 'Codes: cash_pin_locked.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /reason-codes:
     get:
@@ -130,8 +142,10 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ReasonCodeList'}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /vehicles:
     get:
@@ -141,9 +155,10 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Vehicle'}}}}]}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /shifts:
     get:
@@ -153,9 +168,10 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}]}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /shifts/start:
     post:
@@ -166,12 +182,13 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/StartShiftRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: driver_not_eligible, idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /shifts/{shift_id}/pause:
     post:
@@ -182,11 +199,12 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: shift_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: shift_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /shifts/{shift_id}/resume:
     post:
@@ -197,11 +215,12 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: shift_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: shift_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /shifts/{shift_id}/end:
     post:
@@ -212,11 +231,12 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: shift_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: shift_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverShift'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /offers:
     get:
@@ -226,9 +246,10 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/Offer'}}}}]}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /offers/{offer_id}/accept:
     post:
@@ -239,12 +260,13 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: offer_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: offer_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Assignment'}}}}
         '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: offer_expired, offer_withdrawn, shift_not_active.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: driver_cash_blocked, capacity_exceeded, idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /offers/{offer_id}/decline:
     post:
@@ -254,12 +276,13 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: offer_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: offer_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DeclineRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Offer'}}}}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: offer_expired, offer_withdrawn.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /orders:
     get:
@@ -270,9 +293,10 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/UpdatedFrom'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/UpdatedFrom'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: '#/components/schemas/RunStop'}}}}]}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /orders/{order_id}:
     get:
@@ -283,10 +307,11 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/RunStop'}}}}
         '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /orders/{order_id}/events:
     post:
@@ -297,7 +322,7 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DriverOrderEvent'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DriverOrderEventResult'}}}}
@@ -305,6 +330,7 @@ paths:
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition, stale_driver_event, shift_not_active.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: proof_required, cod_amount_mismatch, cod_not_allowed, idempotency_key_reused, client_ts_out_of_range, method_not_allowed.'}
         '423': {$ref: './components.yaml#/components/responses/Locked', description: 'Codes: cash_pin_locked.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /orders/{order_id}/address-pin:
     put:
@@ -315,13 +341,14 @@ paths:
       x-wave: 2
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: order_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DriverPinRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Order'}}}}
         '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: order_locked.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /proofs/{proof_id}/upload-url:
     post:
@@ -332,13 +359,14 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: proof_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: proof_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProofUploadRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/UploadTicket'}}}}
         '404': {$ref: './components.yaml#/components/responses/NotFound', description: 'Codes: not_found.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: invalid_transition.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /proofs/{proof_id}/confirm:
     post:
@@ -349,10 +377,11 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{name: proof_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{name: proof_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Proof'}}}}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: upload_mismatch, idempotency_key_reused.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /locations:
     post:
@@ -363,10 +392,12 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.locations
       security: [{driverBearer: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LocationBatch'}}}}
       responses:
         '202': {description: Done}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: shift_not_active.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /cash:
     get:
@@ -376,8 +407,28 @@ paths:
       x-wave: 2
       x-permission: delivery.driver.cash
       security: [{driverBearer: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/DriverCashSummary'}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /cash-pin/verify:
+    post:
+      operationId: driverVerifyCashPin
+      summary: "Check the cash PIN online"
+      description: 'Proposed with ADR-0034 (device-held PIN verifier, document 8 §5.3). Every failure counts toward the same five-failure lock as every other PIN check (document 4 §3.2). No Idempotency-Key: each call is a fresh check and the PIN is never hashed into a stored request.'
+      tags: [cash]
+      x-wave: 1
+      x-permission: delivery.driver.cash
+      x-adr: "0034 (proposed)"
+      security: [{driverBearer: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CashPinVerifyRequest'}}}}
+      responses:
+        '204': {description: PIN correct}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: cash_pin_invalid.'}
+        '423': {$ref: './components.yaml#/components/responses/Locked', description: 'Codes: cash_pin_locked.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /cash/collections:
     get:
@@ -387,9 +438,10 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.cash
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/BusinessDate'}, {name: custody, in: query, schema: {type: string, enum: [collected, with_cashier, with_bank, not_held]}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/BusinessDate'}, {name: custody, in: query, schema: {type: string, enum: [collected, with_cashier, with_bank, not_held]}}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/CodCollection'}}}}]}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /cash/handovers:
     post:
@@ -400,13 +452,14 @@ paths:
       x-wave: 2
       x-permission: delivery.driver.cash
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/HandoverRequest'}}}}
       responses:
         '201': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/CashHandover'}}}}
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: cash_pin_invalid.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: method_not_allowed_for_cash, site_kind_mismatch, idempotency_key_reused, collection_not_eligible.'}
         '423': {$ref: './components.yaml#/components/responses/Locked', description: 'Codes: cash_pin_locked.'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
     get:
       operationId: driverListHandovers
@@ -415,9 +468,10 @@ paths:
       x-wave: 2
       x-permission: delivery.driver.cash
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/StatusQuery'}, {$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/CashHandover'}}}}]}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /cash/liability-entries:
     get:
@@ -427,9 +481,10 @@ paths:
       x-wave: 2
       x-permission: delivery.driver.cash
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/Cursor'}, {$ref: './components.yaml#/components/parameters/Limit'}, {$ref: './components.yaml#/components/parameters/Sort'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {description: A page, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Page'}, {type: object, properties: {data: {type: array, items: {$ref: './components.yaml#/components/schemas/DriverLiabilityEntry'}}}}]}}}}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /stream:
     get:
@@ -440,9 +495,10 @@ paths:
       x-wave: 1
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/LastEventId'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/LastEventId'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]
       responses:
         '200': {$ref: './components.yaml#/components/responses/EventStream'}
+        '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
 components:
   securitySchemes:
@@ -488,6 +544,14 @@ components:
         cash: {$ref: './components.yaml#/components/schemas/DriverCashSummary'}
         cash_pin_set: {type: boolean}
         proof_policy: {$ref: './components.yaml#/components/schemas/AccountSettings/properties/proof_policy'}
+        min_app_version:
+          type: object
+          description: 'Proposed (document 8 open question 5): below it every driver call returns 426 app_update_required'
+          properties: {ios: {type: string, pattern: '^[0-9]+\.[0-9]+\.[0-9]+$', example: 1.4.0}, android: {type: string, pattern: '^[0-9]+\.[0-9]+\.[0-9]+$', example: 1.4.0}}
+    CashPinVerifyRequest:
+      type: object
+      required: [cash_pin]
+      properties: {cash_pin: {type: string, pattern: '^[0-9]{4,6}$', writeOnly: true}}
     PushTokenRequest:
       type: object
       required: [push_token]
