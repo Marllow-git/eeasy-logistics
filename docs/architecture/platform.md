@@ -24,7 +24,7 @@ No environment shares a database, a Redis or a bucket with another. The developm
 | redis | Redis 7 | queues, rate limits, short caches; not a source of truth |
 | vroom | official VROOM image | route optimisation; private network only |
 | osrm | official OSRM image on a Saudi OpenStreetMap extract | distance-matrix fallback behind Hudhud; private network only; from wave 2 (integrations §6.5) (amended 2026-10-31, roadmap A-1) |
-| storage | S3-compatible (MinIO in Compose, provider bucket in production) | proofs, labels, exports; signed URLs only |
+| storage | S3-compatible (the Silo fork of MinIO in Compose, pinned by digest; provider bucket in production) (amended 2026-10-31, roadmap A-15) | proofs, labels, exports; signed URLs only |
 | whatsapp-stub | small HTTP stub | local and ci only: records OTP and message sends for tests |
 | mail-stub | Mailpit | local and ci only |
 
