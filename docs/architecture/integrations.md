@@ -211,7 +211,7 @@ The kinds are document 2 §2.7's six, plus `storage_lifecycle`, added by the pro
 |---|---|---|---|---|
 | `internal_event` | every context, in the business transaction | in-process consumers (document 2 §6.3 consumers column) | per aggregate (document 2 §6.2) | no |
 | `webhook` | the kernel's webhook fan-out consumer, one row per matching active subscription per event | `MerchantWebhooks.deliver` | per (subscription, aggregate), `webhooks.md` §3 | no |
-| `message` | the kernel (OTP) and Delivery consumers of the events that message recipients (§5) | `MessageSender` | none | key `msg:{order_id}:{template_group}`; stale check at send time (§4.3) |
+| `message` | the kernel (OTP) and Delivery consumers of the events that message recipients (§5); an OTP row carries the code encrypted with the credentials key and is deleted one hour after sending (data §5.2, §10) | `MessageSender` | none | key `msg:{order_id}:{template_group}`; stale check at send time (§4.3) (amended 2026-10-31, roadmap A-5) |
 | `push` | Delivery consumers of `delivery.order.offered` and dispatcher actions | `PushSender` | none | key `push:{driver_id}:{order_id}`; expired offers are dropped |
 | `channel_publish` | stock: the WMS summary projector into `wms_channel_publications` (document 2 §4.9, W-18); other channel writes (webhook registration at install): the kernel into `core_outbox` | `ChannelStock.setQuantity`, `ChannelOrders.registerWebhooks` | per connection, one in flight | stock: W-18 |
 | `carrier_call` | WMS when `carrier` is chosen (W-12) or a carrier shipment is cancelled (W-13) | `CarrierShipments.createShipment`, `.cancel` | per package | a cancel supersedes an unsent create of the same generation |
@@ -264,7 +264,7 @@ Every template exists in Arabic and English (ADR-0016) and is chosen by the reci
 
 | Wave | Template key | Category | Recipient | Triggered by | Parameters |
 |---|---|---|---|---|---|
-| 0 | `auth_otp` | authentication (copy-code button) | staff second factor and drivers | document 4 §3 | code |
+| 0 | `auth_otp` | authentication (copy-code button) | staff second factor and drivers | document 4 §3 | code, encrypted with the credentials key on the outbox row, which is deleted one hour after sending (data §5.2, §10) (amended 2026-10-31, roadmap A-5) |
 | 1 | `order_assigned` | utility | recipient | `delivery.order.assigned` | merchant name, order number |
 | 1 | `order_out_for_delivery` | utility | recipient | `delivery.order.out_for_delivery` | merchant name, driver first name, ETA window, tracking link (purpose `track`) |
 | 1 | `order_attempted` | utility | recipient | `delivery.order.attempted` | merchant name, reason (localised label), reschedule link from wave 2 |

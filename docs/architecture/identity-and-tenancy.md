@@ -46,7 +46,7 @@ Site restriction is data, not a role: a membership carries `site_ids`; site-scop
 - Phone number normalised to E.164 before anything else (two formats of one Saudi number must share one budget: an eeasynew hardening finding).
 - OTP: six digits, valid 5 minutes, single use enforced by a row lock on verification so two concurrent verifications cannot both succeed; resend cooldown 60 seconds; budget 5 requests per phone per hour and 20 per IP per hour; an invalid code and a disabled account return the same `otp_invalid` so the login door leaks nothing.
 - Device binding: the app sends a device id and a push token at verification; the refresh token is bound to the device row; an account's driver may have at most two active devices; a dispatcher can revoke a device.
-- Cash PIN: four to six digits, Argon2id, required for recording a COD collection and for confirming a handover request; five failures lock cash actions until a dispatcher resets.
+- Cash PIN: four to six digits, Argon2id, required when a delivery records a collection with method cash and for confirming a handover request; non-cash methods need no PIN (contracts `errors.md`, driver app §5.1, §12.1); five failures lock cash actions until a dispatcher resets (amended 2026-10-31, roadmap A-4).
 - Shift: a driver session is distinct from a shift; going on shift records the vehicle and starts position reporting; going off shift stops it. Tokens survive shift changes.
 
 ### 3.3 Platform staff
