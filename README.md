@@ -31,10 +31,20 @@ pnpm turbo run typecheck lint test build   # the local gate (CI wiring is PLAT-3
 | `apps/driver` | Expo driver app with Expo Router (ADR-0021) |
 | `packages/contracts` | OpenAPI lint now; generated clients later (PLAT-15) |
 | `packages/i18n` | Arabic and English catalogues and the typed `t()` helper |
-| `packages/config`, `packages/db`, `packages/ui` | placeholders for PLAT-4, PLAT-5 and WEB-1 |
+| `packages/config` | validated runtime configuration, the only code that reads environment variables (PLAT-4) |
+| `packages/db`, `packages/ui` | placeholders for PLAT-5 and WEB-1 |
 | `packages/config-ts`, `packages/config-eslint` | shared TypeScript and ESLint configuration |
 
 Useful commands: `pnpm --filter api dev` (API on port 3000, `GET /health`), `pnpm --filter web dev`, `pnpm --filter driver start`, `pnpm --filter api test:architecture` (module boundary check), `pnpm --filter contracts lint`.
+
+### Configuration
+
+Every setting is an environment variable declared once in `packages/config` (schema, format, default) and read once at boot; nothing else reads the environment, and lint plus the architecture tests fail on a raw `process.env` (AGENTS.md). `.env.example` lists every variable with a comment.
+
+- Local: `cp .env.example .env` at the repository root. The API reads `.env` only when `APP_ENV=local`; variables already in the environment win. The web app (`NEXT_PUBLIC_*`) and the driver app (`EXPO_PUBLIC_*`) read their own files: put those lines in `apps/web/.env.local` and `apps/driver/.env`.
+- A missing or malformed variable stops the API with exit code 78 and a list of every bad variable by name, never its value.
+- `APP_ENV=production` refuses to start without the database URLs, Redis, storage, the signing key and the credentials keys, refuses any `stub` adapter, and needs a real messaging provider or `MESSAGING_DISABLED=true`.
+- `ci`, `staging` and `production` never read `.env`; their values come from the environment or the host's secret store.
 
 ## Running the stack
 
