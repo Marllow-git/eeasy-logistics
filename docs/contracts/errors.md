@@ -30,6 +30,8 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `role_combination_forbidden` | 422 | a membership would combine `driver` with a role holding a cash permission | doc 4 §2 (separation of duties) |
 | `invalid_credentials` | 401 | wrong email or password; same body and timing for unknown and disabled users | doc 4 §8 |
 | `second_factor_required` | 401 | password accepted, OTP or TOTP step pending; `details.challenge_id` | doc 4 §3.1, §3.3 |
+| `reauthentication_required` | 401 | second-factor or TOTP enrolment without a password step in the last 5 minutes | doc 4 §3.1, §3.3 |
+| `second_factor_already_enrolled` | 409 | enrolment when a phone second factor or TOTP is already enrolled; changing it needs an owner, admin or super admin reset | doc 4 §3.1, §3.3 |
 | `otp_invalid` | 401 | wrong, expired or used OTP or TOTP, a code or challenge past 5 attempts or 5 minutes, or a disabled driver; one code for all so the door leaks nothing | doc 4 §3.2, §3.3 |
 | `device_limit_reached` | 409 | a third active device for a driver | doc 4 §3.2, §3.5 of document 2 |
 | `device_revoked` | 401 | refresh from a revoked device | doc 4 §3.2 |

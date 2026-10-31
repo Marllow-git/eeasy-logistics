@@ -8,6 +8,7 @@ The domain model is the vocabulary. Aggregate names, attributes, states and inva
 |---|---|
 | `README.md` | this document: surfaces, conventions, streams, waves |
 | `errors.md` | the stable error `code` list |
+| `REVIEW.md` | the adversary review findings and their outcomes |
 | `webhooks.md` | the merchant webhook catalogue, signing and delivery |
 | `openapi/components.yaml` | shared schemas (every aggregate of document 2), parameters, responses, security schemes |
 | `openapi/staff.yaml`, `openapi/staff-delivery.yaml`, `openapi/staff-wms.yaml` | the web app surface, one file per bounded context (ADR-0026): kernel, Delivery, WMS; same base path and session |
@@ -162,6 +163,22 @@ Merchant webhooks are the domain events marked "yes" in document 2 §6.3, delive
 | delivery (recipient token) | `delivery.tracking.view`, `delivery.tracking.reschedule`, `delivery.tracking.pin_address` |
 | wms | `wms.locations.read`, `wms.locations.manage`, `wms.products.read`, `wms.products.manage`, `wms.suppliers.manage`, `wms.purchase_orders.read`, `wms.purchase_orders.manage`, `wms.receipts.read`, `wms.receipts.write`, `wms.receipts.approve`, `wms.movements.read`, `wms.stock.read`, `wms.fulfilment.read`, `wms.fulfilment.manage`, `wms.picking.write`, `wms.packing.write`, `wms.returns.write`, `wms.adjustments.request`, `wms.adjustments.approve`, `wms.counts.write`, `wms.counts.approve`, `wms.channel_publications.read` |
 | platform | `platform.auth.self`, `platform.accounts.read`, `platform.accounts.provision`, `platform.accounts.suspend`, `platform.rollout.manage`, `platform.flags.manage`, `platform.tenants.read`, `platform.outbox.read`, `platform.outbox.replay`, `platform.diagnose.run`, `platform.staff.manage`, `platform.audit.read` |
+
+Role bundles (proposed, document 4 §2; site-scoped roles act only on their `site_ids`):
+
+| Role | Holds |
+|---|---|
+| owner | every core, delivery and wms permission above, including `core.members.manage` (only the owner grants `owner`), `core.api_keys.manage`, `delivery.drivers.clear_cash_block`, `delivery.liability.record` and the three WMS approvals |
+| admin | the owner set; billing and owner transfer are not permission strings and stay with the owner |
+| dispatcher | `core.account.read`, `core.sites.read`, `delivery.orders.read`, `.create`, `.import`, `.dispatch`, `.cancel`, `delivery.zones.read`, `.manage`, `delivery.drivers.read`, `delivery.drivers.manage` (device revoke, PIN reset), `delivery.vehicles.manage`, `delivery.shifts.manage`, `delivery.slots.manage`, `delivery.proofs.read`, `delivery.tracking.manage`, `delivery.locations.read`, `delivery.cash.read` |
+| site staff | `core.sites.read`, `delivery.orders.read`, `delivery.orders.receive`, `delivery.proofs.read` |
+| warehouse staff | `wms.locations.read`, `wms.products.read`, `wms.purchase_orders.read`, `wms.receipts.read`, `wms.receipts.write`, `wms.movements.read`, `wms.stock.read`, `wms.fulfilment.read`, `wms.picking.write`, `wms.packing.write`, `wms.returns.write`, `wms.adjustments.request`, `wms.counts.write` |
+| cashier | `core.sites.read`, `delivery.orders.read`, `delivery.cash.read`, `delivery.cash.receive`, `delivery.cash.deposit`, `delivery.cash.close_report`; never `delivery.orders.dispatch` or `delivery.liability.record` |
+| viewer | every `*.read` permission of core, delivery and wms |
+| driver | `delivery.driver.work`, `delivery.driver.cash`, `delivery.driver.locations`; never combined with a cash permission (M9) |
+| platform super admin | every platform permission |
+| platform admin | every platform permission except `platform.rollout.manage` and `platform.staff.manage`; holds `platform.outbox.replay` |
+| platform support | `platform.auth.self`, `platform.accounts.read`, `platform.tenants.read`, `platform.outbox.read`, `platform.audit.read`, `platform.diagnose.run` (whitelisted fixes only) |
 
 An API key may hold only `delivery.orders.read`, `delivery.orders.create`, `delivery.orders.cancel`, `delivery.proofs.read`, `core.webhooks.manage` and, after the WMS pilot, `wms.products.read`, `wms.stock.read`, `wms.receipts.read`, `wms.fulfilment.read`, `wms.fulfilment.manage` (document 4 §3.4). A webhook subscription receives an event type only while its creator holds the matching read permission (`webhooks.md` §4).
 

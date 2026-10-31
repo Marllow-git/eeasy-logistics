@@ -53,6 +53,49 @@ paths:
         '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid, token_expired.'}
         '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/invitations/accept:
+    post:
+      operationId: platformAcceptInvitation
+      summary: "Accept a platform staff invitation and set the password"
+      description: 'One-time invitation token valid 72 h. Returns a challenge with totp_enrolment_required; no session exists until TOTP is enrolled and verified.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformAcceptInvitationRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TotpChallenge'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid, token_expired.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/totp/enrol:
+    post:
+      operationId: platformEnrolTotp
+      summary: "Start TOTP enrolment for a password-authenticated challenge"
+      description: 'Allowed only with a challenge from the password step or invitation accept, younger than 5 minutes, for a user with no TOTP enrolled (409 second_factor_already_enrolled; re-enrolment needs a super admin reset). Returns the otpauth URI once.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChallengeOnlyRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TotpEnrolment'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid, token_expired, reauthentication_required.'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: second_factor_already_enrolled.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/totp/confirm:
+    post:
+      operationId: platformConfirmTotp
+      summary: "Confirm TOTP enrolment with a first code and start the session"
+      description: 'At most 5 attempts per challenge, 5-minute expiry; the confirming code cannot be reused. Audited.'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TotpVerifyRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformMe'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid, token_expired.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /auth/refresh:
     post:
       operationId: platformRefresh
@@ -586,6 +629,22 @@ paths:
         '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /staff-users/{user_id}/totp/reset:
+    post:
+      operationId: platformResetStaffTotp
+      summary: "Clear a platform user TOTP so they re-enrol"
+      description: 'Super admin only; revokes every session of the user; audited with the reason.'
+      tags: [staff]
+      x-wave: 0
+      x-permission: platform.staff.manage
+      security: [{platformCookie: []}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {name: user_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResetReasonRequest'}}}}
+      responses:
+        '204': {description: Done}
+        '403': {$ref: './components.yaml#/components/responses/Forbidden', description: 'Codes: forbidden.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /audit-log:
     get:
       operationId: platformListAudit
@@ -624,6 +683,21 @@ components:
       type: object
       required: [email, password]
       properties: {email: {type: string, format: email}, password: {type: string, maxLength: 256}}
+    PlatformAcceptInvitationRequest:
+      type: object
+      required: [token, name, password]
+      properties: {token: {type: string}, name: {type: string}, password: {type: string, minLength: 12, maxLength: 256}}
+    ChallengeOnlyRequest:
+      type: object
+      required: [challenge_id]
+      properties: {challenge_id: {type: string}}
+    TotpEnrolment:
+      type: object
+      properties: {challenge_id: {type: string}, otpauth_uri: {type: string, description: Shown once; never stored in the idempotency store or logs}}
+    ResetReasonRequest:
+      type: object
+      required: [reason]
+      properties: {reason: {type: string, minLength: 5, maxLength: 500}}
     TotpChallenge:
       type: object
       properties: {challenge_id: {type: string}, totp_enrolment_required: {type: boolean}}
