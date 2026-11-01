@@ -3,6 +3,8 @@
 # typecheck-lint, api-test, api-test-rls, web-build-census, admin-build-census, driver-test and
 # gitleaks.
 # main.yml calls this workflow on every push to main before it builds the images.
+# A docs-only pull request (.github/actions/changes) skips the build and test lanes; typecheck-lint
+# then runs Prettier only and gitleaks runs as always. tools/pr-gate.sh accepts skipped checks.
 name: pr
 
 on:
@@ -30,8 +32,28 @@ defaults:
     shell: bash
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            tools
+      - id: changes
+        uses: ./.github/actions/changes
+
   typecheck-lint:
     name: typecheck-lint
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -43,10 +65,12 @@ jobs:
           cache-scope: typecheck-lint
       # Every workspace; lint includes the contracts Redocly lint (packages/contracts).
       - name: Typecheck and lint every workspace
+        if: needs.changes.outputs.code == 'true'
         run: pnpm turbo run typecheck lint
       # PLAT-15 plan 2.6: generated/ is not committed, so determinism is asserted by hashing two
       # fresh generations (the script, not turbo, so a cache hit cannot stand in for a run).
       - name: Contracts generate twice and compare
+        if: needs.changes.outputs.code == 'true'
         run: |
           digest() {
             local count
@@ -81,6 +105,9 @@ jobs:
   # api-test-rls repeats the suite with row-level security switched on (A-6; data §4.5).
   api-test:
     name: ${{ matrix.lane }}
+    # Step-level skips, not a job-level if: a skipped matrix job reports under the unexpanded
+    # name, which would leave the required api-test and api-test-rls checks waiting forever.
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -97,12 +124,15 @@ jobs:
       ELX_RLS: ${{ matrix.rls }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'true'
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+        if: needs.changes.outputs.code == 'true'
         with:
           cache-scope: ${{ matrix.lane }}
       - name: Start the ci profile and wait for healthy
+        if: needs.changes.outputs.code == 'true'
         run: |
           cp .env.example .env
           docker compose --profile ci up --detach --wait --wait-timeout 300 || {
@@ -114,6 +144,7 @@ jobs:
       # ports, so the API's variables are built here from .env's local passwords and the ports.
       # No DATABASE_URL_ADMIN: the suite then uses the migrated ci database itself (PLAT-5 2.9).
       - name: Point the API at the ci services
+        if: needs.changes.outputs.code == 'true'
         run: |
           set -a; . ./.env; set +a
           port() { docker compose --profile ci port "$1" "$2"; }
@@ -133,23 +164,29 @@ jobs:
       # API's own build so every role starts from a complete tree (PLAT-7: the migrate role no
       # longer loads them, rule migrate-job-loads-no-application, but the api role does).
       - name: Build the contracts
+        if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @eeasy-logistics/contracts run build
       - name: Migrate from zero
+        if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @eeasy-logistics/api run migrate
       # ci seeds on every run (data §11.6): the deterministic fixtures, idempotent.
       - name: Seed the fixtures
+        if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @eeasy-logistics/api run seed
       - name: Unit tests
+        if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @eeasy-logistics/api run test:unit
       - name: Integration tests (ELX_RLS=${{ matrix.rls }})
+        if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @eeasy-logistics/api run test:integration
       - name: Architecture test
+        if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @eeasy-logistics/api run test:architecture
       - name: Service logs on failure
-        if: failure()
+        if: needs.changes.outputs.code == 'true' && (failure())
         run: docker compose --profile ci logs --no-color --tail 200 || true
       - name: Stop the ci profile
-        if: always()
+        if: needs.changes.outputs.code == 'true' && (always())
         run: docker compose --profile ci down --volumes --remove-orphans || true
 
   # Standalone web build and its first-load budget, the API and the web server against the Compose
@@ -157,6 +194,8 @@ jobs:
   # §10.2; WEB-1 plan 2.9, 2.10).
   web-build-census:
     name: web-build-census
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -249,6 +288,8 @@ jobs:
   # web-build-census only.
   admin-build-census:
     name: admin-build-census
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -334,6 +375,8 @@ jobs:
 
   driver-test:
     name: driver-test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
