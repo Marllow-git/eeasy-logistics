@@ -26,6 +26,7 @@
     "lint": "redocly lint --config ../../docs/contracts/redocly.yaml && eslint .",
     "lint:bundles": "redocly lint generated/openapi/staff.yaml generated/openapi/platform.yaml generated/openapi/driver.yaml generated/openapi/recipient.yaml generated/openapi/public.yaml",
     "test": "vitest run && pnpm run test:architecture",
+    "test:contract": "node scripts/contract-test.ts",
     "test:architecture": "depcruise src test scripts --config .dependency-cruiser.cjs"
   },
   "dependencies": {
@@ -48,6 +49,7 @@
     }
   },
   "devDependencies": {
+    "@eeasy-logistics/config": "workspace:*",
     "@eeasy-logistics/config-eslint": "workspace:*",
     "@eeasy-logistics/config-ts": "workspace:*",
     "@faker-js/faker": "10.6.0",
@@ -55,6 +57,8 @@
     "@tanstack/react-query": "5.105.0",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "dependency-cruiser": "18.7.0",
     "eslint": "9.39.5",
     "msw": "3.0.3",
