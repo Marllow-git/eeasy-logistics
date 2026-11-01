@@ -60,9 +60,18 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
 });
 
 describe('A-17 ESLint rule fails on its violation fixture (adversary M-6)', () => {
-  it('reports each raw parameter decorator in a controller', async () => {
+  // The rule needs no type information: the app's config runs with the TypeScript program off
+  // and only `no-restricted-syntax`, so the lint takes well under a second (CI timed out at 5 s
+  // with the type-aware program); the 30 s timeout covers a loaded runner.
+  it('reports each raw parameter decorator in a controller', { timeout: 30_000 }, async () => {
     // `ignore: false` lints the fixture, which `eslint .` skips; the config is the app's own.
-    const eslint = new ESLint({ ignore: false });
+    const eslint = new ESLint({
+      ignore: false,
+      overrideConfig: {
+        languageOptions: { parserOptions: { projectService: false, project: null } },
+      },
+      ruleFilter: ({ ruleId }) => ruleId === 'no-restricted-syntax',
+    });
     const [result] = await eslint.lintFiles([
       'test/architecture/violations/lint/raw-input.controller.ts',
     ]);
