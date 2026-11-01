@@ -13,6 +13,9 @@ import postgres from 'postgres';
 /** `pg_advisory_lock(hashtext('elx_migrate'))`: every migration run takes this session lock. */
 export const migrationLockKey = 'elx_migrate';
 
+/** Months of `core_audit_log` partitions kept ahead of the current one (data §11.5). */
+export const auditPartitionsAhead = 3;
+
 export interface MigrateOptions {
   /** `config.db.urls.owner`: migrations run as `elx_owner` (ADR-0031). */
   readonly url: Secret | undefined;
@@ -34,6 +37,8 @@ export interface MigrateResult {
   readonly version: string;
   /** Tables whose RLS this run enabled (or kept enabled); 0 when `rls` is off. */
   readonly rlsTables: number;
+  /** Monthly `core_audit_log` partitions this run created (0 when all existed already). */
+  readonly auditPartitionsCreated: number;
 }
 
 interface JournalEntry {
@@ -93,9 +98,11 @@ export async function runMigrations(options: MigrateOptions): Promise<MigrateRes
     await migrate(drizzle({ client }), { migrationsFolder: options.folder });
 
     const after = await appliedMigrations(client);
-    // The RLS switch first, then the version, in one transaction (review L-2): /ready never sees
-    // the new version on a database whose RLS state the run has not yet settled.
-    const rlsTables = await client.begin(async (tx) => {
+    // The RLS switch first, then the audit partitions, then the version, in one transaction
+    // (review L-2): /ready never sees the new version on a database whose RLS state or audit
+    // partitions the run has not yet settled. Partitions: the current month and the next
+    // `auditPartitionsAhead` (data §11.5, PLAT-7 plan 2.2), on every run.
+    const settled = await client.begin(async (tx) => {
       let enabled = 0;
       if (options.rls) {
         const [result] = await tx<
@@ -103,11 +110,31 @@ export async function runMigrations(options: MigrateOptions): Promise<MigrateRes
         >`SELECT core_enable_tenant_rls() AS enabled`;
         enabled = result?.enabled ?? 0;
       }
+      // Partition DDL waits at most `partitionLockTimeout` (adversary L-4); a timeout skips the
+      // partitions for this run (a savepoint keeps the version write) and the next run retries.
+      await tx.unsafe(`SET LOCAL lock_timeout = '${partitionLockTimeout}'`);
+      let created = 0;
+      try {
+        created = await tx.savepoint(async (sp) => {
+          const [partitions] = await sp<{ created: number }[]>`
+            SELECT core_ensure_audit_partitions(${auditPartitionsAhead}::integer) AS created`;
+          return partitions?.created ?? 0;
+        });
+      } catch (error) {
+        if (!isLockTimeout(error)) throw error;
+        log(
+          'Audit partitions skipped: a lock was not granted within the timeout; next run retries.',
+        );
+      }
       await tx`UPDATE core_schema_meta SET version = ${version}, migrated_at = now()`;
-      return enabled;
+      return { rlsTables: enabled, auditPartitionsCreated: created };
     });
-    if (options.rls) log(`ELX_RLS=on: row-level security enabled on ${rlsTables} table(s).`);
-    return { applied: after.length - before.length, version, rlsTables };
+    if (options.rls)
+      log(`ELX_RLS=on: row-level security enabled on ${settled.rlsTables} table(s).`);
+    if (settled.auditPartitionsCreated > 0) {
+      log(`Created ${settled.auditPartitionsCreated} core_audit_log partition(s).`);
+    }
+    return { applied: after.length - before.length, version, ...settled };
   } finally {
     // Closing the session releases the lock as well; the explicit unlock keeps the order clear.
     await client`SELECT pg_advisory_unlock_all()`.catch(() => undefined);
@@ -155,5 +182,95 @@ function checkHistory(
         `Migration ${tagOf(file.folderMillis)} is older than the last applied one; regenerate it`,
       );
     }
+  }
+}
+
+/** Partition DDL waits at most this long for a lock (adversary L-4); the next run retries. */
+export const partitionLockTimeout = '5s';
+
+/** SQLSTATE `lock_not_available`: `lock_timeout` elapsed. */
+function isLockTimeout(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === '55P03';
+}
+
+/** One partition `core_drop_audit_partitions_before` dropped (and audited before dropping). */
+export interface DroppedAuditPartition {
+  readonly partition: string;
+  /** The partition's exclusive upper bound, ISO 8601 UTC. */
+  readonly upperBound: string;
+}
+
+export type AuditPartitionRun =
+  | {
+      readonly ran: true;
+      /** Monthly partitions created ahead (current month and the next `auditPartitionsAhead`). */
+      readonly created: number;
+      readonly dropped: readonly DroppedAuditPartition[];
+      /**
+       * Rows in `core_audit_log_default`, the safety net for a month without a partition; it
+       * should hold none while the window ahead is kept, and retention never drops them.
+       */
+      readonly defaultRows: number;
+    }
+  /** A lock was not granted within `partitionLockTimeout`; nothing changed, the next run retries. */
+  | { readonly ran: false; readonly reason: 'lock_timeout' };
+
+/**
+ * Proves the connection is the plain `elx_owner` login (adversary L-1): the partition DDL runs as
+ * the table owner, never as a superuser or any other role.
+ */
+async function assertOwnerConnection(client: postgres.Sql): Promise<void> {
+  const [facts] = await client<{ who: string; superuser: boolean }[]>`
+    SELECT current_user AS who, rolsuper AS superuser FROM pg_roles WHERE rolname = current_user`;
+  if (facts?.who !== 'elx_owner' || facts.superuser) {
+    throw new Error('Audit partition maintenance runs only as the plain elx_owner login');
+  }
+}
+
+/**
+ * The audit partition maintenance of the migration job (PLAT-7 plan 2.8 as amended by adversary
+ * M-3; data §3.1, §10, §11.5): as `elx_owner` on one dedicated connection, closed afterwards, and
+ * in one transaction with `lock_timeout` 5 s: ensure the partitions ahead, then detach and drop
+ * those whose upper bound is on or before `cutoff` (`YYYY-MM-DD`, a month start; the SQL function
+ * refuses a cutoff inside 24 months and writes each drop's audit row, request id `runId`, before
+ * the DROP), then count the DEFAULT partition's rows. Only `api --role migrate` calls it.
+ */
+export async function maintainAuditPartitions(options: {
+  readonly url: Secret | undefined;
+  readonly cutoff: string;
+  readonly runId: string;
+}): Promise<AuditPartitionRun> {
+  if (options.url === undefined) throw new Error('DATABASE_URL_OWNER is not configured');
+  if (!/^\d{4}-\d{2}-01$/.test(options.cutoff)) throw new Error('The cutoff is a month start');
+  const client = postgres(options.url.reveal(), {
+    max: 1,
+    connect_timeout: 10,
+    onnotice: () => undefined,
+    connection: { application_name: 'elx-audit-partitions' },
+  });
+  try {
+    await assertOwnerConnection(client);
+    return await client.begin(async (tx) => {
+      await tx.unsafe(`SET LOCAL lock_timeout = '${partitionLockTimeout}'`);
+      const [ensured] = await tx<{ created: number }[]>`
+        SELECT core_ensure_audit_partitions(${auditPartitionsAhead}::integer) AS created`;
+      const dropped = await tx<{ partition: string; upperBound: string }[]>`
+        SELECT partition_name AS partition,
+               to_char(upper_bound AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "upperBound"
+        FROM core_drop_audit_partitions_before(${options.cutoff}::text::date, ${options.runId}::text)`;
+      const [fallback] = await tx<{ rows: number }[]>`
+        SELECT count(*)::int AS rows FROM core_audit_log_default`;
+      return {
+        ran: true as const,
+        created: ensured?.created ?? 0,
+        dropped: dropped.map((row) => ({ partition: row.partition, upperBound: row.upperBound })),
+        defaultRows: fallback?.rows ?? 0,
+      };
+    });
+  } catch (error) {
+    if (isLockTimeout(error)) return { ran: false, reason: 'lock_timeout' };
+    throw error;
+  } finally {
+    await client.end({ timeout: 5 });
   }
 }

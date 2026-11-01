@@ -16,6 +16,7 @@ import {
   port,
   postgresUrl,
   redisUrl,
+  retentionMonths,
   seconds,
   secret,
 } from './formats.ts';
@@ -85,6 +86,9 @@ export const serverVariables = {
   DATABASE_URL_ADMIN: secret(postgresUrl()).optional(),
   // Row-level security switch read by the migration job (PLAT-5 plan 2.6, data §4.5).
   ELX_RLS: z.enum(['on', 'off']).default('off'),
+  // audit log (PLAT-7): months core_audit_log keeps; the migration job (--role migrate) drops
+  // older monthly partitions on every run (OPS-1 schedules it daily).
+  AUDIT_RETENTION_MONTHS: retentionMonths().default(24),
   // redis
   REDIS_URL: secret(redisUrl()).optional(),
   // storage
@@ -145,6 +149,7 @@ export const serverExpectations = {
   DATABASE_POOL_SIZE_PLATFORM: 'an integer from 1 to 200',
   DATABASE_URL_ADMIN: 'a postgres:// URL',
   ELX_RLS: 'on or off',
+  AUDIT_RETENTION_MONTHS: 'an integer from 24 to 120 (months; two years at least)',
   REDIS_URL: 'a redis:// or rediss:// URL',
   STORAGE_ENDPOINT: 'an http(s) URL',
   STORAGE_BUCKET: 'a bucket name',
@@ -196,6 +201,10 @@ export interface Config {
     readonly poolSize: { readonly app: number; readonly platform: number };
     /** `ELX_RLS=on`: the migration job enables RLS on every table with a tenant_isolation policy. */
     readonly rls: boolean;
+  };
+  readonly audit: {
+    /** Months core_audit_log keeps; the migration job drops older monthly partitions. */
+    readonly retentionMonths: number;
   };
   readonly redis: { readonly url: Secret | undefined };
   readonly storage: {
@@ -314,6 +323,7 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       poolSize: { app: v.DATABASE_POOL_SIZE_APP, platform: v.DATABASE_POOL_SIZE_PLATFORM },
       rls: v.ELX_RLS === 'on',
     },
+    audit: { retentionMonths: v.AUDIT_RETENTION_MONTHS },
     redis: { url: v.REDIS_URL },
     storage: {
       endpoint: v.STORAGE_ENDPOINT,

@@ -6,13 +6,14 @@ import { Test } from '@nestjs/testing';
 import type postgres from 'postgres';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { platformCookie, staffCookie } from '../../src/modules/kernel/auth/principal.js';
 import { BootChecks, BootRefusal } from '../../src/modules/kernel/platform/boot-checks.js';
-import type { AuditEvent, AuditSink } from '../../src/modules/kernel/public/index.js';
-import { AUDIT_SINK, CrossTenant } from '../../src/modules/kernel/public/index.js';
+import { CrossTenant } from '../../src/modules/kernel/public/index.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
+import type { AuditRow } from './audit-rows.js';
+import { auditRowsByClientId, auditRowsOf } from './audit-rows.js';
 import type { ProbeRow } from './probe-table.js';
 import {
   ProbeRepository,
@@ -24,7 +25,8 @@ import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-6 item D on the real database: the `@CrossTenant()` door (plan 2.7) and the boot role
 // checks (plan 2.12). A platform token reaches tenant rows only through the door: reason required,
-// the unit of work runs on elx_platform with the target account set, one audit event per call.
+// the unit of work runs on elx_platform with the target account set, and (PLAT-7) every call
+// leaves exactly one committed core_audit_log row, read back here by the request's server id.
 
 @Controller('v1/platform/accounts/:account_id/probe-rows')
 class CrossTenantProbeController {
@@ -50,14 +52,6 @@ class PlatformProbeController {
   }
 }
 
-class RecordingSink implements AuditSink {
-  readonly events: AuditEvent[] = [];
-  record(event: AuditEvent): Promise<void> {
-    this.events.push(event);
-    return Promise.resolve();
-  }
-}
-
 describe('the cross-tenant door (PLAT-6 item D)', () => {
   const signing = testSigningKey();
   const config = integrationConfig({
@@ -67,7 +61,6 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
   const accountA = uuidv7();
   const accountB = uuidv7();
   const platformUser = uuidv7();
-  const sink = new RecordingSink();
   let owner: postgres.Sql;
   let app: INestApplication<App>;
 
@@ -89,10 +82,7 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule.forRoot(config)],
       controllers: [CrossTenantProbeController, PlatformProbeController],
-    })
-      .overrideProvider(AUDIT_SINK)
-      .useValue(sink)
-      .compile();
+    }).compile();
     app = moduleRef.createNestApplication({ logger: false });
     await app.init();
   });
@@ -100,16 +90,19 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
   afterAll(async () => {
     await app?.close();
     await dropProbeTable(owner);
-    await owner`DELETE FROM core_accounts WHERE id IN (${accountA}, ${accountB})`;
+    // The accounts stay: core_audit_log rows reference them and are never deleted (K-7).
     await owner.end();
-  });
-
-  beforeEach(() => {
-    sink.events.length = 0;
   });
 
   const http = () => request(app.getHttpServer());
   const codeOf = (response: { body: unknown }) => (response.body as { code: string }).code;
+  /** The rows of a request that sent no `X-Request-Id`: the response names the server's id. */
+  const rowsOf = (response: { headers: Record<string, string> }): Promise<AuditRow[]> =>
+    auditRowsOf(owner, response.headers['x-request-id'] ?? '');
+  const outcomeOf = (row: AuditRow | undefined) =>
+    row === undefined
+      ? undefined
+      : [row.action, (row.after as { outcome?: string }).outcome, row.accountId, row.reason];
 
   it('reads the target account only, as the platform user acting cross-tenant', async () => {
     const response = await http()
@@ -127,27 +120,33 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
     });
   });
 
-  it('emits one audit event with actor, target, operation, reason and request id', async () => {
+  it('writes one committed row with actor, target, operation, outcome, reason and request id', async () => {
     const response = await http()
       .get(`/v1/platform/accounts/${accountA}/probe-rows`)
       .set('Cookie', await platform())
       .set('X-Support-Reason', '  Ticket 4412  ')
+      .set('User-Agent', 'door-test/1.0')
       .expect(200);
-    expect(sink.events).toHaveLength(1);
-    expect(sink.events[0]).toMatchObject({
-      kind: 'cross_tenant_access',
-      actor: platformUser,
+    const rows = await rowsOf(response);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      actorType: 'platform_user',
+      actorId: platformUser,
       accountId: accountA,
-      operation: 'CrossTenantProbeController.list',
+      targetType: 'account',
+      targetId: accountA,
+      action: 'platform.cross_tenant.accessed',
+      before: null,
+      after: { operation: 'CrossTenantProbeController.list', outcome: 'ok', status: 200 },
       reason: 'Ticket 4412',
-      outcome: 'ok',
       requestId: response.headers['x-request-id'],
-      clientRequestId: null,
+      userAgent: 'door-test/1.0',
     });
+    expect(rows[0]?.ip).toMatch(/127\.0\.0\.1|::1/);
   });
 
   it('audits the server-minted request id and carries a client id beside it (adversary L-4)', async () => {
-    const client = '01927f6e-7a2b-7c3d-8e4f-5a6b7c8d9e0f';
+    const client = uuidv7();
     const response = await http()
       .get(`/v1/platform/accounts/${accountA}/probe-rows`)
       .set('Cookie', await platform())
@@ -155,14 +154,14 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
       .set('X-Request-Id', client)
       .expect(200);
     expect(response.headers['x-request-id']).toBe(client);
-    expect(sink.events).toHaveLength(1);
-    const [event] = sink.events;
-    expect(event?.clientRequestId).toBe(client);
-    expect(event?.requestId).not.toBe(client);
-    expect(event?.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/);
+    const rows = await auditRowsByClientId(owner, client);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.requestId).not.toBe(client);
+    expect(rows[0]?.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/);
+    expect(rows[0]?.after).toMatchObject({ client_request_id: client, outcome: 'ok' });
   });
 
-  it('requires the support reason: missing or blank is reason_required, audited as reason_missing', async () => {
+  it('requires the support reason: missing or blank is reason_required, a committed refusal row each', async () => {
     const missing = await http()
       .get(`/v1/platform/accounts/${accountA}/probe-rows`)
       .set('Cookie', await platform())
@@ -174,24 +173,30 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
       .set('X-Support-Reason', '   ')
       .expect(400);
     expect(codeOf(blank)).toBe('reason_required');
-    expect(sink.events.map((event) => [event.outcome, event.accountId, event.reason])).toEqual([
-      ['reason_missing', accountA, null],
-      ['reason_missing', accountA, null],
-    ]);
+    for (const response of [missing, blank]) {
+      const rows = await rowsOf(response);
+      expect(rows.map(outcomeOf)).toEqual([
+        ['platform.cross_tenant.refused', 'reason_missing', null, null],
+      ]);
+      expect(rows[0]).toMatchObject({ targetId: accountA, after: { status: 400 } });
+    }
   });
 
-  it('refuses a reason over 200 characters as validation_failed, audited as reason_invalid', async () => {
+  it('refuses a reason over 200 characters as validation_failed, a refusal row with no reason', async () => {
     const response = await http()
       .get(`/v1/platform/accounts/${accountA}/probe-rows`)
       .set('Cookie', await platform())
       .set('X-Support-Reason', 'x'.repeat(201))
       .expect(400);
     expect(codeOf(response)).toBe('validation_failed');
-    expect(sink.events).toMatchObject([{ outcome: 'reason_invalid', reason: null }]);
+    expect((await rowsOf(response)).map(outcomeOf)).toEqual([
+      ['platform.cross_tenant.refused', 'reason_invalid', null, null],
+    ]);
   });
 
   it('answers not_found for an unknown or malformed account, and still audits the attempt', async () => {
     const unknown = uuidv7();
+    const responses = [];
     for (const target of [unknown, 'not-a-uuid']) {
       const response = await http()
         .get(`/v1/platform/accounts/${target}/probe-rows`)
@@ -199,12 +204,17 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
         .set('X-Support-Reason', 'Ticket 4413')
         .expect(404);
       expect(codeOf(response)).toBe('not_found');
+      responses.push(response);
     }
-    expect(sink.events.map((event) => [event.outcome, event.accountId, event.reason])).toEqual([
-      ['not_found', unknown, 'Ticket 4413'],
-      ['not_found', null, null],
+    const [known, malformed] = await Promise.all(responses.map((response) => rowsOf(response)));
+    expect(known?.map(outcomeOf)).toEqual([
+      ['platform.cross_tenant.refused', 'not_found', null, 'Ticket 4413'],
     ]);
-    expect(sink.events[0]).toMatchObject({ actor: platformUser, kind: 'cross_tenant_access' });
+    expect(known?.[0]).toMatchObject({ targetId: unknown, actorId: platformUser });
+    expect(malformed?.map(outcomeOf)).toEqual([
+      ['platform.cross_tenant.refused', 'not_found', null, null],
+    ]);
+    expect(malformed?.[0]?.targetId).toBe('malformed');
   });
 
   it('refuses a staff token on the door', async () => {
