@@ -276,6 +276,7 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
     present,
     raw: (variable) => (Object.hasOwn(env, variable) ? env[variable] : undefined),
     messagingDisabled: v.MESSAGING_DISABLED,
+    role,
   });
   issues.push(...refusals.filter((issue) => !reported.has(issue.variable)));
 
