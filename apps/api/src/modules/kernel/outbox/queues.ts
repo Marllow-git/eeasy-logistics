@@ -1,6 +1,7 @@
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import type { OutboxKind } from '../schema/outbox.js';
+import { outboxBackoffType, outboxJobAttempts } from './queue-options.js';
 
 // The BullMQ side of the outbox (ADR-0024, ADR-0036; integrations §4.2, §4.4): one queue per kind,
 // `outbox.<kind>`, under the key prefix `elx`. A job is the outbox row id and nothing else: the
@@ -22,6 +23,15 @@ export function outboxQueueName(kind: OutboxKind): string {
 export const outboxJobRetention = {
   removeOnComplete: { age: 60 * 60 },
   removeOnFail: { age: 24 * 60 * 60 },
+} as const;
+
+/**
+ * BullMQ attempts of a job, for a processor that could not finish (the row unreadable or its
+ * outcome unwritten); the handler's own retries are counted on the row (PLAT-8 item D).
+ */
+export const outboxJobRetries = {
+  attempts: outboxJobAttempts,
+  backoff: { type: outboxBackoffType },
 } as const;
 
 /** The only job data an outbox queue carries. */
@@ -58,7 +68,7 @@ export class OutboxQueues {
       outboxIds.map((outboxId) => ({
         name: kind,
         data: { outboxId },
-        opts: { jobId: outboxId, ...outboxJobRetention },
+        opts: { jobId: outboxId, ...outboxJobRetention, ...outboxJobRetries },
       })),
     );
   }
