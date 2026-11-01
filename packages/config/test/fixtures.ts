@@ -8,16 +8,17 @@ export function fakeKey(seed: number): string {
 /** The smallest valid environment. */
 export const minimalEnv = { APP_ENV: 'local' } as const;
 
-/** A complete production environment with a real (non-stub) messaging provider. */
+/**
+ * A complete production environment for the api and worker roles, with a real (non-stub) messaging
+ * provider. It holds no owner or maintenance URL: those roles' credentials are refused (review H-2).
+ */
 export const productionEnv: Record<string, string> = {
   APP_ENV: 'production',
   PORT: '8080',
   PUBLIC_WEB_URL: 'https://app.example.test',
   PUBLIC_API_URL: 'https://api.example.test',
-  DATABASE_URL_OWNER: 'postgres://elx_owner:fake-owner-pw@db.internal:5432/elx',
   DATABASE_URL_APP: 'postgres://elx_app:fake-app-pw@db.internal:5432/elx',
   DATABASE_URL_PLATFORM: 'postgres://elx_platform:fake-platform-pw@db.internal:5432/elx',
-  DATABASE_URL_MAINTENANCE: 'postgres://elx_maintenance:fake-maint-pw@db.internal:5432/elx',
   REDIS_URL: 'rediss://:fake-redis-pw@redis.internal:6379',
   STORAGE_ENDPOINT: 'https://s3.example.test',
   STORAGE_BUCKET: 'elx-proofs',
@@ -41,3 +42,6 @@ export function valuesOf(env: Record<string, string>): string[] {
     .filter(([variable, value]) => variable !== 'APP_ENV' && value.length >= 8)
     .map(([, value]) => value);
 }
+
+/** The only database credential the production migration job holds (review H-2). */
+export const productionOwnerUrl = 'postgres://elx_owner:fake-owner-pw@db.internal:5432/elx';

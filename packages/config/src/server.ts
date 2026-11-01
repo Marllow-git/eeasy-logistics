@@ -76,6 +76,11 @@ export const serverVariables = {
   DATABASE_URL_MAINTENANCE: secret(postgresUrl()).optional(),
   DATABASE_POOL_SIZE_APP: count(200).default(10),
   DATABASE_POOL_SIZE_PLATFORM: count(200).default(5),
+  // A superuser for local and ci tooling only (scratch test databases, the elx_seed template);
+  // refused in staging and production (refusals.ts).
+  DATABASE_URL_ADMIN: secret(postgresUrl()).optional(),
+  // Row-level security switch read by the migration job (PLAT-5 plan 2.6, data §4.5).
+  ELX_RLS: z.enum(['on', 'off']).default('off'),
   // redis
   REDIS_URL: secret(redisUrl()).optional(),
   // storage
@@ -132,6 +137,8 @@ export const serverExpectations = {
   DATABASE_URL_MAINTENANCE: 'a postgres:// URL',
   DATABASE_POOL_SIZE_APP: 'an integer from 1 to 200',
   DATABASE_POOL_SIZE_PLATFORM: 'an integer from 1 to 200',
+  DATABASE_URL_ADMIN: 'a postgres:// URL',
+  ELX_RLS: 'on or off',
   REDIS_URL: 'a redis:// or rediss:// URL',
   STORAGE_ENDPOINT: 'an http(s) URL',
   STORAGE_BUCKET: 'a bucket name',
@@ -173,8 +180,12 @@ export interface Config {
       readonly app: Secret | undefined;
       readonly platform: Secret | undefined;
       readonly maintenance: Secret | undefined;
+      /** Superuser for local and ci tooling only; never set in staging or production. */
+      readonly admin: Secret | undefined;
     };
     readonly poolSize: { readonly app: number; readonly platform: number };
+    /** `ELX_RLS=on`: the migration job enables RLS on every table with a tenant_isolation policy. */
+    readonly rls: boolean;
   };
   readonly redis: { readonly url: Secret | undefined };
   readonly storage: {
@@ -265,6 +276,7 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
     present,
     raw: (variable) => (Object.hasOwn(env, variable) ? env[variable] : undefined),
     messagingDisabled: v.MESSAGING_DISABLED,
+    role,
   });
   issues.push(...refusals.filter((issue) => !reported.has(issue.variable)));
 
@@ -285,8 +297,10 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
         app: v.DATABASE_URL_APP,
         platform: v.DATABASE_URL_PLATFORM,
         maintenance: v.DATABASE_URL_MAINTENANCE,
+        admin: v.DATABASE_URL_ADMIN,
       },
       poolSize: { app: v.DATABASE_POOL_SIZE_APP, platform: v.DATABASE_POOL_SIZE_PLATFORM },
+      rls: v.ELX_RLS === 'on',
     },
     redis: { url: v.REDIS_URL },
     storage: {
