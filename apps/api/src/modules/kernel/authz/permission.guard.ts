@@ -17,6 +17,8 @@ import type { BoundOperation } from './operation-routes.check.js';
 import { boundOperation } from './operation-routes.check.js';
 import type { PermissionResolver } from './permission-resolver.js';
 import { PERMISSION_RESOLVER } from './permission-resolver.js';
+import type { SiteScopedSource } from './site-scope.js';
+import { SITE_SCOPED, assertSiteInScope, setRequestSiteScope } from './site-scope.js';
 
 /**
  * The doors of contracts README §1: no role check, open to any principal of the operation's surface
@@ -41,7 +43,9 @@ const actorTypes: Readonly<Record<Principal['kind'], AuditActorType>> = {
  * (a non-public handler without one never boots, `OperationRoutesCheck`). The doors pass for a
  * principal of the operation's surface; any other operation needs a principal whose bundles hold
  * the permission, else `403 forbidden` with no detail (owner question 2 default) and one committed
- * `core.authorization.denied` audit row per principal and operation per minute (plan 2.8).
+ * `core.authorization.denied` audit row per principal and operation per minute (plan 2.8). A
+ * permission held only through site-scoped bundles restricts the request to the token's sites
+ * (plan 2.6, `site-scope.ts`): `404 not_found` outside them or with none.
  *
  * Recipient operations are granted by the token's `purpose`, which the recipient verifier (DEL
  * order) owns, so they are skipped here; the public surface (API-key scopes, wave 4) is refused.
@@ -92,6 +96,16 @@ export class PermissionGuard implements CanActivate {
     if (grant === undefined) {
       await this.recordDenial(request, principal, operation);
       throw new ApiException('forbidden');
+    }
+    if (grant === 'sites') {
+      // Held only through site-scoped bundles (plan 2.6): the declared site must be one of the
+      // token's sites, an empty list sees nothing, and the handler's lists filter by them.
+      const source = this.reflector.get<SiteScopedSource | undefined>(
+        SITE_SCOPED,
+        context.getHandler(),
+      );
+      assertSiteInScope(request, source, principal.sites);
+      setRequestSiteScope(request, principal.sites);
     }
     return true;
   }
