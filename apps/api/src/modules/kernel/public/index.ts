@@ -33,3 +33,10 @@ export { withPortSpan, type PortCall, type PortSpan } from '../telemetry/port-sp
 export { getMetrics, type MetricName } from '../telemetry/metrics.js';
 // Sessions (PLAT-11 plan 2.5): the cookie names, for the web middleware's documentation.
 export { sessionCookieNames } from '../auth/cookies.js';
+// Invitations (PLAT-11 plan 2.10): PLAT-12's member doors and PLAT-13's platform staff doors.
+export {
+  Invitations,
+  type CreatedInvitation,
+  type PlatformInvitation,
+  type StaffInvitation,
+} from '../auth/invitations.js';

@@ -107,13 +107,18 @@ export class UsersRepository extends PlatformRepository<typeof coreUsers> {
   async setPassword(
     id: string,
     passwordHash: string,
-    options: { readonly name?: string; readonly endSessions: boolean },
+    options: {
+      readonly name?: string;
+      readonly locale?: UserLocale | undefined;
+      readonly endSessions: boolean;
+    },
   ): Promise<number> {
     const [row] = await this.unscoped()
       .update(coreUsers)
       .set({
         passwordHash,
         ...(options.name === undefined ? {} : { name: options.name }),
+        ...(options.locale === undefined ? {} : { locale: options.locale }),
         ...(options.endSessions ? { tokenVersion: sql`${coreUsers.tokenVersion} + 1` } : {}),
         updatedAt: sql`now()`,
       })
@@ -232,6 +237,16 @@ export class MembershipsRepository extends PlatformRepository<typeof coreMembers
       )
       .orderBy(asc(coreMemberships.createdAt), asc(coreMemberships.id));
     return rows.map(membershipRow);
+  }
+
+  /** The membership with this id, whatever its state, or undefined. */
+  async find(id: string): Promise<MembershipRow | undefined> {
+    const [row] = await this.unscoped()
+      .select(membershipColumns)
+      .from(coreMemberships)
+      .innerJoin(coreAccounts, eq(coreAccounts.id, coreMemberships.accountId))
+      .where(eq(coreMemberships.id, id));
+    return row === undefined ? undefined : membershipRow(row);
   }
 
   /** The membership of this user with this id, whatever its state, or undefined. */
@@ -649,6 +664,21 @@ export class PasswordResetsRepository extends PlatformRepository<typeof corePass
   }
 }
 
+/** What an invitation needs of its account: the name for the mail and the status. */
+export class InvitingAccounts extends PlatformRepository<typeof coreAccounts> {
+  constructor(uow: PlatformUnitOfWork) {
+    super(uow, coreAccounts);
+  }
+
+  async find(id: string): Promise<{ id: string; name: string; status: string } | undefined> {
+    const [row] = await this.unscoped()
+      .select({ id: coreAccounts.id, name: coreAccounts.name, status: coreAccounts.status })
+      .from(coreAccounts)
+      .where(eq(coreAccounts.id, id));
+    return row;
+  }
+}
+
 /** A sign-in step's transaction: every identity repository on one platform unit of work. */
 export interface IdentityTransaction {
   readonly uow: PlatformUnitOfWork;
@@ -659,6 +689,7 @@ export interface IdentityTransaction {
   readonly platformStaff: PlatformStaffRepository;
   readonly invitations: InvitationsRepository;
   readonly resets: PasswordResetsRepository;
+  readonly accounts: InvitingAccounts;
 }
 
 export interface IdentityStore {
@@ -679,6 +710,7 @@ export function identityStore(db: PlatformDatabase): IdentityStore {
           platformStaff: new PlatformStaffRepository(uow),
           invitations: new InvitationsRepository(uow),
           resets: new PasswordResetsRepository(uow),
+          accounts: new InvitingAccounts(uow),
         }),
       ),
   };

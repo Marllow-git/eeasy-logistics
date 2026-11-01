@@ -1,7 +1,8 @@
 import type { PlatformMe, PlatformRole } from '@eeasy-logistics/contracts/platform/schemas';
-import type { Me, Role, User } from '@eeasy-logistics/contracts/staff/schemas';
+import type { LoginResponse, Me, Role, User } from '@eeasy-logistics/contracts/staff/schemas';
 import type { MembershipRow, UserRow } from '../platform/identity.repository.js';
 import type { PlatformMeView, StaffMeView } from './me.js';
+import type { SignInStep } from './sign-in.js';
 
 // Contract shapes of the auth doors (PLAT-11; A-17: contract types only in controllers and
 // presenters). Never a password hash, a token version or a second-factor phone.
@@ -65,4 +66,34 @@ export function presentPlatformMe(view: PlatformMeView): PlatformMe {
     },
     permissions: [...view.permissions],
   };
+}
+
+/** `LoginResponse` (staff.yaml): exactly one of the session, the selection or a factor step. */
+export function presentLoginStep(step: SignInStep): LoginResponse {
+  const none = {
+    second_factor_required: false,
+    account_selection_required: false,
+    enrolment_required: false,
+  };
+  switch (step.kind) {
+    case 'session':
+      return { ...none, me: presentMe(step.me) };
+    case 'selection':
+      return {
+        ...none,
+        account_selection_required: true,
+        selection_token: step.selectionToken,
+        memberships: step.memberships.map((membership) => ({
+          membership_id: membership.id,
+          account_id: membership.accountId,
+          account_name: membership.account.name,
+          roles: presentRoles(membership.roles),
+        })),
+        me: null,
+      };
+    case 'second_factor':
+      return { ...none, second_factor_required: true, challenge_id: step.challengeId, me: null };
+    case 'enrolment':
+      return { ...none, enrolment_required: true, enrolment_token: step.enrolmentToken, me: null };
+  }
 }
