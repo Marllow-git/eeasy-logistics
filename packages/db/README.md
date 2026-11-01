@@ -4,9 +4,9 @@ Shared database helpers (data architecture §1.2, §4; ADR-0020, ADR-0025, propo
 
 | Entry | What | Who may import it |
 |---|---|---|
-| `@eeasy-logistics/db` | `createAppPool` (`elx_app`), `withUnitOfWork`, `RequestContext` and `getContext()`, `ScopedRepository`, `uuidv7()` | any server code |
-| `@eeasy-logistics/db/platform` | `createPlatformPool` (`elx_platform`), `withPlatformUnitOfWork`, `PlatformRepository` with `unscoped()` | `apps/api/src/modules/kernel/platform/` and the worker's system jobs only (architecture test) |
-| `@eeasy-logistics/db/testing` | the test-only context setter | tests only (architecture test) |
+| `@eeasy-logistics/db` | `createAppPool` (`elx_app`), `withUnitOfWork`, `getUnitOfWork()`, `RequestContext` and `getContext()`, `PlatformContext`, `ScopedRepository`, `uuidv7()` | any server code |
+| `@eeasy-logistics/db/platform` | `createPlatformPool` (`elx_platform`), `withPlatformUnitOfWork`, `getPlatformUnitOfWork()`, the cross-tenant door `withCrossTenantUnitOfWork`, `PlatformRepository` with `unscoped()` | `apps/api/src/modules/kernel/platform/` and the worker's system jobs only (architecture test) |
+| `@eeasy-logistics/db/testing` | the test-only context setter and `transactionOf(uow)` (the raw transaction, for database tests) | tests only (architecture test) |
 | `@eeasy-logistics/db/migrate` | `runMigrations` (advisory lock, history check, `core_schema_meta`, the `ELX_RLS` switch), `expectedSchemaVersion` | the migration job, `/ready`, the seed tool and the test harness |
 | `@eeasy-logistics/db/admin` | superuser helpers: `recreateDatabase`, `dropDatabase`, `withDatabase` (local and ci only; `DATABASE_URL_ADMIN` is refused in staging and production) | `apps/api/src/seed/` and tests only (architecture test) |
 
@@ -14,8 +14,9 @@ Shared database helpers (data architecture §1.2, §4; ADR-0020, ADR-0025, propo
 
 - Every URL comes from `packages/config` (`config.db.urls`); this package holds no connection string and reads no environment.
 - Tenant work runs inside `withUnitOfWork(appDb, context, fn)`: one transaction whose first statement is `SELECT set_config('elx.account_id', <account>, true)`. The setting is transaction-local, so a pooled connection never carries an account into the next transaction; the `tenant_isolation` policies read the same setting (data §4.3).
+- A unit of work carries its context but no transaction handle (PLAT-5 review M-1, structural fix in PLAT-6): only the repository bases of this package reach the transaction, so tenant code cannot skip the predicate. Requests and jobs build repositories from `getUnitOfWork()`; one AsyncLocalStorage store holds the context and the unit of work together.
 - `ScopedRepository` adds `account_id = <context account>` to every read, update and delete and sets `account_id` from the context on every insert, whatever the input says. Its transaction is private; omitting the predicate needs `unscoped()`, which only `PlatformRepository` has.
-- The context comes from the token (request guard, PLAT-6) or a job payload, never from a request parameter.
+- The context comes from the token (request guard, PLAT-6) or a job payload, never from a request parameter. A platform principal gets a `PlatformContext` (no account); it reaches tenant rows only through `withCrossTenantUnitOfWork` (the `@CrossTenant()` door: platform pool, `elx.account_id` set to the target, audit event by the caller).
 
 ## Tests
 

@@ -2,13 +2,14 @@
 
 ## Whole repo (from root)
 - `pnpm install` (pnpm 10 runs no install scripts except those in `pnpm-workspace.yaml`).
+- Lockfile trap (2026-11-01): main's `pnpm-lock.yaml` holds versions younger than `minimumReleaseAge` and a `trustPolicy` downgrade, so any re-resolving install fails. After a `package.json` change: `pnpm install --lockfile-only --config.minimum-release-age=0 --config.trust-policy=off`, check the lockfile diff is additions only and each new version is older than three days (`npm view <pkg> time`), then `pnpm install --frozen-lockfile`.
 - `pnpm audit --audit-level moderate` — the CI `pnpm-audit` job (`.github/workflows/audit.yml`, every PR and weekly on main). Accepted advisories live in `pnpm-workspace.yaml` `auditConfig.ignoreGhsas`, each with a reason; add one only after checking it never reaches an image or bundle.
 - `pnpm turbo run typecheck lint test build` — the full local gate.
 - `pnpm format` / `pnpm format:check`.
 
 ## Per workspace (`--filter @eeasy-logistics/<api|web|admin|driver|config|db|i18n|ui|contracts>`)
-- `pnpm --filter @eeasy-logistics/api run test:unit | test:integration | test:architecture | migrate | seed | dev` (`dev` sets `APP_ENV=local`; API role via `--role api|worker|migrate`). `migrate` builds then runs the one-shot job as `elx_owner`; `seed` writes two fixture accounts, `seed --template` rebuilds `elx_seed` (needs `DATABASE_URL_ADMIN`).
-- Integration suite locally: `APP_ENV=local DATABASE_URL_ADMIN=postgres://$(id -un)@127.0.0.1:5432/postgres ELX_RLS=off|on pnpm --filter @eeasy-logistics/api run test:integration` — migrates a scratch `elx_test_<hex>` per run and drops it; without the admin URL it refuses locally (in `ci` it uses the migrated ci database).
+- `pnpm --filter @eeasy-logistics/api run test:unit | test:integration | test:architecture | migrate | seed | dev` (`test:architecture` cruises `src` and `test/architecture/fixture`; the unit suite cruises `test/architecture/violations` and needs the contracts built) (`dev` sets `APP_ENV=local`; API role via `--role api|worker|migrate`; `worker` purges expired idempotency keys hourly when `REDIS_URL` and `DATABASE_URL_PLATFORM` are set, else warns and exits 0). `migrate` builds then runs the one-shot job as `elx_owner`; `seed` writes two fixture accounts, `seed --template` rebuilds `elx_seed` (needs `DATABASE_URL_ADMIN`).
+- Integration suite locally: `APP_ENV=local DATABASE_URL_ADMIN=postgres://$(id -un)@127.0.0.1:5432/postgres ELX_RLS=off|on pnpm --filter @eeasy-logistics/api run test:integration` — migrates a scratch `elx_test_<hex>` per run and drops it; without the admin URL it refuses locally (in `ci` it uses the migrated ci database). Needs Redis on `REDIS_URL` (rate-limit suite) and storage on 9000 (`/ready`).
 - `pnpm --filter @eeasy-logistics/web run typecheck` (runs `next typegen` first), `test:smoke` (Playwright, both locales; needs API + web built and running).
 - `pnpm --filter @eeasy-logistics/admin run dev | build | start` (port 3002 in the scripts), `typecheck`, `test` (architecture: `src`, `tests`, `next.config.ts`), `test:smoke` (Playwright `ar`+`en` against `http://127.0.0.1:3002`; needs `build` + `start` running).
 - `pnpm --filter @eeasy-logistics/driver run test` (Jest + architecture), `doctor`.

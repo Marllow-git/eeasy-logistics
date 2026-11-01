@@ -1,5 +1,6 @@
 import type { RequestContext } from '@eeasy-logistics/db';
 import { createAppPool, uuidv7, withUnitOfWork } from '@eeasy-logistics/db';
+import { transactionOf } from '@eeasy-logistics/db/testing';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { coreAccounts } from '../../src/modules/kernel/schema/accounts.js';
@@ -55,15 +56,15 @@ describe('sample integration test', () => {
     };
     const pool = createAppPool(config.db, 'elx-sample-test');
     try {
-      const own = await withUnitOfWork(pool.db, context, ({ tx, context: ctx }) =>
-        tx
+      const own = await withUnitOfWork(pool.db, context, (uow) =>
+        transactionOf(uow)
           .select({ name: coreAccounts.name })
           .from(coreAccounts)
-          .where(eq(coreAccounts.id, ctx.accountId)),
+          .where(eq(coreAccounts.id, uow.context.accountId)),
       );
       expect(own).toEqual([{ name: 'Sample account' }]);
-      const seen = await withUnitOfWork(pool.db, context, ({ tx }) =>
-        tx
+      const seen = await withUnitOfWork(pool.db, context, (uow) =>
+        transactionOf(uow)
           .select({ id: coreAccounts.id })
           .from(coreAccounts)
           .where(inArray(coreAccounts.id, [accountId, ...accountFixtures.map((f) => f.id)])),

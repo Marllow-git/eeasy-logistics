@@ -13,36 +13,78 @@ export interface RequestContext {
   readonly deviceId: string | null;
   /** True only for platform staff acting on an account through a `@CrossTenant()` handler. */
   readonly actingCrossTenant: boolean;
+  /** The request id (PLAT-6 plan 2.1), for audit events and log lines; absent in jobs. */
+  readonly requestId?: string;
 }
 
-const storage = new AsyncLocalStorage<RequestContext>();
+/** Platform staff on the platform surface: no account (identity and tenancy §5; PLAT-6 2.5). */
+export interface PlatformContext {
+  readonly userId: string;
+  readonly requestId?: string;
+}
 
-/** The context of the current request or job; throws when code runs outside one. */
+/**
+ * What the current request or job runs with: one context (tenant or platform) and, inside a unit
+ * of work, that unit of work. One store, so the context and the transaction can never disagree.
+ */
+export interface Frame {
+  readonly context?: RequestContext;
+  readonly platform?: PlatformContext;
+  readonly unitOfWork?: object;
+}
+
+const storage = new AsyncLocalStorage<Frame>();
+
+/** The tenant context of the current request or job; throws outside one (and for platform). */
 export function getContext(): RequestContext {
-  const context = storage.getStore();
+  const context = storage.getStore()?.context;
   if (context === undefined) {
     throw new Error('No request context: database work runs inside a unit of work');
   }
   return context;
 }
 
-/** The context, or undefined outside a request or job. */
+/** The tenant context, or undefined outside a tenant request or job. */
 export function findContext(): RequestContext | undefined {
+  return storage.getStore()?.context;
+}
+
+/** The platform context of the current platform request, or undefined. */
+export function findPlatformContext(): PlatformContext | undefined {
+  return storage.getStore()?.platform;
+}
+
+/** The current frame (package-internal: unit-of-work.ts and platform.ts read it). */
+export function currentFrame(): Frame | undefined {
   return storage.getStore();
 }
 
+/** Runs `fn` in `frame` (package-internal). */
+export function runInFrame<T>(frame: Frame, fn: () => T): T {
+  return storage.run(Object.freeze({ ...frame }), fn);
+}
+
 /**
- * Runs `fn` with `context` as the current context. Not exported from the package root: the request
- * guard (PLAT-6) and the job runner get their own entry; tests use `@eeasy-logistics/db/testing`.
+ * Runs `fn` with `context` as the current context, without a transaction. Not exported from the
+ * package root: requests and jobs get their context from `withUnitOfWork`; tests use
+ * `@eeasy-logistics/db/testing`.
  */
 export function runWithContext<T>(context: RequestContext, fn: () => T): T {
-  return storage.run(checkContext(context), fn);
+  return runInFrame({ context: checkContext(context) }, fn);
 }
 
 /** Validates and freezes a context, so a unit of work never sets a malformed account id. */
 export function checkContext(context: RequestContext): RequestContext {
   if (!isUuid(context.accountId)) {
     throw new Error('The request context has no valid account id');
+  }
+  return Object.isFrozen(context) ? context : Object.freeze({ ...context });
+}
+
+/** Validates and freezes a platform context. */
+export function checkPlatformContext(context: PlatformContext): PlatformContext {
+  if (!isUuid(context.userId)) {
+    throw new Error('The platform context has no valid user id');
   }
   return Object.isFrozen(context) ? context : Object.freeze({ ...context });
 }

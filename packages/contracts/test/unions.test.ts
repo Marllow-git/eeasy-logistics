@@ -29,8 +29,11 @@ function dottedNames(rows: string[]): string[] {
   );
 }
 
-/** Committed snapshot: errors.md holds 70 codes (2026-11-01). A new code changes this number. */
-const errorCodeCount = 70;
+/**
+ * Committed snapshot: errors.md holds 72 codes (2026-11-01; PLAT-6 added `internal_error` and
+ * `idempotency_in_progress`). A new code changes this number.
+ */
+const errorCodeCount = 72;
 
 describe('Permission', () => {
   it('equals the README §11 catalogue table, in count and members', () => {
