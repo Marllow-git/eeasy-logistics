@@ -1,0 +1,14 @@
+[
+  {
+    "route": "/",
+    "firstLoadChunkPaths": [".next/static/chunks/merchant.js", ".next/static/chunks/framework.js"]
+  },
+  {
+    "route": "/track/[token]",
+    "firstLoadChunkPaths": [".next/static/chunks/recipient.js", ".next/static/chunks/framework.js"]
+  },
+  {
+    "route": "/_not-found",
+    "firstLoadChunkPaths": [".next/static/chunks/framework.js"]
+  }
+]

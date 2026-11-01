@@ -11,7 +11,7 @@ export const generateMetadata = rootMetadata;
  * Platform console at the admin hostname's root (web §1; no /platform segment, ADR-0038). Its own
  * root layout (web §1.2) in the shared shell. The navigation groups are placeholders for the
  * console's areas (web §1 tree: accounts, rollout, outbox, channel publications, staff, audit);
- * their pages arrive with the orders that build them. The account block names the console until
+ * until their orders build the pages they link to `/` and are never marked current. The account block names the console until
  * WEB-2 puts the signed-in staff member there.
  */
 export default async function PlatformLayout({ children }: { children: ReactNode }) {
@@ -26,22 +26,22 @@ export default async function PlatformLayout({ children }: { children: ReactNode
           {
             label: t('nav.groups.accounts'),
             items: [
-              { href: '/accounts', label: t('nav.accounts') },
-              { href: '/rollout', label: t('nav.rollout') },
+              { href: '/', active: false, label: t('nav.accounts') },
+              { href: '/', active: false, label: t('nav.rollout') },
             ],
           },
           {
             label: t('nav.groups.operations'),
             items: [
-              { href: '/outbox', label: t('nav.outbox') },
-              { href: '/channel-publications', label: t('nav.channel_publications') },
+              { href: '/', active: false, label: t('nav.outbox') },
+              { href: '/', active: false, label: t('nav.channel_publications') },
             ],
           },
           {
             label: t('nav.groups.governance'),
             items: [
-              { href: '/staff', label: t('nav.staff') },
-              { href: '/audit', label: t('nav.audit') },
+              { href: '/', active: false, label: t('nav.staff') },
+              { href: '/', active: false, label: t('nav.audit') },
             ],
           },
         ]}

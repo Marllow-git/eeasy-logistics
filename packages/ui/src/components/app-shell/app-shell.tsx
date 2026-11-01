@@ -63,12 +63,12 @@ function Navigation({ groups, label }: { groups: NavigationGroup[]; label: strin
               item.children?.some((child) => isCurrent(child, pathname)) ?? false;
             const open = isCurrent(item, pathname) || childCurrent;
             return (
-              <Fragment key={item.href}>
+              <Fragment key={`${item.href} ${item.label}`}>
                 <NavigationLink item={item} current={isCurrent(item, pathname)} />
                 {open && item.children?.length
                   ? item.children.map((child) => (
                       <NavigationLink
-                        key={child.href}
+                        key={`${child.href} ${child.label}`}
                         item={child}
                         current={isCurrent(child, pathname)}
                         nested

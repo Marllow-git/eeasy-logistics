@@ -11,8 +11,9 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
-    "test": "pnpm run test:architecture",
+    "test": "pnpm run test:architecture && pnpm run test:scripts",
     "test:architecture": "depcruise src next.config.ts --config .dependency-cruiser.cjs",
+    "test:scripts": "node --test --test-reporter=dot \"scripts/*.test.ts\"",
     "test:census": "playwright test --config tests/census.config.ts"
   },
   "dependencies": {
