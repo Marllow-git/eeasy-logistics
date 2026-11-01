@@ -94,7 +94,8 @@ Native stack: PostgreSQL 17.9 with PostGIS 3.7 on the owner's Mac (CI uses 16), 
 | fix M-5, M-1 lint rules | `a528b74` | lint red on planted files (4 errors in `planted.ts`, 2 in `orders.repository.ts` where `tx` is allowed), green after | 8.2.15 |
 | fix L-4 seed out of the image | `c08ea61` | not built locally (no Docker) | 8.2.18 |
 | fix M-4 partition gap recorded | `8684c8a` | – (plan §6) | – |
-| final | this commit | root `typecheck lint test` 23/23 (api unit 12, db 4, config 79, i18n 8, driver 3), `format:check` clean, integration 40/40 with `ELX_RLS=off` and 40/40 with `on`, two concurrent migrate runs on an empty database (one waits, both exit 0, RLS enabled on 1 table) | – |
+| final (adversary fixes) | `fb70261` | root `typecheck lint test` 23/23 (api unit 12, db 4, config 79, i18n 8, driver 3), `format:check` clean, integration 40/40 with `ELX_RLS=off` and 40/40 with `on`, two concurrent migrate runs on an empty database (one waits, both exit 0, RLS enabled on 1 table) | – |
+| fix lows N-1 to N-3, M-1 selector, ci-mode sample test | this commit | lint red on a planted file (`uow['tx']`, `{ ['tx']: t }`, `{ 'tx': t }`, `SET_CONFIG('ELX.ACCOUNT_ID', …)`, `'ELX.Account_Id'`: 5 errors), green after; db unit 10/10 (`isPlainPoolRole` refuses a member of `elx_owner`: red with the check removed, green with it); root `typecheck lint test` 23/23 (api unit 12, db 10, config 79, i18n 8, driver 3), `format:check` clean; integration 41/41 in scratch mode (admin URL) with `ELX_RLS=off` and `on`, and 41/41 in ci mode (`APP_ENV=ci`, no admin URL, a scratch database migrated and seeded by hand with `pnpm --filter api migrate` and `seed`) with `off` and `on` | sample test asserts the harness database (8.2.9); CI had failed 39/40 on the old `not 'elx'` assertion |
 
 ### 8.1 Versions and documents consulted
 

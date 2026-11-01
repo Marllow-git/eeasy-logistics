@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { coreAccounts } from '../../src/modules/kernel/schema/accounts.js';
 import { accountFixtures } from '../../src/seed/fixtures.js';
 import { seedFixtures } from '../../src/seed/seed.js';
-import { connectAs, integrationConfig } from './support.js';
+import { connectAs, harnessDatabase, integrationConfig } from './support.js';
 
 // The pattern every later integration test follows (PLAT-5 item G, handbook 03): the configuration
 // from integrationConfig() points at this run's migrated database; work runs through the same unit
@@ -23,9 +23,16 @@ describe('sample integration test', () => {
     await owner.end();
   });
 
-  it('runs on a migrated scratch database, never the development database', async () => {
+  it('runs on the database the harness migrated, never the development database', async () => {
     const [row] = await owner<{ database: string }[]>`SELECT current_database() AS database`;
-    expect(row?.database).not.toBe('elx');
+    expect(row?.database).toBe(harnessDatabase());
+    if (config.db.urls.admin !== undefined) {
+      // Scratch mode: a database of this run, dropped at the end.
+      expect(row?.database).toMatch(/^elx_test_[0-9a-f]{12}$/);
+    } else {
+      // ci mode (global-setup.ts refuses it anywhere else): the throwaway ci database.
+      expect(config.app.env).toBe('ci');
+    }
   });
 
   it('seeds the two fixture accounts deterministically and idempotently', async () => {

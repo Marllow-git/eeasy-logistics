@@ -55,11 +55,11 @@ export const processRestrictions = [
  */
 export const tenancySettingRestrictions = [
   {
-    selector: 'Literal[value=/set_config|elx\\.account_id/]',
+    selector: 'Literal[value=/set_config|elx\\.account_id/i]',
     message: 'Only packages/db sets elx.account_id (withUnitOfWork); never set it yourself.',
   },
   {
-    selector: 'TemplateElement[value.raw=/set_config|elx\\.account_id/]',
+    selector: 'TemplateElement[value.raw=/set_config|elx\\.account_id/i]',
     message: 'Only packages/db sets elx.account_id (withUnitOfWork); never set it yourself.',
   },
 ];

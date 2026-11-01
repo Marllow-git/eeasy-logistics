@@ -7,10 +7,15 @@ import { withDatabase } from '@eeasy-logistics/db/admin';
 import postgres from 'postgres';
 import { inject } from 'vitest';
 
+/** The database global-setup.ts migrated for this run (scratch `elx_test_*`, or the ci database). */
+export function harnessDatabase(): string {
+  return inject('elxDatabase');
+}
+
 /** The validated configuration with every database URL pointed at this run's database. */
 export function integrationConfig(overrides: EnvRecord = {}): Config {
   const config = defineConfig({ ...readEnvironment(), ...overrides });
-  const database = inject('elxDatabase');
+  const database = harnessDatabase();
   const point = (url: Config['db']['urls']['app']) =>
     url === undefined ? undefined : withDatabase(url, database);
   const { urls } = config.db;
