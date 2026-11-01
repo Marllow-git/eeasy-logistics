@@ -1,5 +1,6 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
-import { Controller, Get, Inject, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Inject, Logger, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import type { CheckName, ReadinessCheck } from './readiness.js';
 import { failingChecks } from './readiness.js';
 
@@ -33,12 +34,14 @@ export class ReadyController implements OnApplicationShutdown {
 
   constructor(@Inject(READINESS_CHECKS) private readonly checks: readonly ReadinessCheck[]) {}
 
+  // The 503 is set here, not thrown: a probe body is not the contract's `Error` schema, and the
+  // global exception filter (PLAT-6) renders every thrown failure as `Error`.
   @Get()
-  async check(): Promise<ReadyBody> {
+  async check(@Res({ passthrough: true }) response: Response): Promise<ReadyBody | NotReadyBody> {
     const failing = await this.evaluate();
     if (failing.length > 0) {
-      const body: NotReadyBody = { status: 'not_ready', failing };
-      throw new ServiceUnavailableException(body);
+      response.status(HttpStatus.SERVICE_UNAVAILABLE);
+      return { status: 'not_ready', failing };
     }
     return { status: 'ready' };
   }
