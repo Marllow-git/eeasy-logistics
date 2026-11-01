@@ -5,13 +5,22 @@ import { ApiException } from '../errors/api-exception.js';
 // (M9), and nobody approves what they counted or requested (W-16). Both are pure checks for the
 // orders that write memberships (PLAT-12) and approvals (WMS orders).
 
-/** The cash permissions of a bundle make it a cash role (`delivery.cash.*`). */
-const cashPrefix = 'delivery.cash.';
+/**
+ * The cash-handling permissions (M9, lead ruling on PR #70): receiving, depositing and closing
+ * cash, and recording driver liability. Reading cash (`delivery.cash.read`) handles none, so a
+ * viewer or dispatcher may also be a driver.
+ */
+export const cashHandlingPermissions: ReadonlySet<string> = new Set([
+  'delivery.cash.receive',
+  'delivery.cash.deposit',
+  'delivery.cash.close_report',
+  'delivery.liability.record',
+]);
 
 /**
- * Refuses a membership's role list that combines `driver` with any role holding a cash permission:
- * `422 role_combination_forbidden` (M9). `bundles` is the resolver's map (`PermissionResolver
- * .bundles`); a role it does not know is left to the caller's own validation.
+ * Refuses a membership's role list that combines `driver` with any role holding a cash-handling
+ * permission: `422 role_combination_forbidden` (M9). `bundles` is the resolver's map
+ * (`PermissionResolver.bundles`); a role it does not know is left to the caller's own validation.
  */
 export function assertRoleCombination(
   roles: readonly string[],
@@ -23,7 +32,7 @@ export function assertRoleCombination(
     const permissions = bundles.get(role)?.permissions;
     if (permissions === undefined) continue;
     for (const permission of permissions) {
-      if (permission.startsWith(cashPrefix)) {
+      if (cashHandlingPermissions.has(permission)) {
         throw new ApiException('role_combination_forbidden');
       }
     }

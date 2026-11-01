@@ -1,4 +1,5 @@
 import type { RequestContext } from '@eeasy-logistics/db';
+import { isUuid } from '@eeasy-logistics/db';
 import { SetMetadata } from '@nestjs/common';
 import type { SQL } from 'drizzle-orm';
 import { inArray, sql } from 'drizzle-orm';
@@ -38,9 +39,20 @@ function objectOf(value: unknown): Record<string, unknown> | undefined {
 }
 
 /**
- * Checks the site a request names against a site-scoped principal's `sites` (plan 2.6 a, c);
- * throws `404 not_found` when it is outside them, absent where it must be present, or when the
- * principal has no site at all.
+ * The token's `sites` claim as the one list both `assertSiteInScope` and `siteFilter` use (lead
+ * review round 1): lowercased, then UUIDs only (a value that is not one is dropped, never widened;
+ * the claim schema already refuses a token carrying one), without duplicates, frozen.
+ */
+export function normaliseSiteIds(sites: readonly string[]): readonly string[] {
+  return Object.freeze([
+    ...new Set(sites.map((site) => site.toLowerCase()).filter((site) => isUuid(site))),
+  ]);
+}
+
+/**
+ * Checks the site a request names against a site-scoped principal's normalised `sites`
+ * (`normaliseSiteIds`; plan 2.6 a, c); throws `404 not_found` when it is outside them, absent where
+ * it must be present, or when the principal has no site at all.
  */
 export function assertSiteInScope(
   request: Request,
@@ -62,7 +74,7 @@ export function assertSiteInScope(
     if (raw === undefined && source.from === 'query') return;
   }
   const site = typeof raw === 'string' ? raw.toLowerCase() : undefined;
-  if (site === undefined || !sites.some((own) => own.toLowerCase() === site)) {
+  if (site === undefined || !sites.includes(site)) {
     throw new ApiException('not_found');
   }
 }
@@ -72,8 +84,9 @@ const requestScopes = new WeakMap<Request, readonly string[]>();
 /** The same, keyed by the request's tenant context (the unit-of-work interceptor binds it). */
 const contextScopes = new WeakMap<RequestContext, readonly string[]>();
 
+/** Records the request's normalised sites (`normaliseSiteIds`) for its tenant context. */
 export function setRequestSiteScope(request: Request, sites: readonly string[]): void {
-  requestScopes.set(request, Object.freeze([...sites]));
+  requestScopes.set(request, sites);
 }
 
 export function requestSiteScope(request: Request): readonly string[] | undefined {
