@@ -4,6 +4,7 @@ import {
   formatDateTime,
   formatMoney,
   formatMoneyAmount,
+  formatMoneyParts,
   formatNumber,
   formatPhone,
   intlLocale,
@@ -74,6 +75,14 @@ describe.each(locales)('formatting in %s', (locale) => {
 describe('formatMoney', () => {
   it('is exactly "SAR 150.00" in English', () => {
     expect(formatMoney('en', 15000).replace(/\u00a0/g, ' ')).toBe('SAR 150.00');
+  });
+});
+
+describe('formatMoneyParts', () => {
+  it('follows Intl: the currency after the amount in Arabic, before it in English', () => {
+    expect(formatMoneyParts('ar', 15000)).toEqual({ amount: '150.00', currencyFirst: false });
+    expect(formatMoneyParts('en', 15000)).toEqual({ amount: '150.00', currencyFirst: true });
+    expect(formatMoneyParts('en', -123456)).toEqual({ amount: '-1,234.56', currencyFirst: true });
   });
 });
 

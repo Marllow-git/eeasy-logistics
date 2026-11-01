@@ -13,6 +13,7 @@ export function Example() {
     <div className="mr-4 text-left">
       <span className={cn('rounded-l-md', active && 'border-r-2', `md:left-0`)} />
       <span className="rtl:-ml-1 float-right right-3" />
+      <span className={cn({ 'ml-4': active })} />
     </div>
   );
 }

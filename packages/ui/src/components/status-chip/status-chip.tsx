@@ -5,6 +5,7 @@ import {
   CircleCheck,
   CircleDot,
   CircleMinus,
+  CircleHelp,
   CircleX,
   ClipboardCheck,
   Clock,
@@ -75,7 +76,27 @@ export function StatusChip<M extends StatusMachine>({
   className?: string;
 }) {
   const t = useTranslations('common.status');
-  const { icon: Icon, colour } = (looks[machine] as Record<string, Look>)[state as string]!;
+  const look = (looks[machine] as Partial<Record<string, Look>>)[state as string];
+  if (!look) {
+    // A state the contracts do not know yet (an API ahead of this build): say so, never crash.
+    // Warned in every environment because the environment is readable only through
+    // packages/config, and contract drift in production is worth a console line.
+    console.warn(`StatusChip: unknown ${machine} state "${String(state)}"`);
+    return (
+      <span
+        data-machine={machine}
+        data-state={state}
+        className={cn(
+          'inline-flex items-center gap-1 rounded-full border border-current bg-background px-2 py-0.5 text-xs font-semibold text-muted-foreground',
+          className,
+        )}
+      >
+        <CircleHelp aria-hidden className="size-3.5 shrink-0" />
+        <bdi>{String(state)}</bdi>
+      </span>
+    );
+  }
+  const { icon: Icon, colour } = look;
   return (
     <span
       data-machine={machine}

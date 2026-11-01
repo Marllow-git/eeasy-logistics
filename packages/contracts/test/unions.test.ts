@@ -2,14 +2,27 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { ErrorCode, Permission, StreamEventName } from '../generated/unions.ts';
+import type * as StaffModel from '../generated/staff/model/index.ts';
+import type {
+  AttemptState,
+  CustodyState,
+  ErrorCode,
+  OfferState,
+  OrderState,
+  Permission,
+  StreamEventName,
+} from '../generated/unions.ts';
 import {
+  attemptStates,
+  custodyStates,
   errorCodes,
   isStreamEventName,
+  offerStates,
+  orderStates,
   permissions,
   streamEventNames,
 } from '../generated/unions.ts';
-import { expandFamilies, readDomainEvents } from '../scripts/unions.ts';
+import { expandFamilies, readDomainEvents, readStateMachines } from '../scripts/unions.ts';
 import type { ApiErrorCode } from '../src/http.ts';
 
 const contractsDir = resolve(import.meta.dirname, '../../../docs/contracts');
@@ -114,5 +127,24 @@ describe('typecheck guards (checked by tsc, asserted at runtime for completeness
     const familyTypo: StreamEventName = 'delivery.order.pickedup';
     const apiCode: ApiErrorCode = 'unexpected_response';
     expect([permission, code, event, family, familyTypo, apiCode]).toHaveLength(6);
+  });
+});
+
+// WEB-1 review round 1: the four state machines are unions too, so both web apps reach them through
+// `/unions`. They must equal the model types Orval generates for the same schemas, both ways.
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const sameOrder: Same<OrderState, StaffModel.OrderStatus> = true;
+const sameOffer: Same<OfferState, StaffModel.OfferStatus> = true;
+const sameAttempt: Same<AttemptState, StaffModel.AttemptStatus> = true;
+const sameCustody: Same<CustodyState, StaffModel.CodCollectionCustody> = true;
+
+describe('state machine unions', () => {
+  it('read the enums of components.yaml', () => {
+    expect(orderStates).toEqual(readStateMachines().order);
+    expect(orderStates).toHaveLength(11);
+    expect(offerStates).toEqual(['sent', 'accepted', 'declined', 'expired', 'withdrawn']);
+    expect(attemptStates).toEqual(['open', 'succeeded', 'failed', 'voided']);
+    expect(custodyStates).toEqual(['collected', 'with_cashier', 'with_bank', 'not_held']);
+    expect([sameOrder, sameOffer, sameAttempt, sameCustody]).toEqual([true, true, true, true]);
   });
 });

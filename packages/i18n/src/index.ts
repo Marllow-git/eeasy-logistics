@@ -8,6 +8,7 @@ export {
   formatDateTime,
   formatMoney,
   formatMoneyAmount,
+  formatMoneyParts,
   formatNumber,
   formatPhone,
   intlLocale,
