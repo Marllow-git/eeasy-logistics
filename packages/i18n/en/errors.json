@@ -18,6 +18,7 @@
     "limit_exceeded": "Your account has reached its limit for this.",
     "rate_limited": "Too many requests. Wait a moment and try again.",
     "internal_error": "Something went wrong on our side. Try again later.",
+    "messaging_unavailable": "We cannot send messages right now. Try again in a few minutes.",
     "role_combination_forbidden": "The driver role cannot be combined with a cash role.",
     "invalid_credentials": "The email or password is incorrect.",
     "second_factor_required": "A second verification step is required.",

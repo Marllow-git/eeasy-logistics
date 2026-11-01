@@ -24,9 +24,8 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| PLAT-10 | #67 | `feat/PLAT-10-roles-permissions` | `.claude/worktrees/agent-a0096210358e25ccd` | executor-api (Opus) | build (A–E) | native, scratch databases | one-way door (migration 0008 seed); adversary required |
-| PLAT-14 | #73 | `feat/PLAT-14-observability` | `.claude/worktrees/agent-ac1c5a5170ce8305e` | executor-api (Opus) | build, leg 1 (A–E) | native (no collector) | two-way door; adversary required; beside PLAT-9 under the owner's go, rebase before merge |
+| PLAT-9 | #72 | `feat/PLAT-9-messaging-port-otp` | `.claude/worktrees/agent-ac7ad3a62333516a1` | executor-api | build, leg 1 (A–E) | native, scratch databases, Redis, whatsapp-stub, Mailpit | one-way door (migrations 0009, 0010); adversary required; two legs |
 
 ## Next unblocked (roadmap §1.1)
 
-PLAT-9 (messaging port and OTP delivery; Q-27 ruled, A-22) follows PLAT-10 on the API side; PLAT-11 after PLAT-7, PLAT-9, PLAT-10 (Q-7, Q-23); WEB-2 after PLAT-11; OPS-1 waits on the owner's go (Q-10, Q-12).
+PLAT-11 (staff and platform authentication) after PLAT-9 (Q-7, Q-23); PLAT-12, PLAT-13 after PLAT-11; PLAT-14 (observability) after PLAT-8, disjoint candidate for the second slot; WEB-2 after PLAT-11; OPS-1 waits on the owner's go (Q-10, Q-12).

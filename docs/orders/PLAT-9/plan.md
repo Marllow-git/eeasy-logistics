@@ -87,10 +87,16 @@ The sign-in doors, invitation and reset flows (PLAT-11); the inbound webhook for
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A templates, registry, config, error code | this commit (`PLAT-9: A templates, registry and config`) | config 136/136 (new `messaging-mail.test.ts` 26: red 20 failed without the src change, then green); i18n 54/54 (parity covers `messages`); api `templates.test.ts` + `error-codes.test.ts` 38/38 (registry parity red 1 failed with `{link}` removed from en, then green); contracts 66/66 (error count snapshot 72 → 73), redocly lint clean | 8.2 #1 (no Meta/BSP, `MESSAGING_PHONE_NUMBER_ID` not added), #2 (`MESSAGING_STUB_URL`), #3 (mail required for api and worker), #4 (`503` declared on `driverRequestOtp`) |
 
 ### 8.1 Skills, documents and versions consulted
 
 ### 8.2 Interpretations the lead should check
+
+1. **Scope change from the coordinator (owner input, 2026-11-01):** WhatsApp sending will go through eeasynew's `whatsapp-engine` service (an admin links a number for platform and OTP messages; merchants may link their own). Leg 1 therefore builds the `MessageSender` port, the stub adapter and the mail adapter only; the Meta Cloud API adapter and the BSP slot of 2.1 are **not built**, and `MESSAGING_PROVIDER` keeps its values (`stub`, `meta`, `bsp`). The port keeps doc 9 §2.4's method shape and is reached through `MessageSenders.senderFor(accountId | null)`, which returns the platform adapter for every account today, so per-account linking can slot in under the amended plan. `MESSAGING_PHONE_NUMBER_ID` (2.9) is Meta-specific and is not added; `MESSAGING_WEBHOOK_SECRET` and `MESSAGING_TEMPLATE_NAMESPACE` are.
+2. **`MESSAGING_STUB_URL`** (not in 2.9): the stub adapter needs the stub's address, and the ci profile publishes a random port. It is a local-and-ci-only variable (refused in staging and production like `DATABASE_URL_ADMIN`), and the stub adapter itself refuses to be built outside `local` and `ci`. The existing PLAT-4 rule (production refuses `MESSAGING_PROVIDER=stub`) is unchanged; staging still accepts the selector value, but cannot reach a stub.
+3. **Mail in production:** `MAIL_SMTP_URL` and `MAIL_FROM` are required for both the `api` and `worker` roles (the list is shared); `MAIL_FROM` refuses line breaks and malformed addresses (header injection). No TLS scheme rule: `smtp://` with STARTTLS is legitimate.
+4. **`503 messaging_unavailable` on `driverRequestOtp`:** added to errors.md §1 (additive) and declared on the operation in `driver.yaml` (one response line and the description), so the generated client knows it; not in the plan's path list.
 
 ### 8.3 Not done here
 

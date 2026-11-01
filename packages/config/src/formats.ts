@@ -95,6 +95,17 @@ function hasPassword(value: string): boolean {
 
 export const postgresUrl = () => z.url({ protocol: /^postgres(?:ql)?$/ });
 export const redisUrl = () => z.url({ protocol: /^rediss?$/ });
+/** SMTP (`smtp://`, STARTTLS when offered) or SMTP over TLS (`smtps://`); may carry a password. */
+export const smtpUrl = () => z.url({ protocol: /^smtps?$/ });
+
+/** `user@example.com` or `Display Name <user@example.com>`; no line breaks (header injection). */
+export const mailFrom = () =>
+  z
+    .string()
+    .max(200)
+    .regex(
+      /^(?:[^<>\r\n]{1,100} <[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>|[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)$/,
+    );
 
 /** Wraps the parsed string in `Secret`, so it never prints. */
 export const secret = (schema: z.ZodType<string> = z.string().min(1)) =>

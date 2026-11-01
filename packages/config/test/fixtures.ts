@@ -34,6 +34,8 @@ export const productionEnv: Record<string, string> = {
   CREDENTIALS_KEYS: `k1:${fakeKey(1)},k2:${fakeKey(2)}`,
   CREDENTIALS_ACTIVE_KEY_ID: 'k2',
   ELX_RELEASE: 'sha-0123456789abcdef0123456789abcdef01234567',
+  MAIL_SMTP_URL: 'smtps://mailer:fake-smtp-pw@smtp.example.test:465',
+  MAIL_FROM: 'Eeasy Logistics <no-reply@example.test>',
 };
 
 /**

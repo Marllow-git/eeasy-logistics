@@ -23,7 +23,9 @@ import {
   releaseExpectation,
   retentionMonths,
   seconds,
+  mailFrom,
   secret,
+  smtpUrl,
 } from './formats.ts';
 import { productionRefusals } from './refusals.ts';
 import { Secret } from './secret.ts';
@@ -125,6 +127,18 @@ export const serverVariables = {
   MESSAGING_DISABLED: boolean().default(false),
   MESSAGING_ACCESS_TOKEN: secret().optional(),
   MESSAGING_SENDER_ID: z.string().min(1).optional(),
+  // PLAT-9: the provider's inbound webhook secret (validated now, used by the INT order), the
+  // template name prefix (integrations §5.2: `elx_` when the namespace is shared) and the WhatsApp
+  // stub's URL (local and ci only).
+  MESSAGING_WEBHOOK_SECRET: secret(z.string().min(16)).optional(),
+  MESSAGING_TEMPLATE_NAMESPACE: z
+    .string()
+    .regex(/^[a-z][a-z0-9]{0,15}$/)
+    .default('elx'),
+  MESSAGING_STUB_URL: httpUrl().optional(),
+  // mail (PLAT-9 plan 2.2): SMTP for invitations and resets; Mailpit locally and in ci.
+  MAIL_SMTP_URL: secret(smtpUrl()).optional(),
+  MAIL_FROM: mailFrom().optional(),
   // push
   EXPO_ACCESS_TOKEN: secret().optional(),
   // geo
@@ -187,6 +201,12 @@ export const serverExpectations = {
   MESSAGING_DISABLED: 'true or false',
   MESSAGING_ACCESS_TOKEN: 'a provider access token',
   MESSAGING_SENDER_ID: 'a provider sender id',
+  MESSAGING_WEBHOOK_SECRET: 'a secret of at least 16 characters',
+  MESSAGING_TEMPLATE_NAMESPACE:
+    'a lower-case prefix of 1 to 16 letters and digits, starting with a letter',
+  MESSAGING_STUB_URL: 'an http(s) URL',
+  MAIL_SMTP_URL: 'an smtp:// or smtps:// URL',
+  MAIL_FROM: 'a sender address, optionally with a display name: Name <user@example.com>',
   EXPO_ACCESS_TOKEN: 'an Expo access token',
   HUDHUD_API_KEY: 'a Hudhud API key',
   VROOM_URL: 'an http(s) URL',
@@ -261,6 +281,17 @@ export interface Config {
     readonly disabled: boolean;
     readonly accessToken: Secret | undefined;
     readonly senderId: string | undefined;
+    /** The provider's inbound webhook secret (the INT order verifies signatures with it). */
+    readonly webhookSecret: Secret | undefined;
+    /** Prefix of provider template names (`elx` → `elx_auth_otp`; integrations §5.2). */
+    readonly templateNamespace: string;
+    /** The WhatsApp stub (`tools/whatsapp-stub`); local and ci only. */
+    readonly stubUrl: string | undefined;
+  };
+  readonly mail: {
+    /** SMTP URL (Mailpit locally); required in production for the api and worker. */
+    readonly smtpUrl: Secret | undefined;
+    readonly from: string | undefined;
   };
   readonly push: { readonly expoAccessToken: Secret | undefined };
   readonly geo: {
@@ -391,7 +422,11 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       disabled: v.MESSAGING_DISABLED,
       accessToken: v.MESSAGING_ACCESS_TOKEN,
       senderId: v.MESSAGING_SENDER_ID,
+      webhookSecret: v.MESSAGING_WEBHOOK_SECRET,
+      templateNamespace: v.MESSAGING_TEMPLATE_NAMESPACE,
+      stubUrl: v.MESSAGING_STUB_URL,
     },
+    mail: { smtpUrl: v.MAIL_SMTP_URL, from: v.MAIL_FROM },
     push: { expoAccessToken: v.EXPO_ACCESS_TOKEN },
     geo: { hudhudApiKey: v.HUDHUD_API_KEY, vroomUrl: v.VROOM_URL, osrmUrl: v.OSRM_URL },
     observability: {
