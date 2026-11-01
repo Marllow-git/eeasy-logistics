@@ -270,6 +270,33 @@ describe('audit log settings (PLAT-7 plan 2.8)', () => {
   );
 });
 
+describe('outbox settings (PLAT-8 plan 2.11)', () => {
+  it('defaults to the relay on, batches of 500 and pruning on', () => {
+    expect(defineConfig(minimalEnv).outbox).toEqual({ relay: true, relayBatch: 500, prune: true });
+  });
+
+  it('reads off and a batch size, also for the worker role', () => {
+    const config = defineConfig(
+      { ...minimalEnv, OUTBOX_RELAY: 'off', OUTBOX_RELAY_BATCH: '50', OUTBOX_PRUNE: 'off' },
+      { role: 'worker' },
+    );
+    expect(config.outbox).toEqual({ relay: false, relayBatch: 50, prune: false });
+  });
+
+  it.each([
+    ['OUTBOX_RELAY', 'true'],
+    ['OUTBOX_RELAY', 'ON'],
+    ['OUTBOX_PRUNE', 'yes'],
+    ['OUTBOX_RELAY_BATCH', '0'],
+    ['OUTBOX_RELAY_BATCH', '5001'],
+    ['OUTBOX_RELAY_BATCH', '-1'],
+    ['OUTBOX_RELAY_BATCH', 'many'],
+  ])('refuses %s=%s', (variable, value) => {
+    const error = configError(() => defineConfig({ ...minimalEnv, [variable]: value }));
+    expect(error.issues.map((issue) => issue.variable)).toEqual([variable]);
+  });
+});
+
 describe('TRUST_PROXY_HOPS (PLAT-6 review round 2, platform §8)', () => {
   it('defaults to 0 and reads an integer from 0 to 10', () => {
     expect(defineConfig(minimalEnv).app.trustProxyHops).toBe(0);

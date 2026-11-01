@@ -127,25 +127,35 @@ describe('core_outbox (migration 0007)', () => {
     ).toBe('none');
   });
 
-  it('notifies elx_outbox on commit only', async () => {
+  it('notifies elx_outbox on commit only, once per transaction, with the transaction id only', async () => {
+    // Suites run in parallel on this database: notifications are told apart by transaction id.
     const listener = connectAs('platform');
     const received: string[] = [];
+    const txid = async (tx: postgres.Sql) =>
+      (await tx<{ id: string }[]>`SELECT txid_current()::text AS id`)[0]?.id ?? '';
     try {
       await listener.listen('elx_outbox', (payload) => received.push(payload));
+      let rolledBack = '';
       await platform
         .begin(async (tx) => {
           await insertRow(tx as unknown as postgres.Sql);
+          rolledBack = await txid(tx as unknown as postgres.Sql);
           throw new Error('roll back');
         })
         .catch(() => undefined);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      expect(received).toEqual([]);
 
+      let committed = '';
       await platform.begin(async (tx) => {
         await insertRow(tx as unknown as postgres.Sql);
         await insertRow(tx as unknown as postgres.Sql);
+        committed = await txid(tx as unknown as postgres.Sql);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(received).not.toContain(committed); // not before the commit
       });
-      await expect.poll(() => received.length, { timeout: 3000 }).toBeGreaterThan(0);
+      await expect.poll(() => received.includes(committed), { timeout: 3000 }).toBe(true);
+      expect(received.filter((payload) => payload === committed)).toHaveLength(1);
+      expect(received).not.toContain(rolledBack);
+      expect(received.every((payload) => /^\d+$/.test(payload))).toBe(true);
     } finally {
       await listener.end();
     }

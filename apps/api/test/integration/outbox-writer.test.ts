@@ -1,4 +1,4 @@
-import type { AppDatabase, Pool, RequestContext } from '@eeasy-logistics/db';
+import type { AppDatabase, Pool, RequestContext, UnitOfWork } from '@eeasy-logistics/db';
 import { createAppPool, uuidv7, withUnitOfWork } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import {
@@ -6,6 +6,8 @@ import {
   withCrossTenantUnitOfWork,
   withPlatformUnitOfWork,
 } from '@eeasy-logistics/db/platform';
+import { transactionOf } from '@eeasy-logistics/db/testing';
+import { sql } from 'drizzle-orm';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { OutboxEntry } from '../../src/modules/kernel/outbox/outbox-writer.js';
@@ -196,24 +198,29 @@ describe('OutboxWriter (plan 2.2)', () => {
   });
 
   it('wakes LISTEN elx_outbox when the transaction commits, not before and not on rollback', async () => {
+    // Parallel suites insert too: notifications carry the transaction id, which tells ours apart.
     const listener = connectAs('platform', config);
-    let received = 0;
+    const received: string[] = [];
+    const txid = async (uow: UnitOfWork) =>
+      (await transactionOf(uow).execute<{ id: string }>(sql`SELECT txid_current()::text AS id`))[0]
+        ?.id ?? '';
     try {
-      await listener.listen('elx_outbox', () => {
-        received += 1;
-      });
+      await listener.listen('elx_outbox', (payload) => received.push(payload));
+      let rolledBack = '';
       await withUnitOfWork(app.db, context(accountA), async (uow) => {
         await writer.enqueue(uow, entry(uuidv7()));
+        rolledBack = await txid(uow);
         await new Promise((resolve) => setTimeout(resolve, 300));
-        expect(received).toBe(0); // written, not yet committed
+        expect(received).not.toContain(rolledBack); // written, not yet committed
         throw new Error('roll back');
       }).catch(() => undefined);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      expect(received).toBe(0);
-      await withUnitOfWork(app.db, context(accountA), (uow) =>
-        writer.enqueue(uow, entry(uuidv7())),
-      );
-      await expect.poll(() => received, { timeout: 3000 }).toBe(1);
+      let committed = '';
+      await withUnitOfWork(app.db, context(accountA), async (uow) => {
+        await writer.enqueue(uow, entry(uuidv7()));
+        committed = await txid(uow);
+      });
+      await expect.poll(() => received.includes(committed), { timeout: 3000 }).toBe(true);
+      expect(received).not.toContain(rolledBack);
     } finally {
       await listener.end();
     }
