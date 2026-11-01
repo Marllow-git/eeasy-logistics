@@ -7,6 +7,7 @@ import { BootChecks } from './modules/kernel/platform/boot-checks.js';
 import { RequestLogger } from './modules/kernel/request/request-id.js';
 import { runMigrateJob } from './migrate/run.js';
 import { parseRole } from './role.js';
+import { WorkerModule } from './worker/system/worker.module.js';
 
 const logger = new Logger('Bootstrap');
 
@@ -27,14 +28,23 @@ async function bootstrap(): Promise<void> {
   }
 
   if (role === 'worker') {
-    // No queue consumers, outbox relay or schedulers exist yet (platform §2); they arrive with later orders.
-    const context = await NestFactory.createApplicationContext(AppModule);
-    logger.log('Role: worker. No worker consumers are registered yet; exiting.');
-    await context.close();
+    // System jobs on timers until PLAT-8's queues: the hourly idempotency purge (PLAT-6 plan 2.9).
+    // The platform pool's role is checked first; a mismatch exits 78 naming the role (plan 2.12).
+    try {
+      const worker = await NestFactory.createApplicationContext(WorkerModule.forRoot(config), {
+        abortOnError: false,
+        logger: new RequestLogger(),
+      });
+      // SIGTERM and SIGINT stop the timers and close the pool and the Redis client.
+      worker.enableShutdownHooks();
+    } catch (error) {
+      logger.error(error instanceof Error ? error.message : 'Worker failed to start');
+      process.exit(EX_CONFIG);
+    }
+    logger.log(`Role: worker. Environment: ${config.app.env}. Idempotency purge scheduled hourly.`);
     return;
   }
 
-  // Every log line written while serving a request names its request id (PLAT-6 plan 2.1).
   const app = await NestFactory.create(AppModule.forRoot(config), { logger: new RequestLogger() });
   // Each configured pool must be its plain role before anything is served (PLAT-6 plan 2.12,
   // PLAT-5 ruling M-6); the refusal names the role, never the URL.
