@@ -201,12 +201,41 @@ export class MessagingRepository extends PlatformRepository<typeof coreMessaging
     return row;
   }
 
+  // ---- the OTP purge (plan 2.6; data §10) -------------------------------------------------------
+
+  /**
+   * Deletes `auth_otp` message rows an hour after they finished (`done_at`, else `created_at`),
+   * OTP challenges an hour after `expires_at`, and callback nonces after 24 h.
+   */
+  async purgeOtpRows(): Promise<OtpPurgeCounts> {
+    const db = this.unscoped();
+    const messages = await db.execute(sql`
+      DELETE FROM core_outbox
+      WHERE kind = 'message'
+        AND coalesce(payload ->> 'template_key', payload ->> 'template') = 'auth_otp'
+        AND coalesce(done_at, created_at) < now() - interval '1 hour'
+      RETURNING id`);
+    const challenges = await db.execute(sql`
+      DELETE FROM core_otp_challenges WHERE expires_at < now() - interval '1 hour' RETURNING id`);
+    const nonces = await db.execute(sql`
+      DELETE FROM core_engine_callback_nonces WHERE created_at < now() - interval '24 hours'
+      RETURNING nonce`);
+    return { messages: messages.length, challenges: challenges.length, nonces: nonces.length };
+  }
+
   async setProviderState(id: string, state: ProviderState, at: Date): Promise<void> {
     await this.unscoped()
       .update(coreOutbox)
       .set({ providerState: state, providerUpdatedAt: at })
       .where(and(eq(coreOutbox.id, id), eq(coreOutbox.kind, 'message')));
   }
+}
+
+/** What one OTP purge deleted (plan 2.6). */
+export interface OtpPurgeCounts {
+  readonly messages: number;
+  readonly challenges: number;
+  readonly nonces: number;
 }
 
 /** One platform transaction with the messaging repository. */

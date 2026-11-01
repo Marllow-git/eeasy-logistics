@@ -9,6 +9,8 @@ import { BreakerOpen } from './breaker.js';
 import { engineUnavailable } from './engine/engine-message-sender.js';
 import type { EngineRoute, MessageSenders, SentMessage } from './message-sender.js';
 import { MessagingNotConfigured } from './message-sender.js';
+import type { CapCounter, MessagingBudget } from './message-policies.js';
+import { capKeys, isStaleOtp, messageCaps, quietHoursWaitS } from './message-policies.js';
 import { phoneTail } from './phone.js';
 import type { TemplateDefinition, TemplateKey } from './templates.js';
 import { isTemplateKey, messageTemplates } from './templates.js';
@@ -86,9 +88,23 @@ export interface MessageHandlerDependencies {
   /** Null without credentials keys: rows with secret parameters cannot be sent. */
   readonly cipher: CredentialsCipher | null;
   readonly resolver: SenderResolver;
+  /** The send-time policies (plan 2.5, 2.7, 2.8); each is skipped when its dependency is absent. */
+  readonly policies?: MessagePolicies;
   readonly logger?: Pick<Logger, 'log' | 'warn'>;
   /** Releases the handler's own clients when the worker stops. */
   readonly onClose?: () => Promise<void>;
+}
+
+export interface MessagePolicies {
+  /** `MESSAGING_DISABLED=true`: every row is superseded with reason `disabled`. */
+  readonly disabled?: boolean;
+  readonly now?: () => Date;
+  /** The opt-out list (integrations §5.5); recipient messages only. */
+  readonly optOuts?: { has(accountId: string, phone: string): Promise<boolean> };
+  /** The caps' counters and the key that pseudonymises phones in them (integrations §5.4). */
+  readonly caps?: { readonly counter: CapCounter; readonly pseudonymKey: Buffer };
+  /** Usage and the monthly limit (integrations §5.6). */
+  readonly budget?: MessagingBudget;
 }
 
 export class MessageKindHandler implements KindHandler {
@@ -105,6 +121,12 @@ export class MessageKindHandler implements KindHandler {
     await this.#deps.onClose?.();
   }
 
+  /** OTP rows retry on the `otp` schedule: three attempts within 60 s (integrations §4.2). */
+  policyVariant(row: OutboxRow): string | undefined {
+    const template = (row.payload as { template_key?: unknown } | null)?.template_key;
+    return template === 'auth_otp' ? 'otp' : undefined;
+  }
+
   /** Integrations §4.1: messages need no ordering. */
   orderingKey(row: RelayRow): string | null {
     void row;
@@ -119,6 +141,36 @@ export class MessageKindHandler implements KindHandler {
     const definition: TemplateDefinition = messageTemplates[template];
     if (definition.channel !== payload.channel) {
       return deadRow('template', 'template is not sent on this channel');
+    }
+
+    const policies = this.#deps.policies ?? {};
+    const now = policies.now?.() ?? new Date();
+    // Integrations §2.4: a pause supersedes every row, OTP included.
+    if (policies.disabled === true) return this.#supersede('disabled', template);
+    // Integrations §4.3: an OTP older than 4 minutes is useless (the code expires at 5).
+    if (template === 'auth_otp' && isStaleOtp(row.createdAt, now)) {
+      return this.#supersede('stale', template);
+    }
+    // Integrations §5.4: a deferrable template waits out the quiet hours without an attempt.
+    if (definition.deferrable) {
+      const waitS = quietHoursWaitS(now);
+      if (waitS > 0) {
+        return {
+          outcome: 'retry',
+          consumesAttempt: false,
+          retryAfterS: waitS,
+          error: { status: 'quiet_hours', message: 'waiting for the end of quiet hours' },
+        };
+      }
+    }
+    // A recipient message of an account: opt-out, caps and budget (never OTP, never staff mail).
+    const recipient =
+      payload.channel === 'whatsapp' && template !== 'auth_otp' && row.accountId !== null
+        ? { accountId: row.accountId, keys: this.#capKeys(row.accountId, payload, now) }
+        : undefined;
+    if (recipient !== undefined) {
+      const skipped = await this.#recipientPolicies(recipient.accountId, recipient.keys, payload);
+      if (skipped !== undefined) return this.#skip(skipped, template, payload);
     }
 
     const params = this.#params(template, definition, payload);
@@ -165,11 +217,74 @@ export class MessageKindHandler implements KindHandler {
       throw error;
     }
     getMetrics().add('messages_sent_total', 1, { template, locale: payload.locale });
+    if (recipient !== undefined) await this.#countSent(recipient.accountId, recipient.keys);
     this.#logger.log(
       `message sent template=${template} channel=${payload.channel} provider=${sender.provider} ` +
         `state=${sent.providerState ?? 'n/a'} to=${this.#tail(payload)}`,
     );
     return { outcome: 'done' };
+  }
+
+  /** Superseded on purpose (integrations §2.4, §4.3), counted as a skip. */
+  #supersede(reason: 'disabled' | 'stale', template: TemplateKey): KindOutcome {
+    getMetrics().add('messages_skipped_total', 1, { reason });
+    this.#logger.log(`message superseded reason=${reason} template=${template}`);
+    return { outcome: 'superseded', reason };
+  }
+
+  #capKeys(accountId: string, payload: MessagePayload, now: Date): readonly string[] {
+    const caps = this.#deps.policies?.caps;
+    if (caps === undefined) return [];
+    const keys = capKeys(caps.pseudonymKey, accountId, payload.to, payload.order_id, now);
+    return keys.order === undefined ? [keys.phone] : [keys.phone, keys.order];
+  }
+
+  /**
+   * The reason a recipient message is skipped, if any: the pair opted out (`opted_out`), the phone's
+   * daily cap or the order's cap reached (`cap_phone`, `cap_order`), the month's budget spent
+   * (`budget`). A failing Redis leaves the caps open, like every PLAT-6 budget.
+   */
+  async #recipientPolicies(
+    accountId: string,
+    keys: readonly string[],
+    payload: MessagePayload,
+  ): Promise<string | undefined> {
+    const policies = this.#deps.policies ?? {};
+    if (policies.optOuts !== undefined && (await policies.optOuts.has(accountId, payload.to))) {
+      return 'opted_out';
+    }
+    if (policies.caps !== undefined && keys.length > 0) {
+      const counts = await policies.caps.counter.counts(keys).catch(() => {
+        this.#logger.warn('message caps unreadable: not applied');
+        return [];
+      });
+      if ((counts[0] ?? 0) >= messageCaps.perPhonePerDay) return 'cap_phone';
+      if ((counts[1] ?? 0) >= messageCaps.perOrder) return 'cap_order';
+    }
+    if (policies.budget !== undefined) {
+      const limit = await policies.budget.limitOf(accountId);
+      if (limit !== undefined && (await policies.budget.sentThisMonth(accountId)) >= limit) {
+        return 'budget';
+      }
+    }
+    return undefined;
+  }
+
+  /** After a recipient message is sent: the month's usage and the caps' counters. */
+  async #countSent(accountId: string, keys: readonly string[]): Promise<void> {
+    const policies = this.#deps.policies ?? {};
+    if (policies.budget !== undefined) {
+      const sent = await policies.budget.countSent(accountId);
+      const limit = await policies.budget.limitOf(accountId);
+      if (limit !== undefined && limit > 0) {
+        getMetrics().set('message_budget_used_ratio', sent / limit, { account: accountId });
+      }
+    }
+    if (policies.caps !== undefined && keys.length > 0) {
+      await policies.caps.counter.hit(keys).catch(() => {
+        this.#logger.warn('message caps not counted: Redis unavailable');
+      });
+    }
   }
 
   /** A deliberate skip: `done` with the reason (integrations §5.5), counted, never an error. */
