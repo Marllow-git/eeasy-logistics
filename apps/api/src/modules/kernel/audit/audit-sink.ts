@@ -17,7 +17,10 @@ export interface AuditEvent {
   readonly reason: string | null;
   /** `ok`: the handler ran; otherwise the door refused the call before any tenant row was read. */
   readonly outcome: 'ok' | 'not_found' | 'reason_missing' | 'reason_invalid';
+  /** The id the server minted for the request (adversary L-4). */
   readonly requestId: string;
+  /** The caller's own `X-Request-Id` (a UUID) when it sent one; never used as the request id. */
+  readonly clientRequestId: string | null;
   readonly at: string;
 }
 

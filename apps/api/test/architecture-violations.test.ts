@@ -39,6 +39,11 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
     expect(rulesOf('delivery/create-order.dto.ts')).toContain('no-dto-files');
   });
 
+  it('refuses a -dto.ts file and anything under dto/ (no-dto-files, adversary L-8)', () => {
+    expect(rulesOf('delivery/cancel-order-dto.ts')).toContain('no-dto-files');
+    expect(rulesOf('delivery/dto/assign-driver.ts')).toContain('no-dto-files');
+  });
+
   it('refuses class-validator and its kind (no-validation-libraries)', () => {
     expect(rulesOf('delivery/validated-input.ts')).toContain('no-validation-libraries');
   });

@@ -22,6 +22,8 @@ export interface TokenOptions {
   readonly omit?: readonly string[];
   readonly keyId?: string;
   readonly algorithm?: 'HS256' | 'HS384' | 'HS512';
+  /** The `typ` header; `null` omits it (default `at+jwt`). */
+  readonly typ?: string | null;
   /** Seconds from now; negative for an expired token. */
   readonly expiresIn?: number;
 }
@@ -57,6 +59,10 @@ export async function signAccessToken(
   };
   for (const name of options.omit ?? []) delete claims[name];
   return new SignJWT(claims)
-    .setProtectedHeader({ alg: options.algorithm ?? 'HS256', kid: options.keyId ?? signing.keyId })
+    .setProtectedHeader({
+      alg: options.algorithm ?? 'HS256',
+      kid: options.keyId ?? signing.keyId,
+      ...(options.typ === null ? {} : { typ: options.typ ?? 'at+jwt' }),
+    })
     .sign(new TextEncoder().encode(signing.key));
 }

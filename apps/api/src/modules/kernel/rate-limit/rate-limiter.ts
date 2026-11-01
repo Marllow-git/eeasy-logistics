@@ -1,4 +1,5 @@
 import type { OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
+import { isIPv4, isIPv6 } from 'node:net';
 import { Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Redis } from 'ioredis';
@@ -94,9 +95,29 @@ export function redisRateLimitStore(url: string): RateLimitStore {
   };
 }
 
+/**
+ * The address key of an anonymous caller (adversary L-7): an IPv4 address as it is (IPv4-mapped
+ * IPv6 included), an IPv6 address by its /64 prefix, since one subscriber usually holds a whole
+ * /64 and could otherwise rotate through 2^64 budgets.
+ */
+export function addressKey(ip: string | undefined): string {
+  if (ip === undefined || ip === '') return 'unknown';
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip)?.[1];
+  if (mapped !== undefined && isIPv4(mapped)) return mapped;
+  if (!isIPv6(ip)) return ip;
+  const [head = '', tail = ''] = ip.toLowerCase().split('::');
+  const left = head === '' ? [] : head.split(':');
+  const right = ip.includes('::') ? (tail === '' ? [] : tail.split(':')) : [];
+  const groups = ip.includes('::')
+    ? [...left, ...Array<string>(8 - left.length - right.length).fill('0'), ...right]
+    : left;
+  const prefix = groups.slice(0, 4).map((group) => Number.parseInt(group, 16).toString(16));
+  return `${prefix.join(':')}::/64`;
+}
+
 /** The identity a request is counted under: user, device, else the client address. */
 export function rateLimitIdentity(principal: Principal | undefined, request: Request): string {
-  if (principal === undefined) return `ip:${request.ip ?? 'unknown'}`;
+  if (principal === undefined) return `ip:${addressKey(request.ip)}`;
   return principal.kind === 'driver' ? `device:${principal.deviceId}` : `user:${principal.userId}`;
 }
 

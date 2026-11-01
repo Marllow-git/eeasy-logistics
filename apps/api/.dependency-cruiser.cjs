@@ -9,6 +9,12 @@ const {
   options,
 } = require('../../dependency-cruiser.shared.cjs');
 
+/**
+ * A hand-written DTO by any common spelling (adversary L-8): `x.dto.ts`, `x.dto.tsx`, `x-dto.ts`,
+ * or any file under a `dto/` or `dtos/` folder.
+ */
+const dtoPath = '(?:[.-]dto[.]tsx?$|(?:^|/)dtos?/)';
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
   forbidden: [
@@ -85,7 +91,7 @@ module.exports = {
         'generated types of @eeasy-logistics/contracts. A *.dto.ts file fails whether it imports, ' +
         'is imported or stands alone (the orphan rule below).',
       severity: 'error',
-      from: { path: '\\.dto\\.ts$' },
+      from: { path: dtoPath },
       to: {},
     },
     {
@@ -93,13 +99,13 @@ module.exports = {
       comment: 'Doc 3 §9, A-17: importing a *.dto.ts file.',
       severity: 'error',
       from: {},
-      to: { path: '\\.dto\\.ts$' },
+      to: { path: dtoPath },
     },
     {
       name: 'no-dto-files',
       comment: 'Doc 3 §9, A-17: a *.dto.ts file with no imports and no importers.',
       severity: 'error',
-      from: { orphan: true, path: '\\.dto\\.ts$' },
+      from: { orphan: true, path: dtoPath },
       to: {},
     },
     {
