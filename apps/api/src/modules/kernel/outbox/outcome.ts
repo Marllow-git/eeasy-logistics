@@ -24,7 +24,8 @@ export const minRetryDelayMs = 1_000;
  * to 500 characters. The payload never reaches it: handlers pass the provider's answer only.
  */
 export function redactErrorMessage(message: string): string {
-  const clean = redactText(message, Number.MAX_SAFE_INTEGER).trim();
+  // `redactText` cuts its input to 4 kB before any pattern runs (adversary A-1).
+  const clean = redactText(message).trim();
   const points = Array.from(clean);
   return points.length <= maxLastErrorLength ? clean : points.slice(0, maxLastErrorLength).join('');
 }

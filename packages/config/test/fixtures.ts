@@ -33,6 +33,7 @@ export const productionEnv: Record<string, string> = {
   MESSAGING_SENDER_ID: '100000000000001',
   CREDENTIALS_KEYS: `k1:${fakeKey(1)},k2:${fakeKey(2)}`,
   CREDENTIALS_ACTIVE_KEY_ID: 'k2',
+  ELX_RELEASE: 'sha-0123456789abcdef0123456789abcdef01234567',
 };
 
 /**

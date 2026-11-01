@@ -1,6 +1,6 @@
 import { inspect } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { ConfigError, defineConfig, Secret } from '../src/index.ts';
+import { ConfigError, defineConfig, parseOtlpHeaders, Secret } from '../src/index.ts';
 import { fakeKey, minimalEnv, productionEnv, valuesOf } from './fixtures.ts';
 
 function configError(run: () => unknown): ConfigError {
@@ -229,6 +229,24 @@ describe('defineConfig: missing and malformed input', () => {
       logLevel: 'warn',
       traceSampleRatio: 0.25,
     });
+  });
+
+  it('reads OTEL_EXPORTER_OTLP_HEADERS as a secret and parses it (PLAT-14 A-7)', () => {
+    const text = 'Authorization=Basic%20ZmFrZTpmYWtl,x-scope=elx';
+    const config = defineConfig({ APP_ENV: 'local', OTEL_EXPORTER_OTLP_HEADERS: text });
+    const headers = config.observability.otlpHeaders;
+    expect(headers).toBeInstanceOf(Secret);
+    expect(String(headers)).toBe('[redacted]');
+    expect(JSON.stringify(config)).not.toContain('ZmFrZTpmYWtl');
+    expect(parseOtlpHeaders(headers?.reveal() ?? '')).toEqual({
+      Authorization: 'Basic ZmFrZTpmYWtl',
+      'x-scope': 'elx',
+    });
+    const error = configError(() =>
+      defineConfig({ APP_ENV: 'local', OTEL_EXPORTER_OTLP_HEADERS: 'no-equals-sign-secret' }),
+    );
+    expect(error.issues.map((issue) => issue.variable)).toEqual(['OTEL_EXPORTER_OTLP_HEADERS']);
+    expect(error.message).not.toContain('no-equals-sign-secret');
   });
 
   it('refuses a malformed release, log level or sampling ratio (PLAT-14)', () => {

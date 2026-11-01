@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   capText,
   describeError,
+  isTokenSegment,
   isWithheldKey,
   maskedEmail,
   maxDepth,
+  maxInputLength,
   maxItems,
   redacted,
   redactText,
@@ -91,6 +93,17 @@ describe('redactText: emails and credentials', () => {
     expect(redactText(`/v1/driver/session/${jwt}`)).toBe(`/v1/driver/session/${redacted}`);
   });
 
+  it('redacts a 22-character base64url token, with digits or by mixed case alone (A-5)', () => {
+    expect(redactText('/v1/recipient/tracking/Zk9xLmQ8vR4tYw7pNs3KdA')).toBe(
+      `/v1/recipient/tracking/${redacted}`,
+    );
+    expect(redactText('/v1/recipient/tracking/ZkxLmQvRtYwpNsKdAbCdEf')).toBe(
+      `/v1/recipient/tracking/${redacted}`,
+    );
+    expect(isTokenSegment('delivery-attempts-summaries')).toBe(false);
+    expect(isTokenSegment('zkxlmqvrtywpnskdabcdef')).toBe(false);
+  });
+
   it('leaves ordinary paths untouched: UUIDs, route words, templates, versions', () => {
     for (const path of [
       '/v1/staff/orders/0192f0e0-1234-7000-8000-00000000abcd',
@@ -112,6 +125,34 @@ describe('redactText: emails and credentials', () => {
   it('caps text at the given length', () => {
     expect(capText('x'.repeat(10), 4)).toBe('xxxx…');
     expect(redactText('y'.repeat(3_000))).toHaveLength(2_001);
+  });
+});
+
+describe('redactText: bounded work (adversary A-1)', () => {
+  const timed = (text: string) => {
+    const started = performance.now();
+    const out = redactText(text);
+    return { out, ms: performance.now() - started };
+  };
+
+  it.each([
+    ['a', 'a'.repeat(100_000)],
+    ['key characters', 'a.b-c_d'.repeat(15_000)],
+    ['address characters', 'a.b%c+d'.repeat(15_000)],
+    ['quoted pairs without a closing quote', 'k="'.repeat(30_000)],
+    ['digits', '1'.repeat(100_000)],
+  ])('redacts 100 kB of %s in under 50 ms', (_name, text) => {
+    timed(text.slice(0, 1_000)); // warm the patterns
+    const { ms } = timed(text);
+    expect(ms).toBeLessThan(50);
+  });
+
+  it('cuts the input before redacting and drops a JWT or phone number cut in half', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl';
+    const atEdge = (tail: string) => `${'x '.repeat((maxInputLength - 10) / 2)}${tail}`;
+    expect(redactText(atEdge(jwt), 10_000)).not.toMatch(/eyJ|c2ln/);
+    expect(redactText(atEdge('+966512345678'), 10_000)).not.toMatch(/9665/);
+    expect(redactText('z'.repeat(10_000), 10_000)).toHaveLength(maxInputLength + 1);
   });
 });
 
@@ -176,6 +217,34 @@ describe('redactValue', () => {
     expect(describeError(error)).toEqual({
       type: 'TypeError',
       message: 'no route to [phone …5678]',
+    });
+  });
+
+  it('reduces bytes, maps and sets to their size (adversary A-2)', () => {
+    const body = Buffer.from(`{"phone":"${'+966512345678'}"}`);
+    expect(
+      redactValue({
+        body: 1,
+        raw: body,
+        view: new Uint8Array([1, 2, 3]),
+        array: new ArrayBuffer(8),
+        map: new Map([['phone', '+966512345678']]),
+        set: new Set(['a@b.example']),
+      }),
+    ).toEqual({
+      body: redacted,
+      raw: `[bytes ${body.byteLength}]`,
+      view: '[bytes 3]',
+      array: '[bytes 8]',
+      map: '[map 1]',
+      set: '[set 1]',
+    });
+  });
+
+  it('redacts keys as text: a phone number or an email used as a key (adversary A-4)', () => {
+    expect(redactValue({ '+966512345678': 1, 'sara@merchant.example': 'x' })).toEqual({
+      '[phone …5678]': 1,
+      [maskedEmail]: 'x',
     });
   });
 

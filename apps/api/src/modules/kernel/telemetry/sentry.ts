@@ -99,7 +99,9 @@ export function initSentry(
         Sentry.linkedErrorsIntegration(),
         Sentry.dedupeIntegration(),
         Sentry.onUncaughtExceptionIntegration(),
-        Sentry.onUnhandledRejectionIntegration(),
+        // `strict`: capture, then end the process as Node does without Sentry (adversary A-3);
+        // the default `warn` would keep a process up that crashes without a DSN.
+        Sentry.onUnhandledRejectionIntegration({ mode: 'strict' }),
       ],
       sendDefaultPii: false,
       includeLocalVariables: false,
