@@ -17,7 +17,7 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| PLAT-5 | #27 | `feat/PLAT-5-database-roles-migrations` | `.claude/worktrees/agent-a3cd22022c9f22ac5` | executor-api | build | native, default db | one-way door; adversary required |
+| PLAT-5 | #27 | `feat/PLAT-5-database-roles-migrations` | `.claude/worktrees/agent-a3cd22022c9f22ac5` | executor-api (general-purpose Opus run, pre-redesign) | review | native, default db | one-way door; adversary required |
 
 ## Next unblocked (roadmap §1.1)
 

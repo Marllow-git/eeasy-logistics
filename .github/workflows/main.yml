@@ -89,8 +89,22 @@ jobs:
       - name: Probe the api image (api, worker and migrate roles)
         if: matrix.app == 'api'
         run: |
-          docker run --rm -e APP_ENV=ci "$LOCAL_TAG" --role migrate | tee migrate.log
-          grep -q 'No migrations yet' migrate.log || { echo "::error::--role migrate did not run"; exit 1; }
+          # --role migrate against a throwaway PostgreSQL of the ci profile (roles and extensions
+          # from tools/postgres/init): the first run applies every migration, the second has
+          # nothing to do; both exit 0 (PLAT-5).
+          cp .env.example .env
+          set -a; . ./.env; set +a
+          probe_db=(docker compose --project-name elx-probe --profile ci)
+          "${probe_db[@]}" up --detach --wait --wait-timeout 120 postgres-ci
+          owner_url="postgres://elx_owner:${ELX_OWNER_PASSWORD}@$("${probe_db[@]}" port postgres-ci 5432)/elx"
+          migrate() { docker run --rm --network host -e APP_ENV=ci -e DATABASE_URL_OWNER="$owner_url" "$LOCAL_TAG" --role migrate; }
+          migrate | tee migrate.log
+          grep -Eq 'Applied [0-9]+ migration\(s\); the database is at [0-9]{4}_' migrate.log ||
+            { echo "::error::--role migrate did not apply the migrations"; exit 1; }
+          migrate | tee migrate-again.log
+          grep -q 'Nothing to migrate; the database is at ' migrate-again.log ||
+            { echo "::error::a second --role migrate was not a no-op"; exit 1; }
+          "${probe_db[@]}" down --volumes --remove-orphans
           docker run --rm -e APP_ENV=ci "$LOCAL_TAG" --role worker
           docker run --detach --name probe -e APP_ENV=ci -p 127.0.0.1::3000 "$LOCAL_TAG"
           url="http://$(docker port probe 3000/tcp | head -n 1)/health"

@@ -1,4 +1,11 @@
 {
   "extends": "@eeasy-logistics/config-ts/tsconfig.base.json",
-  "include": ["src"]
+  "compilerOptions": {
+    // Relative imports carry `.ts` so Node runs this source directly (type stripping, Node >= 22.18)
+    // when apps/api's compiled output imports the package; only erasable syntax is allowed for that.
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "types": ["node"]
+  },
+  "include": ["src", "test"]
 }
