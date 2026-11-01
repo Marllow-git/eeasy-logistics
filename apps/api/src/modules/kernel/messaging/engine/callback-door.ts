@@ -9,7 +9,7 @@ import { providerStates } from '../../schema/outbox.js';
 import { getMetrics } from '../../telemetry/metrics.js';
 import { platformEngineAccountId } from '../message-sender.js';
 import type { OptOutList } from '../opt-out-list.js';
-import { phoneTail } from '../phone.js';
+import { e164Pattern, phoneTail } from '../phone.js';
 import {
   bodyHashPattern,
   bodySha256,
@@ -83,7 +83,9 @@ const messageStatus = z.object({
 const suppressionChanged = z.object({
   callback: z.literal('suppression.changed'),
   ...common,
-  customer_number: z.string().regex(/^\+[1-9][0-9]{6,17}$/),
+  // E.164-shaped, as the opt-out table checks it; a number that shape but unknown to our phone
+  // metadata is still recorded (`OptOutList.applySuppression`), anything else is refused (422).
+  customer_number: z.string().regex(e164Pattern),
   suppressed: z.boolean(),
 });
 const connectionEvents = [
@@ -153,7 +155,7 @@ type Found = Owner | { readonly unallocated: true };
 export interface CallbackDoorDependencies {
   readonly settings: CallbackDoorSettings;
   readonly store: MessagingStore;
-  readonly optOuts: Pick<OptOutList, 'add' | 'remove'>;
+  readonly optOuts: Pick<OptOutList, 'applySuppression'>;
   readonly now?: () => number;
   readonly logger?: Pick<Logger, 'log' | 'warn'> & Partial<Pick<Logger, 'debug'>>;
 }
@@ -319,7 +321,7 @@ export class EngineCallbackDoor {
         case 'message.status':
           return this.#messageStatus(repo, owner, callback, at);
         case 'suppression.changed':
-          return this.#suppression(owner, callback);
+          return this.#suppression(repo, owner, callback);
         case 'connection.event':
           return this.#connection(repo, owner, callback, at);
         case 'inbound.message':
@@ -363,16 +365,19 @@ export class EngineCallbackDoor {
   }
 
   async #suppression(
+    repo: MessagingRepository,
     owner: Exclude<Owner, 'unknown'>,
     callback: z.infer<typeof suppressionChanged>,
   ): Promise<CallbackAnswer> {
     // The platform number carries OTP, which opt-out never blocks (integrations §5.5).
     if (owner.accountId === null) return ok;
-    if (callback.suppressed) {
-      await this.#deps.optOuts.add(owner.accountId, callback.customer_number, 'provider');
-    } else {
-      await this.#deps.optOuts.remove(owner.accountId, callback.customer_number);
-    }
+    // In this transaction, with the claim: a failure after it rolls both back (lead review).
+    await this.#deps.optOuts.applySuppression(
+      repo,
+      owner.accountId,
+      callback.customer_number,
+      callback.suppressed,
+    );
     this.#logger.log(
       `opt-out ${callback.suppressed ? 'added' : 'removed'} source=provider ` +
         `to=${phoneTail(callback.customer_number)}`,
