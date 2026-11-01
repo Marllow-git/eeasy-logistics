@@ -765,6 +765,22 @@
           "method": "btree",
           "with": {}
         },
+        "core_outbox_pending_id_idx": {
+          "name": "core_outbox_pending_id_idx",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"core_outbox\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "core_outbox_enqueued_idx": {
           "name": "core_outbox_enqueued_idx",
           "columns": [

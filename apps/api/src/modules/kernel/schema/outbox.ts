@@ -70,6 +70,10 @@ export const coreOutbox = pgTable(
     index('core_outbox_pending_due_idx')
       .on(table.nextAttemptAt)
       .where(sql`${table.status} = 'pending'`),
+    // The relay's batch order (data §5.2: ORDER BY id over pending rows; lead review round 1).
+    index('core_outbox_pending_id_idx')
+      .on(table.id)
+      .where(sql`${table.status} = 'pending'`),
     index('core_outbox_enqueued_idx')
       .on(table.enqueuedAt)
       .where(sql`${table.status} = 'enqueued'`),
