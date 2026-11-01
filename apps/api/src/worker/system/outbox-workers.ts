@@ -31,6 +31,7 @@ import { coreAccounts } from '../../modules/kernel/schema/accounts.js';
 import { coreOutbox } from '../../modules/kernel/schema/outbox.js';
 import { SpanKind } from '@opentelemetry/api';
 import { getMetrics } from '../../modules/kernel/telemetry/metrics.js';
+import { reportError } from '../../modules/kernel/telemetry/sentry.js';
 import { annotateActiveSpan, withSpan } from '../../modules/kernel/telemetry/spans.js';
 
 // The consumer side of the outbox queues (PLAT-8 plan 2.4, 2.5, 2.9; ADR-0024, ADR-0036;
@@ -297,6 +298,8 @@ export class OutboxWorkers {
       worker.on('failed', (job, error) => {
         if (error instanceof DelayedError) return;
         logger.warn(`Outbox job ${job?.id ?? '?'} (${kind}) failed: ${error.name}`);
+        // Sentry with the row id and kind, never the payload (PLAT-14 plan 2.5).
+        reportError(error, { 'outbox.kind': kind, 'outbox.row_id': job?.id });
       });
       this.#workers.push(worker);
     }
