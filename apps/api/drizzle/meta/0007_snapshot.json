@@ -737,6 +737,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "parked_consumers": {
+          "name": "parked_consumers",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
         "supersede_key": {
           "name": "supersede_key",
           "type": "text",

@@ -101,6 +101,8 @@ export type RowWrite =
       readonly nextAttemptAt: Date;
       /** Null keeps the row's previous `last_error`. */
       readonly lastError: string | null;
+      /** The consumers the row is parked for; null when the retry is not a park. */
+      readonly parkedConsumers: readonly string[] | null;
     };
 
 const finiteSeconds = (value: number | undefined): number | undefined =>
@@ -145,6 +147,7 @@ export function resolveOutcome(
         attempts,
         nextAttemptAt: new Date(now.getTime() + delayMs),
         lastError,
+        parkedConsumers: outcome.parked === undefined ? null : [...outcome.parked.consumers],
       };
     }
   }

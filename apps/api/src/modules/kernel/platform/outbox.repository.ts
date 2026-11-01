@@ -1,6 +1,6 @@
 import type { PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { PlatformRepository, getPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
-import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import type { RowWrite } from '../outbox/outcome.js';
 import type { OutboxMetadata, OutboxPageQuery, OutboxRecord } from '../outbox/outbox-list.js';
@@ -22,9 +22,6 @@ function columnsWithoutPayload() {
   return columns;
 }
 const metadataColumns = columnsWithoutPayload();
-
-/** The prefix the dispatcher writes on a parked row's `last_error` (PLAT-8 plan 2.6). */
-export const parkedErrorPrefix = 'parked: sequence gap for ';
 
 /** One internal consumer's lag and dead letters, as the database knows them. */
 export interface ConsumerRowStats {
@@ -81,13 +78,23 @@ export class PlatformOutbox
     let set: PgUpdateSetSource<typeof coreOutbox>;
     switch (write.status) {
       case 'done':
-        set = { status: 'done', doneAt: now };
+        set = { status: 'done', doneAt: now, parkedConsumers: null };
         break;
       case 'superseded':
-        set = { status: 'superseded', doneAt: now, lastError: write.lastError };
+        set = {
+          status: 'superseded',
+          doneAt: now,
+          lastError: write.lastError,
+          parkedConsumers: null,
+        };
         break;
       case 'dead':
-        set = { status: 'dead', attempts: write.attempts, lastError: write.lastError };
+        set = {
+          status: 'dead',
+          attempts: write.attempts,
+          lastError: write.lastError,
+          parkedConsumers: null,
+        };
         break;
       case 'enqueued':
         set = {
@@ -96,6 +103,7 @@ export class PlatformOutbox
           nextAttemptAt: write.nextAttemptAt,
           lastError: sql`coalesce(${write.lastError}, ${coreOutbox.lastError})`,
           enqueuedAt: sql`coalesce(${coreOutbox.enqueuedAt}, now())`,
+          parkedConsumers: write.parkedConsumers === null ? null : [...write.parkedConsumers],
         };
         break;
     }
@@ -229,24 +237,24 @@ export class PlatformOutbox
     };
   }
 
-  /** Open `internal_event` rows whose last outcome parked them, oldest first, at most `limit`. */
+  /**
+   * Open `internal_event` rows parked for some consumer (`parked_consumers`, written by the worker
+   * with the dispatcher's outcome), oldest first, at most `limit`.
+   */
   async parkedRows(limit: number): Promise<ParkedRow[]> {
     const rows = await this.unscoped()
-      .select({ id: coreOutbox.id, lastError: coreOutbox.lastError })
+      .select({ id: coreOutbox.id, consumers: coreOutbox.parkedConsumers })
       .from(coreOutbox)
       .where(
         and(
           eq(coreOutbox.kind, 'internal_event'),
           eq(coreOutbox.status, 'enqueued'),
-          sql`starts_with(${coreOutbox.lastError}, ${parkedErrorPrefix})`,
+          isNotNull(coreOutbox.parkedConsumers),
         ),
       )
       .orderBy(asc(coreOutbox.id))
       .limit(limit);
-    return rows.map((row) => ({
-      id: row.id,
-      consumers: (row.lastError ?? '').slice(parkedErrorPrefix.length).split(', '),
-    }));
+    return rows.map((row) => ({ id: row.id, consumers: row.consumers ?? [] }));
   }
 }
 

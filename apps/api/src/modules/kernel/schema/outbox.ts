@@ -60,6 +60,9 @@ export const coreOutbox = pgTable(
     attempts: integer('attempts').notNull().default(0),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
     lastError: text('last_error'),
+    // The consumers an `internal_event` row is parked for (sequence gap, plan 2.6); null when not
+    // parked. `platformListConsumers` counts from it (lead review round 3).
+    parkedConsumers: text('parked_consumers').array(),
     supersedeKey: text('supersede_key'),
     enqueuedAt: timestamp('enqueued_at', { withTimezone: true }),
     doneAt: timestamp('done_at', { withTimezone: true }),

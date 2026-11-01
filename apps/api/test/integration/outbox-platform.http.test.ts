@@ -62,6 +62,7 @@ interface Plant {
   readonly supersedeKey?: string | null;
   readonly lastError?: string | null;
   readonly attempts?: number;
+  readonly parkedConsumers?: string[] | null;
 }
 
 interface Stored {
@@ -98,12 +99,13 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
     await owner`
       INSERT INTO core_outbox (id, type, event_version, account_id, aggregate_type, aggregate_id,
                                sequence, payload, kind, status, attempts, last_error,
-                               supersede_key, created_at, enqueued_at)
+                               supersede_key, created_at, enqueued_at, parked_consumers)
       VALUES (${id}, ${o.type ?? 'core.account.suspended'}, 1, ${o.account}, 'account',
               ${o.aggregateId ?? uuidv7()}, ${o.sequence ?? 1}, ${owner.json({ note: secret })},
               ${o.kind ?? 'webhook'}, ${o.status ?? 'dead'}, ${o.attempts ?? 5},
               ${o.lastError === undefined ? '500 endpoint failed' : o.lastError},
-              ${o.supersedeKey ?? null}, now() - ${age}::interval, now() - ${age}::interval)`;
+              ${o.supersedeKey ?? null}, now() - ${age}::interval, now() - ${age}::interval,
+              ${o.parkedConsumers === undefined || o.parkedConsumers === null ? null : owner.array(o.parkedConsumers)})`;
     return id;
   };
   const stored = async (id: string) =>
@@ -274,6 +276,13 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
       expect(errorOf(badStatus.body).details?.fields).toEqual([
         expect.objectContaining({ pointer: '/query/status' }),
       ]);
+      // A bad filter with a cursor answers on the filter, not on the cursor (lead review round 3).
+      const badStatusWithCursor = await get(
+        `/v1/platform/outbox?aggregate_id=${aggregate}&limit=2&status=dead,lost&cursor=${encodeURIComponent(cursor)}`,
+      ).expect(400);
+      expect(errorOf(badStatusWithCursor.body).details?.fields).toEqual([
+        expect.objectContaining({ pointer: '/query/status' }),
+      ]);
       const badSort = await get(`/v1/platform/outbox?sort=-attempts`).expect(400);
       expect(errorOf(badSort.body).details?.fields).toEqual([
         expect.objectContaining({ pointer: '/query/sort' }),
@@ -412,12 +421,17 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
 
     it('refuses a dead row older than the 35-day receipt window', async () => {
       const id = await plant({ account: accountA, ageDays: 35, ageSeconds: 60 });
+      await queues.add('webhook', [id]);
       const response = await post(`/v1/platform/outbox/${id}/replay`, { reason }).expect(409);
       expect(errorOf(response.body).details).toEqual({
         current_status: 'dead',
         reason: 'outside_receipt_window',
       });
       expect((await stored(id))?.status).toBe('dead');
+      // A refused replay keeps the row's job (lead review round 3).
+      expect(await queues.hasJob('webhook', id)).toBe(true);
+      // Gone again, so the running-job test's worker never picks it up.
+      await queues.removeJobs('webhook', [id]);
       // Just inside the window it replays.
       const inside = await plant({ account: accountA, ageDays: 34 });
       await post(`/v1/platform/outbox/${inside}/replay`, { reason }).expect(200);
@@ -426,12 +440,16 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
     it('refuses a dead row whose supersede key is held by a pending row of its account', async () => {
       const key = `order:${uuidv7()}`;
       const dead = await plant({ account: accountA, supersedeKey: key });
+      await queues.add('webhook', [dead]);
       await plant({ account: accountA, status: 'pending', supersedeKey: key });
       const response = await post(`/v1/platform/outbox/${dead}/replay`, { reason }).expect(409);
       expect(errorOf(response.body).details).toEqual({
         current_status: 'dead',
         reason: 'supersede_pending',
       });
+      // Refused by the guarded update: the job is kept (lead review round 3).
+      expect(await queues.hasJob('webhook', dead)).toBe(true);
+      await queues.removeJobs('webhook', [dead]);
       // The same key pending in another account does not hold it.
       const otherKey = `order:${uuidv7()}`;
       const deadA = await plant({ account: accountA, supersedeKey: otherKey });
@@ -620,10 +638,20 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
         account: accountA,
         kind: 'internal_event',
         status: 'enqueued',
-        lastError: `parked: sequence gap for ${kernelConsumer}`,
+        lastError: 'parked: sequence gap',
+        parkedConsumers: [kernelConsumer],
       });
       // Parked in the database, but its job is not delayed: not counted.
       await plant({
+        account: accountA,
+        kind: 'internal_event',
+        status: 'enqueued',
+        lastError: 'parked: sequence gap',
+        parkedConsumers: [kernelConsumer],
+      });
+      // Delayed with a message naming the consumer but no `parked_consumers`: the names come from
+      // the column only, never from `last_error` (lead review round 3).
+      const retrying = await plant({
         account: accountA,
         kind: 'internal_event',
         status: 'enqueued',
@@ -631,6 +659,7 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
       });
       const queue = new Queue(outboxQueueName('internal_event'), { connection: redis, prefix });
       await queue.add('internal_event', { outboxId: parked }, { jobId: parked, delay: 60_000 });
+      await queue.add('internal_event', { outboxId: retrying }, { jobId: retrying, delay: 60_000 });
 
       const response = await get('/v1/platform/consumers', {}).expect(200);
       const list = consumersOp.responses['200'].parse(response.body);

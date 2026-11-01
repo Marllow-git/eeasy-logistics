@@ -40,9 +40,21 @@ export type KindOutcome =
       readonly retryAfterS?: number;
       readonly consumesAttempt: boolean;
       readonly error?: OutcomeError;
+      /**
+       * A park (`internal_event` sequence gap, plan 2.6): the consumers waiting and when the job
+       * was first parked. The worker writes the names to `parked_consumers` and carries `since` in
+       * the delayed job's data.
+       */
+      readonly parked?: { readonly consumers: readonly string[]; readonly since: Date };
     }
   | { readonly outcome: 'dead'; readonly error: OutcomeError }
   | { readonly outcome: 'superseded'; readonly reason: string };
+
+/** What the worker knows from the job besides the row id. */
+export interface JobContext {
+  /** When the job was first parked and has stayed parked since (an `internal_event` gap). */
+  readonly parkedSince?: Date;
+}
 
 /** A failure as it is stored in `last_error`: provider status code plus message. */
 export interface OutcomeError {
@@ -69,7 +81,7 @@ export interface KindHandler {
    * batch commits) or `enqueued`. A thrown error is a failure: `ProviderFailure` says which kind
    * (rate limited, unauthorised, permanent); anything else is retried and consumes an attempt.
    */
-  execute(row: OutboxRow): Promise<KindOutcome>;
+  execute(row: OutboxRow, job?: JobContext): Promise<KindOutcome>;
 }
 
 /** The handlers of this build, one per kind. */

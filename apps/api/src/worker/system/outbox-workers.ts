@@ -95,7 +95,15 @@ export async function writeOutcome(
 }
 
 /** The job operations the processor uses (a retry moves the job itself to delayed). */
-export type OutboxJob = Pick<Job<OutboxJobData>, 'data' | 'moveToDelayed'>;
+export type OutboxJob = Pick<Job<OutboxJobData>, 'data' | 'moveToDelayed' | 'updateData'>;
+
+/** The job's first-park time, when it carries a valid one (anything else counts as none). */
+function parkedSinceOf(data: unknown): Date | undefined {
+  const value: unknown = (data as { parkedSince?: unknown } | undefined)?.parkedSince;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? new Date(value)
+    : undefined;
+}
 
 export type ProcessDependencies = Pick<
   OutboxWorkerDependencies,
@@ -127,7 +135,8 @@ export async function processOutboxJob(
 
   let outcome: KindOutcome;
   try {
-    outcome = await handler.execute(row);
+    const parkedSince = parkedSinceOf(job.data);
+    outcome = await handler.execute(row, parkedSince === undefined ? {} : { parkedSince });
   } catch (error) {
     if (error instanceof ProviderFailure && error.reason === 'unauthorised') {
       await (deps.parker ?? new LoggingConnectionParker(deps.logger)).park(row, error);
@@ -150,6 +159,11 @@ export async function processOutboxJob(
     deps.logger.warn(`Outbox row ${row.id} (${kind}) dead after ${write.attempts} attempts`);
   }
   if (write.status === 'enqueued') {
+    // A park carries its first-park time to the next run; any other retry ends the park.
+    const parked = outcome.outcome === 'retry' ? outcome.parked : undefined;
+    const data: OutboxJobData =
+      parked === undefined ? { outboxId } : { outboxId, parkedSince: parked.since.getTime() };
+    if (data.parkedSince !== parkedSinceOf(job.data)?.getTime()) await job.updateData(data);
     await job.moveToDelayed(write.nextAttemptAt.getTime(), token);
     throw new DelayedError();
   }
