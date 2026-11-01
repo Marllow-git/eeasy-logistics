@@ -5,9 +5,10 @@
   "description": "Lints docs/contracts/openapi with Redocly; bundling and generated clients arrive in PLAT-15.",
   "type": "module",
   "scripts": {
-    "build": "pnpm run build:bundle && pnpm run build:client",
+    "build": "pnpm run build:bundle && pnpm run build:unions && pnpm run build:client",
     "build:bundle": "node scripts/bundle.ts",
     "build:client": "orval --config orval.config.ts",
+    "build:unions": "node scripts/unions.ts",
     "typecheck": "tsc --noEmit",
     "lint": "redocly lint --config ../../docs/contracts/redocly.yaml && eslint .",
     "test": "vitest run",
