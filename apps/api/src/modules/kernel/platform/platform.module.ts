@@ -9,19 +9,30 @@ import {
 } from '@eeasy-logistics/db/platform';
 import type { DynamicModule, OnApplicationShutdown } from '@nestjs/common';
 import { Global, Inject, Module } from '@nestjs/common';
+import { ApiException } from '../errors/api-exception.js';
 import type { PlatformFrames } from '../tenancy/frame.js';
 import { PLATFORM_FRAMES } from '../tenancy/frame.js';
+import { AccountsDirectory } from './accounts.repository.js';
+import { BootChecks } from './boot-checks.js';
+import { PLATFORM_POOL } from './tokens.js';
 
-/** The `elx_platform` pool (ADR-0031); constructed here only (architecture test). */
-export const PLATFORM_POOL = Symbol('PLATFORM_POOL');
+export { PLATFORM_POOL } from './tokens.js';
 
-/** The platform frames on one pool: plain platform work and the cross-tenant door. */
+/**
+ * The platform frames on one pool: plain platform work, and the cross-tenant door, which first
+ * checks that the target account exists (an unknown id is `404 not_found`, like a malformed one).
+ */
 export function platformFrames(db: PlatformDatabase): PlatformFrames {
   return {
     runPlatform: <T>(context: PlatformContext, fn: () => Promise<T>) =>
       withPlatformUnitOfWork(db, () => fn(), context),
-    runCrossTenant: <T>(context: RequestContext, fn: () => Promise<T>) =>
-      withCrossTenantUnitOfWork(db, context, () => fn()),
+    runCrossTenant: async <T>(context: RequestContext, fn: () => Promise<T>) => {
+      const exists = await withPlatformUnitOfWork(db, (uow) =>
+        new AccountsDirectory(uow).exists(context.accountId),
+      );
+      if (!exists) throw new ApiException('not_found');
+      return withCrossTenantUnitOfWork(db, context, () => fn());
+    },
   };
 }
 
@@ -52,8 +63,9 @@ export class PlatformModule implements OnApplicationShutdown {
           useFactory: (pool: Pool<PlatformDatabase> | null) =>
             pool === null ? undefined : platformFrames(pool.db),
         },
+        BootChecks,
       ],
-      exports: [PLATFORM_POOL, PLATFORM_FRAMES],
+      exports: [PLATFORM_POOL, PLATFORM_FRAMES, BootChecks],
     };
   }
 

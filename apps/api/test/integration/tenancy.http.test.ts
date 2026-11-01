@@ -1,10 +1,7 @@
-import { randomBytes } from 'node:crypto';
-import type { TenantInsert, UnitOfWork } from '@eeasy-logistics/db';
-import { ScopedRepository, getContext, getUnitOfWork, uuidv7 } from '@eeasy-logistics/db';
+import { getContext, getUnitOfWork, uuidv7 } from '@eeasy-logistics/db';
 import type { INestApplication } from '@nestjs/common';
 import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { pgSchema, text, uuid } from 'drizzle-orm/pg-core';
 import type postgres from 'postgres';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -14,38 +11,20 @@ import { staffCookie } from '../../src/modules/kernel/auth/principal.js';
 import { ApiException } from '../../src/modules/kernel/public/index.js';
 import type { TestSigningKey } from '../support/access-tokens.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
+import type { ProbeRow } from './probe-table.js';
+import {
+  ProbeRepository,
+  createProbeTable,
+  dropProbeTable,
+  insertProbeRows,
+  probeLabels,
+} from './probe-table.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-6 item C on the real database: the guard resolves the principal from the token, the
 // interceptor opens one unit of work per request for the token's account, and a probe repository
 // (ScopedRepository) on a scratch tenant table sees only that account, whatever the request says.
-// The table lives in a throwaway schema the owner creates and drops (PLAT-5 convention), with the
-// template policies, so the ELX_RLS=on run proves the policies as well as the predicate.
-
-const schema = `scratch_${randomBytes(4).toString('hex')}`;
-const probeRows = pgSchema(schema).table('probe_rows', {
-  id: uuid('id').primaryKey(),
-  accountId: uuid('account_id').notNull(),
-  label: text('label').notNull(),
-});
-
-class ProbeRepository extends ScopedRepository<typeof probeRows> {
-  constructor(uow: UnitOfWork) {
-    super(uow, probeRows);
-  }
-  all() {
-    return this.findMany();
-  }
-  add(row: TenantInsert<typeof probeRows>) {
-    return this.insertMany([row]);
-  }
-}
-
-interface ProbeRow {
-  readonly id: string;
-  readonly accountId: string;
-  readonly label: string;
-}
+// With ELX_RLS=on the run proves the template policies as well as the predicate.
 
 @Controller('v1/staff/probe-rows')
 class StaffProbeController {
@@ -95,31 +74,16 @@ describe('request context and unit of work per request (PLAT-6 item C)', () => {
     signAccessToken(signing, 'staff', { claims: { acc: account } }).then(
       (token) => `${staffCookie}=${token}`,
     );
-  const labels = async (account: string) =>
-    (await owner<{ label: string }[]>`
-      SELECT label FROM ${owner(schema)}.probe_rows WHERE account_id = ${account} ORDER BY label`).map(
-      (row) => row.label,
-    );
+  const labels = (account: string) => probeLabels(owner, account);
 
   beforeAll(async () => {
     owner = connectAs('owner', config);
-    await owner`CREATE SCHEMA ${owner(schema)}`;
-    await owner`CREATE TABLE ${owner(schema)}.probe_rows (
-      id uuid PRIMARY KEY, account_id uuid NOT NULL, label text NOT NULL)`;
-    await owner`GRANT USAGE ON SCHEMA ${owner(schema)} TO elx_app, elx_platform`;
-    await owner`GRANT SELECT, INSERT, UPDATE, DELETE ON ${owner(schema)}.probe_rows TO elx_app, elx_platform`;
-    await owner.unsafe(`
-      CREATE POLICY tenant_isolation ON "${schema}".probe_rows TO elx_app
-        USING (account_id = NULLIF(current_setting('elx.account_id', true), '')::uuid)
-        WITH CHECK (account_id = NULLIF(current_setting('elx.account_id', true), '')::uuid);
-      CREATE POLICY platform_access ON "${schema}".probe_rows TO elx_platform
-        USING (true) WITH CHECK (true)`);
-    if (config.db.rls) {
-      await owner.unsafe(`ALTER TABLE "${schema}".probe_rows ENABLE ROW LEVEL SECURITY`);
-    }
-    await owner`INSERT INTO ${owner(schema)}.probe_rows (id, account_id, label) VALUES
-      (${uuidv7()}, ${accountA}, 'a-1'), (${uuidv7()}, ${accountA}, 'a-2'),
-      (${uuidv7()}, ${accountB}, 'b-1')`;
+    await createProbeTable(owner, config);
+    await insertProbeRows(owner, [
+      { id: uuidv7(), accountId: accountA, label: 'a-1' },
+      { id: uuidv7(), accountId: accountA, label: 'a-2' },
+      { id: uuidv7(), accountId: accountB, label: 'b-1' },
+    ]);
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule.forRoot(config)],
@@ -131,7 +95,7 @@ describe('request context and unit of work per request (PLAT-6 item C)', () => {
 
   afterAll(async () => {
     await app?.close();
-    await owner`DROP SCHEMA IF EXISTS ${owner(schema)} CASCADE`;
+    await dropProbeTable(owner);
     await owner.end();
   });
 
@@ -143,13 +107,17 @@ describe('request context and unit of work per request (PLAT-6 item C)', () => {
   });
 
   it("reads only the token's account: two tokens, two accounts", async () => {
-    const seenByA = await http().get('/v1/staff/probe-rows').set('Cookie', await staff(accountA));
+    const seenByA = await http()
+      .get('/v1/staff/probe-rows')
+      .set('Cookie', await staff(accountA));
     expect(seenByA.status).toBe(200);
     const bodyA = seenByA.body as { account: string; rows: ProbeRow[] };
     expect(bodyA.account).toBe(accountA);
     expect(bodyA.rows.map((row) => row.label).sort()).toEqual(['a-1', 'a-2']);
 
-    const seenByB = await http().get('/v1/staff/probe-rows').set('Cookie', await staff(accountB));
+    const seenByB = await http()
+      .get('/v1/staff/probe-rows')
+      .set('Cookie', await staff(accountB));
     const bodyB = seenByB.body as { account: string; rows: ProbeRow[] };
     expect(bodyB.account).toBe(accountB);
     expect(bodyB.rows.map((row) => row.label)).toEqual(['b-1']);

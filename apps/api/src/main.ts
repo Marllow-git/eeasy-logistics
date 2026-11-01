@@ -2,6 +2,8 @@ import { loadConfig } from '@eeasy-logistics/config/node';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { EX_CONFIG } from '@eeasy-logistics/config';
+import { BootChecks } from './modules/kernel/platform/boot-checks.js';
 import { RequestLogger } from './modules/kernel/request/request-id.js';
 import { runMigrateJob } from './migrate/run.js';
 import { parseRole } from './role.js';
@@ -34,6 +36,17 @@ async function bootstrap(): Promise<void> {
 
   // Every log line written while serving a request names its request id (PLAT-6 plan 2.1).
   const app = await NestFactory.create(AppModule.forRoot(config), { logger: new RequestLogger() });
+  // Each configured pool must be its plain role before anything is served (PLAT-6 plan 2.12,
+  // PLAT-5 ruling M-6); the refusal names the role, never the URL.
+  try {
+    await app.get(BootChecks).run();
+  } catch (error) {
+    logger.error(
+      error instanceof Error ? error.message : 'Refusing to start: pool role check failed',
+    );
+    await app.close();
+    process.exit(EX_CONFIG);
+  }
   // SIGTERM and SIGINT run the shutdown hooks, which close the database pool (platform §5).
   app.enableShutdownHooks();
   await app.listen(config.app.port);
