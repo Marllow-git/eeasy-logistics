@@ -8,6 +8,7 @@ import { PlatformAuditLogController } from './audit/platform-audit-log.controlle
 import { ContractPipe } from './contract/contract-pipe.js';
 import { IdempotentRoutesCheck } from './idempotency/idempotency.interceptor.js';
 import { ApiExceptionFilter } from './errors/exception.filter.js';
+import { OutboxWriter } from './outbox/outbox-writer.js';
 import { RequestIdMiddleware } from './request/request-id.js';
 import { ContentTypeGuard } from './request/content-type.guard.js';
 import { WebClientGuard } from './request/web-client.guard.js';
@@ -40,8 +41,10 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
     { provide: APP_PIPE, useClass: ContractPipe },
     // core_audit_log (PLAT-7): in the unit of work, or committed on its own for refusals.
     { provide: AUDIT_SINK, useClass: AuditWriter },
+    // core_outbox (PLAT-8): every side effect leaves the business transaction as a row.
+    OutboxWriter,
   ],
-  exports: [AUDIT_SINK],
+  exports: [AUDIT_SINK, OutboxWriter],
 })
 export class KernelModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
