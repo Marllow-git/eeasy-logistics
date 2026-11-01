@@ -2,7 +2,9 @@ import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, DiscoveryModule } from '@nestjs/core';
 import { AUDIT_SINK } from './audit/audit-sink.js';
+import { AuditLogController } from './audit/audit-log.controller.js';
 import { AuditWriter } from './audit/audit-writer.js';
+import { PlatformAuditLogController } from './audit/platform-audit-log.controller.js';
 import { ContractPipe } from './contract/contract-pipe.js';
 import { IdempotentRoutesCheck } from './idempotency/idempotency.interceptor.js';
 import { ApiExceptionFilter } from './errors/exception.filter.js';
@@ -22,6 +24,8 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
  */
 @Module({
   imports: [DiscoveryModule],
+  // The audit log reads (PLAT-7): listAuditLog, platformListAccountAudit, platformListAudit.
+  controllers: [AuditLogController, PlatformAuditLogController],
   providers: [
     IdempotentRoutesCheck,
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
