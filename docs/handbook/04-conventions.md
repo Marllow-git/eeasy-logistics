@@ -9,7 +9,10 @@
 ## Orders and plan files
 
 - Order ids: `<MODULE>-<N>` (for example `DEL-3`, `WMS-2`, `PLAT-1`), unique across the repository.
-- `docs/orders/<ORDER-ID>/plan.md` sections, in order: 0 Goal · 1 Binding rules and ADRs · 2 Decisions (with defaults) · 3 Build list · 4 Commit plan · 5 Exit criteria · 6 Not in this order · 7 Owner questions.
+- `docs/orders/<ORDER-ID>/plan.md` sections, in order: 0 Goal · 1 Binding rules and ADRs · 2 Decisions (with defaults) · 3 Build list · 4 Commit plan · 5 Exit criteria · 6 Not in this order · 7 Owner questions · 8 Executor notes · 9 Review.
+- §1 cites by file **and heading** (`docs/architecture/data.md` §4.3), never a whole document; the executor reads only the cited sections.
+- §3 groups items into **legs** of at most five items when the order has more than five; each leg is one executor run on the same branch.
+- §8 is written by the executor: 8.0 progress table (item, commit, tests with counts, interpretation) updated and committed after every item; 8.1 skills and documents consulted with versions and dates; 8.2 interpretations the lead should check; 8.3 not done here. §9 holds the lead review rulings and the adversary table.
 - The plan file is the first commit on the order branch and is linked from the order's issue.
 
 ## Issues and labels
