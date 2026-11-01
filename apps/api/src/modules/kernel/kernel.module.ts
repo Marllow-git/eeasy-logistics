@@ -1,6 +1,7 @@
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AUDIT_SINK, LogAuditSink } from './audit/audit-sink.js';
 import { ApiExceptionFilter } from './errors/exception.filter.js';
 import { RequestIdMiddleware } from './request/request-id.js';
 import { TenancyGuard } from './tenancy/tenancy.guard.js';
@@ -19,7 +20,10 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
     { provide: APP_GUARD, useClass: TenancyGuard },
     { provide: APP_INTERCEPTOR, useClass: UnitOfWorkInterceptor },
+    // The wave 0 audit sink writes a log line; PLAT-7 binds the core_audit_log writer here.
+    { provide: AUDIT_SINK, useClass: LogAuditSink },
   ],
+  exports: [AUDIT_SINK],
 })
 export class KernelModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
