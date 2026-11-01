@@ -10,3 +10,5 @@ onlyBuiltDependencies:
 ignoredBuiltDependencies:
   - '@parcel/watcher'
   - unrs-resolver
+  # Its postinstall would write the hook; the root `prepare` script does that explicitly (PLAT-3).
+  - simple-git-hooks

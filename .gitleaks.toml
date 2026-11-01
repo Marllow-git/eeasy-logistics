@@ -1,0 +1,14 @@
+# gitleaks configuration (platform §3; PLAT-3 decision 2.7). Read by the pre-commit hook
+# (simple-git-hooks in package.json) and by the gitleaks CI job from the repository root.
+title = "eeasy-logistics"
+
+# Every rule of the gitleaks default configuration.
+[extend]
+useDefault = true
+
+# .env.example holds local placeholder credentials only (its header says so), including the
+# user:password database URLs of PLAT-4. It is the one file excused; a secret anywhere else,
+# .env.example's look-alikes included, is still caught.
+[[allowlists]]
+description = "Local placeholder values in .env.example"
+paths = ['''^\.env\.example$''']

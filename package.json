@@ -12,11 +12,16 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",
+    "prepare": "simple-git-hooks",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },
+  "simple-git-hooks": {
+    "pre-commit": "command -v gitleaks >/dev/null 2>&1 || { echo 'pre-commit: gitleaks is not installed (macOS: brew install gitleaks). See README \"CI\".' >&2; exit 1; }; gitleaks git --pre-commit --staged --redact --no-banner --verbose"
+  },
   "devDependencies": {
     "prettier": "3.9.10",
+    "simple-git-hooks": "2.14.0",
     "turbo": "2.11.10"
   }
 }
