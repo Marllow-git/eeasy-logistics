@@ -2,6 +2,7 @@ import { loadConfig } from '@eeasy-logistics/config/node';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { RequestLogger } from './modules/kernel/request/request-id.js';
 import { runMigrateJob } from './migrate/run.js';
 import { parseRole } from './role.js';
 
@@ -31,7 +32,8 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
-  const app = await NestFactory.create(AppModule.forRoot(config));
+  // Every log line written while serving a request names its request id (PLAT-6 plan 2.1).
+  const app = await NestFactory.create(AppModule.forRoot(config), { logger: new RequestLogger() });
   // SIGTERM and SIGINT run the shutdown hooks, which close the database pool (platform §5).
   app.enableShutdownHooks();
   await app.listen(config.app.port);

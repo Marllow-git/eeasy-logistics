@@ -1,20 +1,8 @@
 import arCommon from '../ar/common.json';
 import enCommon from '../en/common.json';
 
-export const locales = ['ar', 'en'] as const;
-export type Locale = (typeof locales)[number];
-
-/** Arabic is the primary language and the fallback everywhere (ADR-0016). */
-export const defaultLocale: Locale = 'ar';
-
-export function isLocale(value: unknown): value is Locale {
-  return typeof value === 'string' && (locales as readonly string[]).includes(value);
-}
-
-/** Text direction for the `dir` attribute or style of a locale. */
-export function dir(locale: Locale): 'rtl' | 'ltr' {
-  return locale === 'ar' ? 'rtl' : 'ltr';
-}
+export { defaultLocale, dir, isLocale, locales, type Locale } from './locales.ts';
+import type { Locale } from './locales.ts';
 
 // The Arabic catalogue is the reference shape: an English catalogue missing a key fails typecheck,
 // and test/parity.test.ts fails on a key present in one locale only, in either direction.

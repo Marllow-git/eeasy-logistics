@@ -22,6 +22,7 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `secret_already_issued` | 409 | replay of an operation that returned a one-time secret (API key, webhook secret, tracking link); `details.resource_id` names the resource, the secret is not returned again | README §3, doc 4 §3.4 |
 | `limit_exceeded` | 422 | an account limit (orders per month, drivers, sites, API keys) is reached | §2.1 limits |
 | `rate_limited` | 429 | route budget spent; `details.retry_after_s` and `Retry-After` | doc 4 §8 |
+| `internal_error` | 500 | an unexpected server failure; the body carries no detail, only the `request_id` to quote to support (added by PLAT-6, additive) | README §4 |
 
 ## 2. Authentication and devices
 

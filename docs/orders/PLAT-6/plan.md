@@ -88,6 +88,7 @@ Issuing tokens, refresh, sign-in doors, OTP and TOTP (PLAT-11); permission enfor
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A | this commit | api unit 34/34 (new: `errors.http.test.ts` 10, `error-codes.test.ts` 12 incl. errors.md parity and 9 `Accept-Language` cases); red run with the filter and middleware unregistered 10/10 failed, green 10/10; i18n 11/11 (parity now covers `errors`); integration 41/41 (`ELX_RLS=off`, scratch database, MinIO up) | 8.2.1–8.2.5 |
 
 ### 8.1 Skills, documents and versions consulted
 
