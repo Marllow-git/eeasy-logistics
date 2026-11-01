@@ -124,4 +124,16 @@ All on 2026-11-01. Context7: `/orval-labs/orval` (fetch client and custom mutato
 
 ## 9. Lead review and adversary
 
-Adversary: not required (roadmap). Lead review rulings are recorded here after `/code-review`.
+Adversary: not required (roadmap `Adv. no`).
+
+**Lead review round 1 (Fable `/code-review`, 2026-11-01), five findings, all fixed in e81e00d:**
+
+| # | Finding | Ruling |
+|---|---|---|
+| 1 | `eeasy/idempotency-key` accepted an optional header | fixed: `required: true` enforced; 151 operations shown red with the shared key made optional |
+| 2 | `apps/web` could import `/staff` hooks without depending on `@tanstack/react-query` | fixed: dependency added to `apps/web` (5.105.0); `apps/driver` stays without it |
+| 3 | `X-EL-Client` skipped on HEAD and OPTIONS | fixed: every non-GET, as README §1 |
+| 4 | default request id required `crypto.randomUUID` | fixed: `getRandomValues` fallback, clear error naming `requestId` |
+| 5 | web image build could not see the OpenAPI sources (`.dockerignore` excluded `docs/`) | fixed: `docs/contracts/` re-included; `image (web)` green on e81e00d |
+
+Leg 1 accepted on e81e00d: all required checks and both image dry runs green. Leg 2 review follows the same cap.
