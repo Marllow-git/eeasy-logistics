@@ -29,6 +29,8 @@ import type { OutboxKind } from '../../modules/kernel/schema/outbox.js';
 import { PlatformOutbox } from '../../modules/kernel/platform/outbox.repository.js';
 import { coreAccounts } from '../../modules/kernel/schema/accounts.js';
 import { coreOutbox } from '../../modules/kernel/schema/outbox.js';
+import { SpanKind } from '@opentelemetry/api';
+import { annotateActiveSpan, withSpan } from '../../modules/kernel/telemetry/spans.js';
 
 // The consumer side of the outbox queues (PLAT-8 plan 2.4, 2.5, 2.9; ADR-0024, ADR-0036;
 // integrations §4.2, §4.4): one BullMQ Worker per kind with a handler, with that kind's options. A
@@ -155,6 +157,13 @@ export async function processOutboxJob(
   if (handler === undefined) throw new Error(`No outbox handler for kind ${kind}`);
   const row = await readRow(deps.db, outboxId);
   if (row === undefined || row.kind !== kind || !runnable.has(row.status)) return 'skipped';
+  // The job span (PLAT-14 plan 2.2): the row's ids, never its payload.
+  annotateActiveSpan({
+    'elx.account.id': row.accountId ?? undefined,
+    'elx.correlation_id': row.correlationId ?? undefined,
+    'elx.event_type': row.type,
+    'elx.outbox.attempt': row.attempts + 1,
+  });
   // A row of an account no longer provisioned or active (suspended, closed) does not execute: it
   // goes back to `pending` without an attempt, and the relay holds it until the account is active
   // again (K-2, adversary M-2). `internal_event` is exempt, like the relay's hold (A-23).
@@ -202,6 +211,37 @@ export async function processOutboxJob(
   return write.status;
 }
 
+/**
+ * `processOutboxJob` inside one span per job (PLAT-14 plan 2.2), a new trace named `outbox.job`
+ * with the kind and row id; a retry's `DelayedError` is control flow, not an error.
+ */
+export function tracedOutboxJob(
+  deps: ProcessDependencies,
+  kind: OutboxKind,
+  job: OutboxJob,
+  token?: string,
+): Promise<JobResult> {
+  const outboxId: unknown = (job.data as { outboxId?: unknown } | undefined)?.outboxId;
+  return withSpan(
+    'outbox.job',
+    {
+      'elx.outbox.kind': kind,
+      'elx.outbox.row_id': typeof outboxId === 'string' && isUuid(outboxId) ? outboxId : undefined,
+    },
+    async (span) => {
+      try {
+        const result = await processOutboxJob(deps, kind, job, token);
+        span.setAttribute('elx.outbox.result', result);
+        return result;
+      } catch (error) {
+        if (error instanceof DelayedError) span.setAttribute('elx.outbox.result', 'retry');
+        throw error;
+      }
+    },
+    { root: true, kind: SpanKind.CONSUMER, isError: (error) => !(error instanceof DelayedError) },
+  );
+}
+
 /** The BullMQ worker options of a kind (integrations §4.2), for `new Worker()`. */
 export function workerOptions(
   policy: QueuePolicy,
@@ -245,7 +285,7 @@ export class OutboxWorkers {
       const policy = this.#deps.policies?.[kind] ?? outboxQueuePolicies[kind];
       const worker = new Worker<OutboxJobData>(
         outboxQueueName(kind),
-        (job, token) => processOutboxJob(this.#deps, kind, job, token),
+        (job, token) => tracedOutboxJob(this.#deps, kind, job, token),
         workerOptions(policy, connection, prefix, random),
       );
       worker.on('error', (error) => {

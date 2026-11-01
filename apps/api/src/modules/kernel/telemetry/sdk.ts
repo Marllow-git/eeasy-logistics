@@ -16,6 +16,7 @@ import type { IMetricReader, ViewOptions } from '@opentelemetry/sdk-metrics';
 import { AggregationType, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { core, NodeSDK } from '@opentelemetry/sdk-node';
 import type { Sampler, SpanExporter, SpanProcessor } from '@opentelemetry/sdk-trace';
+import { AllowlistSpanProcessor, finishServerSpan, rememberServerSpan } from './spans.js';
 import {
   BatchSpanProcessor,
   ParentBasedSampler,
@@ -57,8 +58,6 @@ export interface TelemetryOptions {
   readonly logExporter?: LogRecordExporter;
   /** Register the ESM loader hook (main.ts only; tests and in-process callers leave it off). */
   readonly loaderHook?: boolean;
-  /** Wraps every span processor; item B's attribute allowlist. */
-  readonly wrapSpanProcessor?: (processor: SpanProcessor) => SpanProcessor;
 }
 
 export interface TelemetryHandle {
@@ -117,6 +116,10 @@ export function instrumentations(): Instrumentation[] {
       requireParentforOutgoingSpans: true,
       // No header is ever recorded (plan 2.2); the allowlist would drop them anyway.
       headersToSpanAttributes: { client: {}, server: {} },
+      // The request frame annotates the server span of each request (request id, surface, ...).
+      requestHook: rememberServerSpan,
+      // Surface, route template and span name, right before the server span ends.
+      applyCustomAttributesOnSpan: (span, request) => finishServerSpan(span, request),
     }),
     // Router and handler spans only: they carry the route template, never a path value.
     new ExpressInstrumentation({ ignoreLayersType: [ExpressLayerType.MIDDLEWARE] }),
@@ -164,8 +167,7 @@ export function startTelemetry(
       });
     }
     const endpoint = config.observability.otlpEndpoint;
-    const wrap = options.wrapSpanProcessor ?? ((processor: SpanProcessor) => processor);
-    const spanProcessor =
+    const spanProcessor: SpanProcessor =
       options.spanExporter !== undefined
         ? new SimpleSpanProcessor({ exporter: options.spanExporter })
         : endpoint !== undefined
@@ -200,7 +202,8 @@ export function startTelemetry(
       // Every setting comes from packages/config; nothing is detected from the environment.
       autoDetectResources: false,
       sampler: samplerFor(config),
-      spanProcessors: [wrap(spanProcessor)],
+      // Every span reaches the exporter through the attribute allowlist (plan 2.2).
+      spanProcessors: [new AllowlistSpanProcessor(spanProcessor)],
       metricReaders,
       views: droppedInstrumentMetrics,
       logRecordProcessors,
