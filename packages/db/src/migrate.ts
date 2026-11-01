@@ -13,6 +13,9 @@ import postgres from 'postgres';
 /** `pg_advisory_lock(hashtext('elx_migrate'))`: every migration run takes this session lock. */
 export const migrationLockKey = 'elx_migrate';
 
+/** Months of `core_audit_log` partitions kept ahead of the current one (data §11.5). */
+export const auditPartitionsAhead = 3;
+
 export interface MigrateOptions {
   /** `config.db.urls.owner`: migrations run as `elx_owner` (ADR-0031). */
   readonly url: Secret | undefined;
@@ -34,6 +37,8 @@ export interface MigrateResult {
   readonly version: string;
   /** Tables whose RLS this run enabled (or kept enabled); 0 when `rls` is off. */
   readonly rlsTables: number;
+  /** Monthly `core_audit_log` partitions this run created (0 when all existed already). */
+  readonly auditPartitionsCreated: number;
 }
 
 interface JournalEntry {
@@ -93,9 +98,11 @@ export async function runMigrations(options: MigrateOptions): Promise<MigrateRes
     await migrate(drizzle({ client }), { migrationsFolder: options.folder });
 
     const after = await appliedMigrations(client);
-    // The RLS switch first, then the version, in one transaction (review L-2): /ready never sees
-    // the new version on a database whose RLS state the run has not yet settled.
-    const rlsTables = await client.begin(async (tx) => {
+    // The RLS switch first, then the audit partitions, then the version, in one transaction
+    // (review L-2): /ready never sees the new version on a database whose RLS state or audit
+    // partitions the run has not yet settled. Partitions: the current month and the next
+    // `auditPartitionsAhead` (data §11.5, PLAT-7 plan 2.2), on every run.
+    const settled = await client.begin(async (tx) => {
       let enabled = 0;
       if (options.rls) {
         const [result] = await tx<
@@ -103,11 +110,17 @@ export async function runMigrations(options: MigrateOptions): Promise<MigrateRes
         >`SELECT core_enable_tenant_rls() AS enabled`;
         enabled = result?.enabled ?? 0;
       }
+      const [partitions] = await tx<{ created: number }[]>`
+        SELECT core_ensure_audit_partitions(${auditPartitionsAhead}::integer) AS created`;
       await tx`UPDATE core_schema_meta SET version = ${version}, migrated_at = now()`;
-      return enabled;
+      return { rlsTables: enabled, auditPartitionsCreated: partitions?.created ?? 0 };
     });
-    if (options.rls) log(`ELX_RLS=on: row-level security enabled on ${rlsTables} table(s).`);
-    return { applied: after.length - before.length, version, rlsTables };
+    if (options.rls)
+      log(`ELX_RLS=on: row-level security enabled on ${settled.rlsTables} table(s).`);
+    if (settled.auditPartitionsCreated > 0) {
+      log(`Created ${settled.auditPartitionsCreated} core_audit_log partition(s).`);
+    }
+    return { applied: after.length - before.length, version, ...settled };
   } finally {
     // Closing the session releases the lock as well; the explicit unlock keeps the order clear.
     await client`SELECT pg_advisory_unlock_all()`.catch(() => undefined);
