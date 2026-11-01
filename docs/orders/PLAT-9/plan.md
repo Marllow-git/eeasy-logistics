@@ -217,4 +217,27 @@ Leg 2:
 
 ## 9. Lead review and adversary
 
-Adversary: required (OTP codes, phone numbers, credentials encryption, budgets, opt-out).
+**Lead review round 1 (Fable, 2026-11-01, leg 1):** three findings in `otp.service.ts`, fixed in `PLAT-9: fix review round 1` (§8.0).
+
+**Lead review round 2 (Fable `/code-review` high, 2026-11-01, on 8ce5a67, both legs):** no critical or high; four lows fixed in f5781c2: the per-phone cap and the opt-out check now share one normalised E.164 (a row whose `to` does not normalise is `dead`); OTP budgets charged cooldown, phone, then address so an exhausted phone never burns the address budget (Redis counters are not transactional with the insert, accepted, §8.2 #10); recipient policy reads in one transaction instead of four; a 2xx engine envelope with `ok: false` and `retryable: false` is a permanent failure that neither retries nor counts on the breaker.
+
+**Adversary pass (Fable, 2026-11-01, on 8ce5a67): PASS, no critical or high; three mediums and seven lows, fixed or ruled in 49e4ed0; no re-check (handbook 01 stage 6).**
+
+| Id | Severity | Finding | Status | Lead ruling |
+|---|---|---|---|---|
+| M-1 | medium | OTP pumping: 202 for any number, no global or daily ceiling | fixed: `otp_request_phone_day` 20/day, `otp_request_global` 500/h (`OTP_GLOBAL_HOURLY_BUDGET`), refusals counted by reason with an alert | the registered-phone check before `request()` is PLAT-11's (second factor sends only to the stored phone, plan 2.8) and DEL-4's |
+| M-2 | medium | targeted lockout: only the newest challenge verified, a resend invalidated the victim's code | fixed: every live challenge (at most five, locked) is compared, five HMAC slots always run; a match consumes all, a miss counts an attempt on each | – |
+| M-3 | medium | engine 401 on clock drift parked every OTP row for an hour without opening the breaker: silent outage | fixed: stale-timestamp and replayed-nonce 401s are transient and count on the breaker; unknown-key and bad-signature 401s still park but count on the breaker (door answers 503) and page through `messaging_sender_alerts_total{event: unauthorised}` | deviation from 2A.1 ("refusals → dead") accepted: a parked row survives a key rotation, a dead one does not |
+| L-1 | low | unauthenticated callback refusals flood the log | fixed: first per code per minute at warn, rest at debug | – |
+| L-2 | low | racing duplicate `callback_id` answered 500 | fixed: 23505 caught in a savepoint, treated as applied | – |
+| L-3 | low | cooldown `Retry-After` reveals a recent request; verify timing differs with no challenge | accepted (§8.2) | the driver app shows the same 60 s timer; the verify tell is bounded by M-2's fixed five slots |
+| L-4 | low | phone pseudonyms derive from the active credentials key: a rotation resets budgets and caps for one window | accepted, documented in the README messaging section | – |
+| L-5 | low | `.env.example` placeholder engine secrets pass the production checks | fixed: staging and production refuse the placeholders and any value containing `not-for-production` | – |
+| L-6 | low | a linked sender without an engine account id answered 422 on `connection.event` | fixed: acknowledged and ignored, logged once | the linking order allocates the engine id before creating the instance (recorded for that order) |
+| L-7 | low | merchant-chosen `account_name` interpolated into mail subject and body | fixed at send time: no line break, no `://` outside the link parameter, name capped at 80 | PLAT-11 calls the exported check at enqueue (plan 2.10); PLAT-12 bounds the name at creation |
+
+**Executor deviations accepted (§8.2):** callback path `/internal/whatsapp/v1/callbacks` (engine hard-codes it); config `WHATSAPP_ENGINE_CALLBACK_KEY_ID` and `WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID`; Meta-only variables removed; migration 0010 in item G; metric names without an `elx_` prefix (the catalogue has none).
+
+**Identity §9 checklist (lead):** 3 OTP single use under row locks across all live challenges, attempts capped; 6 codes HMAC-hashed, encrypted on the outbox row with the row id as AAD, purged after one hour, never logged (phones as last digits). Items 1, 2, 4, 5 belong to PLAT-11.
+
+**Verdict for the gate:** no critical or high open; CI green on f5781c2, the adversary-round head awaits its run. One-way door (migrations 0009–0011; production refusals for the messaging provider); the lead merges under the owner's delegation of 2026-11-01. ADR-0041 stays proposed until the owner accepts it; the code follows its defaults.
