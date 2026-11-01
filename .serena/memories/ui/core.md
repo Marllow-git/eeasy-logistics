@@ -11,6 +11,6 @@
 
 ## packages/i18n
 - Catalogues `<locale>/{common,nav,auth,errors,recipient,platform}.json`; `src/messages.ts` `messages`, `Messages` (from `ar`), `Namespace`, `pickMessages(locale, namespaces)` (root layouts pass only their namespaces to the client); `src/locale.ts`; `t(locale, CommonKey)` for the driver and metadata (no ICU).
-- `errors` has one key per `ErrorCode` (`test/errors.test.ts` compares with `@eeasy-logistics/contracts/unions` `errorCodes`, so the i18n `test` depends on the contracts `build`).
+- `errors` is PLAT-6's `{ codes, fields }` catalogue (also the `./errors` entry the API loads with JSON import attributes); `errors.codes` has one message per `ErrorCode` (`test/errors.test.ts` compares with `@eeasy-logistics/contracts/unions` `errorCodes`, so the i18n `test` depends on the contracts `build`). `src/locales.ts` holds `locales`, `defaultLocale`, `isLocale`, `dir` without catalogues, for the API's Node loader.
 - `src/format.ts`: `formatDateTime`, `formatDate` (business dates in UTC from their parts), `formatNumber`, `formatMoney` (`SAR 150.00`), `formatMoneyAmount`, `formatPhone` (LRM-wrapped), `intlLocale` (`-u-ca-gregory-nu-latn`), `timeZone`. ICU plurals take a pre-formatted `{value}`; never `#` (bare-locale digits).
 - No next-intl dependency (the driver app uses this package); tests use `use-intl/core` `createTranslator`.

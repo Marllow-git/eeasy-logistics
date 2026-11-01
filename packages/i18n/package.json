@@ -5,7 +5,8 @@
   "description": "Arabic and English catalogues (<locale>/<namespace>.json), the Messages type next-intl is typed with, the typed t() helper and the one formatting module for dates, numbers and money (web §5).",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./errors": "./src/errors.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

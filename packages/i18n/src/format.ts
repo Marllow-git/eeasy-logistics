@@ -1,4 +1,4 @@
-import type { Locale } from './locale';
+import type { Locale } from './locales.ts';
 
 // The one formatting module for dates, numbers and money (web §5, ADR-0016), shared by the web apps
 // and the driver app. The Unicode extension keys are mandatory: bare `ar-SA` may resolve to the Umm

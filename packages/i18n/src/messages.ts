@@ -10,12 +10,13 @@ import enErrors from '../en/errors.json';
 import enNav from '../en/nav.json';
 import enPlatform from '../en/platform.json';
 import enRecipient from '../en/recipient.json';
-import type { Locale } from './locale';
+import type { Locale } from './locales.ts';
 
 // The Arabic catalogue is the reference shape (web §5): `Messages` is generated from it, so an
 // English catalogue missing a key fails typecheck here, and a component asking next-intl for a key
 // the Arabic catalogue lacks fails typecheck through the AppConfig augmentation in packages/ui
-// (src/shell/next-intl.d.ts; kept there so the driver app needs no next-intl).
+// (src/intl.ts; kept there so the driver app needs no next-intl). The `errors` namespace is
+// PLAT-6's `{ codes, fields }` catalogue, also served to the API through `./errors`.
 // test/parity.test.ts additionally fails on a key present in one locale only, in either direction.
 const ar = {
   common: arCommon,

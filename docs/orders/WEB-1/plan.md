@@ -117,6 +117,7 @@ Sessions, sign-in forms, CSP and `proxy.ts` (WEB-2); `DataTable`, `Board`, `Form
 17. **OFL Reserved Font Name "Plex"**: subsetting is a modification under the OFL; the subset keeps the internal family name. Many projects ship Plex subsets, but if the owner wants strict compliance the subset needs a renamed internal family (one fontTools step). The CSS family is `next/font`'s generated name either way.
 18. **Riyal sign placement**: `<Money>` shows the sign before the amount inside a left-to-right isolate (sign on the left of the numerals); a brand or SAMA-guideline check by the owner is cheap to apply.
 19. **Tokens are hex**, not OKLCH, so the contrast test computes WCAG ratios without a colour library.
+20. **Merge of main after PLAT-6** (merge commit, not a rebase, so the lockfile is resolved once): PLAT-6 had added `packages/i18n/src/locales.ts`, `src/errors.ts` (the `./errors` entry the API loads) and an `errors` catalogue shaped `{ codes, fields }` with 72 codes. Main's catalogue and `locales.ts` were taken; item A's flat `errors.json` (70 codes) and `src/locale.ts` were dropped; `test/errors.test.ts` now compares `errors.codes` with `ErrorCode`. After the merge: `turbo run typecheck lint test` 30/30, i18n 48/48, ui 93/93, census 12/12; lock `--frozen-lockfile` clean, 133 versions added against main's lock, all older than three days.
 
 ### 8.3 Not done here
 

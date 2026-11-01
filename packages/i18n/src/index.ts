@@ -1,8 +1,8 @@
-import type { Locale } from './locale';
-import { messages, type Messages } from './messages';
+import type { Locale } from './locales.ts';
+import { messages, type Messages } from './messages.ts';
 
-export { defaultLocale, dir, isLocale, locales, type Locale } from './locale';
-export { messages, pickMessages, type Messages, type Namespace } from './messages';
+export { defaultLocale, dir, isLocale, locales, type Locale } from './locales.ts';
+export { messages, pickMessages, type Messages, type Namespace } from './messages.ts';
 export {
   formatDate,
   formatDateTime,
@@ -12,7 +12,7 @@ export {
   formatPhone,
   intlLocale,
   timeZone,
-} from './format';
+} from './format.ts';
 
 type KeyPaths<T> = {
   [K in keyof T & string]: T[K] extends string ? K : `${K}.${KeyPaths<T[K]>}`;

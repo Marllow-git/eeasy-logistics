@@ -12,13 +12,15 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | 2026-10-31 | No container runtime on the owner's machine; local verification on the native stack (`tools/native-stack.sh`), Compose only in CI. |
 | 2026-10-31 | Haiku researches, Opus builds, Fable reviews (handbook 05). |
 | 2026-11-01 | Owner, on the PLAT-5 gate report: "continue, you are the lead" — read as delegation to merge one-way doors after `tools/pr-gate.sh` passes, with the SHA reported; the lead still stops for a question that changes a register default or supersedes an ADR. |
+| 2026-11-01 | Adversary re-check runs only when the first pass found a critical or high; mediums and lows are fixed and ruled by the lead without a second run (handbook 01 stage 6). |
 | 2026-11-01 | Two web applications: `apps/web` (merchant, recipient) and `apps/admin` (platform console) on separate hostnames (ADR-0038, order WEB-19). |
 
 ## In flight
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| PLAT-6 | #39 | `feat/PLAT-6-request-context-tenancy-guard` | `.claude/worktrees/agent-a8c101e16af461eec` | executor-api (general-purpose Opus run; project agents not loaded in this session) | leg 1 (A–E) built, review round 1 fixed, draft PR #41; leg 2 (F–I, I is A-17 `ContractPipe`) not started | native, scratch databases | one-way door (migration); adversary required |
+| PLAT-6 | #39 | `feat/PLAT-6-request-context-tenancy-guard` | `.claude/worktrees/agent-a8c101e16af461eec` | executor-api (general-purpose Opus run; project agents not loaded in this session) | leg 1 (A–E) built, review round 1 fixed; leg 2 (F–I) built on main `a2f911f`, draft PR #41, awaiting lead review | native, scratch databases | one-way door (migration); adversary required |
+| WEB-19 | #43 | `feat/WEB-19-admin-console-scaffold` | `.claude/worktrees/agent-a52dedd898c533aa7` | executor-web (general-purpose Opus run) | review done, final head on CI | none | two-way door; adversary no; owns `PUBLIC_ADMIN_URL` (PLAT-6 leg 2 consumes it) |
 | WEB-1 | #46 | `feat/WEB-1-web-shell-design-system-i18n` | harness worktree | executor-web (general-purpose Opus run; project agents not loaded in this session) | build, leg 1 (A–E) | none | two-way door; adversary no; Q-21 applied as default |
 
 ## Next unblocked (roadmap §1.1)
