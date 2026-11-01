@@ -89,6 +89,7 @@ Issuing tokens, refresh, sign-in doors, OTP and TOTP (PLAT-11); permission enfor
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
 | A | this commit | api unit 34/34 (new: `errors.http.test.ts` 10, `error-codes.test.ts` 12 incl. errors.md parity and 9 `Accept-Language` cases); red run with the filter and middleware unregistered 10/10 failed, green 10/10; i18n 11/11 (parity now covers `errors`); integration 41/41 (`ELX_RLS=off`, scratch database, MinIO up) | 8.2.1–8.2.5 |
+| B | this commit | api unit 79/79 (new `test/auth.test.ts` 45: valid per surface, forged, edited payload, expired genuine vs another surface, wrong `aud` x4, other `kid`/alg/`iss`, `alg: none`, 9 missing claims, 6 malformed claims, no key; cookie versus bearer per surface; recipient and public 401); red run with the `aud`, `kid` and claim-schema checks removed: 20/45 failed, green 45/45; lint and architecture green | 8.2.6–8.2.7 |
 
 ### 8.1 Skills, documents and versions consulted
 
