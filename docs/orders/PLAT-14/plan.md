@@ -149,4 +149,24 @@ See 2.10. Alert routing to the owner's channel, dashboards and the collector are
 
 ## 9. Lead review and adversary
 
-Adversary: required (private data in telemetry; secrets).
+**Lead review round 1 (Fable `/code-review`, leg 1, 2026-11-01), four findings fixed in 83e033b:** phone mask to the last four digits per integrations §11 (the plan's "two" was the lead's slip); one shared key-token helper; one control-character pass; secrets in URL path segments redacted.
+
+**Adversary pass (Fable, 2026-11-01, on 83e033b): CHANGES REQUIRED (1 high, 2 medium, 6 low). Re-check on df88dcd: PASS.**
+
+| Id | Severity | Finding | Status | Lead ruling |
+|---|---|---|---|---|
+| A-1 | high | unanchored redaction regexes backtracked quadratically; no cap before regex | fixed: lookbehinds on every pattern, 4 kB cap first in every entry point, 100 kB in under 50 ms | residuals A-1b (prefix at the cut) and A-1c (key run after `[0-9-]`) fixed in the residuals commit |
+| A-2 | medium | Buffers, typed arrays, Map and Set bypassed the redactor | fixed: size only, before depth handling | – |
+| A-3 | medium | Sentry unhandled rejections in `warn` mode kept a crashed process alive | fixed: `strict`; live probe exit 1 | an automated spawned-process test is optional (§8.2) |
+| A-4 | low | object keys not redacted | fixed | – |
+| A-5 | low | token segments shorter than 24 or without a digit passed | fixed: 20 characters with a digit or mixed case | ULIDs and long camelCase segments are redacted: accepted loss of detail |
+| A-6 | low | trace context extracted from any client; tracestate re-injected | fixed behind the trusted ingress on staff, platform and driver paths; tracestate dropped | residual accepted: an unauthenticated client still names the trace id of its own 401 span; the edge does not strip `traceparent` |
+| A-7 | low | collector auth header read outside the config module | fixed: `OTEL_EXPORTER_OTLP_HEADERS` as a config `Secret`, passed explicitly | the library still merges per-signal `OTEL_EXPORTER_OTLP_*_HEADERS` from the environment; OPS-1 sets only the one variable |
+| A-8 | low | `ELX_RELEASE=dev` or unset accepted in production | fixed: refused for api and worker; migrate exempt | – |
+| A-9 | low | gauge query per worker without a lock | accepted | moves under the relay leader lock when more than one worker runs |
+
+**Executor deviations accepted:** `elx.account.id` attribute name; `correlation_id` as an attribute, not a span link; OpenTelemetry 2.12 (Sentry 10 refuses 3.0); a custom JSON Nest logger instead of pino; no auto-instrumentation for postgres.js and BullMQ (SQL text is not traced).
+
+**Identity §9 item 6 (lead):** no phone, email, token, code, header or body in any span, log line, metric label or error report, proven by the allowlist, redactor and scrubbing tests.
+
+Leg 2 (web and admin) review is recorded below by the lead.
