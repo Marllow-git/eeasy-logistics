@@ -35,10 +35,11 @@ module.exports = {
       comment:
         'ADR-0031, data §4.4, PLAT-5 plan 2.5: the elx_platform pool and unscoped() ' +
         '(@eeasy-logistics/db/platform) are imported only by the platform module ' +
-        '(modules/kernel/platform/) and the worker system jobs (src/worker/system/).',
+        '(modules/kernel/platform/), the worker system jobs (src/worker/system/) and the seed ' +
+        'tool (src/seed/, local and ci only).',
       severity: 'error',
       from: {
-        pathNot: ['(?:^|/)modules/kernel/platform/', '(?:^|/)src/worker/system/'],
+        pathNot: ['(?:^|/)modules/kernel/platform/', '(?:^|/)src/worker/system/', '^src/seed/'],
       },
       to: { path: '(?:^|/)packages/db/src/platform\\.ts$' },
     },

@@ -3,7 +3,11 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { afterEach, describe, expect, it } from 'vitest';
-import { READINESS_CHECKS, ReadyController, readinessTimeoutMs } from '../src/health/ready.controller.js';
+import {
+  READINESS_CHECKS,
+  ReadyController,
+  readinessTimeoutMs,
+} from '../src/health/ready.controller.js';
 import type { CheckName, ReadinessCheck } from '../src/health/readiness.js';
 
 const passing = (name: CheckName): ReadinessCheck => ({ name, run: () => Promise.resolve() });

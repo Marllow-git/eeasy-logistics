@@ -104,6 +104,9 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: Migrate from zero
         run: pnpm --filter @eeasy-logistics/api run migrate
+      # ci seeds on every run (data §11.6): the deterministic fixtures, idempotent.
+      - name: Seed the fixtures
+        run: pnpm --filter @eeasy-logistics/api run seed
       - name: Unit tests
         run: pnpm --filter @eeasy-logistics/api run test:unit
       - name: Integration tests (ELX_RLS=${{ matrix.rls }})
