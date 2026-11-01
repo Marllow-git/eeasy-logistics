@@ -17,7 +17,8 @@ No environment shares a database, a Redis or a bucket with another. The developm
 
 | Service | Image | Notes |
 |---|---|---|
-| web | `apps/web` standalone Next.js build | serves merchant, admin and recipient pages; reads the API over the internal network and the public URL |
+| web | `apps/web` standalone Next.js build | serves merchant and recipient pages; reads the API over the internal network and the public URL |
+| admin | `apps/admin` standalone Next.js build | serves the platform console on its own hostname (ADR-0038); same pattern as web; may sit behind an IP allowlist or identity-aware proxy at the edge |
 | api | `apps/api` NestJS | HTTP + SSE; stateless; horizontal |
 | worker | same image as api, `--role worker` | BullMQ consumers, outbox relay, schedulers; scaled separately |
 | postgres | PostgreSQL 16 + PostGIS | managed service in production where available; self-run in Compose |
@@ -43,7 +44,7 @@ Pull request pipeline, five required checks (handbook 03):
 
 1. `typecheck-lint`: every workspace, Turborepo cached.
 2. `api-test`: unit plus integration against the `ci` profile (PostgreSQL + Redis + stubs); migrations applied from zero; the tenancy schema test and the ledger trigger tests included; an RLS-enabled integration lane runs the integration suite with row-level security switched on (data §4.5) (amended 2026-10-31, roadmap A-6).
-3. `web-build-census`: standalone build, isolated stack on the `ci` profile, Playwright census in `ar` and `en`; screenshots uploaded as artifacts.
+3. `web-build-census`: standalone build, isolated stack on the `ci` profile, Playwright census in `ar` and `en`; screenshots uploaded as artifacts. `admin-build-census` does the same for `apps/admin` (ADR-0038, WEB-19).
 4. `driver-test`: Expo typecheck and unit; EAS builds are manual.
 5. `gitleaks`.
 
@@ -71,7 +72,7 @@ Images are built once per merge to `main`, tagged with the commit, scanned, push
 
 ## 8. Edge and network
 
-- Cloudflare in front of web and api: TLS, WAF, rate limiting as a coarse layer, bot rules off for the driver API routes. Origin accepts only Cloudflare ranges.
+- Cloudflare in front of web, admin and api: TLS, WAF, rate limiting as a coarse layer, bot rules off for the driver API routes. Origin accepts only Cloudflare ranges. `/v1/platform/*` is routed only on the admin hostname, `/v1/staff/*` and `/v1/recipient/*` only on the web hostnames; a path on the wrong hostname answers `404` at the edge (ADR-0038).
 - Security headers on every response: HSTS preload, `X-Frame-Options: DENY` except the recipient pages (which may be embedded by merchants' storefronts under a per-account allowlist), `nosniff`, a CSP that lists the API origin and the storage domain only.
 - Internal services (postgres, redis, vroom) on a private network with no public ports.
 

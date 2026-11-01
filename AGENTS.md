@@ -1,6 +1,6 @@
 # AGENTS.md — eeasy-logistics
 
-Standalone last-mile delivery and WMS product for merchants with their own drivers and stock. Monorepo: Next.js web (`apps/web`), NestJS API (`apps/api`), Expo driver app (`apps/driver`), shared packages (`packages/contracts`, `packages/ui`, `packages/i18n`, `packages/config`, `packages/db`) (amended 2026-10-31, roadmap A-7). **Phase: wave 0, foundation — the package is approved (2026-10-31); build follows `docs/roadmap.md`, one PR per order, pipeline and roles in `docs/handbook/01-workflow.md` and `05-roles-and-agents.md`, agents in `.claude/agents/`.**
+Standalone last-mile delivery and WMS product for merchants with their own drivers and stock. Monorepo: Next.js merchant and recipient web (`apps/web`), Next.js platform console (`apps/admin`, ADR-0038), NestJS API (`apps/api`), Expo driver app (`apps/driver`), shared packages (`packages/contracts`, `packages/ui`, `packages/i18n`, `packages/config`, `packages/db`) (amended 2026-10-31, roadmap A-7). **Phase: wave 0, foundation — the package is approved (2026-10-31); build follows `docs/roadmap.md`, one PR per order, pipeline and roles in `docs/handbook/01-workflow.md` and `05-roles-and-agents.md`, agents in `.claude/agents/`.**
 
 Long form: `docs/handbook/`. Decisions: `adr/`. Only remote: `github.com/Marllow-git/eeasy-logistics`, default branch `main`.
 

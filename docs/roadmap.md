@@ -34,7 +34,8 @@ Delivers (foundation plan §6): scaffold, CI, Compose, PostgreSQL + PostGIS, aut
 | WEB-1 | Web shell, design system and i18n | Route groups, Radix + Tailwind `packages/ui` with tokens, next-intl `ar` default and RTL, logical-CSS lint, shared formatting module, IBM Plex Sans Arabic, census harness `ar` and `en`. | ADR-0016, ADR-0033; doc 7 §1, §5, §6.1 to §6.3, §10, §11 | PLAT-1, PLAT-15, Q-21 | ux | no |
 | WEB-2 | Browser sessions and sign-in doors | Edge routing of `/v1/*` on the web origin; middleware refresh; single-flight fetch wrapper; CSP and headers per group; sign-in, second factor, reset, invitation, platform sign-in and TOTP. | ADR-0032; doc 7 §3, §8 wave 0 | WEB-1, PLAT-11, Q-22 | ux | yes |
 | WEB-3 | Merchant settings screens | Home with visible modules, account settings, members, sites, audit log; route manifest and `<Can>` gating. | doc 7 §4, §8 wave 0 | WEB-2, PLAT-12, PLAT-7 | ux | no |
-| WEB-4 | Platform area | Accounts and provisioning, rollout and flags, cross-tenant views with the support banner and `X-Support-Reason`, outbox, staff and audit. | doc 7 §3.5, §8 wave 0; doc 4 §5, §6 | WEB-2, PLAT-13, PLAT-8 | ux | yes |
+| WEB-4 | Platform console screens | In `apps/admin` (ADR-0038): accounts and provisioning, rollout and flags, cross-tenant views with the support banner and `X-Support-Reason`, outbox, staff and audit. | ADR-0038; doc 7 §3.5, §8 wave 0; doc 4 §5, §6 | WEB-19, WEB-2, PLAT-13, PLAT-8 | ux | yes |
+| WEB-19 | Admin console scaffold | `apps/admin`: Next.js app with `(auth)` and `(platform)` groups, `ar` default and RTL, standalone image and Dockerfile, `admin` service in the Compose profiles and the native stack, `admin-build-census` lane and `image (admin)` job, per-host edge routing documented for OPS-1, architecture rule limiting it to the `platform` contracts surface and `apps/web` to `staff` and `recipient`; the `(platform)` placeholder leaves `apps/web`. | ADR-0038; doc 7 §1, §1.2; doc 6 §2, §4, §8 | PLAT-3, PLAT-15 | ux | no |
 | OPS-1 | Host, registry and staging | Provider quote and choice, registry, staging deployed on merge to `main`, secret store, Cloudflare in front, private network. | ADR-0022; doc 6 §1, §4, §8, §10; doc 5 §13.4 | PLAT-3, Q-10, Q-12 | research, backend | yes |
 | OPS-2 | Backups and wave 0 runbooks | Daily backups and WAL archiving, first restore drill; runbooks: provision an account, rotate token signing key, rotate credentials key, restore from backup, switch a rollout mode. | doc 6 §6, §9 | OPS-1 | backend | no |
 
@@ -58,6 +59,8 @@ flowchart LR
   PLAT8 --> PLAT14[PLAT-14 observability]
   PLAT3 --> PLAT15[PLAT-15 contracts]
   PLAT15 --> WEB1[WEB-1 shell]
+  PLAT15 --> WEB19[WEB-19 admin scaffold]
+  WEB19 --> WEB4
   WEB1 --> WEB2[WEB-2 sessions]
   PLAT11 --> WEB2
   WEB2 --> WEB3[WEB-3 settings]
@@ -327,7 +330,7 @@ Owner delegation 2026-10-31: every proposed default stands provisionally and is 
 | Q-19 | doc 7 §12.3 | Map tiles: Hudhud, self-hosted Protomaps, or licensed | Hudhud if included, else Protomaps after a boundary check | 1 | default (provisional) |
 | Q-20 | doc 7 §12.4 | Recipient page embedding | off by default; `embed_origins`; tracking only | 1 | default (provisional) |
 | Q-21 | plan §8 D8; doc 7 §12.1 | Brand name for the merchant UI | "Eeasy Logistics" plus a working Arabic name, one key | 0 | default (provisional) |
-| Q-22 | doc 7 §12.2 | Platform area on its own hostname | yes, `admin.<domain>` | 0 | default (provisional) |
+| Q-22 | doc 7 §12.2 | Platform area on its own hostname | a separate application `apps/admin` on `admin.<domain>` (ADR-0038) | 0 | ruled 2026-11-01 |
 | Q-23 | doc 7 §12.5; doc 8 §13.2 | Refresh-token reuse grace | 30 seconds, same family, same pair returned | 0 | default (provisional) |
 | Q-24 | doc 8 §13.5; doc 3 §12.6 | Minimum app version signal | `min_app_version` on `driverGetMe` and `426 app_update_required` (already in `driver.yaml` as proposed) | 1 | default (provisional) |
 | Q-25 | doc 8 §13.3 | Keep rejected driver events with cash and show them to dispatch and cashiers | yes | 1 | default (provisional) |
@@ -383,6 +386,7 @@ Small changes other documents need; none is made by this roadmap. The ones that 
 | A-13 | plan §8 | Record D8 brand (Q-21) and D7 pilot (Q-31) once ruled. | the PR that follows each ruling | waits on Q-21 / Q-31 |
 | A-14 | PLAT-1 plan §8, platform §2 | Move the runtime from Node 22 LTS to Node 24 LTS (Vercel knowledge update 2026-09-18: Node 24 is the current default; Node 20 deprecated 2026-10-01). Self-hosted containers are unaffected until then; do it before wave 1 exit. | PLAT-3 PR (CI matrix on 24) then a chore PR | owed |
 | A-15 | ADR-0015, platform §2, integrations §9 | Upstream MinIO is archived and its images are gone (2026-10-31); local and CI use the maintained fork `pgsty/silo` with `pgsty/mc`, pinned by digest in `compose.yaml`; production stays on the provider bucket. Wording in the three documents: "an S3-compatible store (the Silo fork of MinIO in Compose)". | PLAT-2 PR #25 (compose); wording PR | done 2026-10-31 |
+| A-16 | ADR-0032, ADR-0038, doc 7 §1, §1.2, §12.2, doc 6 §2, §4, §8, AGENTS.md | Owner ruling 2026-11-01: the platform console is its own application `apps/admin` on its own hostname; per-host edge routing of the platform surface; new order WEB-19; Q-22 ruled. | docs PR (this amendment); WEB-19 for the code | done 2026-11-01 (docs) |
 
 ## 6. Deferred and out of scope
 

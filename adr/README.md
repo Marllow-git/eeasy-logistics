@@ -54,3 +54,4 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 - **Proposed with the web app architecture (document 7):** 0032 browser reaches the API on the web origin, 0033 design system base and map provider.
 - **Proposed with the driver app architecture (document 8):** 0034 offline cash PIN verifier, 0035 Maestro end-to-end flows.
 - **Proposed with the integration architecture (document 9):** 0036 outbox kinds and worker queues, 0037 messaging templates only, no SMS before wave 3.
+- **Owner rulings during wave 0:** 0038 separate admin console application and hostname (2026-11-01; closes web open question 2 and Q-22, amends 0032).
