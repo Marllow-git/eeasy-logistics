@@ -6,3 +6,20 @@
 node_modules/
 **/node_modules/
 .git/
+
+# Build output and caches: the images build from source (PLAT-3 decision 2.8).
+**/.turbo/
+**/.next/
+**/dist/
+**/.expo/
+**/coverage/
+**/*.tsbuildinfo
+**/next-env.d.ts
+**/test-results/
+**/playwright-report/
+*.log
+# Agent and editor state, and documents no image needs.
+.claude/
+.serena/
+docs/
+adr/
