@@ -13,7 +13,7 @@ Each order is a **fixed sequential pipeline**: register, plan, build, review, ga
 | 1 | **Register** | lead | The order is a roadmap row; every `Depends on` order is merged; no in-flight order conflicts with it (section "Running orders in parallel"); a GitHub issue exists with the module and `status:planned` labels. | lead, against `docs/orders/README.md` |
 | 2 | **Research** (only when the plan needs a fact the documents do not hold) | researcher | A dated, sourced note under `docs/research/`; questions it could not answer listed. | lead reads it before planning |
 | 3 | **Plan** | lead | `docs/orders/<ID>/plan.md` with sections 0 to 7 (handbook 04) as the first commit on `feat/<ID>-<slug>`, pushed; every open owner question is a row with a provisional default; the owner has said go if the order is a one-way door or changes a register default. | lead; owner for one-way doors |
-| 4 | **Build** | executor | Every build-list item is a commit; §8 of the plan is filled (skills and docs consulted, interpretations, not done); targeted tests green locally with counts; red-then-green shown for behaviour changes; PR opened as draft with the template filled. | executor report; lead checks §8 against the diff |
+| 4 | **Build** | executor | Every build-list item is a commit and a row in the §8.0 progress table, committed with it; §8.1 to §8.3 filled; targeted tests green locally with counts; red-then-green shown for behaviour changes; PR opened as draft with the template filled. A leg (handbook 04) ends when its items are in the table; the next leg is a fresh executor on the same branch. | executor report; lead checks §8 against the diff |
 | 5 | **Lead review** | lead | `/code-review` on the diff, findings fixed by the executor, at most **two rounds**. | lead |
 | 6 | **Adversary** (only when the roadmap row says `Adv. yes`) | adversary | Verdict recorded in plan §9: no critical or high open, medium and low fixed or ruled with a reason. **One pass, one re-check** of the fixes, no more. | adversary verdict; lead records |
 | 7 | **PR gate** | script | `tools/pr-gate.sh <PR>` passes: head has implementation commits beyond the plan, CI green on every check, §8 and §9 present when required, release note present when user-visible paths changed, PR body sections present. | `tools/pr-gate.sh` |
@@ -39,6 +39,19 @@ While an executor builds, the lead does not wait. It registers and plans the nex
 - Lead review: two rounds. Adversary: one pass and one re-check.
 - An executor that cannot finish an item records the blocker in plan §8.3 and stops. The lead either re-briefs a fresh executor with that §8 or asks the owner. The lead does not finish the item itself.
 - Anything that would change a register default (roadmap §4), supersede an ADR, or open a one-way door stops at the lead and goes to the owner as a question with a recommendation. Executors never answer owner questions; they record an interpretation in §8.2 and build on the default.
+
+## Context
+
+The repository is the context store. Every agent reads a named slice of it and writes its result back to it; chat carries verdicts and ten-line reports, nothing else.
+
+- **Checkpoint per item.** The executor commits the §8.0 progress row with each build item. A replacement executor resumes from the branch and the plan with no chat history.
+- **Legs.** An executor run covers at most five build items. The lead splits larger orders into legs at plan time; each leg is a fresh agent, same branch, same PR.
+- **Sections, not documents.** Plan §1 names file and heading; executors read only those, through `Read` with an offset or Serena symbol tools. Documentation is fetched per item when the item needs it, after the surface's skill is loaded once at the start.
+- **The lead reads tables, not diffs.** Gate output, PR body, §8, §9 and the adversary table. Code review runs in a fresh subagent (`/code-review` or `adversary`), never a fork, so the diff and tool output stay out of the lead's window.
+- **Summary first.** Research notes open with "Summary for the lead", ten lines at most. Adversary output is the table, then the verdict.
+- **Quiet output.** Executors run tests with a summary reporter and record counts; they do not stream full logs into their window.
+- **Session start.** The lead reads `docs/orders/README.md`, the open PR list and the roadmap rows of in-flight orders, then nothing else until a task needs it. After a context compaction the lead re-reads the ledger instead of trusting the summary. Memory files hold owner rulings only.
+- **Shared project knowledge.** `.serena/memories/` is tracked so every worktree starts with the same codebase notes; an executor that learns something a later order needs writes it there and commits it.
 
 ## Merging
 
