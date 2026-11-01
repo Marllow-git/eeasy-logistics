@@ -17,6 +17,16 @@ export const tenancyExemptions: Readonly<Record<string, { class: string; reason:
 };
 
 /**
+ * Tenant tables whose `account_id` may be NULL (data §2.4 "nullable account"): platform actors
+ * write rows with no account. Everything else of a tenant table still applies (foreign key, leading
+ * index, unique indexes with account_id, both policies). A listed table must exist and must have
+ * the column nullable, so the list never goes stale.
+ */
+export const nullableAccountTables: Readonly<Record<string, string>> = {
+  core_idempotency_keys: 'platform principals off the cross-tenant door (data §2.4, §5.1; PLAT-6)',
+};
+
+/**
  * Unique indexes on tenant tables that may omit `account_id`, because the value is globally unique
  * (data §4.1: token hashes, `ledger_seq`, `(consumer, event_id)`, worker-owned keys). A unique index
  * on `id` alone is always allowed. Key: table; value: the indexed columns in order.

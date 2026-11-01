@@ -15,6 +15,7 @@ export const minimalEnv = { APP_ENV: 'local' } as const;
 export const productionEnv: Record<string, string> = {
   APP_ENV: 'production',
   PORT: '8080',
+  TRUST_PROXY_HOPS: '1',
   PUBLIC_WEB_URL: 'https://app.example.test',
   PUBLIC_ADMIN_URL: 'https://admin.example.test',
   PUBLIC_API_URL: 'https://api.example.test',

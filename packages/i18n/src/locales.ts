@@ -1,3 +1,5 @@
+// The supported locales (ADR-0016). No catalogue here, so the API can import it under Node's own
+// module loader (the JSON catalogues need an import attribute there; see src/errors.ts).
 export const locales = ['ar', 'en'] as const;
 export type Locale = (typeof locales)[number];
 

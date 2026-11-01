@@ -39,7 +39,7 @@ The lead's brief to an executor is the only context the executor has, so every b
 
 ## The adversary brief
 
-Branch, PR number, plan path, and the trigger that applied (auth, tokens, authorization or visibility, cash or stock ledgers, payments, private data). The adversary reads the diff and the code paths it touches, uses the project's hard rules as criteria (tenancy from the token, append-only ledgers, outbox for side effects, allowlist rollout, config module only, AR and EN strings), and returns findings by severity with a concrete abuse scenario and a fix, then **PASS** or **CHANGES REQUIRED**. The lead copies the table into plan §9 and the executor fixes critical and high before the re-check. Medium and low are fixed or ruled by the lead with the reason in §9.
+Branch, PR number, plan path, and the trigger that applied (auth, tokens, authorization or visibility, cash or stock ledgers, payments, private data). The adversary reads the diff and the code paths it touches, uses the project's hard rules as criteria (tenancy from the token, append-only ledgers, outbox for side effects, allowlist rollout, config module only, AR and EN strings), and returns findings by severity with a concrete abuse scenario and a fix, then **PASS** or **CHANGES REQUIRED**. The lead copies the table into plan §9 and the executor fixes critical and high before the re-check, which runs only when the pass found one. Medium and low are fixed or ruled by the lead with the reason in §9 and get no second adversary run.
 
 ## The researcher brief
 

@@ -15,7 +15,7 @@ Each order is a **fixed sequential pipeline**: register, plan, build, review, ga
 | 3 | **Plan** | lead | `docs/orders/<ID>/plan.md` with sections 0 to 7 (handbook 04) as the first commit on `feat/<ID>-<slug>`, pushed; every open owner question is a row with a provisional default; the owner has said go if the order is a one-way door or changes a register default. | lead; owner for one-way doors |
 | 4 | **Build** | executor | Every build-list item is a commit and a row in the §8.0 progress table, committed with it; §8.1 to §8.3 filled; targeted tests green locally with counts; red-then-green shown for behaviour changes; PR opened as draft with the template filled. A leg (handbook 04) ends when its items are in the table; the next leg is a fresh executor on the same branch. | executor report; lead checks §8 against the diff |
 | 5 | **Lead review** | lead | `/code-review` on the diff, findings fixed by the executor, at most **two rounds**. | lead |
-| 6 | **Adversary** (only when the roadmap row says `Adv. yes`) | adversary | Verdict recorded in plan §9: no critical or high open, medium and low fixed or ruled with a reason. **One pass, one re-check** of the fixes, no more. | adversary verdict; lead records |
+| 6 | **Adversary** (only when the roadmap row says `Adv. yes`) | adversary | Verdict recorded in plan §9: no critical or high open, medium and low fixed or ruled with a reason. **One pass**; a **re-check** of the fixes only when the pass found a critical or high (owner ruling 2026-11-01); mediums and lows are fixed by the executor and ruled by the lead without a second run. | adversary verdict; lead records |
 | 7 | **PR gate** | script | `tools/pr-gate.sh <PR>` passes: head has implementation commits beyond the plan, CI green on every check, §8 and §9 present when required, release note present when user-visible paths changed, PR body sections present. | `tools/pr-gate.sh` |
 | 8 | **Merge** | owner, or the lead when the owner has delegated merging in writing | Gate 7 passed on the exact head SHA that is merged. | owner or lead |
 | 9 | **Close** | lead | Issue closed with reason and PR link; worktree removed; ledger row removed; `.serena/memories/` checked against the merged diff (`memory_upkeep` triggers); the next unblocked order registered. | lead |
@@ -36,7 +36,7 @@ While an executor builds, the lead does not wait. It registers and plans the nex
 
 ## Round caps and escalation
 
-- Lead review: two rounds. Adversary: one pass and one re-check.
+- Lead review: two rounds. Adversary: one pass, plus one re-check only after a critical or high finding.
 - An executor that cannot finish an item records the blocker in plan §8.3 and stops. The lead either re-briefs a fresh executor with that §8 or asks the owner. The lead does not finish the item itself.
 - Anything that would change a register default (roadmap §4), supersede an ADR, or open a one-way door stops at the lead and goes to the owner as a question with a recommendation. Executors never answer owner questions; they record an interpretation in §8.2 and build on the default.
 

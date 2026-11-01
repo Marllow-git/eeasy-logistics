@@ -3,7 +3,7 @@
 - Node 22 (`.nvmrc`; engines `>=22.13 <23`; Node 24 move is roadmap A-14). pnpm 10.34 via `packageManager`; Turborepo 2.11 (`turbo.json`: typecheck/lint/test depend on `^typecheck`).
 - TypeScript 6.0, `tsconfig.base.json` in `packages/config-ts`: strict, `noUncheckedIndexedAccess`, `moduleResolution: Bundler`, `rewriteRelativeImportExtensions` (packages ship `.ts` source with `.ts` relative imports; API runs them via Node type stripping, `erasableSyntaxOnly`).
 - ESLint 9 flat config from `packages/config-eslint` (`base`, `react`); Prettier 3 at root.
-- API: NestJS 12, `type: module`, Vitest 5 (`vitest.config` unit, `vitest.integration.config.ts` integration), supertest, dependency-cruiser 18.
+- API: NestJS 12, `type: module`, Vitest 5 (`vitest.config` unit, `vitest.integration.config.ts` integration), supertest, dependency-cruiser 18; jose 6.2.13 (HS256 access tokens), zod 4.6.7, express 5.3.0 (direct, matches @nestjs/platform-express) with @types/express 5.0.6.
 - Web: Next.js 16.4 App Router, React 19.3, next-intl 4.14.9 (`ar` default, non-routing), Tailwind CSS 4.3.3 (`@tailwindcss/postcss`), `radix-ui` 1.8.1, class-variance-authority 0.7.1, tailwind-merge 3.7.0, clsx 2.1.1, lucide-react 1.64.0; Playwright 1.64 census + @axe-core/playwright 4.14.0 (`apps/web/tests`); component tests Vitest 5 + Testing Library 16.3 + jsdom 26.1 (`packages/ui`).
 - Driver: Expo SDK 58, Expo Router, Jest.
 - Config: Zod 4, dotenv (only when `APP_ENV=local`).

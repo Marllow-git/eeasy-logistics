@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import type { AppDatabase, Pool, RequestContext, Transaction } from '@eeasy-logistics/db';
+import type { AppDatabase, Pool, RequestContext } from '@eeasy-logistics/db';
 import { createAppPool, uuidv7, withUnitOfWork } from '@eeasy-logistics/db';
+import type { Transaction } from '@eeasy-logistics/db/testing';
+import { transactionOf } from '@eeasy-logistics/db/testing';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import {
   PlatformRepository,
@@ -86,8 +88,11 @@ describe(`row-level security with ELX_RLS=${rlsOn ? 'on' : 'off'}`, () => {
   });
 
   it('elx_app inside a unit of work reads its own account only when on', async () => {
-    const visible = await withUnitOfWork(appPool.db, context(accountA), ({ tx }) =>
-      tx.select({ id: coreAccounts.id }).from(coreAccounts).where(inArray(coreAccounts.id, ours)),
+    const visible = await withUnitOfWork(appPool.db, context(accountA), (uow) =>
+      transactionOf(uow)
+        .select({ id: coreAccounts.id })
+        .from(coreAccounts)
+        .where(inArray(coreAccounts.id, ours)),
     );
     expect(visible.map((row) => row.id).sort()).toEqual(rlsOn ? [accountA] : [...ours].sort());
   });
@@ -103,8 +108,8 @@ describe(`row-level security with ELX_RLS=${rlsOn ? 'on' : 'off'}`, () => {
   it('elx_app cannot insert, update or delete any account: a platform table (review M-3)', async () => {
     const write = (statement: (tx: Transaction) => PromiseLike<unknown>) =>
       sqlState(
-        withUnitOfWork(appPool.db, context(accountA), async ({ tx }) => {
-          await statement(tx);
+        withUnitOfWork(appPool.db, context(accountA), async (uow) => {
+          await statement(transactionOf(uow));
         }),
       );
     // 42501 from the privileges, before any policy is consulted, whatever ELX_RLS says.
@@ -138,8 +143,8 @@ describe(`row-level security with ELX_RLS=${rlsOn ? 'on' : 'off'}`, () => {
       if (rlsOn) await owner`ALTER TABLE ${table}.rows ENABLE ROW LEVEL SECURITY`;
       const insert = (accountId: string) =>
         sqlState(
-          withUnitOfWork(appPool.db, context(accountA), ({ tx }) =>
-            tx.execute(
+          withUnitOfWork(appPool.db, context(accountA), (uow) =>
+            transactionOf(uow).execute(
               sql`INSERT INTO ${sql.raw(`"${schema}".rows`)} VALUES (${uuidv7()}, ${accountId})`,
             ),
           ),

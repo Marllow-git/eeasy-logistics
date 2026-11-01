@@ -22,6 +22,9 @@ COPY . .
 FROM base AS build
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "@eeasy-logistics/api..."
+# The contracts first: controllers import the generated schemas through the server-safe
+# `@eeasy-logistics/contracts/<surface>/schemas` entries (A-17, PLAT-6 review round 2).
+RUN pnpm --filter @eeasy-logistics/contracts run build
 RUN pnpm --filter @eeasy-logistics/api run build
 # The seed tool (local and ci only; it needs the superuser URL, which staging and production refuse)
 # never ships in the image (PLAT-5 review L-4).
@@ -50,6 +53,8 @@ COPY --from=prod-deps /repo/packages ./packages
 COPY --from=prod-deps /repo/apps/api/package.json ./apps/api/package.json
 COPY --from=prod-deps /repo/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /repo/apps/api/dist ./apps/api/dist
+# The generated contract code next to the package source (gitignored, so prod-deps has none).
+COPY --from=build /repo/packages/contracts/generated ./packages/contracts/generated
 # The reviewed SQL migrations and their journal: --role migrate applies them, /ready reads the
 # expected version from the journal (PLAT-5).
 COPY --from=build /repo/apps/api/drizzle ./apps/api/drizzle
