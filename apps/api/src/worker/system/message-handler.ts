@@ -7,11 +7,10 @@ import {
   memoryBreakerStateStore,
   redisBreakerStateStore,
 } from '../../modules/kernel/messaging/breaker.js';
-import {
-  MessageKindHandler,
-  platformOnlyResolver,
-} from '../../modules/kernel/messaging/message.handler.js';
+import { MessageKindHandler } from '../../modules/kernel/messaging/message.handler.js';
+import { accountSenderResolver } from '../../modules/kernel/messaging/sender-resolver.js';
 import { createMessageSenders } from '../../modules/kernel/messaging/senders.js';
+import { messagingStore } from '../../modules/kernel/platform/messaging.repository.js';
 
 // The worker's `message` handler (PLAT-9 plan 2.5, 2A.1): the adapters of this build behind breakers
 // whose open state is shared through Redis (the API's OTP door reads it), the credentials cipher for
@@ -28,7 +27,6 @@ export function messageKindHandlerFor(
   pool: Pool<PlatformDatabase>,
   logger: HandlerLogger,
 ): MessageKindHandler | undefined {
-  void pool;
   const url = config.redis.url?.reveal();
   const redis =
     url === undefined
@@ -62,7 +60,7 @@ export function messageKindHandlerFor(
   return new MessageKindHandler({
     senders,
     cipher: config.credentials === null ? null : createCredentialsCipher(config.credentials),
-    resolver: platformOnlyResolver(senders),
+    resolver: accountSenderResolver(messagingStore(pool.db), senders.platformRoute),
     logger: log,
     onClose: () => {
       redis?.disconnect();

@@ -71,6 +71,20 @@
       "when": 1793552297935,
       "tag": "0009_core_otp_challenges",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793563785540,
+      "tag": "0010_core_messaging_opt_outs",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793563836599,
+      "tag": "0011_core_messaging_engine",
+      "breakpoints": true
     }
   ]
 }

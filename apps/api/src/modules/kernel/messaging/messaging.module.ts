@@ -4,6 +4,7 @@ import type { DynamicModule, OnApplicationShutdown } from '@nestjs/common';
 import { Global, Logger, Module } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { OutboxWriter } from '../outbox/outbox-writer.js';
+import { messagingStore } from '../platform/messaging.repository.js';
 import { otpStoreOnPool } from '../platform/otp-challenges.repository.js';
 import { PLATFORM_POOL } from '../platform/tokens.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
@@ -14,6 +15,10 @@ import type { MessageSenders } from './message-sender.js';
 import { OtpHasher, otpHmacKey } from './otp-code.js';
 import { MessagingAvailability, OtpService } from './otp.service.js';
 import { createMessageSenders } from './senders.js';
+import { EngineCallbackDoor } from './engine/callback-door.js';
+import { EngineCallbackController } from './engine/callback.controller.js';
+import { OptOutList } from './opt-out-list.js';
+import type { MessagingStore } from '../platform/messaging.repository.js';
 
 /** The breaker state reader of the API process (null without `REDIS_URL`). */
 export const MESSAGING_BREAKERS = Symbol('MESSAGING_BREAKERS');
@@ -59,7 +64,31 @@ export class MessagingModule {
   static forRoot(config: Config): DynamicModule {
     return {
       module: MessagingModule,
+      // The engine's callback door (plan 2A.2): only with the platform pool, which it writes.
+      controllers: [EngineCallbackController],
       providers: [
+        {
+          provide: EngineCallbackDoor,
+          inject: [PLATFORM_POOL],
+          useFactory: (pool: Parameters<typeof otpStoreOnPool>[0]) => {
+            const engine = config.messaging.engine;
+            const store: MessagingStore =
+              pool === null
+                ? {
+                    run: () => Promise.reject(new Error('DATABASE_URL_PLATFORM is not set')),
+                  }
+                : messagingStore(pool.db);
+            return new EngineCallbackDoor({
+              settings: {
+                keyId: engine.callbackKeyId?.reveal(),
+                secret: engine.callbackSecret?.reveal(),
+                platformInstanceId: engine.platformInstanceId,
+              },
+              store,
+              optOuts: new OptOutList(store),
+            });
+          },
+        },
         {
           provide: BreakerConnection,
           useFactory: () => new BreakerConnection(config.redis.url?.reveal()),

@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { ProviderFailure } from '../outbox/provider-failure.js';
+import { getMetrics } from '../telemetry/metrics.js';
 import type {
   MessageSender,
   SendTemplateInput,
@@ -98,6 +99,16 @@ export class BreakerSender implements MessageSender {
     this.#openMs = options.openMs ?? 30_000;
     this.#now = options.now ?? Date.now;
     this.#logger = options.logger ?? new Logger('MessagingBreaker');
+    this.#gauge();
+  }
+
+  /** `integration_breaker_state` (0 closed, 1 half-open, 2 open; observability/alerts.yaml). */
+  #gauge(): void {
+    const value = { closed: 0, half_open: 1, open: 2 }[this.state];
+    getMetrics().set('integration_breaker_state', value, {
+      port: 'message_sender',
+      provider: this.provider,
+    });
   }
 
   /** `closed`, `open` or `half_open` (the metric `integration_breaker_state`, plan 2.10). */
@@ -112,6 +123,7 @@ export class BreakerSender implements MessageSender {
     if (this.#state.kind === 'open') {
       if (this.#state.until > this.#now()) throw new BreakerOpen(this.provider);
       this.#state = { kind: 'trial' };
+      this.#gauge();
     }
     try {
       const sent = await this.inner.sendTemplate(input);
@@ -131,6 +143,7 @@ export class BreakerSender implements MessageSender {
     const wasOpen = this.#state.kind !== 'closed';
     this.#state = { kind: 'closed', failures: 0 };
     if (wasOpen) {
+      this.#gauge();
       this.#logger.log(`messaging breaker closed provider=${this.provider}`);
       await this.#publish(() => this.store.markClosed(this.provider));
     }
@@ -150,6 +163,7 @@ export class BreakerSender implements MessageSender {
       return;
     }
     this.#state = { kind: 'open', until: this.#now() + this.#openMs };
+    this.#gauge();
     this.#logger.warn(`messaging breaker open provider=${this.provider} for_ms=${this.#openMs}`);
     await this.#publish(() => this.store.markOpen(this.provider, this.#openMs));
   }

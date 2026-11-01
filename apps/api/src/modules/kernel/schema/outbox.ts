@@ -26,6 +26,22 @@ export const outboxKinds = [
 ] as const;
 export type OutboxKind = (typeof outboxKinds)[number];
 
+/** The engine's message states (engine contract §5.2), stored on a `message` row (PLAT-9). */
+export const providerStates = [
+  'accepted',
+  'queued',
+  'held_connection',
+  'paused_by_admin',
+  'sending',
+  'sent',
+  'delivered',
+  'read',
+  'failed',
+  'expired',
+  'suppressed',
+] as const;
+export type ProviderState = (typeof providerStates)[number];
+
 /** Delivery states of an outbox row (domain model §2.7; data §5.2). */
 export const outboxStatuses = ['pending', 'enqueued', 'done', 'dead', 'superseded'] as const;
 export type OutboxStatus = (typeof outboxStatuses)[number];
@@ -67,6 +83,10 @@ export const coreOutbox = pgTable(
     // parked. `platformListConsumers` counts from it (lead review round 3).
     parkedConsumers: text('parked_consumers').array(),
     supersedeKey: text('supersede_key'),
+    // A `message` row's state at the provider (PLAT-9 plan 2A.2): the engine's `message.status`
+    // callbacks, applied by rank and `provider_updated_at`; null for other kinds.
+    providerState: text('provider_state', { enum: providerStates }),
+    providerUpdatedAt: timestamp('provider_updated_at', { withTimezone: true }),
     enqueuedAt: timestamp('enqueued_at', { withTimezone: true }),
     doneAt: timestamp('done_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -113,6 +133,10 @@ export const coreOutbox = pgTable(
     check('core_outbox_sequence_check', sql`${table.sequence} >= 1`),
     check('core_outbox_attempts_check', sql`${table.attempts} >= 0`),
     check('core_outbox_deferrals_check', sql`${table.deferrals} >= 0`),
+    check(
+      'core_outbox_provider_state_check',
+      sql`${table.providerState} IN ('accepted', 'queued', 'held_connection', 'paused_by_admin', 'sending', 'sent', 'delivered', 'read', 'failed', 'expired', 'suppressed')`,
+    ),
   ],
 );
 
