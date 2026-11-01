@@ -93,15 +93,20 @@ export async function runMigrations(options: MigrateOptions): Promise<MigrateRes
     await migrate(drizzle({ client }), { migrationsFolder: options.folder });
 
     const after = await appliedMigrations(client);
-    await client`UPDATE core_schema_meta SET version = ${version}, migrated_at = now()`;
-    let rlsTables = 0;
-    if (options.rls) {
-      const [result] = await client<
-        { enabled: number }[]
-      >`SELECT core_enable_tenant_rls() AS enabled`;
-      rlsTables = result?.enabled ?? 0;
-      log(`ELX_RLS=on: row-level security enabled on ${rlsTables} table(s).`);
-    }
+    // The RLS switch first, then the version, in one transaction (review L-2): /ready never sees
+    // the new version on a database whose RLS state the run has not yet settled.
+    const rlsTables = await client.begin(async (tx) => {
+      let enabled = 0;
+      if (options.rls) {
+        const [result] = await tx<
+          { enabled: number }[]
+        >`SELECT core_enable_tenant_rls() AS enabled`;
+        enabled = result?.enabled ?? 0;
+      }
+      await tx`UPDATE core_schema_meta SET version = ${version}, migrated_at = now()`;
+      return enabled;
+    });
+    if (options.rls) log(`ELX_RLS=on: row-level security enabled on ${rlsTables} table(s).`);
     return { applied: after.length - before.length, version, rlsTables };
   } finally {
     // Closing the session releases the lock as well; the explicit unlock keeps the order clear.
