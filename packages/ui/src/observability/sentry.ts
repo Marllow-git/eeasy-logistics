@@ -1,4 +1,4 @@
-import { redactText, scrubUrl } from './redact';
+import { isSecretKey, redactText, scrubUrl } from './redact';
 
 // Sentry scrubbing for the web apps (PLAT-14 plan 2.7, web §10.4): `scrubSentryEvent` is the
 // `beforeSend` of the browser and the Next.js server SDKs, and the /monitoring tunnel applies it
@@ -91,7 +91,7 @@ export function scrubSentryEvent<Event extends object>(event: Event): Event {
   if (isObject(source.tags)) {
     const tags: Json = {};
     for (const [key, value] of Object.entries(source.tags)) {
-      if (!tagKey.test(key)) continue;
+      if (!tagKey.test(key) || isSecretKey(key)) continue;
       if (typeof value === 'string') tags[key] = redactText(value);
       else if (typeof value === 'number' || typeof value === 'boolean') tags[key] = value;
     }

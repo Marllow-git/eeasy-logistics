@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   filterSentryEnvelope,
   isRecipientPath,
+  isSecretKey,
   maxEnvelopeBytes,
   redactText,
   scrubAnalyticsEvent,
@@ -75,6 +76,47 @@ describe('redaction', () => {
     expect(result).toContain('[email]');
     expect(result).toContain('[jwt]');
     expect(result).toContain('https://api.example.test/v1/recipient/track/:token');
+  });
+
+  it('redacts values of compound secret keys, by key token (lead review round 2)', () => {
+    const text = [
+      'client_secret=cs-value-1',
+      '"user_password":"up-value-2"',
+      'webhook_secret: wh-value-3',
+      'signing_key=sk-value-4',
+      'db_password=db-value-5',
+      'signingKey=sk-value-6 x-api-key: ak-value-7',
+    ].join(' ');
+    const result = redactText(text);
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) expect(result).not.toContain(`value-${n}`);
+    expect(result).toContain('client_secret=[redacted]');
+    expect(result).toContain('"user_password":"[redacted]');
+    expect(result).toContain('webhook_secret: [redacted]');
+    expect(redactText('shipping_fee=12 code: internal_error status=failed')).toBe(
+      'shipping_fee=12 code: internal_error status=failed',
+    );
+  });
+
+  it('names secret keys by token, not substring', () => {
+    for (const key of [
+      'client_secret',
+      'user_password',
+      'webhook_secret',
+      'signing_key',
+      'db_password',
+      'apiKey',
+      'x-api-key',
+      'APIKey',
+      'otp_code',
+      'verification_code',
+      'session.id',
+      'privateKey',
+    ]) {
+      expect(isSecretKey(key), key).toBe(true);
+    }
+    for (const key of ['shipping_fee', 'spinner', 'keyboard', 'order_id', 'code', 'boundary']) {
+      expect(isSecretKey(key), key).toBe(false);
+    }
   });
 
   it('keeps ids, counts, dates and UUIDs', () => {
@@ -292,6 +334,24 @@ describe('scrubAnalyticsEvent (before_send)', () => {
     expect(result).not.toHaveProperty('$set');
     expect(result).not.toHaveProperty('$set_once');
     expect(scrubAnalyticsEvent(null)).toBeNull();
+  });
+
+  it('drops secret-named keys at any depth, before any value scrub (lead review round 2)', () => {
+    const result = scrubAnalyticsEvent({
+      event: 'shell.error_page.shown',
+      properties: {
+        client_secret: 'zq-planted',
+        boundary: 'segment',
+        nested: { webhook_secret: 'zq-planted', kept: 1, list: [{ db_password: 'zq-planted' }] },
+        $session_id: '0192f3a4-5b6c-7d8e-9f01-23456789abcd',
+      },
+    });
+    expect(result?.properties).toEqual({
+      boundary: 'segment',
+      nested: { kept: 1, list: [{}] },
+      $session_id: '0192f3a4-5b6c-7d8e-9f01-23456789abcd',
+    });
+    expect(JSON.stringify(result)).not.toContain('zq-planted');
   });
 
   it('knows the recipient paths', () => {

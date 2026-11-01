@@ -47,9 +47,10 @@ export const metricCatalogue = {
   // integrations §10, ADR-0036: the outbox (observed by the 30 s worker job)
   outbox_due_oldest_age_seconds: {
     kind: 'observed',
-    description: 'Age of the oldest due, unsent outbox row per kind',
+    description:
+      'Age of the oldest due, unsent outbox row per kind and template class (otp, other, n/a)',
     unit: 's',
-    labels: ['kind'],
+    labels: ['kind', 'template_class'],
   },
   outbox_rows: {
     kind: 'observed',
