@@ -108,6 +108,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: elx-ci
       APP_ENV: ci
+      # The ports of .env.example; tests/playwright.config.ts expects the web app on 3001.
       API_PORT: '3000'
       WEB_PORT: '3001'
     steps:
@@ -160,8 +161,6 @@ jobs:
       - name: Install Chromium for Playwright
         run: pnpm --filter @eeasy-logistics/web exec playwright install --with-deps chromium
       - name: Playwright in ar and en
-        env:
-          PLAYWRIGHT_BASE_URL: http://127.0.0.1:${{ env.WEB_PORT }}
         run: pnpm --filter @eeasy-logistics/web run test:smoke
       - name: Upload screenshots and logs
         if: always()
@@ -197,6 +196,27 @@ jobs:
         run: pnpm turbo run typecheck lint test --filter=@eeasy-logistics/driver
       - name: expo-doctor
         run: pnpm --filter @eeasy-logistics/driver run doctor
+
+  # Advisory, not a required check (decision 2.10): prepares the move to Node 24 (amendment A-14).
+  # continue-on-error keeps a failure here from failing the workflow, so main.yml still builds
+  # the images; the job itself still shows red.
+  node-24:
+    name: node-24
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          node-version: '24'
+          cache-scope: node-24
+      - name: Typecheck, lint and test on Node 24
+        run: |
+          node --version
+          pnpm turbo run typecheck lint test
 
   gitleaks:
     name: gitleaks
