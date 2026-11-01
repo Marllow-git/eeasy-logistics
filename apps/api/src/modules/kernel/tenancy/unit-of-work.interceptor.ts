@@ -151,10 +151,13 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
     platform: PlatformFrames,
   ): Promise<unknown> {
     const { principal, request, requestId, handle } = call;
+    /** A `lookup` door's resource (the outbox row), named in its audit rows (adversary L-6). */
+    let resourceId: string | undefined;
     const event = (
       action: 'accessed' | 'refused',
       fields: {
         readonly accountId: string | null;
+        readonly targetType?: string;
         readonly targetId: string;
         readonly reason: string | null;
         readonly outcome: string;
@@ -164,10 +167,15 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       actorType: 'platform_user',
       actorId: principal.userId,
       accountId: fields.accountId,
-      targetType: 'account',
+      targetType: fields.targetType ?? 'account',
       targetId: fields.targetId,
       action: `platform.cross_tenant.${action}`,
-      after: { operation: call.operation, outcome: fields.outcome, status: fields.status },
+      after: {
+        operation: call.operation,
+        outcome: fields.outcome,
+        status: fields.status,
+        ...(resourceId === undefined ? {} : { resource_id: resourceId }),
+      },
       reason: fields.reason,
       requestId,
       clientRequestId: clientRequestIdOf(request),
@@ -178,16 +186,20 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
     const write = (action: 'accessed' | 'refused', fields: Parameters<typeof event>[1]) =>
       this.audit.recordCommitted(event(action, fields));
 
-    const target = crossTenantTarget(request, source);
+    const plain = () => platform.runPlatform({ userId: principal.userId, requestId }, handle);
+    const resourceType = source.from === 'lookup' ? source.resource : undefined;
+    let target = crossTenantTarget(request, source);
     if (target === undefined) {
-      // A query-declared door without its parameter: plain platform work (PLAT-7 plan 2.7).
-      return platform.runPlatform({ userId: principal.userId, requestId }, handle);
+      // A query- or body-declared door without its parameter: plain platform work (PLAT-7 plan
+      // 2.7, PLAT-8 plan 2.7).
+      return plain();
     }
     if (isRefusal(target)) {
       // Refused before the account was checked, so it may not exist: the row names the attempted
       // id as its target only (a malformed value is never recorded raw) and carries no account.
       await write('refused', {
         accountId: null,
+        targetType: resourceType,
         targetId: target.accountId ?? 'malformed',
         reason: null,
         outcome: target.outcome,
@@ -195,8 +207,32 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       });
       throw target.error;
     }
+    if (source.from === 'lookup') {
+      // The resource names the account (PLAT-8 plan 2.7): resolved on the platform pool first. An
+      // unknown resource is refused like an unknown account; one of no account is platform work.
+      resourceId = target.accountId;
+      const lookupId = resourceId;
+      const found = await platform.runPlatform({ userId: principal.userId, requestId }, () =>
+        source.lookup(lookupId),
+      );
+      if (found === undefined) {
+        const error = new ApiException('not_found');
+        await write('refused', {
+          accountId: null,
+          targetType: resourceType,
+          targetId: lookupId,
+          reason: target.reason,
+          outcome: 'not_found',
+          status: error.status,
+        });
+        throw error;
+      }
+      if (found.accountId === null) return plain();
+      target = { accountId: found.accountId, reason: target.reason };
+    }
+    const admittedTarget = target;
     const context: RequestContext = {
-      accountId: target.accountId,
+      accountId: admittedTarget.accountId,
       membershipId: null,
       userId: principal.userId,
       deviceId: null,
@@ -212,9 +248,9 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
         // and the handler's effect commit together; a failure here rolls both back.
         await this.audit.record(
           event('accessed', {
-            accountId: target.accountId,
-            targetId: target.accountId,
-            reason: target.reason,
+            accountId: admittedTarget.accountId,
+            targetId: admittedTarget.accountId,
+            reason: admittedTarget.reason,
             outcome: 'ok',
             status: call.successStatus(),
           }),
@@ -226,16 +262,16 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
         // The pre-check refused an unknown account: there is no account row to point at.
         await write('refused', {
           accountId: null,
-          targetId: target.accountId,
-          reason: target.reason,
+          targetId: admittedTarget.accountId,
+          reason: admittedTarget.reason,
           outcome: 'not_found',
           status: error.status,
         });
       } else {
         await write('accessed', {
-          accountId: target.accountId,
-          targetId: target.accountId,
-          reason: target.reason,
+          accountId: admittedTarget.accountId,
+          targetId: admittedTarget.accountId,
+          reason: admittedTarget.reason,
           outcome: 'failed',
           status: failureStatus(error, call.response),
         });

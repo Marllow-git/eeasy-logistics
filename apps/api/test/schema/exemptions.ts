@@ -25,6 +25,10 @@ export const tenancyExemptions: Readonly<Record<string, { class: string; reason:
 export const nullableAccountTables: Readonly<Record<string, string>> = {
   core_idempotency_keys: 'platform principals off the cross-tenant door (data §2.4, §5.1; PLAT-6)',
   core_audit_log: 'platform actors and refused cross-tenant calls (data §2.4, §2.1; PLAT-7)',
+  core_outbox: 'platform-only effects carry no account (data §2.4; PLAT-8 plan 2.1)',
+  core_consumer_receipts: "mirrors the event's account, none for a platform-only event (PLAT-8)",
+  core_consumer_dead_letters:
+    "mirrors the event's account, none for a platform-only event (PLAT-8)",
 };
 
 /**
@@ -35,6 +39,9 @@ export const nullableAccountTables: Readonly<Record<string, string>> = {
 export const globalUniqueIndexes: Readonly<Record<string, readonly (readonly string[])[]>> = {
   // The key of a partitioned table must contain the partition key (data §2.1; PLAT-7).
   core_audit_log: [['id', 'occurred_at']],
+  // Event ids are UUIDv7, unique across accounts (data §4.1 names `(consumer, event_id)`).
+  core_consumer_receipts: [['consumer', 'event_id']],
+  core_consumer_dead_letters: [['consumer', 'event_id']],
 };
 
 /**
@@ -54,4 +61,12 @@ export const appendOnlyTables: readonly string[] = ['core_audit_log'];
  */
 export const piiColumns: Readonly<Record<string, readonly string[]>> = {
   core_audit_log: ['actor_id', 'ip', 'user_agent', 'before', 'after', 'reason'],
+  core_outbox: ['payload', 'last_error'],
+  core_consumer_dead_letters: ['last_error'],
 };
+
+/**
+ * Tables guarded by `core_outbox_envelope_immutable()` `BEFORE UPDATE` (data §3.1, K-10): the
+ * envelope columns never change, delivery state does. Checked like `appendOnlyTables`.
+ */
+export const envelopeImmutableTables: readonly string[] = ['core_outbox'];

@@ -479,9 +479,19 @@ components:
             secret: {type: string, description: Shown once}
     OutboxRow:
       type: object
-      description: core_outbox row (document 2 §2.7). Platform surface only.
+      description: 'core_outbox row (document 2 §2.7). Platform surface only. The metadata (id, account, type, aggregate, times, delivery state) is on every row; the envelope with its payload only on a read through the cross-tenant door of the row''s account (amended 2026-11-01, PLAT-8).'
+      required: [id, account_id, type, aggregate_type, aggregate_id, sequence, kind, status, attempts, created_at]
       properties:
-        envelope: {$ref: '#/components/schemas/Envelope'}
+        id: {type: string, format: uuid, description: The envelope id}
+        account_id: {type: [string, 'null'], format: uuid, description: Null for a platform-only effect}
+        type: {type: string}
+        aggregate_type: {type: string}
+        aggregate_id: {type: string, format: uuid}
+        sequence: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        enqueued_at: {type: [string, 'null'], format: date-time}
+        done_at: {type: [string, 'null'], format: date-time}
+        envelope: {$ref: '#/components/schemas/Envelope', description: 'Only through the door of the row''s account (platformGetOutboxRow, platformListOutbox with account_id, the replay answers); absent otherwise and on platform-only rows'}
         kind: {type: string, enum: [internal_event, webhook, message, push, channel_publish, carrier_call, storage_lifecycle]}
         status: {type: string, enum: [pending, enqueued, done, dead, superseded]}
         attempts: {type: integer}

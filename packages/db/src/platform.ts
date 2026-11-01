@@ -3,6 +3,7 @@
 // architecture test allows importing this entry only from `modules/kernel/platform/`, the worker's
 // system jobs (`src/worker/system/`) and the seed tool.
 import type { Secret } from '@eeasy-logistics/config';
+import { sql } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import type { PlatformContext, RequestContext } from './context.ts';
 import { checkContext, checkPlatformContext, currentFrame, runInFrame } from './context.ts';
@@ -10,6 +11,7 @@ import type { Pool, RoleDatabase } from './pools.ts';
 import { openPool } from './pools.ts';
 import type { Transaction, UnitOfWork } from './unit-of-work.ts';
 import { openTransaction, retire, runTenantTransaction } from './unit-of-work.ts';
+import { isUuid } from './uuid.ts';
 
 export type { PlatformContext } from './context.ts';
 export { UnitOfWorkClosedError } from './unit-of-work.ts';
@@ -101,6 +103,57 @@ export async function withCrossTenantUnitOfWork<T>(
     }
     return runTenantTransaction(tx, checked, fn);
   });
+}
+
+/**
+ * One transaction on the platform pool for a system job acting on one event's account (PLAT-8
+ * plan 2.6: the internal-event dispatcher writes consumer receipts and dead letters here). When
+ * `accountId` is given, the first statement sets `elx.account_id` to it, transaction-local like
+ * `withUnitOfWork`, so `tenant_isolation` policies see that account; with null (a platform-only
+ * event) no setting is made. `fn` gets the raw transaction: only the platform module and the
+ * worker's system jobs may import this entry, and they write their own predicates.
+ */
+export function withPlatformAccountTransaction<T>(
+  db: PlatformDatabase,
+  accountId: string | null,
+  fn: (tx: Transaction) => Promise<T>,
+): Promise<T> {
+  if (accountId !== null && !isUuid(accountId)) {
+    throw new Error('withPlatformAccountTransaction needs a valid account id or null');
+  }
+  return db.transaction(async (tx) => {
+    if (accountId !== null) {
+      await tx.execute(sql`SELECT set_config('elx.account_id', ${accountId}, true)`);
+    }
+    return fn(tx);
+  });
+}
+
+/**
+ * `LISTEN <channel>` on a dedicated connection of the platform pool's client (postgres.js opens
+ * one single-connection instance for listeners, outside the pool's `max`, and re-listens after a
+ * reconnect; PLAT-8 plan 2.3). `onNotify` gets no payload: notifications only wake the caller,
+ * which reads the database itself. Resolves once the LISTEN is acknowledged, with the function
+ * that stops listening; closing the pool closes the connection.
+ */
+export async function listenOnPlatformPool(
+  db: PlatformDatabase,
+  channel: string,
+  onNotify: () => void,
+): Promise<() => Promise<void>> {
+  const client = (db as unknown as { $client: ListeningClient }).$client;
+  const { unlisten } = await client.listen(channel, () => onNotify());
+  return async () => {
+    await unlisten();
+  };
+}
+
+/** The part of the postgres.js client `listenOnPlatformPool` uses. */
+interface ListeningClient {
+  listen(
+    channel: string,
+    onNotify: (payload: string) => void,
+  ): Promise<{ unlisten: () => Promise<unknown> }>;
 }
 
 /** The platform unit of work of the current platform request or system job; throws otherwise. */
