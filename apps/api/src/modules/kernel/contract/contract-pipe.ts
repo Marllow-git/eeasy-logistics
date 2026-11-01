@@ -17,6 +17,14 @@ import { ApiException } from '../errors/api-exception.js';
 
 /** The request schemas of one operation, as `operationSchemas[operationId]` holds them. */
 export interface OperationSchemas {
+  /**
+   * The operation's identity as generated from the contract (PLAT-10 plan 2.2): its id, surface
+   * and `x-permission`. The permission guard reads them; a handler never names a permission.
+   */
+  readonly operationId?: string;
+  readonly surface?: string;
+  readonly permission?: string;
+  readonly crossTenant?: boolean;
   readonly params?: ZodType;
   readonly query?: ZodType;
   readonly header?: ZodType;
@@ -54,6 +62,11 @@ interface RawInput {
 /** Binds a handler to its contract operation: `@Operation(operationSchemas.platformListAccounts)`. */
 export const Operation = (schemas: OperationSchemas): MethodDecorator =>
   SetMetadata(OPERATION, schemas);
+
+/** The operation a handler is bound to with `@Operation()`, if any. */
+export function operationOf(handler: object): OperationSchemas | undefined {
+  return Reflect.getMetadata(OPERATION, handler) as OperationSchemas | undefined;
+}
 
 /** The handler's input, parsed by `ContractPipe` with the schemas of its `@Operation()`. */
 export const Input = createParamDecorator((_data: unknown, context: ExecutionContext): RawInput => {

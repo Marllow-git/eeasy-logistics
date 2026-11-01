@@ -4,4 +4,9 @@
 // generated/staff/ by `pnpm --filter contracts build`; never edited.
 export * from '../../generated/staff/model/index.ts';
 export * as schemas from '../../generated/staff/schemas.ts';
-export { operationSchemas, type OperationId } from '../../generated/staff/operations.ts';
+export {
+  operationSchemas,
+  operationPermissions,
+  crossTenantOperations,
+  type OperationId,
+} from '../../generated/staff/operations.ts';

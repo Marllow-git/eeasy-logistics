@@ -4,4 +4,9 @@
 // generated/platform/ by `pnpm --filter contracts build`; never edited.
 export * from '../../generated/platform/model/index.ts';
 export * as schemas from '../../generated/platform/schemas.ts';
-export { operationSchemas, type OperationId } from '../../generated/platform/operations.ts';
+export {
+  operationSchemas,
+  operationPermissions,
+  crossTenantOperations,
+  type OperationId,
+} from '../../generated/platform/operations.ts';

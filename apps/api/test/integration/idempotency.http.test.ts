@@ -15,7 +15,8 @@ import { AppModule } from '../../src/app.module.js';
 import { platformCookie, staffCookie } from '../../src/modules/kernel/auth/principal.js';
 import { TenantIdempotencyStore } from '../../src/modules/kernel/idempotency/idempotency.repository.js';
 import { PlatformIdempotencyStore } from '../../src/modules/kernel/platform/idempotency.repository.js';
-import { ApiException, Idempotent } from '../../src/modules/kernel/public/index.js';
+import { ApiException, Idempotent, Operation } from '../../src/modules/kernel/public/index.js';
+import { probeOperations } from '../support/probe-operations.js';
 import {
   purgeIdempotencyKeys,
   runIdempotencyPurge,
@@ -41,6 +42,7 @@ interface ProbeBody {
 @Controller('v1/staff/probe-rows')
 class StaffController {
   @Post()
+  @Operation(probeOperations.staffWrite)
   @HttpCode(201)
   @Idempotent()
   async create(@Body() body: ProbeBody): Promise<ProbeRow | undefined> {
@@ -59,6 +61,7 @@ class StaffController {
   }
 
   @Post('dated')
+  @Operation(probeOperations.staffWrite)
   @HttpCode(201)
   @Idempotent()
   dated(@Body() body: ProbeBody): { label: string; at: Date; nested: { on: Date } } {
@@ -66,6 +69,7 @@ class StaffController {
   }
 
   @Post('links')
+  @Operation(probeOperations.staffWrite)
   @HttpCode(201)
   @Idempotent({ secretResponse: true })
   async link(@Body() body: ProbeBody): Promise<{ id: string; link: string }> {
@@ -78,6 +82,7 @@ class StaffController {
   }
 
   @Post('secrets')
+  @Operation(probeOperations.staffWrite)
   @HttpCode(201)
   @Idempotent({ secretResponse: true })
   async issue(@Body() body: ProbeBody): Promise<{ id: string; label: string; secret: string }> {
@@ -92,6 +97,7 @@ class StaffController {
 @Controller('v1/driver/probe-rows')
 class DriverController {
   @Post()
+  @Operation(probeOperations.driverWork)
   @HttpCode(201)
   @Idempotent()
   async create(@Body() body: ProbeBody): Promise<{ label: string; at: string }> {
@@ -103,6 +109,7 @@ class DriverController {
 @Controller('v1/platform/probe-notes')
 class PlatformController {
   @Post()
+  @Operation(probeOperations.platformWrite)
   @HttpCode(201)
   @Idempotent()
   note(@Body() body: ProbeBody): { note: string; at: string } {

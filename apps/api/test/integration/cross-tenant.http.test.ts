@@ -10,7 +10,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { platformCookie, staffCookie } from '../../src/modules/kernel/auth/principal.js';
 import { BootChecks, BootRefusal } from '../../src/modules/kernel/platform/boot-checks.js';
-import { CrossTenant } from '../../src/modules/kernel/public/index.js';
+import { CrossTenant, Operation } from '../../src/modules/kernel/public/index.js';
+import { probeOperations } from '../support/probe-operations.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import type { AuditRow } from './audit-rows.js';
 import { auditRowsByClientId, auditRowsOf } from './audit-rows.js';
@@ -32,6 +33,7 @@ import { connectAs, integrationConfig } from './support.js';
 class CrossTenantProbeController {
   @CrossTenant()
   @Get()
+  @Operation(probeOperations.platformCrossTenant)
   async list(): Promise<{ context: RequestContext; rows: ProbeRow[] }> {
     const rows = await new ProbeRepository(getUnitOfWork()).all();
     return { context: getContext(), rows };
@@ -42,11 +44,13 @@ class CrossTenantProbeController {
 class PlatformProbeController {
   // No @CrossTenant(): there is no tenant unit of work, so no tenant repository can be built.
   @Get()
+  @Operation(probeOperations.platformRead)
   async list(): Promise<ProbeRow[]> {
     return new ProbeRepository(getUnitOfWork()).all();
   }
 
   @Get('whoami')
+  @Operation(probeOperations.platformRead)
   whoami(): { userId: string | undefined } {
     return { userId: findPlatformContext()?.userId };
   }

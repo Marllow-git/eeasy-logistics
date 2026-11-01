@@ -57,6 +57,13 @@
       "when": 1793536028235,
       "tag": "0007_core_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793548273454,
+      "tag": "0008_core_roles",
+      "breakpoints": true
     }
   ]
 }

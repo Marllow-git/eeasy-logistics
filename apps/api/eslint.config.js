@@ -57,6 +57,23 @@ export const rawInputRestrictions = [
     message: rawInputMessage,
   },
 ];
+/**
+ * PLAT-10 plan 2.5: the permission an operation requires comes only from its generated
+ * `operationSchemas` entry, so a controller binds that entry as generated, by name or through a
+ * const holding it; an object literal, a call or a spread copy could name its own permission. (A
+ * copy that slips past lint is not frozen and fails `OperationRoutesCheck` at boot.)
+ */
+const operationMessage =
+  'Bind the generated entry as is: @Operation(operationSchemas.<id>) or a const holding it; the ' +
+  "operation's permission comes only from the contract (PLAT-10).";
+const operationBindingRestrictions = [
+  {
+    selector:
+      "Decorator > CallExpression[callee.name='Operation'] > :not(Identifier, MemberExpression)",
+    message: operationMessage,
+  },
+  { selector: "SpreadElement[argument.object.name='operationSchemas']", message: operationMessage },
+];
 const nestInputImports = {
   name: '@nestjs/common',
   importNames: [...rawDecorators, 'createParamDecorator'],
@@ -177,6 +194,7 @@ export default defineConfig(
         ...tenancySettingRestrictions,
         ...unitOfWorkTxRestrictions,
         ...rawInputRestrictions,
+        ...operationBindingRestrictions,
         ...ownerUrlRestrictions,
       ],
     },
