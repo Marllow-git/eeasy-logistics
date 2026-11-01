@@ -19,10 +19,11 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
 | PLAT-6 | #39 | `feat/PLAT-6-request-context-tenancy-guard` | `.claude/worktrees/agent-a8c101e16af461eec` | executor-api (general-purpose Opus run; project agents not loaded in this session) | leg 1 (A–E) built, review round 1 fixed, draft PR #41; leg 2 (F–I, I is A-17 `ContractPipe`) not started | native, scratch databases | one-way door (migration); adversary required |
+| WEB-19 | #43 | `feat/WEB-19-admin-console-scaffold` | `.claude/worktrees/agent-a52dedd898c533aa7` | executor-web (general-purpose Opus run) | review done, final head on CI | none | two-way door; adversary no; owns `PUBLIC_ADMIN_URL` (PLAT-6 leg 2 consumes it) |
 
 ## Next unblocked (roadmap §1.1)
 
-PLAT-5 (PR #33) and PLAT-15 (PR #36) are merged. WEB-19 (admin console scaffold) and WEB-1 (web shell) are unblocked and touch disjoint paths from PLAT-6. OPS-1 (depends on PLAT-3, Q-10, Q-12) waits on the owner's go as a one-way door.
+PLAT-5 (PR #33) and PLAT-15 (PR #36) are merged. WEB-1 (web shell) is unblocked after WEB-19 and touches disjoint paths from PLAT-6. OPS-1 (depends on PLAT-3, Q-10, Q-12) waits on the owner's go as a one-way door.
 
 **Queued chores, briefed the moment PLAT-6 merges and before PLAT-7 is briefed** (owner OK 2026-11-01). One `executor-api` run, three two-way-door PRs in this order, because each touches paths PLAT-6 holds (`apps/api`, `packages/config`, `packages/db`) and every later wave 0 API order holds them again:
 1. `chore/node-24` — roadmap A-14 (due before wave 1 exit): `.nvmrc`, `engines`, `@types/node` 24 in every workspace, both Dockerfiles, CI default Node 24 and the advisory `node-24` job removed.

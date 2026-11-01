@@ -3,9 +3,10 @@
     "name": "Eeasy Logistics"
   },
   "placeholder": {
+    "admin": "The platform console is under construction.",
+    "admin_sign_in": "The platform staff sign-in page is under construction.",
     "auth": "The sign-in page is under construction.",
     "merchant": "The merchant dashboard is under construction.",
-    "platform": "The platform console is under construction.",
     "recipient": "The order tracking page is under construction.",
     "driver": "The driver app is under construction."
   }

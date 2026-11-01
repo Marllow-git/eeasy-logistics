@@ -68,6 +68,8 @@ export const serverVariables = {
   APP_ENV: z.enum(appEnvs),
   PORT: port().default(3000),
   PUBLIC_WEB_URL: httpUrl().optional(),
+  // The platform console's own origin (ADR-0038, WEB-19).
+  PUBLIC_ADMIN_URL: httpUrl().optional(),
   PUBLIC_API_URL: httpUrl().optional(),
   // db: one URL per database role (data §4.4), pool sizes for the two pooled roles
   DATABASE_URL_OWNER: secret(postgresUrl()).optional(),
@@ -130,6 +132,7 @@ export const serverExpectations = {
   APP_ENV: `one of ${appEnvs.join(', ')}`,
   PORT: 'an integer from 1 to 65535',
   PUBLIC_WEB_URL: 'an http(s) URL',
+  PUBLIC_ADMIN_URL: 'an http(s) URL',
   PUBLIC_API_URL: 'an http(s) URL',
   DATABASE_URL_OWNER: 'a postgres:// URL',
   DATABASE_URL_APP: 'a postgres:// URL',
@@ -172,6 +175,8 @@ export interface Config {
     readonly role: AppRole;
     readonly port: number;
     readonly publicWebUrl: string | undefined;
+    /** The platform console's origin (apps/admin, ADR-0038). */
+    readonly publicAdminUrl: string | undefined;
     readonly publicApiUrl: string | undefined;
   };
   readonly db: {
@@ -289,6 +294,7 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       role,
       port: v.PORT,
       publicWebUrl: v.PUBLIC_WEB_URL,
+      publicAdminUrl: v.PUBLIC_ADMIN_URL,
       publicApiUrl: v.PUBLIC_API_URL,
     },
     db: {
