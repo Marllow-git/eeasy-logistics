@@ -134,3 +134,29 @@ Native stack: PostgreSQL 17.9 with PostGIS 3.7 on the owner's Mac (CI uses 16), 
 - The `elx_platform` pool's role check runs in the seed only; no runtime code builds that pool yet (PLAT-6 or the platform module will).
 
 ## 9. Lead review and adversary
+
+**Lead review (Fable, 2026-11-01).** Read the migrations, the repository bases, the runner, the readiness controller and the CI diff against §8. No blocking findings; one note: the schema version is written after the migration transaction, so a crash between the two leaves `/ready` failing until the next run (safe direction; fixed anyway under L-2).
+
+**Adversary pass 1 (Fable, 2026-11-01): CHANGES REQUIRED.** **Re-check: PASS.**
+
+| Id | Severity | Finding | Status | Lead ruling |
+|---|---|---|---|---|
+| H-1 | high | `scoped()` did not bracket the caller's condition; `… OR true` escaped the tenant predicate (RLS off until wave 1 exit) | fixed 7f5a527, red-then-green test | – |
+| H-2 | high | PLAT-4 required the owner and maintenance URLs in production for every role | fixed e1328a7; amends PLAT-4 decision 2.3 (§8.2.14) | accepted: owner URL for `migrate` only; api and worker refuse owner, maintenance and admin URLs in staging and production |
+| M-1 | medium | raw `tx` reachable from tenant code | partial a528b74 (lint `.tx` outside `*.repository.ts`); computed access added in the lows commit | accepted as a guard against mistakes; the structural fix (no `tx` on the tenant unit of work) is PLAT-6's when the request guard lands |
+| M-2 | medium | `postgres` and `drizzle-orm/postgres-js` importable outside `packages/db` | fixed 3441a61 | – |
+| M-3 | medium | `elx_app` could write `core_accounts` | fixed 012994f; tenant policy `FOR SELECT`, writes revoked, schema test for platform tables | – |
+| M-4 | medium | partitions not covered by grants, RLS enabling or the schema test | recorded §6 for PLAT-7 | ruled: PLAT-7 revokes runtime grants per partition and extends the schema test |
+| M-5 | medium | `elx_app` can set `elx.account_id` itself; RLS defends a missing predicate, not raw SQL | partial a528b74 (lint) + N-1; ADR-0031 sentence added | ruled: PostgreSQL cannot stop a role setting a GUC; lint plus the repository bases are the control; recorded in ADR-0031 |
+| M-6 | medium | no runtime check that a pool connects as the expected role | fixed f3d8703 + N-2 (membership in `elx_owner`) | ruled: the first order that opens the platform pool calls `verifyPoolRole(…, 'elx_platform')` at boot (PLAT-6) |
+| L-1 | low | `/ready` opened clients per request; a flood could hold tenant connections | fixed f3d8703 (shared clients, single-flight, 2 s cache) | – |
+| L-2 | low | RLS enabled after the version write, outside the transaction | fixed 4416ec4 | – |
+| L-3 | low | functions without pinned `search_path`; PUBLIC CREATE and TEMP | fixed 012994f + N-3 test | noted: the TEMP and CREATE revokes need the migrating role to own the database; OPS-1 must create production databases owned by `elx_owner` |
+| L-4 | low | seed tool shipped in the runtime image | fixed c08ea61 | `packages/db/src/admin.ts` stays in the image, unused; acceptable |
+| N-1 | low | tenancy-setting lint rule case-sensitive | fixed in the lows commit | – |
+| N-2 | low | `verifyPoolRole` ignored membership in `elx_owner` (table-owner RLS bypass) | fixed in the lows commit | – |
+| N-3 | low | no test asserts the TEMP and CREATE revokes | fixed in the lows commit | – |
+
+**Readiness `migrations` check** accepts a database at or beyond the build's version: ruled acceptable; contracting migrations wait until old builds are gone (handbook 02 "Schema change" already says expand and contract).
+
+**Verdict for the gate:** no critical or high open; mediums fixed or ruled above. One-way door: the owner merges.
