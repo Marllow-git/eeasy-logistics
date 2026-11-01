@@ -63,7 +63,10 @@ describe('database credentials per role (review H-2, data §4.4, ADR-0031)', () 
   });
 
   it('bootstrap needs the platform URL and the console URL, never the owner URL (PLAT-11 2.12)', () => {
-    expect(requiredInProduction('bootstrap')).toEqual(['DATABASE_URL_PLATFORM', 'PUBLIC_ADMIN_URL']);
+    expect(requiredInProduction('bootstrap')).toEqual([
+      'DATABASE_URL_PLATFORM',
+      'PUBLIC_ADMIN_URL',
+    ]);
     expect(problems({ APP_ENV: 'production' }, 'bootstrap')).toEqual({
       DATABASE_URL_PLATFORM: 'is required when APP_ENV=production',
       PUBLIC_ADMIN_URL: 'is required when APP_ENV=production',

@@ -251,9 +251,32 @@ jobs:
       # class budget (recipient 90 KB, merchant and platform 180 KB); prints every route's size.
       - name: First-load JavaScript budget
         run: pnpm --filter @eeasy-logistics/web run check:budget
+      # PLAT-11 item I: the sign-in scenarios reach the identity tables and the web client marker, so
+      # the API gets the ci profile's database (migrated here), Redis, a throwaway signing key and
+      # credentials key, and .env.example's public URLs, in a file only its process reads.
+      - name: Point the API at the ci database and migrate it
+        run: |
+          set -a; . ./.env; set +a
+          port() { docker compose --profile ci port "$1" "$2"; }
+          pg=$(port postgres-ci 5432)
+          signing=$(openssl rand -base64 48); credentials=$(openssl rand -base64 32)
+          echo "::add-mask::$signing"; echo "::add-mask::$credentials"
+          {
+            echo "DATABASE_URL_APP=postgres://elx_app:${ELX_APP_PASSWORD}@${pg}/elx"
+            echo "DATABASE_URL_PLATFORM=postgres://elx_platform:${ELX_PLATFORM_PASSWORD}@${pg}/elx"
+            echo "REDIS_URL=redis://$(port redis-ci 6379)"
+            echo "PUBLIC_WEB_URL=${PUBLIC_WEB_URL}"
+            echo "PUBLIC_ADMIN_URL=${PUBLIC_ADMIN_URL}"
+            echo "AUTH_SIGNING_KEY_ID=contract"
+            echo "AUTH_SIGNING_KEY=${signing}"
+            echo "CREDENTIALS_KEYS=contract:${credentials}"
+            echo "CREDENTIALS_ACTIVE_KEY_ID=contract"
+          } > "$RUNNER_TEMP/api.env"
+          DATABASE_URL_OWNER="postgres://elx_owner:${ELX_OWNER_PASSWORD}@${pg}/elx" \
+            node apps/api/dist/main.js --role migrate
       - name: Start the API and wait for /health
         run: |
-          PORT="$API_PORT" nohup node apps/api/dist/main.js --role api > api.log 2>&1 &
+          PORT="$API_PORT" nohup node --env-file="$RUNNER_TEMP/api.env" apps/api/dist/main.js --role api > api.log 2>&1 &
           for _ in $(seq 1 60); do
             curl -fsS "http://127.0.0.1:$API_PORT/health" && echo && exit 0
             sleep 1
@@ -261,9 +284,13 @@ jobs:
           echo "::error::the API did not answer /health on port $API_PORT within 60 s (api.log in the artifact)"
           exit 1
       # PLAT-15 plan 2.8, 2.10: the harness self-test plus every scenario of test/scenarios against
-      # the running API; prints the advisory coverage table.
+      # the running API; prints the advisory coverage table. PLAT-11: the staff and platform writes
+      # carry the `Origin` of .env.example's PUBLIC_WEB_URL and PUBLIC_ADMIN_URL (ADR-0032, ADR-0038).
       - name: Contract tests against the API
-        run: pnpm --filter @eeasy-logistics/contracts run test:contract -- --api "http://127.0.0.1:$API_PORT"
+        run: >-
+          pnpm --filter @eeasy-logistics/contracts run test:contract --
+          --api "http://127.0.0.1:$API_PORT"
+          --web-origin http://localhost:3001 --admin-origin http://localhost:3002
       - name: Start the standalone web server and wait for /
         run: |
           standalone=apps/web/.next/standalone/apps/web
