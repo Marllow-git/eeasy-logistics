@@ -61,17 +61,21 @@ const digest =
 /** URL user-info, `scheme://user:password@host`. */
 const userInfo = /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
 const jwt = /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
-/** A JWT cut by the input cap: its header and the start of its claims still go. */
-const jwtTail = /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]*)?$/;
+/**
+ * The partial run the input cap leaves at the end (re-check A-1b): a token, an email or a phone
+ * number cut in half would escape its pattern, so the whole trailing run goes, prefix included.
+ * Anchored at the start of the run, so it is tried once.
+ */
+const cutTail = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@?[^\s]*$/;
 /** A quoted value of a `name=` / `name:` pair (it may hold spaces and commas). */
 const quotedPair =
-  /(?<![A-Za-z0-9_.-])(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["'])((?:(?!\4).)*)\4/g;
+  /(?<![A-Za-z0-9_.-])(["']?)([0-9-]*)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["'])((?:(?!\5).)*)\5/g;
 /**
  * `name=value`, `name: value`, `"name":"value"` and query-string pairs; a URL scheme (`https://`)
  * is not a pair, so the query string after it is still read pair by pair.
  */
 const pair =
-  /(?<![A-Za-z0-9_.-])(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=](?!\/\/)\s*)(["']?)([^\s,;&"'}]+)\4/g;
+  /(?<![A-Za-z0-9_.-])(["']?)([0-9-]*)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=](?!\/\/)\s*)(["']?)([^\s,;&"'}]+)\5/g;
 const email =
   /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 /**
@@ -149,6 +153,13 @@ function redactPath(path: string): string {
 /** An email address masked whole (the domain can name a merchant's customer). */
 export const maskedEmail = '[email]';
 
+/** The first `max` UTF-16 units of `text`, never ending inside a surrogate pair. */
+export function headOf(text: string, max: number = maxInputLength): string {
+  if (text.length <= max) return text;
+  const head = text.slice(0, max);
+  return /[\uD800-\uDBFF]$/.test(head) ? head.slice(0, -1) : head;
+}
+
 /** `text` cut to `max` code points (never inside a surrogate pair). */
 export function capText(text: string, max: number = maxTextLength): string {
   if (text.length <= max) return text;
@@ -164,14 +175,20 @@ export function capText(text: string, max: number = maxTextLength): string {
  * collapsed, cut to `max` code points.
  */
 export function redactText(text: string, max: number = maxTextLength): string {
-  const withheld = (whole: string, q1: string, key: string, sep: string, q2: string) =>
-    isWithheldKey(key) ? `${q1}${key}${q1}${sep}${q2}${redacted}${q2}` : whole;
+  // A key may follow a digit or dash prefix (`3token=`, `-token=`; re-check A-1c): the prefix
+  // belongs to the run the lookbehind anchors and is kept apart from the key.
+  const withheld = (
+    whole: string,
+    q1: string,
+    prefix: string,
+    key: string,
+    sep: string,
+    q2: string,
+  ) => (isWithheldKey(key) ? `${q1}${prefix}${key}${q1}${sep}${q2}${redacted}${q2}` : whole);
   // The cap comes first (adversary A-1); a token cut by it loses its tail with it.
   const cut = text.length > maxInputLength;
-  let input = cut ? text.slice(0, maxInputLength) : text;
-  if (cut && /[\uD800-\uDBFF]$/.test(input)) input = input.slice(0, -1);
-  // A JWT or a phone number cut in half would escape its pattern: their tails go.
-  if (cut) input = input.replace(jwtTail, redacted).replace(/(?<![\d +-])\+?\d[\d -]*$/, '');
+  let input = cut ? headOf(text) : text;
+  if (cut) input = input.replace(cutTail, '');
   const clean = withoutControls(input)
     .replace(bearer, `Bearer ${redacted}`)
     .replace(digest, `Digest ${redacted}`)

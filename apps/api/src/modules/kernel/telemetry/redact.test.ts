@@ -135,15 +135,27 @@ describe('redactText: bounded work (adversary A-1)', () => {
     return { out, ms: performance.now() - started };
   };
 
-  it.each([
+  const cases: [string, string][] = [
     ['a', 'a'.repeat(100_000)],
     ['key characters', 'a.b-c_d'.repeat(15_000)],
     ['address characters', 'a.b%c+d'.repeat(15_000)],
     ['quoted pairs without a closing quote', 'k="'.repeat(30_000)],
     ['digits', '1'.repeat(100_000)],
-  ])('redacts 100 kB of %s in under 50 ms', (_name, text) => {
+    ['digit-prefixed keys', '1a-'.repeat(35_000)],
+  ];
+
+  it.each(cases)('redacts 100 kB of %s in under 50 ms', (_name, text) => {
     timed(text.slice(0, 1_000)); // warm the patterns
-    const { ms } = timed(text);
+    expect(timed(text).ms).toBeLessThan(50);
+  });
+
+  // The cut strips a trailing run (A-1b); here a space ends the first 4 kB run before the cut, so
+  // every pattern runs over a full 4 kB of it.
+  it.each(cases)('redacts a 4 kB run of %s kept whole by the cut in under 50 ms', (_name, text) => {
+    const input = `${text.slice(0, 4_000)} ${text}`;
+    timed(input.slice(0, 1_000));
+    const { out, ms } = timed(input);
+    expect(out.length).toBeGreaterThanOrEqual(1_000);
     expect(ms).toBeLessThan(50);
   });
 
@@ -152,7 +164,28 @@ describe('redactText: bounded work (adversary A-1)', () => {
     const atEdge = (tail: string) => `${'x '.repeat((maxInputLength - 10) / 2)}${tail}`;
     expect(redactText(atEdge(jwt), 10_000)).not.toMatch(/eyJ|c2ln/);
     expect(redactText(atEdge('+966512345678'), 10_000)).not.toMatch(/9665/);
-    expect(redactText('z'.repeat(10_000), 10_000)).toHaveLength(maxInputLength + 1);
+    // The whole trailing run goes (re-check A-1b): a cut leaves no prefix of what it cut.
+    expect(redactText('z'.repeat(10_000), 10_000)).toBe('…');
+  });
+
+  it('leaves no prefix of an email or a hex secret straddling the cut (re-check A-1b)', () => {
+    const before = (count: number, tail: string) =>
+      `${'x '.repeat((maxInputLength - count) / 2)}${tail}`;
+    const email = 'sara.k@merchant.example.sa';
+    const emailOut = redactText(before(10, email), 10_000);
+    expect(emailOut).not.toMatch(/sara|merchant/);
+    expect(emailOut.endsWith('x …')).toBe(true);
+    const hex = 'a3f9c2e1b4d6078912ab34cd56ef7890a3f9c2e1';
+    const hexOut = redactText(before(20, ` ${hex}`), 10_000);
+    expect(hexOut).not.toContain(hex.slice(0, 8));
+    expect(hexOut.endsWith('x …')).toBe(true);
+  });
+
+  it('reads a secret key after a digit or dash prefix (re-check A-1c)', () => {
+    expect(redactText('3token=abc -token=def x-api-key=ghi page=2')).toBe(
+      `3token=${redacted} -token=${redacted} x-api-key=${redacted} page=2`,
+    );
+    expect(redactText('{"1password":"abc","n":"1"}')).toBe(`{"1password":"${redacted}","n":"1"}`);
   });
 });
 
