@@ -1,4 +1,4 @@
-import { isSecretKey } from '../audit/redaction.js';
+import { redactText } from '../telemetry/redact.js';
 import type { KindOutcome, OutboxRow, OutcomeError } from './kind-handlers.js';
 import { parkedRetryS } from './connection-parker.js';
 import { ProviderFailure } from './provider-failure.js';
@@ -17,7 +17,6 @@ export const maxDeferrals = 50;
 /** No retry comes sooner than a second (adversary M-4: `retry_after 0` must not loop). */
 export const minRetryDelayMs = 1_000;
 
-const redacted = '[redacted]';
 /** C0 controls and DEL become spaces (a provider message may carry newlines or escapes). */
 const withoutControls = (text: string): string =>
   Array.from(text, (char) => {
@@ -26,40 +25,15 @@ const withoutControls = (text: string): string =>
   })
     .join('')
     .replace(/ {2,}/g, ' ');
-const bearer = /\bbearer\s+[^\s,;"']+/gi;
-/** `Basic <base64>` credentials. */
-const basic = /\bbasic\s+[A-Za-z0-9+/=._~-]+/gi;
-/** `Digest k="v", k=v, …` credentials: every parameter goes. */
-const digest =
-  /\bdigest\s+[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+)(?:\s*,\s*[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+))*/gi;
-/** URL user-info, `scheme://user:password@host`. */
-const userInfo = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
-/** A quoted value (it may hold spaces and commas) of a `name=` / `name:` pair. */
-const quotedPair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["'])((?:(?!\4).)*)\4/g;
-const jwt = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
-/** `name=value`, `name: value` and `"name":"value"` pairs; the value goes when the name is a secret. */
-const pair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["']?)([^\s,;&"'}]+)\4/g;
 
 /**
- * A provider message fit for `last_error` (plan 2.5): credentials removed wherever they appear
- * (bearer tokens, JWTs, values of secret-named fields, by the PLAT-7 key rule), control
- * characters dropped, cut to 500 characters. The payload never reaches it: handlers pass the
- * provider's answer only.
+ * A provider message fit for `last_error` (plan 2.5): the shared telemetry redactor (PLAT-14 plan
+ * 2.4: credentials wherever they appear, values of secret- or personal-named fields, phone numbers
+ * to their last two digits, emails masked), control characters dropped, cut to 500 characters.
+ * The payload never reaches it: handlers pass the provider's answer only.
  */
 export function redactErrorMessage(message: string): string {
-  const clean = withoutControls(message)
-    .replace(bearer, `Bearer ${redacted}`)
-    .replace(digest, `Digest ${redacted}`)
-    .replace(basic, `Basic ${redacted}`)
-    .replace(userInfo, `$1${redacted}@`)
-    .replace(jwt, redacted)
-    .replace(quotedPair, (whole, q1: string, key: string, sep: string, q2: string) =>
-      isSecretKey(key) ? `${q1}${key}${q1}${sep}${q2}${redacted}${q2}` : whole,
-    )
-    .replace(pair, (whole, q1: string, key: string, sep: string, q2: string) =>
-      isSecretKey(key) ? `${q1}${key}${q1}${sep}${q2}${redacted}${q2}` : whole,
-    )
-    .trim();
+  const clean = redactText(withoutControls(message), Number.MAX_SAFE_INTEGER).trim();
   const points = Array.from(clean);
   return points.length <= maxLastErrorLength ? clean : points.slice(0, maxLastErrorLength).join('');
 }
