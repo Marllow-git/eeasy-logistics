@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./platform": "./src/platform.ts",
+    "./migrate": "./src/migrate.ts",
     "./testing": "./src/testing.ts"
   },
   "scripts": {
@@ -20,7 +21,6 @@
     "@eeasy-logistics/config-ts": "workspace:*",
     "@types/node": "22.20.5",
     "dependency-cruiser": "18.7.0",
-    "drizzle-kit": "0.31.11",
     "eslint": "9.39.5",
     "typescript": "6.0.3",
     "vitest": "5.0.5"
