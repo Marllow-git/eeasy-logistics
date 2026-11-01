@@ -21,7 +21,7 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| PLAT-6 | #39 | `feat/PLAT-6-request-context-tenancy-guard` | `.claude/worktrees/agent-a8c101e16af461eec` | executor-api (general-purpose Opus run; project agents not loaded in this session) | leg 1 (A–E) built, review round 1 fixed; leg 2 (F–I) built on main `a2f911f`, draft PR #41, awaiting lead review | native, scratch databases | one-way door (migration); adversary required |
+| CHORE-1 | #49 | `chore/node-24` → `chore/drop-dotenv` → `chore/nest-swc` (stacked) | harness worktree | executor-api | build, legs 1–3 | native, `elx_chore1` | two-way doors; adversary no; three PRs; PLAT-7 waits for all three (agreed with lead session `eeasy-logistics-b7`) |
 | WEB-19 | #43 | `feat/WEB-19-admin-console-scaffold` | `.claude/worktrees/agent-a52dedd898c533aa7` | executor-web (general-purpose Opus run) | review done, final head on CI | none | two-way door; adversary no; owns `PUBLIC_ADMIN_URL` (PLAT-6 leg 2 consumes it) |
 
 ## Next unblocked (roadmap §1.1)
