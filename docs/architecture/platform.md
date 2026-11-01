@@ -29,6 +29,8 @@ No environment shares a database, a Redis or a bucket with another. The developm
 | whatsapp-stub | small HTTP stub | local and ci only: records OTP and message sends for tests |
 | mail-stub | Mailpit | local and ci only |
 
+The web, admin and api images run Node 24 LTS on the official `node` Alpine image, pinned by digest; its major is the one in `.nvmrc` (amended 2026-11-01, roadmap A-14, CHORE-1).
+
 One `compose.yaml` with profiles `dev`, `ci`, `stack-a` and `stack-b` (two isolated port pairs so two executors can run censuses at once). Production uses the same images with a provider-specific compose or orchestrator file; no image is built differently for production.
 
 ## 3. Configuration and secrets
