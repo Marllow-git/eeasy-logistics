@@ -23,7 +23,7 @@ function without(...variables: string[]): Record<string, string> {
 
 describe('database credentials per role (review H-2, data §4.4, ADR-0031)', () => {
   it.each(['api', 'worker'] as const)(
-    '%s needs the app and platform URLs and never the owner, maintenance or admin URL',
+    '%s needs the app and platform URLs and never the owner, maintenance or admin URL (worker: partition job off)',
     (role) => {
       expect(requiredInProduction(role)).toEqual(
         expect.arrayContaining(['DATABASE_URL_APP', 'DATABASE_URL_PLATFORM']),
@@ -32,7 +32,8 @@ describe('database credentials per role (review H-2, data §4.4, ADR-0031)', () 
       expect(requiredInProduction(role)).not.toContain('DATABASE_URL_MAINTENANCE');
       expect(problems(productionEnv, role)).toEqual({});
       for (const appEnv of ['staging', 'production']) {
-        const env = { ...productionEnv, APP_ENV: appEnv };
+        // The worker may hold the owner URL only for the audit partition job (PLAT-7 plan 2.8).
+        const env = { ...productionEnv, APP_ENV: appEnv, AUDIT_PARTITION_JOB: 'off' };
         expect(
           problems(
             {
@@ -51,6 +52,29 @@ describe('database credentials per role (review H-2, data §4.4, ADR-0031)', () 
       }
     },
   );
+
+  it('the worker may hold the owner URL for the audit partition job, never the others (PLAT-7)', () => {
+    for (const appEnv of ['staging', 'production']) {
+      const env = { ...productionEnv, APP_ENV: appEnv, DATABASE_URL_OWNER: productionOwnerUrl };
+      expect(problems(env, 'worker')).toEqual({});
+      expect(problems({ ...env, AUDIT_PARTITION_JOB: 'on' }, 'worker')).toEqual({});
+      expect(
+        problems(
+          {
+            ...env,
+            DATABASE_URL_MAINTENANCE: 'postgres://elx_maintenance:fake-m@db.internal:5432/elx',
+          },
+          'worker',
+        ),
+      ).toEqual({
+        DATABASE_URL_MAINTENANCE: `must not be given to the worker role in ${appEnv} (ADR-0031)`,
+      });
+      // The api never holds it, whatever the switch says.
+      expect(problems({ ...env, AUDIT_PARTITION_JOB: 'on' }, 'api')).toEqual({
+        DATABASE_URL_OWNER: `must not be given to the api role in ${appEnv} (ADR-0031)`,
+      });
+    }
+  });
 
   it('migrate needs only the owner URL in production', () => {
     expect(requiredInProduction('migrate')).toEqual(['DATABASE_URL_OWNER']);

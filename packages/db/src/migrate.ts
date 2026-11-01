@@ -170,3 +170,52 @@ function checkHistory(
     }
   }
 }
+
+/** One partition `core_drop_audit_partitions_before` dropped. */
+export interface DroppedAuditPartition {
+  readonly partition: string;
+  /** The partition's exclusive upper bound, ISO 8601 UTC. */
+  readonly upperBound: string;
+}
+
+export interface AuditPartitionRun {
+  /** Monthly partitions created ahead (current month and the next `auditPartitionsAhead`). */
+  readonly created: number;
+  readonly dropped: readonly DroppedAuditPartition[];
+}
+
+/**
+ * The audit partition job's database work (PLAT-7 plan 2.8; data §3.1, §10, §11.5), as `elx_owner`
+ * on one dedicated connection that is closed afterwards: in one transaction, ensure the partitions
+ * ahead, then detach and drop those whose upper bound is on or before `cutoff` (`YYYY-MM-DD`; the
+ * SQL function refuses a cutoff inside 24 months). Only the worker's partition job calls it.
+ */
+export async function maintainAuditPartitions(options: {
+  readonly url: Secret | undefined;
+  readonly cutoff: string;
+}): Promise<AuditPartitionRun> {
+  if (options.url === undefined) throw new Error('DATABASE_URL_OWNER is not configured');
+  if (!/^\d{4}-\d{2}-01$/.test(options.cutoff)) throw new Error('The cutoff is a month start');
+  const client = postgres(options.url.reveal(), {
+    max: 1,
+    connect_timeout: 10,
+    onnotice: () => undefined,
+    connection: { application_name: 'elx-audit-partitions' },
+  });
+  try {
+    return await client.begin(async (tx) => {
+      const [ensured] = await tx<{ created: number }[]>`
+        SELECT core_ensure_audit_partitions(${auditPartitionsAhead}::integer) AS created`;
+      const dropped = await tx<{ partition: string; upperBound: string }[]>`
+        SELECT partition_name AS partition,
+               to_char(upper_bound AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "upperBound"
+        FROM core_drop_audit_partitions_before(${options.cutoff}::text::date)`;
+      return {
+        created: ensured?.created ?? 0,
+        dropped: dropped.map((row) => ({ partition: row.partition, upperBound: row.upperBound })),
+      };
+    });
+  } finally {
+    await client.end({ timeout: 5 });
+  }
+}

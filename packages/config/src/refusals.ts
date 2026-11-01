@@ -32,14 +32,20 @@ export function requiredInProduction(role: AppRole): readonly ServerVariable[] {
 }
 
 /**
- * Credentials a role must not hold in staging and production (ADR-0031): the api and worker
- * processes never see the owner, maintenance or superuser URL, so a compromise of either cannot
- * alter tables, disable triggers or purge ledgers.
+ * Credentials a role must not hold in staging and production (ADR-0031): the api never sees the
+ * owner, maintenance or superuser URL, so a compromise of it cannot alter tables, disable triggers
+ * or purge ledgers. The worker holds the owner URL only while it runs the audit partition job
+ * (`AUDIT_PARTITION_JOB=on`, the default; ADR-0031: "the migration job and the audit-partition
+ * job"; PLAT-7 plan 2.8), which uses it for the two partition functions and nothing else.
  */
-export function refusedInDeployedEnvironments(role: AppRole): readonly ServerVariable[] {
-  return role === 'migrate'
-    ? localAndCiOnly
-    : ['DATABASE_URL_OWNER', 'DATABASE_URL_MAINTENANCE', ...localAndCiOnly];
+export function refusedInDeployedEnvironments(
+  role: AppRole,
+  options: { readonly auditPartitionJob?: boolean } = {},
+): readonly ServerVariable[] {
+  if (role === 'migrate') return localAndCiOnly;
+  const owner: ServerVariable[] =
+    role === 'worker' && options.auditPartitionJob !== false ? [] : ['DATABASE_URL_OWNER'];
+  return [...owner, 'DATABASE_URL_MAINTENANCE', ...localAndCiOnly];
 }
 
 /**
@@ -66,6 +72,8 @@ export interface RefusalInput {
   /** The raw value of a variable, for selector checks (selectors are not secrets). */
   readonly raw: (variable: ServerVariable) => string | undefined;
   readonly messagingDisabled: boolean | undefined;
+  /** `AUDIT_PARTITION_JOB=on` (the default); undefined when the value was itself invalid. */
+  readonly auditPartitionJob?: boolean | undefined;
   /** The process role (`--role`); the requirements depend on it. */
   readonly role: AppRole;
 }
@@ -79,7 +87,10 @@ export const localAndCiOnly: readonly ServerVariable[] = ['DATABASE_URL_ADMIN'];
 export function productionRefusals(input: RefusalInput): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
   if (input.appEnv === 'staging' || input.appEnv === 'production') {
-    for (const variable of refusedInDeployedEnvironments(input.role)) {
+    const refused = refusedInDeployedEnvironments(input.role, {
+      auditPartitionJob: input.auditPartitionJob ?? true,
+    });
+    for (const variable of refused) {
       if (input.present(variable)) {
         const problem = localAndCiOnly.includes(variable)
           ? `is for local and ci tooling only; ${input.appEnv} refuses it`
