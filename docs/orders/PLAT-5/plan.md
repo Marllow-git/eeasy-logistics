@@ -63,6 +63,8 @@ One commit per item `PLAT-5: <item>`; the migration SQL files are in C and D wit
 
 The request guard and token resolution (PLAT-6), audit log (PLAT-7), outbox tables (PLAT-8), any Delivery or WMS table, the maintenance role pool and the deletion tool (wave 1 data order), partitioning, backups, PostgreSQL 16 locally (ADR-0019 governs CI and production; local is 17 by the owner's no-Docker ruling).
 
+Partitions (review M-4): the default privileges, `core_enable_tenant_rls()` and the tenancy schema test cover ordinary tables in `public` and skip partitions (`NOT relispartition`). PLAT-7, which creates the monthly `core_audit_log` partitions, must revoke the runtime roles' grants on every partition (so no one writes a partition directly, around the parent's triggers and policies) and extend the schema test to partitions.
+
 ## 7. Owner questions
 
 1. Q-16 default applies: policies from wave 0, RLS enabled at wave 1 exit, one CI lane with RLS on. Confirm or change.
