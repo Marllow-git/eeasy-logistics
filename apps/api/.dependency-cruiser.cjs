@@ -1,6 +1,8 @@
-// Architecture test for the bounded contexts (ADR-0026). Run: pnpm --filter api test:architecture
-// It cruises src/ and test/architecture/; the fixture tree there mirrors src/modules so the rules
-// can be shown to pass on permitted imports and fail on violations.
+// Architecture test for the bounded contexts (ADR-0026) and the A-17 contract rules (doc 3 §9).
+// Run: pnpm --filter api test:architecture. It cruises src/ and test/architecture/fixture/; the
+// fixture tree there mirrors src/modules with permitted imports. test/architecture/violations/
+// holds one file per A-17 rule that must fail; test/architecture-violations.test.ts cruises it
+// and asserts each rule fires.
 const {
   environmentRules,
   noUnresolvable,
@@ -60,6 +62,57 @@ module.exports = {
       severity: 'error',
       from: { path: '^src/', pathNot: ['^src/seed/', '\\.test\\.ts$'] },
       to: { path: '(?:^|/)packages/db/src/admin\\.ts$' },
+    },
+    {
+      name: 'no-validation-libraries',
+      comment:
+        'Doc 3 §9 "Enforcement", roadmap A-17: API input is parsed only by the kernel ' +
+        'ContractPipe with the generated strict schemas, and the YAML is the only description of ' +
+        'the API: no class-validator, class-transformer, nestjs-zod or @nestjs/swagger.',
+      severity: 'error',
+      from: {},
+      to: {
+        path: [
+          '^(?:class-validator|class-transformer|nestjs-zod|@nestjs/swagger)(?:/|$)',
+          '(?:^|/)node_modules/(?:class-validator|class-transformer|nestjs-zod|@nestjs/swagger)/',
+        ],
+      },
+    },
+    {
+      name: 'no-dto-files',
+      comment:
+        'Doc 3 §9 "Enforcement", A-17: no hand-written DTO; request and response shapes are the ' +
+        'generated types of @eeasy-logistics/contracts. A *.dto.ts file fails whether it imports, ' +
+        'is imported or stands alone (the orphan rule below).',
+      severity: 'error',
+      from: { path: '\\.dto\\.ts$' },
+      to: {},
+    },
+    {
+      name: 'no-dto-files',
+      comment: 'Doc 3 §9, A-17: importing a *.dto.ts file.',
+      severity: 'error',
+      from: {},
+      to: { path: '\\.dto\\.ts$' },
+    },
+    {
+      name: 'no-dto-files',
+      comment: 'Doc 3 §9, A-17: a *.dto.ts file with no imports and no importers.',
+      severity: 'error',
+      from: { orphan: true, path: '\\.dto\\.ts$' },
+      to: {},
+    },
+    {
+      name: 'contracts-only-in-controllers-and-presenters',
+      comment:
+        'Doc 3 §9 "Contract code stops at the edge", A-17: the generated types and schemas of ' +
+        '@eeasy-logistics/contracts are imported only by *.controller.ts and *.presenter.ts ' +
+        'files; services, repositories and Drizzle schemas keep their own types.',
+      severity: 'error',
+      from: {
+        pathNot: ['\\.controller\\.ts$', '\\.presenter\\.ts$', '(?:^|/)packages/contracts/'],
+      },
+      to: { path: '(?:^|/)packages/contracts/' },
     },
     ...environmentRules(),
     noUnresolvable,

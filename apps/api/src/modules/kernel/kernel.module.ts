@@ -1,7 +1,8 @@
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { AUDIT_SINK, LogAuditSink } from './audit/audit-sink.js';
+import { ContractPipe } from './contract/contract-pipe.js';
 import { ApiExceptionFilter } from './errors/exception.filter.js';
 import { RequestIdMiddleware } from './request/request-id.js';
 import { WebClientGuard } from './request/web-client.guard.js';
@@ -24,6 +25,8 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
     { provide: APP_GUARD, useClass: TenancyGuard },
     { provide: APP_GUARD, useClass: WebClientGuard },
     { provide: APP_INTERCEPTOR, useClass: UnitOfWorkInterceptor },
+    // Every `@Input()` parsed with its operation's generated strict schemas (A-17).
+    { provide: APP_PIPE, useClass: ContractPipe },
     // The wave 0 audit sink writes a log line; PLAT-7 binds the core_audit_log writer here.
     { provide: AUDIT_SINK, useClass: LogAuditSink },
   ],

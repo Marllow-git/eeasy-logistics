@@ -12,9 +12,18 @@ export function harnessDatabase(): string {
   return inject('elxDatabase');
 }
 
+/**
+ * The web origins the marker tests send (PLAT-6 item G); `ci` reads no `.env`, so the suite sets
+ * them itself unless the environment or the test names others.
+ */
+const webOrigins: EnvRecord = {
+  PUBLIC_WEB_URL: 'http://localhost:3001',
+  PUBLIC_ADMIN_URL: 'http://localhost:3002',
+};
+
 /** The validated configuration with every database URL pointed at this run's database. */
 export function integrationConfig(overrides: EnvRecord = {}): Config {
-  const config = defineConfig({ ...readEnvironment(), ...overrides });
+  const config = defineConfig({ ...webOrigins, ...readEnvironment(), ...overrides });
   const database = harnessDatabase();
   const point = (url: Config['db']['urls']['app']) =>
     url === undefined ? undefined : withDatabase(url, database);
