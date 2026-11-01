@@ -4,6 +4,7 @@ import { createCredentialsCipher, Secret } from '@eeasy-logistics/config';
 import type { Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { createPlatformPool } from '@eeasy-logistics/db/platform';
+import { Redis } from 'ioredis';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ApiException } from '../../src/modules/kernel/errors/api-exception.js';
@@ -68,6 +69,7 @@ describe('OtpService on the database (PLAT-9 item C)', () => {
   let owner: postgres.Sql;
   let pool: Pool<PlatformDatabase>;
   let limiter: RateLimiter;
+  let redis: Redis;
   let available = true;
   const logs: string[] = [];
   const phones: string[] = [];
@@ -114,6 +116,7 @@ describe('OtpService on the database (PLAT-9 item C)', () => {
     owner = connectAs('owner', config);
     pool = createPlatformPool(config.db, 'otp-challenges-test');
     limiter = new RateLimiter(redisRateLimitStore(redisUrl), { prefix });
+    redis = new Redis(redisUrl);
     service = new OtpService({
       store: otpStore(pool.db),
       cipher,
@@ -131,6 +134,9 @@ describe('OtpService on the database (PLAT-9 item C)', () => {
       await owner`DELETE FROM core_otp_challenges WHERE phone IN ${owner(phones)}`;
     }
     limiter.onApplicationShutdown();
+    const left = await redis.keys(`${prefix}:*`);
+    if (left.length > 0) await redis.del(...left);
+    redis.disconnect();
     await Promise.all([owner.end(), pool.close()]);
   });
 
@@ -275,6 +281,39 @@ describe('OtpService on the database (PLAT-9 item C)', () => {
     const phone = fresh();
     expect(await failure(request(phone, ip))).toBe('rate_limited');
     expect(await challenges(phone)).toHaveLength(0);
+  });
+
+  it('charges no budget for a cooldown or availability refusal (review round 1, finding 1)', async () => {
+    const phone = fresh();
+    const ip = '203.0.113.88';
+    const hasher = new OtpHasher(hmacKey, [hmacKey]);
+    const phoneCounter = `${prefix}:named:otp_request_phone:phone:${hasher.phoneRef(phone)}`;
+    const ipCounter = `${prefix}:named:otp_request_ip:ip:${ip}`;
+    await request(phone, ip);
+    for (let resend = 0; resend < 5; resend += 1) {
+      expect(await failure(request(nationalForm(phone), ip))).toBe('rate_limited');
+    }
+    expect(await redis.get(phoneCounter)).toBe('1');
+    expect(await redis.get(ipCounter)).toBe('1');
+    await pastCooldown(phone);
+    available = false;
+    try {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        expect(await failure(request(phone, ip))).toBe('messaging_unavailable');
+      }
+    } finally {
+      available = true;
+    }
+    expect(await redis.get(phoneCounter)).toBe('1');
+    expect(await redis.get(ipCounter)).toBe('1');
+    // The refused requests left the quota whole: four more codes still go out this hour.
+    for (let index = 0; index < 4; index += 1) {
+      await request(phone, ip);
+      await pastCooldown(phone);
+    }
+    expect(await redis.get(phoneCounter)).toBe('5');
+    expect(await failure(request(phone, ip))).toBe('rate_limited');
+    expect(await challenges(phone)).toHaveLength(5);
   });
 
   it('answers 503 messaging_unavailable while messaging is unavailable, writing nothing', async () => {

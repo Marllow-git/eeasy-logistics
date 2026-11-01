@@ -9,12 +9,21 @@ import { PLATFORM_POOL } from '../platform/tokens.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { RATE_LIMITER } from '../rate-limit/rate-limiter.js';
 import type { BreakerStateStore } from './breaker.js';
-import { redisBreakerStateStore } from './breaker.js';
+import { memoryBreakerStateStore, redisBreakerStateStore } from './breaker.js';
+import type { MessageSenders } from './message-sender.js';
 import { OtpHasher, otpHmacKey } from './otp-code.js';
 import { MessagingAvailability, OtpService } from './otp.service.js';
+import { createMessageSenders } from './senders.js';
 
 /** The breaker state reader of the API process (null without `REDIS_URL`). */
 export const MESSAGING_BREAKERS = Symbol('MESSAGING_BREAKERS');
+
+/**
+ * The adapters this build has (`MessageSenders`); the API reads it to know whether a WhatsApp
+ * sender exists at all (review round 1, finding 2). Built at boot, so the stub refuses to start
+ * outside local and ci here too.
+ */
+export const MESSAGE_SENDERS = Symbol('MESSAGE_SENDERS');
 
 /** Owns the Redis connection the breaker state is read through; closed with the application. */
 class BreakerConnection implements OnApplicationShutdown {
@@ -62,13 +71,16 @@ export class MessagingModule {
             connection.redis === null ? null : redisBreakerStateStore(connection.redis),
         },
         {
-          provide: MessagingAvailability,
+          provide: MESSAGE_SENDERS,
           inject: [MESSAGING_BREAKERS],
           useFactory: (breakers: BreakerStateStore | null) =>
-            new MessagingAvailability(
-              { disabled: config.messaging.disabled, provider: config.messaging.provider },
-              breakers,
-            ),
+            createMessageSenders(config, { breakerStore: breakers ?? memoryBreakerStateStore() }),
+        },
+        {
+          provide: MessagingAvailability,
+          inject: [MESSAGE_SENDERS, MESSAGING_BREAKERS],
+          useFactory: (senders: MessageSenders, breakers: BreakerStateStore | null) =>
+            new MessagingAvailability(config.messaging.disabled, senders, breakers),
         },
         {
           provide: OtpService,
@@ -108,7 +120,7 @@ export class MessagingModule {
           },
         },
       ],
-      exports: [OtpService, MessagingAvailability, MESSAGING_BREAKERS],
+      exports: [OtpService, MessagingAvailability, MESSAGING_BREAKERS, MESSAGE_SENDERS],
     };
   }
 }
