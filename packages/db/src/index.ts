@@ -25,5 +25,10 @@ export {
   type TenantTable,
   type TenantUpdate,
 } from './scoped-repository.ts';
-export { getUnitOfWork, withUnitOfWork, type UnitOfWork } from './unit-of-work.ts';
+export {
+  getUnitOfWork,
+  UnitOfWorkClosedError,
+  withUnitOfWork,
+  type UnitOfWork,
+} from './unit-of-work.ts';
 export { isUuid, uuidv7 } from './uuid.ts';

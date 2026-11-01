@@ -22,13 +22,17 @@ export type TenantUpdate<TTable extends TenantTable> = Partial<TenantInsert<TTab
  */
 export abstract class ScopedRepository<TTable extends TenantTable> {
   readonly #uow: UnitOfWork;
-  readonly #tx: Transaction;
   protected readonly table: TTable;
 
   constructor(uow: UnitOfWork, table: TTable) {
     this.#uow = uow;
-    this.#tx = transactionOf(uow);
+    transactionOf(uow); // fails now on a foreign or closed unit of work
     this.table = table;
+  }
+
+  /** Resolved on every statement: `UnitOfWorkClosedError` once the transaction ended (M-1). */
+  get #tx(): Transaction {
+    return transactionOf(this.#uow);
   }
 
   /** The account every statement of this repository is limited to. */

@@ -9,9 +9,10 @@ import { checkContext, checkPlatformContext, currentFrame, runInFrame } from './
 import type { Pool, RoleDatabase } from './pools.ts';
 import { openPool } from './pools.ts';
 import type { Transaction, UnitOfWork } from './unit-of-work.ts';
-import { runTenantTransaction } from './unit-of-work.ts';
+import { openTransaction, retire, runTenantTransaction } from './unit-of-work.ts';
 
 export type { PlatformContext } from './context.ts';
+export { UnitOfWorkClosedError } from './unit-of-work.ts';
 
 /** The `elx_platform` pool; the `platform_access` policy shows it every account. */
 export type PlatformDatabase = RoleDatabase<'platform'>;
@@ -55,13 +56,17 @@ export function withPlatformUnitOfWork<T>(
   context: PlatformContext | null = null,
 ): Promise<T> {
   const checked = context === null ? null : checkPlatformContext(context);
-  return db.transaction((tx) => {
+  return db.transaction(async (tx) => {
     const uow: PlatformUnitOfWork = Object.freeze({ context: checked });
     transactions.set(uow, tx);
-    return runInFrame(
-      checked === null ? { unitOfWork: uow } : { platform: checked, unitOfWork: uow },
-      () => fn(uow),
-    );
+    try {
+      return await runInFrame(
+        checked === null ? { unitOfWork: uow } : { platform: checked, unitOfWork: uow },
+        () => fn(uow),
+      );
+    } finally {
+      retire(uow, transactions);
+    }
   });
 }
 
@@ -88,7 +93,11 @@ export async function withCrossTenantUnitOfWork<T>(
     if (precheck !== undefined) {
       const uow: PlatformUnitOfWork = Object.freeze({ context: null });
       transactions.set(uow, tx);
-      await precheck(uow);
+      try {
+        await precheck(uow);
+      } finally {
+        retire(uow, transactions);
+      }
     }
     return runTenantTransaction(tx, checked, fn);
   });
@@ -97,6 +106,9 @@ export async function withCrossTenantUnitOfWork<T>(
 /** The platform unit of work of the current platform request or system job; throws otherwise. */
 export function getPlatformUnitOfWork(): PlatformUnitOfWork {
   const uow = currentFrame()?.unitOfWork;
+  if (uow !== undefined && !transactions.has(uow as PlatformUnitOfWork)) {
+    openTransaction(uow, transactions, 'No platform unit of work'); // closed → UnitOfWorkClosedError
+  }
   if (uow === undefined || !transactions.has(uow as PlatformUnitOfWork)) {
     throw new Error('No platform unit of work');
   }
@@ -105,18 +117,20 @@ export function getPlatformUnitOfWork(): PlatformUnitOfWork {
 
 /** Repository base for platform handlers and system jobs: `unscoped()` exists only here. */
 export abstract class PlatformRepository<TTable extends PgTable> {
-  readonly #tx: Transaction;
+  readonly #uow: PlatformUnitOfWork;
   protected readonly table: TTable;
 
   constructor(uow: PlatformUnitOfWork, table: TTable) {
-    const tx = transactions.get(uow);
-    if (tx === undefined) throw new Error('Not a platform unit of work');
-    this.#tx = tx;
+    this.#uow = uow;
+    openTransaction(uow, transactions, 'Not a platform unit of work');
     this.table = table;
   }
 
-  /** The transaction without any account predicate: reads and writes across every account. */
+  /**
+   * The transaction without any account predicate: reads and writes across every account. Resolved
+   * on every call, so a repository kept past its transaction throws `UnitOfWorkClosedError` (M-1).
+   */
   protected unscoped(): Transaction {
-    return this.#tx;
+    return openTransaction(this.#uow, transactions, 'Not a platform unit of work');
   }
 }
