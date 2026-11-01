@@ -260,37 +260,56 @@ export class SessionService {
     },
     facts: RequestFacts,
   ): Promise<void> {
+    await this.store.run((tx) => this.endCurrent(tx, { surface, ...principal }, facts, 'logout'));
+  }
+
+  /**
+   * Revokes the current session in the caller's transaction (logout, switch-account): the family
+   * of the presented refresh cookie when it is the principal's, else every live family of the user
+   * on this surface and membership; audited `core.session.ended` with the reason when anything was
+   * revoked.
+   */
+  async endCurrent(
+    tx: IdentityTransaction,
+    principal: {
+      readonly surface: CookieSurface;
+      readonly userId: string;
+      readonly accountId: string | null;
+      readonly membershipId: string | null;
+    },
+    facts: RequestFacts,
+    reason: 'logout' | 'switch_account',
+  ): Promise<void> {
+    const { surface } = principal;
     const presented = cookieValue(facts.cookieHeader, sessionCookieNames[surface].refresh);
-    await this.store.run(async (tx) => {
-      let families: string[] = [];
-      const family =
-        presented !== undefined && isOpaqueToken(presented)
-          ? await tx.refreshTokens.familyOf(tokenHash(presented))
-          : undefined;
-      if (family !== undefined && family.userId === principal.userId) {
-        if ((await tx.refreshTokens.revokeFamily(family.familyId, 'logout')) > 0) {
-          families = [family.familyId];
-        }
-      } else {
-        families = await tx.refreshTokens.revokeAll(principal.userId, 'logout', {
-          surface,
-          membershipId: principal.membershipId,
-        });
+    let families: string[] = [];
+    const family =
+      presented !== undefined && isOpaqueToken(presented)
+        ? await tx.refreshTokens.familyOf(tokenHash(presented))
+        : undefined;
+    if (family !== undefined && family.userId === principal.userId) {
+      if ((await tx.refreshTokens.revokeFamily(family.familyId, reason)) > 0) {
+        families = [family.familyId];
       }
-      if (families.length === 0) return;
-      await this.#deps.audit.record({
-        actorType: surface === 'platform' ? 'platform_user' : 'user',
-        actorId: principal.userId,
-        accountId: principal.accountId,
-        targetType: 'user',
-        targetId: principal.userId,
-        action: 'core.session.ended',
-        after: { surface, families: families.length },
-        requestId: facts.requestId,
-        clientRequestId: facts.clientRequestId,
-        ip: facts.ip,
-        userAgent: facts.userAgent,
+    } else {
+      families = await tx.refreshTokens.revokeAll(principal.userId, reason, {
+        surface,
+        membershipId: principal.membershipId,
       });
+    }
+    if (families.length === 0) return;
+    await this.#deps.audit.record({
+      actorType: surface === 'platform' ? 'platform_user' : 'user',
+      actorId: principal.userId,
+      accountId: principal.accountId,
+      targetType: 'user',
+      targetId: principal.userId,
+      action: 'core.session.ended',
+      after: { surface, families: families.length, reason },
+      requestId: facts.requestId,
+      clientRequestId: facts.clientRequestId,
+      ip: facts.ip,
+      userAgent: facts.userAgent,
     });
   }
 

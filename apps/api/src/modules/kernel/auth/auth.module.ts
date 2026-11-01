@@ -4,16 +4,22 @@ import type { DynamicModule } from '@nestjs/common';
 import { Logger, Module } from '@nestjs/common';
 import type { AuditSink } from '../audit/audit-sink.js';
 import { AUDIT_SINK } from '../audit/audit-sink.js';
+import type { PermissionResolver } from '../authz/permission-resolver.js';
+import { PERMISSION_RESOLVER } from '../authz/permission-resolver.js';
+import { OutboxWriter } from '../outbox/outbox-writer.js';
 import { KernelModule } from '../kernel.module.js';
 import { identityStoreOnPool } from '../platform/identity.repository.js';
 import { PLATFORM_POOL } from '../platform/tokens.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { RATE_LIMITER } from '../rate-limit/rate-limiter.js';
 import { AccessTokenIssuer } from './access-token.js';
+import { Invitations } from './invitations.js';
+import { PasswordResets } from './password-resets.js';
 import { BreachedPasswords, PasswordHasher } from './passwords.js';
 import { PlatformAuthController } from './platform-auth.controller.js';
 import { SessionService } from './sessions.js';
 import { StaffAuthController } from './staff-auth.controller.js';
+import { StaffSignIn, emailKeyOf } from './sign-in.js';
 
 /**
  * Staff and platform authentication (PLAT-11): the sign-in doors, sessions and `Me`. The identity
@@ -70,8 +76,94 @@ export class AuthModule {
             });
           },
         },
+        {
+          provide: StaffSignIn,
+          inject: [
+            SessionService,
+            PasswordHasher,
+            BreachedPasswords,
+            AUDIT_SINK,
+            { token: PERMISSION_RESOLVER, optional: true },
+            { token: RATE_LIMITER, optional: true },
+          ],
+          useFactory: (
+            sessions: SessionService,
+            passwords: PasswordHasher,
+            breached: BreachedPasswords,
+            audit: AuditSink,
+            resolver: PermissionResolver | undefined,
+            limiter: RateLimiter | undefined,
+          ) =>
+            new StaffSignIn({
+              sessions,
+              passwords,
+              breached,
+              audit,
+              resolver,
+              limiter,
+              emailKey:
+                config.auth.signingKey === undefined
+                  ? undefined
+                  : emailKeyOf(config.auth.signingKey.reveal()),
+            }),
+        },
+        {
+          // PLAT-12 (`inviteMember`) and PLAT-13 (`platformInviteStaff`, bootstrap) call it.
+          provide: Invitations,
+          inject: [PLATFORM_POOL, OutboxWriter, { token: PERMISSION_RESOLVER, optional: true }],
+          useFactory: (
+            pool: Parameters<typeof identityStoreOnPool>[0],
+            outbox: OutboxWriter,
+            resolver: PermissionResolver | undefined,
+          ) =>
+            new Invitations({
+              store: identityStoreOnPool(pool),
+              outbox,
+              resolver,
+              publicWebUrl: config.app.publicWebUrl,
+              publicAdminUrl: config.app.publicAdminUrl,
+            }),
+        },
+        {
+          provide: PasswordResets,
+          inject: [
+            PLATFORM_POOL,
+            OutboxWriter,
+            PasswordHasher,
+            BreachedPasswords,
+            AUDIT_SINK,
+            StaffSignIn,
+            { token: RATE_LIMITER, optional: true },
+          ],
+          useFactory: (
+            pool: Parameters<typeof identityStoreOnPool>[0],
+            outbox: OutboxWriter,
+            passwords: PasswordHasher,
+            breached: BreachedPasswords,
+            audit: AuditSink,
+            signIn: StaffSignIn,
+            limiter: RateLimiter | undefined,
+          ) =>
+            new PasswordResets({
+              store: identityStoreOnPool(pool),
+              outbox,
+              passwords,
+              breached,
+              audit,
+              limiter,
+              emailRef: (email) => signIn.emailRef(email),
+              publicWebUrl: config.app.publicWebUrl,
+            }),
+        },
       ],
-      exports: [SessionService, PasswordHasher, BreachedPasswords, AccessTokenIssuer],
+      exports: [
+        SessionService,
+        PasswordHasher,
+        BreachedPasswords,
+        AccessTokenIssuer,
+        StaffSignIn,
+        Invitations,
+      ],
     };
   }
 }
