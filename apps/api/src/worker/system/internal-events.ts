@@ -10,6 +10,7 @@ import type {
   DomainEventConsumerRegistry,
 } from '../../modules/kernel/outbox/domain-event-consumers.js';
 import type {
+  JobContext,
   KindHandler,
   KindOutcome,
   OutboxRow,
@@ -25,7 +26,8 @@ import { isFinalFailure, outboxQueuePolicies } from '../../modules/kernel/outbox
 // platform-pool transaction (with `elx.account_id` set when the row has an account): insert the
 // receipt `(consumer, event_id)` first, a conflict meaning already processed; then run it. An
 // event whose consumer has not yet processed an earlier event of the aggregate is parked (the job
-// is delayed, 30 s then doubling) and dead-lettered for that consumer after 15 minutes.
+// is delayed, 30 s then doubling) and dead-lettered for that consumer 15 minutes after its first
+// park (the job carries `parkedSince`; the row's `parked_consumers` names who waits).
 
 /** First park delay; each next one doubles (the delay equals the time parked so far). */
 export const parkFirstMs = 30_000;
@@ -84,7 +86,7 @@ export class InternalEventDispatcher implements KindHandler {
    * parked consumer delays the row without consuming an attempt and after 15 minutes is
    * dead-lettered. A row with any dead letter ends `dead` (listed and replayable, leg 3).
    */
-  async execute(row: OutboxRow): Promise<KindOutcome> {
+  async execute(row: OutboxRow, job?: JobContext): Promise<KindOutcome> {
     const type = row.type;
     if (!isDomainEventType(type)) return { outcome: 'done' };
     const consumers = this.#deps.consumers.for(type);
@@ -129,9 +131,12 @@ export class InternalEventDispatcher implements KindHandler {
     }
 
     if (parked.length > 0) {
-      const since = row.enqueuedAt ?? now;
+      // The window runs from the job's first park (lead review round 3), not from `enqueued_at`:
+      // time spent in retries before the gap appeared does not count.
+      const since = job?.parkedSince ?? now;
       const parkedMs = Math.max(0, now.getTime() - since.getTime());
-      const names = parked.map((consumer) => consumer.consumer).join(', ');
+      const consumers = parked.map((consumer) => consumer.consumer);
+      const names = consumers.join(', ');
       if (parkedMs >= parkWindowMs) {
         const error = { message: `parked past ${parkWindowMs / 60_000} min: sequence gap` };
         await this.#deadLetter(row, parked, row.attempts, error);
@@ -143,7 +148,8 @@ export class InternalEventDispatcher implements KindHandler {
         outcome: 'retry',
         consumesAttempt: false,
         retryAfterS: delayMs / 1_000,
-        error: { message: `parked: sequence gap for ${names}` },
+        error: { message: 'parked: sequence gap' },
+        parked: { consumers, since },
       };
     }
     return { outcome: 'done' };

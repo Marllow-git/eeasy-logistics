@@ -109,6 +109,7 @@ describe('resolveOutcome', () => {
       attempts: 3,
       nextAttemptAt: new Date(now.getTime() + 2_000),
       lastError: '500 oops',
+      parkedConsumers: null,
     });
   });
 
@@ -125,6 +126,26 @@ describe('resolveOutcome', () => {
       attempts: 9,
       nextAttemptAt: new Date(now.getTime() + 30_000),
       lastError: null,
+      parkedConsumers: null,
+    });
+    // A park names its consumers for `parked_consumers` (lead review round 3).
+    const park = resolveOutcome(
+      row(9),
+      {
+        outcome: 'retry',
+        consumesAttempt: false,
+        retryAfterS: 30,
+        error: { message: 'parked: sequence gap' },
+        parked: { consumers: ['kernel.a', 'kernel.b'], since: now },
+      },
+      internal,
+      now,
+    );
+    expect(park).toMatchObject({
+      status: 'enqueued',
+      attempts: 9,
+      lastError: 'parked: sequence gap',
+      parkedConsumers: ['kernel.a', 'kernel.b'],
     });
     // A provider asking for a week gets a day; a nonsense value falls back to the schedule.
     const week = resolveOutcome(

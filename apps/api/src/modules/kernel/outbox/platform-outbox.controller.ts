@@ -123,7 +123,11 @@ export class PlatformOutboxController {
   @Operation(listOp)
   async list(@Input() input: ContractInput<typeof listOp>): Promise<PlatformListOutbox200> {
     const { query } = input;
+    // Every filter is checked before the cursor is decoded (lead review round 3), so a bad filter
+    // answers 400 on its own pointer rather than as a cursor mismatch. The other filters are
+    // checked by the contract schema in the pipe.
     const sort = sortOf(query.sort);
+    const statuses = statusesOf(query.status);
     const binding = {
       operation: 'platformListOutbox',
       principal: `platform:${caller().userId}`,
@@ -142,7 +146,7 @@ export class PlatformOutboxController {
       query.cursor === undefined ? undefined : this.cursors.decode(query.cursor, binding);
     const page = {
       filters: {
-        statuses: statusesOf(query.status),
+        statuses,
         kind: query.kind,
         type: query.type,
         aggregateId: query.aggregate_id,

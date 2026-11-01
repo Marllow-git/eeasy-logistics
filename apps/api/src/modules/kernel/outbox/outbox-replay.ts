@@ -63,6 +63,7 @@ export function replayedState() {
     nextAttemptAt: new Date(),
     enqueuedAt: null,
     doneAt: null,
+    parkedConsumers: null,
   } as const;
 }
 
@@ -120,8 +121,11 @@ function olderThanWindow(row: OutboxRecord, now: Date): boolean {
 
 /**
  * Replays one row: undefined when the store does not see it. The checks run in order: `dead`, the
- * window, the job (a running job cannot be removed), then the guarded update, whose miss means a
- * pending row holds the key (or the row changed meanwhile).
+ * window, a running job (it cannot be removed), then the guarded update, whose miss means a
+ * pending row holds the key (or the row changed meanwhile). Only once the update returned the row
+ * is its retained job removed (lead review round 3), so a refused replay keeps the job; a job that
+ * started running in between is refused `job_active`, and the caller's transaction (rolled back by
+ * the refusal) undoes the update.
  */
 export async function replayOne(
   store: ReplayStore,
@@ -138,14 +142,14 @@ export async function replayOne(
   });
   if (row.status !== 'dead') return refuse('not_dead');
   if (olderThanWindow(row, now)) return refuse('outside_receipt_window');
-  const running = await queues.removeJobs(row.kind, [row.id]);
-  if (running.has(row.id)) return refuse('job_active');
+  if ((await queues.lockedJobs(row.kind, [row.id])).has(row.id)) return refuse('job_active');
   const changed = await store.markPending([row.id]);
   if (changed.length === 0) {
     const again = await store.find(id);
     if (again !== undefined && again.status !== 'dead') return refuse('not_dead');
     return refuse(row.supersedeKey === null ? 'outside_receipt_window' : 'supersede_pending');
   }
+  if ((await queues.removeJobs(row.kind, changed)).has(row.id)) return refuse('job_active');
   await store.markDeadLettersReplayed(changed);
   return { replayed: true, before: row };
 }
@@ -177,7 +181,7 @@ export async function replayBulk(
     const last = batch.at(-1);
     if (last === undefined) break;
     afterId = last.id;
-    const running = await queues.removeJobs(
+    const running = await queues.lockedJobs(
       filter.kind,
       batch.map((row) => row.id),
     );
@@ -197,7 +201,13 @@ export async function replayBulk(
       )
       .map((row) => row.id);
     const changed = ids.length === 0 ? [] : await store.markPending(ids);
-    if (changed.length > 0) await store.markDeadLettersReplayed(changed);
+    if (changed.length > 0) {
+      // Jobs go only for rows the guarded update set `pending` (lead review round 3). A job that
+      // started running since the lock check fails the whole request, rolling the batch back.
+      const left = await queues.removeJobs(filter.kind, changed);
+      if (left.size > 0) throw new Error('An outbox job started running during a bulk replay');
+      await store.markDeadLettersReplayed(changed);
+    }
     replayed += changed.length;
     if (batch.length < batchSize) break;
   }

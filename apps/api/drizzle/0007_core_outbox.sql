@@ -64,6 +64,7 @@ CREATE TABLE "core_outbox" (
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"next_attempt_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_error" text,
+	"parked_consumers" text[],
 	"supersede_key" text,
 	"enqueued_at" timestamp with time zone,
 	"done_at" timestamp with time zone,

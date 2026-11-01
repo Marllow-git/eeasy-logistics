@@ -15,6 +15,7 @@ import {
 } from '../../src/modules/kernel/outbox/domain-event-consumers.js';
 import { KindHandlerRegistry } from '../../src/modules/kernel/outbox/kind-handlers.js';
 import { nextOutboxId } from '../../src/modules/kernel/outbox/outbox-id.js';
+import type { OutboxJobData } from '../../src/modules/kernel/outbox/queues.js';
 import { InternalEventDispatcher, parkWindowMs } from '../../src/worker/system/internal-events.js';
 import type { JobResult, OutboxJob } from '../../src/worker/system/outbox-workers.js';
 import { processOutboxJob } from '../../src/worker/system/outbox-workers.js';
@@ -63,6 +64,7 @@ describe('internal event dispatcher (plan 2.6)', () => {
     sequence: number,
     type: DomainEventType = 'core.site.updated',
     attempts = 0,
+    enqueuedAgoMs = 0,
   ) => {
     const id = nextOutboxId();
     eventIds.push(id);
@@ -70,15 +72,23 @@ describe('internal event dispatcher (plan 2.6)', () => {
       INSERT INTO core_outbox (id, type, event_version, account_id, aggregate_type, aggregate_id,
                                sequence, payload, kind, status, attempts, enqueued_at)
       VALUES (${id}, ${type}, 1, ${account}, 'site', ${aggregateId}, ${sequence}, '{}',
-              'internal_event', 'enqueued', ${attempts}, now())`;
+              'internal_event', 'enqueued', ${attempts},
+              now() - make_interval(secs => ${enqueuedAgoMs / 1_000}))`;
     return id;
   };
   const row = async (id: string) =>
     (
       await owner<
-        { status: string; attempts: number; next_attempt_at: Date; last_error: string }[]
+        {
+          status: string;
+          attempts: number;
+          next_attempt_at: Date;
+          last_error: string;
+          parked_consumers: string[] | null;
+        }[]
       >`
-        SELECT status, attempts, next_attempt_at, last_error FROM core_outbox WHERE id = ${id}`
+        SELECT status, attempts, next_attempt_at, last_error, parked_consumers
+        FROM core_outbox WHERE id = ${id}`
     )[0];
   const receipts = async (id: string) =>
     (
@@ -93,11 +103,15 @@ describe('internal event dispatcher (plan 2.6)', () => {
         WHERE event_id = ${id}`
     ).map((r) => ({ ...r }));
 
+  /** The job data the last delivery left (a park writes `parkedSince` into it). */
+  let lastJobData: OutboxJobData | undefined;
+
   /** Runs one delivery of `id` through the worker's processor with the dispatcher. */
   const deliver = async (
     consumers: DomainEventConsumer[],
     id: string,
     nowMs = Date.now(),
+    parkedSinceMs?: number,
   ): Promise<JobResult | 'delayed'> => {
     const now = () => new Date(nowMs);
     const dispatcher = new InternalEventDispatcher({
@@ -106,9 +120,15 @@ describe('internal event dispatcher (plan 2.6)', () => {
       logger: quiet,
       now,
     });
+    lastJobData =
+      parkedSinceMs === undefined ? { outboxId: id } : { outboxId: id, parkedSince: parkedSinceMs };
     const job = {
-      data: { outboxId: id },
+      data: lastJobData,
       moveToDelayed: vi.fn(() => Promise.resolve()),
+      updateData: vi.fn((data: OutboxJobData) => {
+        lastJobData = data;
+        return Promise.resolve();
+      }),
     } as unknown as OutboxJob;
     const deps = {
       db: pool.db,
@@ -205,12 +225,21 @@ describe('internal event dispatcher (plan 2.6)', () => {
     expect(recorder.seen).toEqual([]);
     expect(site.seen).toEqual([second]);
     const parked = await row(second);
-    expect(parked).toMatchObject({ status: 'enqueued', attempts: 0 });
-    expect(parked?.last_error).toContain('parked: sequence gap for test.recorder');
+    expect(parked).toMatchObject({
+      status: 'enqueued',
+      attempts: 0,
+      last_error: 'parked: sequence gap',
+      parked_consumers: ['test.recorder'],
+    });
     expect((parked?.next_attempt_at.getTime() ?? 0) - before).toBe(30_000);
+    // The first park stamps the job; a re-park keeps the stamp (lead review round 3).
+    expect(lastJobData).toEqual({ outboxId: second, parkedSince: before });
+    expect(await deliver([recorder, site], second, before + 30_000, before)).toBe('delayed');
+    expect(lastJobData).toEqual({ outboxId: second, parkedSince: before });
 
     expect(await deliver([recorder, site], first)).toBe('done');
-    expect(await deliver([recorder, site], second)).toBe('done');
+    expect(await deliver([recorder, site], second, Date.now(), before)).toBe('done');
+    expect((await row(second))?.parked_consumers).toBeNull();
     expect(recorder.seen).toEqual([first, second]);
     expect(site.seen).toEqual([second]);
   });
@@ -220,8 +249,10 @@ describe('internal event dispatcher (plan 2.6)', () => {
     const aggregate = uuidv7();
     await insert(aggregate, 1);
     const second = await insert(aggregate, 2);
-    const later = Date.now() + 4 * 60_000;
-    expect(await deliver([recorder], second, later)).toBe('delayed');
+    const now = Date.now();
+    const later = now + 4 * 60_000;
+    // First parked at `now`, delivered again 4 minutes later.
+    expect(await deliver([recorder], second, later, now)).toBe('delayed');
     const delay = ((await row(second))?.next_attempt_at.getTime() ?? 0) - later;
     expect(delay).toBeGreaterThanOrEqual(4 * 60_000 - 2_000);
     expect(delay).toBeLessThanOrEqual(4 * 60_000 + 2_000);
@@ -233,8 +264,12 @@ describe('internal event dispatcher (plan 2.6)', () => {
     const aggregate = uuidv7();
     await insert(aggregate, 1, 'core.feature_flag.changed');
     const second = await insert(aggregate, 2);
-    // The clock advanced past the window since the row was enqueued.
-    expect(await deliver([recorder, site], second, Date.now() + parkWindowMs + 1_000)).toBe('dead');
+    // The clock advanced past the window since the job was first parked.
+    const firstPark = Date.now();
+    expect(await deliver([recorder, site], second, firstPark)).toBe('delayed');
+    expect(
+      await deliver([recorder, site], second, firstPark + parkWindowMs + 1_000, firstPark),
+    ).toBe('dead');
     expect(await deadLetters(second)).toEqual([
       {
         consumer: 'test.recorder',
@@ -245,7 +280,22 @@ describe('internal event dispatcher (plan 2.6)', () => {
     ]);
     expect((await receipts(second)).map((r) => r.consumer)).toEqual(['test.site_only']);
     expect(recorder.seen).toEqual([]);
-    expect(await row(second)).toMatchObject({ status: 'dead' });
+    expect(await row(second)).toMatchObject({ status: 'dead', parked_consumers: null });
+  });
+
+  it('measures the park window from the first park, not from enqueued_at (lead review round 3)', async () => {
+    const recorder = new Recorder();
+    const aggregate = uuidv7();
+    await insert(aggregate, 1);
+    // Enqueued 16 minutes ago (time spent retrying), parked for the first time now.
+    const second = await insert(aggregate, 2, 'core.site.updated', 3, 16 * 60_000);
+    const now = Date.now();
+    expect(await deliver([recorder], second, now)).toBe('delayed');
+    expect(await deadLetters(second)).toEqual([]);
+    const parked = await row(second);
+    expect(parked).toMatchObject({ status: 'enqueued', attempts: 3 });
+    expect((parked?.next_attempt_at.getTime() ?? 0) - now).toBe(30_000);
+    expect(lastJobData).toEqual({ outboxId: second, parkedSince: now });
   });
 
   it('dead-letters the failing consumers at the 10th failure; the row is dead with 10 attempts', async () => {

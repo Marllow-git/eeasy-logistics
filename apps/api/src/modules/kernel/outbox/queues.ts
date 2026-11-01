@@ -37,9 +37,14 @@ export const outboxJobRetries = {
   backoff: { type: outboxBackoffType },
 } as const;
 
-/** The only job data an outbox queue carries. */
+/**
+ * The only job data an outbox queue carries: the row id, never the payload. `parkedSince` (epoch
+ * ms) is set by the worker on an `internal_event` job's first park and kept while it stays parked,
+ * so the 15-minute park window runs from the first park (lead review round 3).
+ */
 export interface OutboxJobData {
   readonly outboxId: string;
+  readonly parkedSince?: number;
 }
 
 /** The producer side of the outbox queues, as the relay and its sweeper use it. */
@@ -82,10 +87,26 @@ export class OutboxQueues {
    * one pipelined round trip.
    */
   async existingJobs(kind: OutboxKind, outboxIds: readonly string[]): Promise<Set<string>> {
+    return this.#present(kind, outboxIds, (id) => id);
+  }
+
+  /**
+   * The row ids of `outboxIds` whose job is locked by a worker (running: its lock key exists), the
+   * state in which BullMQ refuses to remove a job; one pipelined round trip.
+   */
+  async lockedJobs(kind: OutboxKind, outboxIds: readonly string[]): Promise<Set<string>> {
+    return this.#present(kind, outboxIds, (id) => `${id}:lock`);
+  }
+
+  async #present(
+    kind: OutboxKind,
+    outboxIds: readonly string[],
+    suffix: (id: string) => string,
+  ): Promise<Set<string>> {
     if (outboxIds.length === 0) return new Set();
     const queue = this.#queue(kind);
     const pipeline = this.connection.pipeline();
-    for (const id of outboxIds) pipeline.exists(queue.toKey(id));
+    for (const id of outboxIds) pipeline.exists(queue.toKey(suffix(id)));
     const results = (await pipeline.exec()) ?? [];
     const present = new Set<string>();
     outboxIds.forEach((id, index) => {
