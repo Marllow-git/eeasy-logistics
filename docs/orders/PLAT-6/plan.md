@@ -90,6 +90,7 @@ Issuing tokens, refresh, sign-in doors, OTP and TOTP (PLAT-11); permission enfor
 |---|---|---|---|
 | A | this commit | api unit 34/34 (new: `errors.http.test.ts` 10, `error-codes.test.ts` 12 incl. errors.md parity and 9 `Accept-Language` cases); red run with the filter and middleware unregistered 10/10 failed, green 10/10; i18n 11/11 (parity now covers `errors`); integration 41/41 (`ELX_RLS=off`, scratch database, MinIO up) | 8.2.1–8.2.5 |
 | B | this commit | api unit 79/79 (new `test/auth.test.ts` 45: valid per surface, forged, edited payload, expired genuine vs another surface, wrong `aud` x4, other `kid`/alg/`iss`, `alg: none`, 9 missing claims, 6 malformed claims, no key; cookie versus bearer per surface; recipient and public 401); red run with the `aud`, `kid` and claim-schema checks removed: 20/45 failed, green 45/45; lint and architecture green | 8.2.6–8.2.7 |
+| C | this commit | integration 49/49 with `ELX_RLS=off` and 49/49 with `on` (new `tenancy.http.test.ts` 8: 401 without credential, two tokens two accounts, account never from query/header/body, driver surface, rollback on throw, driver token refused on staff, `/health` public, `getUnitOfWork()`/`getContext()` throw outside a request); red runs: guard unregistered 6/8 failed, interceptor committing on error 1/8 failed (rollback), green 8/8; planted `getUnitOfWork().tx` and `({ tx })` → `tsc` TS2339 twice, green after removal; api unit 79/79, db unit 10/10, lint and both architecture checks green | 8.2.8–8.2.10 |
 
 ### 8.1 Skills, documents and versions consulted
 
