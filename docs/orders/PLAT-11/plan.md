@@ -99,6 +99,7 @@ Member management doors (`inviteMember`, `updateMember`, `revokeMember`, `resetM
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A | this commit | schema, migrate, rls integration files: red 1 failed / 13 passed (users-class grant test with the `REVOKE` disabled), green 31/31 with `ELX_RLS=off` and 31/31 with `ELX_RLS=on`; migrate job twice on a scratch db (13 applied, then nothing to migrate); psql grants: elx_app none on the five users-class tables, SELECT/INSERT/UPDATE on memberships and invitations; elx_platform all four on all seven | 8.2 #1 to #4 |
 
 ### 8.1 Skills, documents and versions consulted
 
