@@ -18,7 +18,7 @@ Each order is a **fixed sequential pipeline**: register, plan, build, review, ga
 | 6 | **Adversary** (only when the roadmap row says `Adv. yes`) | adversary | Verdict recorded in plan §9: no critical or high open, medium and low fixed or ruled with a reason. **One pass, one re-check** of the fixes, no more. | adversary verdict; lead records |
 | 7 | **PR gate** | script | `tools/pr-gate.sh <PR>` passes: head has implementation commits beyond the plan, CI green on every check, §8 and §9 present when required, release note present when user-visible paths changed, PR body sections present. | `tools/pr-gate.sh` |
 | 8 | **Merge** | owner, or the lead when the owner has delegated merging in writing | Gate 7 passed on the exact head SHA that is merged. | owner or lead |
-| 9 | **Close** | lead | Issue closed with reason and PR link; worktree removed; ledger row removed; the next unblocked order registered. | lead |
+| 9 | **Close** | lead | Issue closed with reason and PR link; worktree removed; ledger row removed; `.serena/memories/` checked against the merged diff (`memory_upkeep` triggers); the next unblocked order registered. | lead |
 
 A stage that fails its gate goes back one stage, never forward. If a stage fails its gate twice, the lead reports to the owner instead of trying a third time.
 
@@ -51,7 +51,7 @@ The repository is the context store. Every agent reads a named slice of it and w
 - **Summary first.** Research notes open with "Summary for the lead", ten lines at most. Adversary output is the table, then the verdict.
 - **Quiet output.** Executors run tests with a summary reporter and record counts; they do not stream full logs into their window.
 - **Session start.** The lead reads `docs/orders/README.md`, the open PR list and the roadmap rows of in-flight orders, then nothing else until a task needs it. After a context compaction the lead re-reads the ledger instead of trusting the summary. Memory files hold owner rulings only.
-- **Shared project knowledge.** `.serena/memories/` is tracked so every worktree starts with the same codebase notes; an executor that learns something a later order needs writes it there and commits it.
+- **Shared project knowledge.** `.serena/memories/` is tracked so every worktree starts with the same codebase notes. Memories are updated **in the PR that makes them true**, never later: the trigger list is the memory `memory_upkeep` (scripts, CI lanes, version pins, new modules or packages, lint or architecture rules, plan-file conventions, a rediscovery that cost real time). The executor updates them in the finishing step of a leg; the lead checks at close. `tools/pr-gate.sh` fails when a trigger path changed and the PR neither touches `.serena/memories/` nor says `Memories: unchanged` in its body. Order state and owner rulings are never memories; they live in `docs/orders/README.md`.
 
 ## Merging
 
