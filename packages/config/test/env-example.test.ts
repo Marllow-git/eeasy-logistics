@@ -58,6 +58,9 @@ describe('.env.example', () => {
       expect(url.username).toBe(`elx_${role}`);
       expect(url.password).toBe(example[`ELX_${role.toUpperCase()}_PASSWORD`]);
     }
+    const admin = new URL(example.DATABASE_URL_ADMIN ?? '');
+    expect(admin.username).toBe('postgres');
+    expect(admin.password).toBe(example.POSTGRES_PASSWORD);
     expect(example.STORAGE_ACCESS_KEY_ID).toBe(example.MINIO_ROOT_USER);
     expect(example.STORAGE_SECRET_ACCESS_KEY).toBe(example.MINIO_ROOT_PASSWORD);
     expect(example.STORAGE_BUCKET).toBe(example.MINIO_BUCKET);

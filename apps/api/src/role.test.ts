@@ -12,7 +12,7 @@ describe('parseRole', () => {
     expect(parseRole(['--role', 'api'])).toBe('api');
   });
 
-  it('reads --role migrate', () => {
+  it('reads --role migrate (the one-shot migration job, data §11.5)', () => {
     expect(parseRole(['--role', 'migrate'])).toBe('migrate');
     expect(parseRole(['--role=migrate'])).toBe('migrate');
   });

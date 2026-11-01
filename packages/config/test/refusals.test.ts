@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type { AppRole } from '../src/index.ts';
 import { ConfigError, defineConfig } from '../src/index.ts';
 import { requiredInProduction } from '../src/refusals.ts';
-import { productionEnv, valuesOf } from './fixtures.ts';
+import { productionEnv, productionOwnerUrl, valuesOf } from './fixtures.ts';
 
-function problems(env: Record<string, string>): Record<string, string> {
+function problems(env: Record<string, string>, role: AppRole = 'api'): Record<string, string> {
   try {
-    defineConfig(env);
+    defineConfig(env, { role });
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
     for (const value of valuesOf(env)) expect(error.message).not.toContain(value);
@@ -20,12 +21,85 @@ function without(...variables: string[]): Record<string, string> {
   return env;
 }
 
+describe('database credentials per role (review H-2, data §4.4, ADR-0031)', () => {
+  it.each(['api', 'worker'] as const)(
+    '%s needs the app and platform URLs and never the owner, maintenance or admin URL',
+    (role) => {
+      expect(requiredInProduction(role)).toEqual(
+        expect.arrayContaining(['DATABASE_URL_APP', 'DATABASE_URL_PLATFORM']),
+      );
+      expect(requiredInProduction(role)).not.toContain('DATABASE_URL_OWNER');
+      expect(requiredInProduction(role)).not.toContain('DATABASE_URL_MAINTENANCE');
+      expect(problems(productionEnv, role)).toEqual({});
+      for (const appEnv of ['staging', 'production']) {
+        const env = { ...productionEnv, APP_ENV: appEnv };
+        expect(
+          problems(
+            {
+              ...env,
+              DATABASE_URL_OWNER: productionOwnerUrl,
+              DATABASE_URL_MAINTENANCE: 'postgres://elx_maintenance:fake-m@db.internal:5432/elx',
+              DATABASE_URL_ADMIN: 'postgres://postgres:fake-admin@db.internal:5432/postgres',
+            },
+            role,
+          ),
+        ).toEqual({
+          DATABASE_URL_OWNER: `must not be given to the ${role} role in ${appEnv} (ADR-0031)`,
+          DATABASE_URL_MAINTENANCE: `must not be given to the ${role} role in ${appEnv} (ADR-0031)`,
+          DATABASE_URL_ADMIN: `is for local and ci tooling only; ${appEnv} refuses it`,
+        });
+      }
+    },
+  );
+
+  it('migrate needs only the owner URL in production', () => {
+    expect(requiredInProduction('migrate')).toEqual(['DATABASE_URL_OWNER']);
+    expect(problems({ APP_ENV: 'production' }, 'migrate')).toEqual({
+      DATABASE_URL_OWNER: 'is required when APP_ENV=production',
+    });
+    expect(
+      problems({ APP_ENV: 'production', DATABASE_URL_OWNER: productionOwnerUrl }, 'migrate'),
+    ).toEqual({});
+  });
+
+  it('migrate may not hold the admin URL in staging or production', () => {
+    const found = problems(
+      {
+        APP_ENV: 'staging',
+        DATABASE_URL_OWNER: productionOwnerUrl,
+        DATABASE_URL_ADMIN: 'postgres://postgres:fake-admin@db.internal:5432/postgres',
+      },
+      'migrate',
+    );
+    expect(found).toEqual({
+      DATABASE_URL_ADMIN: 'is for local and ci tooling only; staging refuses it',
+    });
+  });
+
+  it('local and ci accept every database URL for every role', () => {
+    for (const appEnv of ['local', 'ci']) {
+      for (const role of ['api', 'worker', 'migrate'] as const) {
+        expect(
+          problems(
+            {
+              APP_ENV: appEnv,
+              DATABASE_URL_OWNER: productionOwnerUrl,
+              DATABASE_URL_MAINTENANCE: 'postgres://elx_maintenance:fake-m@127.0.0.1:5432/elx',
+            },
+            role,
+          ),
+        ).toEqual({});
+      }
+    }
+  });
+});
+
 describe('production refusals (plan 2.3)', () => {
   it('starts with a complete production environment', () => {
     expect(problems(productionEnv)).toEqual({});
   });
 
-  it.each(requiredInProduction)('refuses production without %s', (variable) => {
+  it.each(requiredInProduction('api'))('refuses production without %s', (variable) => {
     const found = problems(without(variable));
     expect(Object.keys(found)).toContain(variable);
   });
@@ -37,7 +111,7 @@ describe('production refusals (plan 2.3)', () => {
       MESSAGING_ACCESS_TOKEN: 'fake-token',
       MESSAGING_SENDER_ID: '1',
     });
-    expect(Object.keys(found).sort()).toEqual([...requiredInProduction].sort());
+    expect(Object.keys(found).sort()).toEqual([...requiredInProduction('api')].sort());
     expect(found.REDIS_URL).toBe('is required when APP_ENV=production');
   });
 
@@ -102,6 +176,22 @@ describe('production refusals (plan 2.3)', () => {
   it.each(['local', 'ci', 'staging'])('does not apply production rules in %s', (appEnv) => {
     expect(problems({ APP_ENV: appEnv })).toEqual({});
     expect(problems({ APP_ENV: appEnv, MESSAGING_PROVIDER: 'stub' })).toEqual({});
+  });
+
+  it.each(['staging', 'production'])('refuses the superuser DATABASE_URL_ADMIN in %s', (appEnv) => {
+    const admin = 'postgres://postgres:fake-admin-pw@db.internal:5432/postgres';
+    const env = appEnv === 'production' ? productionEnv : { APP_ENV: appEnv };
+    const found = problems({ ...env, DATABASE_URL_ADMIN: admin });
+    expect(found).toEqual({
+      DATABASE_URL_ADMIN: `is for local and ci tooling only; ${appEnv} refuses it`,
+    });
+  });
+
+  it.each(['local', 'ci'])('accepts DATABASE_URL_ADMIN in %s (PLAT-5 tooling)', (appEnv) => {
+    const admin = 'postgres://postgres:fake-admin-pw@127.0.0.1:5432/postgres';
+    const config = defineConfig({ APP_ENV: appEnv, DATABASE_URL_ADMIN: admin });
+    expect(config.db.urls.admin?.reveal()).toBe(admin);
+    expect(String(config.db.urls.admin)).toBe('[redacted]');
   });
 
   it('resolves an unset provider to the stub in local and ci only', () => {
