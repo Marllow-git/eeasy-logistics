@@ -1,14 +1,16 @@
 import type { Secret } from '@eeasy-logistics/config';
 import { isUuid } from '@eeasy-logistics/db';
 import type { JWTHeaderParameters } from 'jose';
-import { decodeJwt, errors, jwtVerify } from 'jose';
+import { SignJWT, decodeJwt, errors, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { ApiException } from '../errors/api-exception.js';
 import type { TokenSurface } from './surfaces.js';
 
 // Access tokens (PLAT-6 plan 2.3; identity and tenancy §4): JWTs signed HS256 with
 // `config.auth.signingKey`, header `kid = config.auth.signingKeyId`, verified locally by signature.
-// Issuing them is PLAT-11's; `ver` is carried for PLAT-11's revocation checks, not checked here.
+// `AccessTokenIssuer` (PLAT-11 plan 2.4) signs them for sessions; `ver` is carried for the
+// revocation checks on refresh and sensitive actions, not checked here. `amr` (optional, PLAT-11)
+// names the methods the session was started with: `pwd`, `otp`, `totp`.
 
 /** The `iss` of every access token this API issues and accepts. */
 export const accessTokenIssuer = 'eeasy-logistics';
@@ -19,6 +21,11 @@ export const accessTokenType = 'at+jwt';
 export const clockSkewSeconds = 60;
 
 const uuid = z.string().refine(isUuid, 'not a UUID');
+
+/** Authentication methods a session records (RFC 8176 names): password, phone OTP, TOTP. */
+export const authenticationMethods = ['pwd', 'otp', 'totp'] as const;
+export type AuthenticationMethod = (typeof authenticationMethods)[number];
+
 const common = {
   iss: z.literal(accessTokenIssuer),
   sub: uuid,
@@ -28,6 +35,7 @@ const common = {
   scopes: z.string().max(128),
   sites: z.array(uuid).max(1000),
   ver: z.number().int().nonnegative(),
+  amr: z.array(z.enum(authenticationMethods)).max(authenticationMethods.length).optional(),
 };
 
 /** The claims of each surface: who may carry an account, a membership and a device. */
@@ -133,5 +141,75 @@ function audienceOf(token: string): unknown {
     return decodeJwt(token).aud;
   } catch {
     return undefined;
+  }
+}
+
+/** The claims of a session's access token (identity and tenancy §4 "Claims"; plan 2.4). */
+export type SessionClaims =
+  | {
+      readonly surface: 'staff';
+      readonly userId: string;
+      readonly accountId: string;
+      readonly membershipId: string;
+      readonly roles: readonly string[];
+      readonly sites: readonly string[];
+      readonly tokenVersion: number;
+      readonly amr: readonly AuthenticationMethod[];
+    }
+  | {
+      readonly surface: 'platform';
+      readonly userId: string;
+      readonly roles: readonly string[];
+      readonly tokenVersion: number;
+      readonly amr: readonly AuthenticationMethod[];
+    };
+
+/**
+ * Signs session access tokens with the key the verifier checks (PLAT-11 plan 2.4): the PLAT-6
+ * claim shape, `scopes` empty for sessions (API keys are wave 4), `iat` now and `exp` one access
+ * lifetime later. Without a configured key it refuses to sign (`500`), as the verifier refuses
+ * every token.
+ */
+export class AccessTokenIssuer {
+  readonly #keyId: string | undefined;
+  readonly #key: Uint8Array | undefined;
+  readonly ttlSeconds: number;
+
+  constructor(settings: SigningSettings) {
+    this.#keyId = settings.signingKeyId;
+    this.ttlSeconds = settings.accessTokenTtlSeconds ?? 900;
+    this.#key =
+      settings.signingKey === undefined
+        ? undefined
+        : new TextEncoder().encode(settings.signingKey.reveal());
+  }
+
+  get configured(): boolean {
+    return this.#key !== undefined && this.#keyId !== undefined;
+  }
+
+  async sign(claims: SessionClaims, now: number = Date.now()): Promise<string> {
+    const key = this.#key;
+    const keyId = this.#keyId;
+    if (key === undefined || keyId === undefined) throw new ApiException('internal_error');
+    const issuedAt = Math.floor(now / 1000);
+    const tenant =
+      claims.surface === 'staff'
+        ? { acc: claims.accountId, mem: claims.membershipId, sites: [...claims.sites] }
+        : { acc: null, mem: null, sites: [] };
+    return new SignJWT({
+      sub: claims.userId,
+      ...tenant,
+      roles: [...claims.roles],
+      scopes: '',
+      ver: claims.tokenVersion,
+      amr: [...claims.amr],
+    })
+      .setProtectedHeader({ alg: accessTokenAlgorithm, kid: keyId, typ: accessTokenType })
+      .setIssuer(accessTokenIssuer)
+      .setAudience(claims.surface)
+      .setIssuedAt(issuedAt)
+      .setExpirationTime(issuedAt + this.ttlSeconds)
+      .sign(key);
   }
 }
