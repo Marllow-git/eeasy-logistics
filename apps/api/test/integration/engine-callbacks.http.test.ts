@@ -8,17 +8,21 @@ import { createPlatformPool } from '@eeasy-logistics/db/platform';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import type postgres from 'postgres';
+import { Readable } from 'node:stream';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { configureHttp, createHttpAdapter, httpAppOptions } from '../../src/http-app.js';
+import { EngineCallbackDoor } from '../../src/modules/kernel/messaging/engine/callback-door.js';
 import {
   engineCallbackPath,
   engineServiceIdentity,
   signedHeaders,
   wireInstant,
 } from '../../src/modules/kernel/messaging/engine/envelope.js';
+import { OptOutList } from '../../src/modules/kernel/messaging/opt-out-list.js';
 import { accountSenderResolver } from '../../src/modules/kernel/messaging/sender-resolver.js';
+import type { MessagingStore } from '../../src/modules/kernel/platform/messaging.repository.js';
 import { messagingStore } from '../../src/modules/kernel/platform/messaging.repository.js';
 import { connectAs, integrationConfig } from './support.js';
 
@@ -292,6 +296,92 @@ describe('engine callback door (PLAT-9 item G)', () => {
     expect(await owner`SELECT 1 FROM core_messaging_opt_outs WHERE phone = ${phone}`).toHaveLength(
       0,
     );
+  });
+
+  it('records the suppression of a number our phone metadata does not know, and refuses a non-E.164 one', async () => {
+    const suppression = (number: string, suppressed: boolean): Body => ({
+      callback: 'suppression.changed',
+      eeasy_account_id: engineAccountId,
+      sender_instance_id: accountInstance,
+      customer_number: number,
+      suppressed,
+      occurred_at: wireInstant(Date.now()),
+      callback_id: randomUUID(),
+    });
+    const sources = (number: string) =>
+      owner<{ source: string }[]>`
+        SELECT source FROM core_messaging_opt_outs WHERE account_id = ${account} AND phone = ${number}`;
+    // Normalising and not normalising (country code 999 is unassigned): both are honoured.
+    for (const number of ['+966500000779', '+999123456789']) {
+      await post(suppression(number, true)).expect(200, { ok: true });
+      expect(await sources(number)).toEqual([{ source: 'provider' }]);
+      await post(suppression(number, false)).expect(200, { ok: true });
+      expect(await sources(number)).toEqual([]);
+    }
+    // Not E.164-shaped: refused, so the engine dead-letters it instead of a silent 200.
+    for (const number of ['+1234567', '+1234567890123456']) {
+      const refused = await post(suppression(number, true)).expect(422);
+      expect((refused.body as { error: { code: string } }).error.code).toBe('SCHEMA_INVALID');
+    }
+  });
+
+  it('rolls the opt-out back with the claim when the callback transaction fails after it (lead review)', async () => {
+    const phone = '+966500000780';
+    const real = messagingStore(pool.db);
+    // Fails the unit of work that claimed the callback, after everything in it has run.
+    const failing: MessagingStore = {
+      run: (fn) =>
+        real.run(async (repo) => {
+          let claimed = false;
+          const claim = repo.claimCallback.bind(repo);
+          repo.claimCallback = (...args) => {
+            claimed = true;
+            return claim(...args);
+          };
+          const result = await fn(repo);
+          if (claimed) throw new Error('the callback transaction fails after the suppression');
+          return result;
+        }),
+    };
+    const door = new EngineCallbackDoor({
+      settings: {
+        keyId: callbackKey.keyId,
+        secret: callbackKey.secret,
+        platformInstanceId: platformInstance,
+      },
+      store: failing,
+      optOuts: new OptOutList(failing),
+      logger: { log: () => undefined, warn: () => undefined },
+    });
+    const body: Body = {
+      callback: 'suppression.changed',
+      eeasy_account_id: engineAccountId,
+      sender_instance_id: accountInstance,
+      customer_number: phone,
+      suppressed: true,
+      occurred_at: wireInstant(Date.now()),
+      callback_id: randomUUID(),
+    };
+    const raw = JSON.stringify(body);
+    const headers = signedHeaders(callbackKey, 'POST', engineCallbackPath, raw);
+    await expect(
+      door.receive({
+        method: 'POST',
+        path: engineCallbackPath,
+        headers: { ...headers, 'content-length': String(Buffer.byteLength(raw)) },
+        body: Readable.from([Buffer.from(raw)]),
+      }),
+    ).rejects.toThrow('the callback transaction fails after the suppression');
+    const optedOut = () =>
+      owner`SELECT 1 FROM core_messaging_opt_outs WHERE account_id = ${account} AND phone = ${phone}`;
+    expect(await optedOut()).toHaveLength(0);
+    // The claim went with it, so the engine's retry (fresh nonce, same callback id) applies.
+    const [nonce] = await owner<{ callback_id: string | null }[]>`
+      SELECT callback_id FROM core_engine_callback_nonces
+      WHERE service_identity = ${engineServiceIdentity} AND nonce = ${headers['x-eeasy-nonce'] ?? ''}`;
+    expect(nonce?.callback_id).toBeNull();
+    await post(body).expect(200, { ok: true });
+    expect(await optedOut()).toHaveLength(1);
   });
 
   it('acknowledges and ignores a connection event of an account with no engine id yet (adversary L-6)', async () => {

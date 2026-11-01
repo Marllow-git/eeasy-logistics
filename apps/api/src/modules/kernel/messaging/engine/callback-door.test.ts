@@ -1,7 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { classifyReply, normaliseWord } from '../opt-out-list.js';
+import type { MessagingRepository, MessagingStore } from '../../platform/messaging.repository.js';
+import { OptOutList, classifyReply, normaliseWord } from '../opt-out-list.js';
 import { EngineCallbackDoor, advances } from './callback-door.js';
+import {
+  engineCallbackPath,
+  engineServiceIdentity,
+  signedHeaders,
+  wireInstant,
+} from './envelope.js';
 
 // PLAT-9 item G: the monotonic message state of the callback door (engine contract §5.2) and the
 // stop and start words of the opt-out list (integrations §5.5; ADR-0041 union).
@@ -64,7 +72,7 @@ describe('refusal logging (adversary L-1)', () => {
     const door = new EngineCallbackDoor({
       settings: { keyId: 'k', secret: 's'.repeat(32), platformInstanceId: undefined },
       store: { run: () => Promise.reject(new Error('never reached')) },
-      optOuts: { add: vi.fn(), remove: vi.fn() },
+      optOuts: { applySuppression: vi.fn() },
       now: () => now,
       logger,
     });
@@ -82,4 +90,87 @@ describe('refusal logging (adversary L-1)', () => {
     await forged();
     expect(logger.warn).toHaveBeenCalledTimes(2);
   });
+});
+
+describe('suppression.changed (lead review of PLAT-9: one transaction, every E.164 number)', () => {
+  const key = { service: engineServiceIdentity, keyId: 'k', secret: 's'.repeat(32) };
+  const accountId = '0192f000-0000-7000-8000-000000000001';
+  const instance = randomUUID();
+
+  const setup = () => {
+    const repo = {
+      reserveNonce: vi.fn(() => Promise.resolve(true)),
+      ownerOfInstance: vi.fn(() => Promise.resolve({ accountId, engineAccountId: 7 })),
+      claimCallback: vi.fn(() => Promise.resolve(true)),
+      addOptOut: vi.fn(() => Promise.resolve()),
+      removeOptOut: vi.fn(() => Promise.resolve()),
+    };
+    let runs = 0;
+    const store: MessagingStore = {
+      run: (fn) => {
+        runs += 1;
+        return fn(repo as unknown as MessagingRepository);
+      },
+    };
+    const door = new EngineCallbackDoor({
+      settings: { keyId: key.keyId, secret: key.secret, platformInstanceId: randomUUID() },
+      store,
+      optOuts: new OptOutList(store),
+      logger: { log: vi.fn(), warn: vi.fn() },
+    });
+    const send = (customerNumber: string, suppressed: boolean) => {
+      const raw = JSON.stringify({
+        callback: 'suppression.changed',
+        eeasy_account_id: 7,
+        sender_instance_id: instance,
+        customer_number: customerNumber,
+        suppressed,
+        occurred_at: wireInstant(Date.now()),
+        callback_id: randomUUID(),
+      });
+      return door.receive({
+        method: 'POST',
+        path: engineCallbackPath,
+        headers: {
+          ...signedHeaders(key, 'POST', engineCallbackPath, raw),
+          'content-length': String(Buffer.byteLength(raw)),
+        },
+        body: Readable.from([Buffer.from(raw)]),
+      });
+    };
+    return { repo, send, runs: () => runs };
+  };
+
+  it('writes the opt-out in the callback transaction, opening no second unit of work', async () => {
+    const { repo, send, runs } = setup();
+    expect(await send('+966500000777', true)).toEqual({ status: 200, body: { ok: true } });
+    // One unit of work for the nonce (step 8), one for the claim and the opt-out together.
+    expect(runs()).toBe(2);
+    expect(repo.addOptOut).toHaveBeenCalledWith(accountId, '+966500000777', 'provider');
+    expect(await send('+966500000777', false)).toEqual({ status: 200, body: { ok: true } });
+    expect(runs()).toBe(4);
+    expect(repo.removeOptOut).toHaveBeenCalledWith(accountId, '+966500000777');
+  });
+
+  it('records a number our phone metadata does not know under the engine’s E.164 string', async () => {
+    const { repo, send } = setup();
+    // Country code 999 is unassigned: `normalisePhone` refuses it, the suppression still holds.
+    expect(await send('+999123456789', true)).toEqual({ status: 200, body: { ok: true } });
+    expect(repo.addOptOut).toHaveBeenCalledWith(accountId, '+999123456789', 'provider');
+    expect(await send('+999123456789', false)).toEqual({ status: 200, body: { ok: true } });
+    expect(repo.removeOptOut).toHaveBeenCalledWith(accountId, '+999123456789');
+  });
+
+  it.each(['+1234567', '+1234567890123456', '+0123456789'])(
+    'refuses %j, which is not E.164-shaped (422), and writes nothing',
+    async (number) => {
+      const { repo, send } = setup();
+      const answer = await send(number, true);
+      expect(answer).toEqual({
+        status: 422,
+        body: { ok: false, error: { code: 'SCHEMA_INVALID' } },
+      });
+      expect(repo.addOptOut).not.toHaveBeenCalled();
+    },
+  );
 });
