@@ -8,6 +8,7 @@ import type { PermissionResolver } from '../authz/permission-resolver.js';
 import { PERMISSION_RESOLVER } from '../authz/permission-resolver.js';
 import { OutboxWriter } from '../outbox/outbox-writer.js';
 import { KernelModule } from '../kernel.module.js';
+import { OtpService } from '../messaging/otp.service.js';
 import { identityStoreOnPool } from '../platform/identity.repository.js';
 import { PLATFORM_POOL } from '../platform/tokens.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
@@ -17,6 +18,8 @@ import { Invitations } from './invitations.js';
 import { PasswordResets } from './password-resets.js';
 import { BreachedPasswords, PasswordHasher } from './passwords.js';
 import { PlatformAuthController } from './platform-auth.controller.js';
+import { SecondFactorResets } from './second-factor-resets.js';
+import { StaffSecondFactor } from './second-factor.js';
 import { SessionService } from './sessions.js';
 import { StaffAuthController } from './staff-auth.controller.js';
 import { StaffSignIn, emailKeyOf } from './sign-in.js';
@@ -108,6 +111,42 @@ export class AuthModule {
             }),
         },
         {
+          // PLAT-11 plan 2.8: the staff second-factor doors (PLAT-9's OTP service, `second_factor`).
+          provide: StaffSecondFactor,
+          inject: [
+            SessionService,
+            StaffSignIn,
+            OtpService,
+            PasswordHasher,
+            AUDIT_SINK,
+            { token: RATE_LIMITER, optional: true },
+          ],
+          useFactory: (
+            sessions: SessionService,
+            signIn: StaffSignIn,
+            otp: OtpService,
+            passwords: PasswordHasher,
+            audit: AuditSink,
+            limiter: RateLimiter | undefined,
+          ) => new StaffSecondFactor({ sessions, signIn, otp, passwords, audit, limiter }),
+        },
+        {
+          // PLAT-12 (`resetMemberSecondFactor`) calls it.
+          provide: SecondFactorResets,
+          inject: [PLATFORM_POOL, OutboxWriter, AUDIT_SINK],
+          useFactory: (
+            pool: Parameters<typeof identityStoreOnPool>[0],
+            outbox: OutboxWriter,
+            audit: AuditSink,
+          ) =>
+            new SecondFactorResets({
+              store: identityStoreOnPool(pool),
+              outbox,
+              audit,
+              publicWebUrl: config.app.publicWebUrl,
+            }),
+        },
+        {
           // PLAT-12 (`inviteMember`) and PLAT-13 (`platformInviteStaff`, bootstrap) call it.
           provide: Invitations,
           inject: [PLATFORM_POOL, OutboxWriter, { token: PERMISSION_RESOLVER, optional: true }],
@@ -163,6 +202,7 @@ export class AuthModule {
         AccessTokenIssuer,
         StaffSignIn,
         Invitations,
+        SecondFactorResets,
       ],
     };
   }

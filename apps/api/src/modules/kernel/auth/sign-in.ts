@@ -140,7 +140,7 @@ export class StaffSignIn {
       if (check.needsRehash) {
         await tx.users.signedIn(user.id, await this.#deps.passwords.hash(input.password));
       }
-      return this.#afterPassword(tx, user, memberships, ['pwd'], facts);
+      return this.continueSignIn(tx, user, memberships, ['pwd'], facts);
     });
   }
 
@@ -297,8 +297,11 @@ export class StaffSignIn {
     return this.#settle(result);
   }
 
-  /** After the password (and, in leg 2, the OTP): factors, then the session or the selection. */
-  async #afterPassword(
+  /**
+   * After the password (and the OTP of `verifySecondFactor`): the factors still due, then the session
+   * (one membership) or the selection (several).
+   */
+  async continueSignIn(
     tx: IdentityTransaction,
     user: UserRow,
     memberships: readonly MembershipRow[],
@@ -434,7 +437,7 @@ export class StaffSignIn {
 }
 
 /** An active membership on an account whose members may sign in. */
-function signInMembership(membership: MembershipRow): boolean {
+export function signInMembership(membership: MembershipRow): boolean {
   return (
     membership.status === 'active' &&
     (signInAccountStatuses as readonly string[]).includes(membership.account.status)

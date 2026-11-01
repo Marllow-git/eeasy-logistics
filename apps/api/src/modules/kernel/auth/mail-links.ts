@@ -20,7 +20,10 @@ export function mailLink(base: string | undefined, path: string, token: string):
 export interface MailRow {
   readonly type: DomainEventType;
   readonly aggregate: { readonly type: string; readonly id: string };
-  readonly template: Extract<TemplateKey, 'invitation' | 'platform_invitation' | 'password_reset'>;
+  readonly template: Extract<
+    TemplateKey,
+    'invitation' | 'platform_invitation' | 'password_reset' | 'second_factor_reset'
+  >;
   readonly to: string;
   readonly locale: Locale;
   readonly params: Readonly<Record<string, string>>;

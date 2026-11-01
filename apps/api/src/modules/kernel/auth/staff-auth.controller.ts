@@ -1,4 +1,9 @@
-import type { LoginResponse, Me } from '@eeasy-logistics/contracts/staff/schemas';
+import type {
+  EnrolChallenge,
+  EnrolmentToken,
+  LoginResponse,
+  Me,
+} from '@eeasy-logistics/contracts/staff/schemas';
 import { operationSchemas } from '@eeasy-logistics/contracts/staff/schemas';
 import { Controller, Get, HttpCode, Inject, Optional, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
@@ -17,11 +22,12 @@ import { AuthRequest } from './request-facts.js';
 import { SessionService } from './sessions.js';
 import type { StartedSession } from './sign-in.js';
 import { StaffSignIn } from './sign-in.js';
+import { StaffSecondFactor } from './second-factor.js';
 
 // The staff surface's auth doors (PLAT-11 plan 2.4 to 2.7, 2.10; staff.yaml tag `auth`): sign-in,
 // account selection and switch, invitations, resets, refresh, logout and `getMe`. Every write
 // carries `X-EL-Client: web` and a web `Origin` (WebClientGuard, ADR-0032). Cookies are set here,
-// never by a service. The second-factor doors arrive in leg 2 (plan item F).
+// never by a service. The second-factor doors (plan 2.8) call `StaffSecondFactor`.
 
 const acceptInvitation = operationSchemas.acceptInvitation;
 const login = operationSchemas.login;
@@ -32,6 +38,11 @@ const logout = operationSchemas.logout;
 const requestPasswordReset = operationSchemas.requestPasswordReset;
 const confirmPasswordReset = operationSchemas.confirmPasswordReset;
 const getMe = operationSchemas.getMe;
+const requestSecondFactor = operationSchemas.requestSecondFactor;
+const verifySecondFactor = operationSchemas.verifySecondFactor;
+const enrolSecondFactor = operationSchemas.enrolSecondFactor;
+const confirmSecondFactor = operationSchemas.confirmSecondFactor;
+const redeemEnrolmentLink = operationSchemas.redeemEnrolmentLink;
 
 @Controller('v1/staff')
 export class StaffAuthController {
@@ -39,8 +50,91 @@ export class StaffAuthController {
     @Inject(SessionService) private readonly sessions: SessionService,
     @Inject(StaffSignIn) private readonly signIn: StaffSignIn,
     @Inject(PasswordResets) private readonly resets: PasswordResets,
+    @Inject(StaffSecondFactor) private readonly factor: StaffSecondFactor,
     @Optional() @Inject(PERMISSION_RESOLVER) private readonly resolver?: PermissionResolver,
   ) {}
+
+  /** `requestSecondFactor`: the code goes to the enrolled phone of the challenge's user. */
+  @Post('auth/second-factor/request')
+  @Public()
+  @HttpCode(202)
+  @Operation(requestSecondFactor)
+  async requestFactor(
+    @Input() input: ContractInput<typeof requestSecondFactor>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<void> {
+    await this.factor.request({ challengeId: input.body.challenge_id }, facts);
+  }
+
+  /** `verifySecondFactor`: as `login` answers, with `otp` among the session's methods. */
+  @Post('auth/second-factor/verify')
+  @Public()
+  @HttpCode(200)
+  @Operation(verifySecondFactor)
+  async verifyFactor(
+    @Input() input: ContractInput<typeof verifySecondFactor>,
+    @AuthRequest() facts: RequestFacts,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<LoginResponse> {
+    const step = await this.factor.verify(
+      { challengeId: input.body.challenge_id, code: input.body.code },
+      facts,
+    );
+    if (step.kind === 'session')
+      response.append('Set-Cookie', sessionCookies('staff', step.session));
+    return presentLoginStep(step);
+  }
+
+  @Post('auth/second-factor/enrol')
+  @Public()
+  @HttpCode(202)
+  @Operation(enrolSecondFactor)
+  async enrolFactor(
+    @Input() input: ContractInput<typeof enrolSecondFactor>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<EnrolChallenge> {
+    const pending = await this.factor.enrol(
+      { enrolmentToken: input.body.enrolment_token, phone: input.body.phone },
+      facts,
+    );
+    return { challenge_id: pending.challengeId, expires_at: pending.expiresAt.toISOString() };
+  }
+
+  @Post('auth/second-factor/confirm')
+  @Public()
+  @HttpCode(204)
+  @Operation(confirmSecondFactor)
+  async confirmFactor(
+    @Input() input: ContractInput<typeof confirmSecondFactor>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<void> {
+    await this.factor.confirm(
+      {
+        enrolmentToken: input.body.enrolment_token,
+        challengeId: input.body.challenge_id,
+        code: input.body.code,
+      },
+      facts,
+    );
+  }
+
+  @Post('auth/second-factor/enrolment-link')
+  @Public()
+  @HttpCode(200)
+  @Operation(redeemEnrolmentLink)
+  async redeemLink(
+    @Input() input: ContractInput<typeof redeemEnrolmentLink>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<EnrolmentToken> {
+    const redeemed = await this.factor.redeemLink(
+      { linkToken: input.body.link_token, password: input.body.password },
+      facts,
+    );
+    return {
+      enrolment_token: redeemed.enrolmentToken,
+      expires_at: redeemed.expiresAt.toISOString(),
+    };
+  }
 
   @Post('auth/invitations/accept')
   @Public()

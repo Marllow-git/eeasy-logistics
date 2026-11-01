@@ -40,3 +40,9 @@ export {
   type PlatformInvitation,
   type StaffInvitation,
 } from '../auth/invitations.js';
+// Second-factor resets (PLAT-11 plan 2.8): PLAT-12's `resetMemberSecondFactor`.
+export {
+  SecondFactorResets,
+  type IssuedLink,
+  type SecondFactorLinkRequest,
+} from '../auth/second-factor-resets.js';
