@@ -27,6 +27,33 @@ describe('runMigrations', () => {
     }
   });
 
+  it('keeps the current month and the next three audit partitions on every run (PLAT-7 2.2)', async () => {
+    const owner = connectAs('owner', config);
+    try {
+      const months = await owner<{ name: string }[]>`
+        SELECT 'core_audit_log_' || to_char(date_trunc('month', now() AT TIME ZONE 'UTC')
+                 + make_interval(months => step), 'YYYYMM') AS name
+        FROM generate_series(0, 3) step`;
+      const furthest = months.at(-1)?.name ?? '';
+      // The furthest month is empty: drop it as the owner, and the next run puts it back.
+      await owner`DROP TABLE ${owner(furthest)}`;
+      const result = await runMigrations({
+        url: config.db.urls.owner,
+        folder: migrationsFolder,
+        rls: config.db.rls,
+      });
+      expect(result).toMatchObject({ applied: 0, auditPartitionsCreated: 1 });
+      const present = await owner<{ name: string }[]>`
+        SELECT c.relname AS name FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+        WHERE i.inhparent = 'core_audit_log'::regclass`;
+      expect(present.map((row) => row.name)).toEqual(
+        expect.arrayContaining(months.map((row) => row.name)),
+      );
+    } finally {
+      await owner.end();
+    }
+  });
+
   it('refuses to run without the owner URL', async () => {
     await expect(
       runMigrations({ url: undefined, folder: migrationsFolder, rls: false }),

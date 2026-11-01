@@ -7,6 +7,7 @@ import {
   nullableAccountTables,
   tenancyExemptions,
 } from './exemptions.js';
+import { partitionGrantProblems, partitionsOf } from './partitions.js';
 
 // The tenancy schema test (PLAT-5 plan 2.4; data §4.1; ADR-0025). It reads pg_catalog after the
 // migrations ran from zero (test/integration/global-setup.ts) and fails on any mismatch, printing
@@ -46,7 +47,12 @@ describe('tenancy schema (data §4.1)', () => {
 
   it('finds the tables the migrations create', () => {
     expect(tables.map((table) => table.name)).toEqual(
-      expect.arrayContaining(['core_accounts', 'core_idempotency_keys', 'core_schema_meta']),
+      expect.arrayContaining([
+        'core_accounts',
+        'core_audit_log',
+        'core_idempotency_keys',
+        'core_schema_meta',
+      ]),
     );
   });
 
@@ -195,11 +201,42 @@ describe('tenancy schema (data §4.1)', () => {
         WHERE has_table_privilege(r, ${table}, p)`;
       if (grants?.mutating) problems.push(`${table}: granted ${grants.mutating}`);
     }
+    // A partitioned parent's row trigger is cloned onto each partition (PLAT-7): every partition
+    // must carry it, and a clone is not an unlisted table.
+    const partitionsOfListed = new Set<string>();
+    for (const table of appendOnlyTables) {
+      for (const partition of await partitionsOf(owner, table)) {
+        partitionsOfListed.add(partition);
+        const timings = triggered.filter((row) => row.table === partition).map((row) => row.timing);
+        if (!timings.includes('row')) {
+          problems.push(`${partition}: partition of ${table} without the row trigger`);
+        }
+      }
+    }
     for (const row of triggered) {
-      if (!appendOnlyTables.includes(row.table)) {
+      if (!appendOnlyTables.includes(row.table) && !partitionsOfListed.has(row.table)) {
         problems.push(`${row.table}: has the append-only trigger but is not in appendOnlyTables`);
       }
     }
     expect(problems).toEqual([]);
+  });
+
+  it('gives the runtime roles no privilege on any partition (PLAT-5 §6, PLAT-7 plan 2.3)', async () => {
+    expect(await partitionsOf(owner, 'core_audit_log')).not.toEqual([]);
+    expect(await partitionGrantProblems(owner)).toEqual([]);
+  });
+
+  it('goes red on a planted partition grant (rolled back)', async () => {
+    const [partition] = await partitionsOf(owner, 'core_audit_log');
+    if (partition === undefined) throw new Error('core_audit_log has no partition');
+    const planted = await owner
+      .begin(async (tx) => {
+        await tx`GRANT SELECT, INSERT ON ${tx(partition)} TO elx_app`;
+        const problems = await partitionGrantProblems(tx);
+        throw Object.assign(new Error('rollback'), { problems });
+      })
+      .catch((error: { problems?: string[] }) => error.problems);
+    expect(planted).toEqual([`${partition}: elx_app may INSERT, SELECT`]);
+    expect(await partitionGrantProblems(owner)).toEqual([]);
   });
 });
