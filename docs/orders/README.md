@@ -11,6 +11,7 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | 2026-10-31 | Merging is delegated to the lead for wave 0 two-way doors; one-way doors wait for the owner. Lead runs `tools/pr-gate.sh` before every merge. |
 | 2026-10-31 | No container runtime on the owner's machine; local verification on the native stack (`tools/native-stack.sh`), Compose only in CI. |
 | 2026-10-31 | Haiku researches, Opus builds, Fable reviews (handbook 05). |
+| 2026-11-01 | Two web applications: `apps/web` (merchant, recipient) and `apps/admin` (platform console) on separate hostnames (ADR-0038, order WEB-19). |
 
 ## In flight
 

@@ -6,18 +6,19 @@ Inputs, not repeated here: actors, roles, tokens and cookies are document 4 (`id
 
 ## 1. Scope and surfaces
 
-One Next.js application, `apps/web`, built once as a standalone image (document 6 §2), serves three audiences through four App Router route groups:
+Two Next.js applications (ADR-0038, owner ruling 2026-11-01). `apps/web`, built once as a standalone image (document 6 §2), serves the merchant and recipient audiences through three App Router route groups; `apps/admin`, its own standalone image on its own hostname, serves the platform console through two groups. Everything in this document applies to both applications unless a section says `apps/web` or `apps/admin`.
 
 | Route group | Audience (document 4 §1) | URL space | API surface (document 3 §1) | Credential |
 |---|---|---|---|---|
-| `(auth)` | merchant staff and platform staff before sign-in | `/sign-in`, `/sign-in/second-factor`, `/invitations/[token]`, `/password-reset`, `/password-reset/[token]`, `/platform/sign-in`, `/platform/sign-in/totp` | `/v1/staff/auth/*`, `/v1/platform/auth/*` | none yet |
+| `(auth)` in `apps/web` | merchant staff before sign-in | `/sign-in`, `/sign-in/second-factor`, `/invitations/[token]`, `/password-reset`, `/password-reset/[token]` | `/v1/staff/auth/*` | none yet |
 | `(merchant)` | owner, admin, dispatcher, site staff, warehouse staff, cashier, viewer | `/`, `/orders`, `/dispatch`, `/cash`, `/wms/*`, `/settings/*`, … | `/v1/staff` (`staff.yaml`, `staff-delivery.yaml`, `staff-wms.yaml`) | `el_staff_at` cookie |
-| `(platform)` | platform super admin, admin, support | `/platform/*` | `/v1/platform` | `el_platform_at` cookie |
+| `(auth)` in `apps/admin` | platform staff before sign-in | `/sign-in`, `/sign-in/totp` on the admin hostname | `/v1/platform/auth/*` | none yet |
+| `(platform)` in `apps/admin` | platform super admin, admin, support | `/*` on the admin hostname (paths below are written `/platform/*` for continuity; the segment is dropped in `apps/admin`) | `/v1/platform` | `el_platform_at` cookie, host-only on the admin hostname |
 | `(recipient)` | recipient, no account | `/track/[token]`, `/reschedule/[token]`, `/pin/[token]`, `/embed/track/[token]` | `/v1/recipient` | `X-Recipient-Token` header |
 
 There is no locale segment in any URL; the locale comes from a preference cookie (section 5). Drivers never use the web app (document 4 §2).
 
-### 1.1 Layout of `apps/web`
+### 1.1 Layout of `apps/web` and `apps/admin`
 
 ```text
 apps/web/
@@ -26,8 +27,6 @@ apps/web/
       (auth)/          layout.tsx  sign-in/  invitations/[token]/  password-reset/  platform/sign-in/
       (merchant)/      layout.tsx  page.tsx  orders/  dispatch/  zones/  drivers/  vehicles/  shifts/
                        slots/  cash/  wms/  channels/  settings/
-      (platform)/      platform/layout.tsx  platform/accounts/  platform/rollout/  platform/outbox/
-                       platform/staff/  platform/audit/  platform/channel-publications/
       (recipient)/     layout.tsx  track/[token]/  reschedule/[token]/  pin/[token]/  embed/track/[token]/
       healthz/route.ts  csp-report/route.ts  monitoring/route.ts  ingest/[...path]/route.ts
     api/               server.ts (server client factory)  browser.ts (client fetch wrapper, refresh)
@@ -37,9 +36,19 @@ apps/web/
     analytics.ts       typed PostHog event catalogue
   middleware.ts        session refresh, host and group routing, CSP nonce, locale (proxy.ts on Next.js 16+)
   tests/               census-*.spec.ts, census.config.ts
+
+apps/admin/
+  src/
+    app/
+      (auth)/          layout.tsx  sign-in/  sign-in/totp/
+      (platform)/      layout.tsx  page.tsx  accounts/  rollout/  outbox/  staff/  audit/  channel-publications/
+      healthz/route.ts  csp-report/route.ts
+    api/  auth/  routes.ts  analytics.ts   (same shape as apps/web; the platform client only)
+  middleware.ts        platform session refresh, CSP nonce, locale (proxy.ts on Next.js 16+)
+  tests/               census-*.spec.ts
 ```
 
-Shared code lives in packages, not in `apps/web`: `packages/contracts` (generated clients, hooks, schemas, mocks), `packages/ui` (components, tokens, map), `packages/i18n` (catalogues and formatting), `packages/config` (validated runtime configuration, document 6 §3).
+Shared code lives in packages, not in the apps: `packages/contracts` (generated clients, hooks, schemas, mocks, one entry point per surface), `packages/ui` (components, tokens, map), `packages/i18n` (catalogues and formatting), `packages/config` (validated runtime configuration, document 6 §3), and the session and refresh helpers both apps use (WEB-2). `apps/web` imports only the `staff` and `recipient` surfaces, `apps/admin` only `platform`; each app's architecture test fails on any other surface (ADR-0038).
 
 ### 1.2 Isolation between the groups
 
@@ -50,7 +59,7 @@ Isolation is structural, not a convention:
 - **Separate middleware branches.** The request middleware (section 3.2) branches on the path: `/platform/*` requires the platform session; merchant paths require the staff session; `/track`, `/reschedule`, `/pin` and `/embed` require neither and never refresh anything.
 - **Separate CSP.** Every response carries the document 6 §8 headers with a per-request script nonce (section 3.6). `frame-ancestors 'none'` everywhere, with one exception: `/embed/track/[token]` sets `frame-ancestors` to the merchant's embedding allowlist (section 9).
 - **Import boundaries.** A lint rule forbids imports between the groups' folders; `(recipient)` may import only `packages/ui`, `packages/i18n`, the recipient client of `packages/contracts` and `src/live`.
-- **Separate host for the platform area (proposed, open question 2).** The middleware serves `/platform/*` only on the platform hostname and answers `404` for it on the merchant hostname; with a single hostname the same code serves it under `/platform`.
+- **Separate application and hostname for the platform console (ADR-0038).** `apps/admin` is a different build, image and hostname; the edge routes `/v1/platform/*` only there and answers `404` for it on the merchant hostnames, so the merchant deployment carries no platform route, client or namespace.
 
 ## 2. Rendering model
 
@@ -407,7 +416,7 @@ Census fixtures come from the API's seed for the isolated stack, never from mock
 ## 12. Open questions for the owner
 
 1. **Brand name for the merchant UI** (foundation plan §8, D8 is open). The web app needs a product name, a logo and hostnames in wave 0. Default until ruled: "Eeasy Logistics" in English with a working Arabic name, kept in one i18n key and one token set so a change is one PR.
-2. **Platform area on a separate hostname?** Proposed: yes (`admin.<domain>`), served by the same app, so the platform cookie never reaches the merchant hostname and the area can sit behind Cloudflare Access or an IP allowlist. Alternative: `/platform` on the merchant hostname: simpler DNS, weaker isolation.
+2. ~~Platform area on a separate hostname?~~ Ruled 2026-11-01 (ADR-0038): a separate application `apps/admin` on `admin.<domain>`, not a route group of `apps/web`.
 3. **Map tiles.** Does the Hudhud B2B agreement include map tiles for the web? If not, may we self-host an OpenStreetMap-derived Saudi basemap (Protomaps), subject to a boundary-rendering check, or should we license a commercial basemap?
 4. **Recipient page embedding.** Proposed: off by default; an account lists its storefront origins (`embed_origins`, an additive contract change) and only `/embed/track/[token]` is framable from them. Do merchants need the reschedule and pin pages embeddable too, or only tracking?
 5. **Concurrent refresh in two tabs.** Document 4 §4 revokes the whole family on any refresh-token reuse; two tabs navigating at the same moment after an idle period can trigger it and sign the user out. Proposed in ADR-0032: the API answers a reuse within 10 seconds of the rotation, from the same session family and user agent, with the already-issued pair, and treats only later reuse as theft. Accept, or keep strict revocation and accept occasional forced sign-ins?
