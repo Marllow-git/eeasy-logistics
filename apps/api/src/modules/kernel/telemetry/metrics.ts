@@ -83,6 +83,12 @@ export const metricCatalogue = {
     description: 'Messages not sent, by reason (PLAT-9)',
     labels: ['reason'],
   },
+  messaging_sender_alerts_total: {
+    kind: 'counter',
+    description:
+      'WhatsApp sender disconnections that need a person: needs_relink or banned (PLAT-9, ADR-0041)',
+    labels: ['event', 'sender'],
+  },
   message_budget_used_ratio: {
     kind: 'gauge',
     description: 'Share of the monthly message budget an account used (PLAT-9)',
