@@ -17,10 +17,15 @@ export const directions = [
 export function renderIn(locale: Locale, ui: ReactNode) {
   document.documentElement.lang = locale;
   document.documentElement.dir = dir(locale);
-  return render(
+  return render(wrapIn(locale, ui));
+}
+
+/** The providers `renderIn` adds, for a `rerender` of the same tree. */
+export function wrapIn(locale: Locale, ui: ReactNode) {
+  return (
     <NextIntlClientProvider locale={locale} messages={messages[locale]} timeZone="Asia/Riyadh">
       <DirectionProvider dir={dir(locale)}>{ui}</DirectionProvider>
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
 }
 

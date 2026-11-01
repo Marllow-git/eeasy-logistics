@@ -4,7 +4,7 @@ import { Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Dialog as DialogPrimitive } from 'radix-ui';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { cn } from '../../cn';
 import { useTranslations } from '../../intl';
 
@@ -29,14 +29,17 @@ function NavigationLink({
   item,
   current,
   nested,
+  onNavigate,
 }: {
   item: NavigationItem;
   current: boolean;
   nested?: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <Link
       href={item.href}
+      onClick={onNavigate}
       aria-current={current ? 'page' : undefined}
       className={cn(
         'flex items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted aria-[current=page]:bg-muted aria-[current=page]:font-semibold [&_svg]:size-4',
@@ -49,7 +52,16 @@ function NavigationLink({
   );
 }
 
-function Navigation({ groups, label }: { groups: NavigationGroup[]; label: string }) {
+function Navigation({
+  groups,
+  label,
+  onNavigate,
+}: {
+  groups: NavigationGroup[];
+  label: string;
+  /** Called on a link click: the mobile sheet closes, even when the link is the current page. */
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   return (
     <nav aria-label={label} className="flex flex-col gap-4 p-2">
@@ -64,7 +76,11 @@ function Navigation({ groups, label }: { groups: NavigationGroup[]; label: strin
             const open = isCurrent(item, pathname) || childCurrent;
             return (
               <Fragment key={`${item.href} ${item.label}`}>
-                <NavigationLink item={item} current={isCurrent(item, pathname)} />
+                <NavigationLink
+                  item={item}
+                  current={isCurrent(item, pathname)}
+                  onNavigate={onNavigate}
+                />
                 {open && item.children?.length
                   ? item.children.map((child) => (
                       <NavigationLink
@@ -72,6 +88,7 @@ function Navigation({ groups, label }: { groups: NavigationGroup[]; label: strin
                         item={child}
                         current={isCurrent(child, pathname)}
                         nested
+                        onNavigate={onNavigate}
                       />
                     ))
                   : null}
@@ -117,11 +134,20 @@ export function AppShell({
   const t = useTranslations('common.shell');
   const tNav = useTranslations('nav');
   const hasNavigation = navigation.some((group) => group.items.length > 0);
-  const sidebar = (
+  // The mobile sheet closes on a link click and on any route change (back button included):
+  // state adjusted during render when the path differs from the one the sheet opened on.
+  const pathname = usePathname();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetPath, setSheetPath] = useState(pathname);
+  if (pathname !== sheetPath) {
+    setSheetPath(pathname);
+    setSheetOpen(false);
+  }
+  const sidebar = (onNavigate?: () => void) => (
     <>
       {account ? <div className="px-3 pb-2">{account}</div> : null}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <Navigation groups={navigation} label={tNav('primary')} />
+        <Navigation groups={navigation} label={tNav('primary')} onNavigate={onNavigate} />
       </div>
       {sidebarAction ? <div className="border-t border-border p-3">{sidebarAction}</div> : null}
     </>
@@ -137,13 +163,13 @@ export function AppShell({
       {hasNavigation ? (
         <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-e border-border bg-surface md:flex">
           <div className="flex h-14 shrink-0 items-center px-5 font-semibold">{brand}</div>
-          {sidebar}
+          {sidebar()}
         </aside>
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center gap-2 border-b border-border px-4">
           {hasNavigation ? (
-            <DialogPrimitive.Root>
+            <DialogPrimitive.Root open={sheetOpen} onOpenChange={setSheetOpen}>
               <DialogPrimitive.Trigger
                 className="rounded-md p-2 text-foreground hover:bg-muted md:hidden"
                 aria-label={t('open_navigation')}
@@ -165,7 +191,7 @@ export function AppShell({
                   <DialogPrimitive.Description className="sr-only">
                     {tNav('primary')}
                   </DialogPrimitive.Description>
-                  {sidebar}
+                  {sidebar(() => setSheetOpen(false))}
                 </DialogPrimitive.Content>
               </DialogPrimitive.Portal>
             </DialogPrimitive.Root>

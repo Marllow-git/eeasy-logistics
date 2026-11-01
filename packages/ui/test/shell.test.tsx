@@ -1,9 +1,18 @@
 import { messages } from '@eeasy-logistics/i18n';
 import { fireEvent, screen, within } from '@testing-library/react';
+import type * as NextNavigation from 'next/navigation';
 import { Direction } from 'radix-ui';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '../src/components/app-shell/app-shell';
-import { directions, renderIn } from './render';
+import { directions, renderIn, wrapIn } from './render';
+
+// The current path, switchable per test (a route change is a new `usePathname()` value); null, as
+// outside an App Router tree, unless a test sets it.
+const route = vi.hoisted(() => ({ pathname: null as string | null }));
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof NextNavigation>()),
+  usePathname: () => route.pathname,
+}));
 
 function ReadDirection() {
   return <output>{Direction.useDirection()}</output>;
@@ -93,5 +102,48 @@ describe.each(directions)('frame in $locale ($dir)', ({ locale, dir }) => {
     expect(within(sheet).getByRole('navigation', { name: nav.primary })).toBeTruthy();
     fireEvent.click(within(sheet).getByRole('button', { name: common.shell.close_navigation }));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+  it('AppShell closes the navigation sheet when a link in it is followed', () => {
+    renderIn(
+      locale,
+      <AppShell
+        brand="Eeasy"
+        navigation={[
+          {
+            items: [
+              { href: '/', label: nav.home, active: true },
+              { href: '/', label: common.shell.account, active: false },
+            ],
+          },
+        ]}
+      >
+        <p>Content</p>
+      </AppShell>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: common.shell.open_navigation }));
+    const sheet = screen.getByRole('dialog');
+    // A link to the page already shown changes no path; the click alone must close the sheet.
+    fireEvent.click(within(sheet).getByRole('link', { name: common.shell.account }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('AppShell closes the navigation sheet when the route changes', () => {
+    route.pathname = '/';
+    try {
+      // A fresh element per render, as a router re-render gives; the same one would bail out.
+      const ui = () => (
+        <AppShell brand="Eeasy" navigation={[{ items: [{ href: '/', label: nav.home }] }]}>
+          <p>Content</p>
+        </AppShell>
+      );
+      const { rerender } = renderIn(locale, ui());
+      fireEvent.click(screen.getByRole('button', { name: common.shell.open_navigation }));
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      route.pathname = '/orders';
+      rerender(wrapIn(locale, ui()));
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      route.pathname = null;
+    }
   });
 });

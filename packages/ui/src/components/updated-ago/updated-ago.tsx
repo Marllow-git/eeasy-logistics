@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
 import { useLocale, useTranslations } from '../../intl';
 
 /**
- * "Updated X seconds ago" (ADR-0009, web §6.3), ticking every second for the first minute and every
- * thirty seconds after. The exact time is in `dateTime` and the tooltip. Server and client clocks
+ * "Updated X seconds ago" (ADR-0009, web §6.3), ticking every second for the first minute, every
+ * thirty seconds until the first hour, and once a minute after (the text then changes hourly). The exact time is in `dateTime` and the tooltip. Server and client clocks
  * differ by the render delay, so the text may change on hydration (warning suppressed).
  */
 export function UpdatedAgo({ at, now: fixedNow }: { at: string | Date; now?: number }) {
@@ -16,13 +16,13 @@ export function UpdatedAgo({ at, now: fixedNow }: { at: string | Date; now?: num
   const [now, setNow] = useState(() => fixedNow ?? Date.now());
   const seconds = Math.max(0, Math.floor((now - instant.getTime()) / 1000));
 
-  // One interval per cadence, not per tick: it is replaced only when the first minute ends.
-  const everySecond = seconds < 60;
+  // One interval per cadence, not per tick: it is replaced only when the minute or the hour ends.
+  const cadence = seconds < 60 ? 1000 : seconds < 3600 ? 30_000 : 60_000;
   useEffect(() => {
     if (fixedNow !== undefined) return;
-    const id = setInterval(() => setNow(Date.now()), everySecond ? 1000 : 30_000);
+    const id = setInterval(() => setNow(Date.now()), cadence);
     return () => clearInterval(id);
-  }, [fixedNow, everySecond]);
+  }, [fixedNow, cadence]);
 
   let text: string;
   if (seconds < 5) {

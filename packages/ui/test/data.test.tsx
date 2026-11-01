@@ -129,7 +129,7 @@ describe.each(directions)('data display in $locale ($dir)', ({ locale }) => {
     warn.mockRestore();
   });
 
-  it('UpdatedAgo keeps one interval while it ticks every second, and one after the minute', () => {
+  it('UpdatedAgo keeps one interval per cadence: every second, every 30 s, every minute', () => {
     vi.useFakeTimers();
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
     try {
@@ -147,6 +147,12 @@ describe.each(directions)('data display in $locale ($dir)', ({ locale }) => {
       });
       expect(setIntervalSpy).toHaveBeenCalledTimes(2);
       expect(setIntervalSpy.mock.calls.map((call) => call[1])).toEqual([1000, 30_000]);
+      // Past the first hour the text changes at most hourly: one more interval, once a minute.
+      act(() => {
+        vi.advanceTimersByTime(3_600_000);
+      });
+      expect(setIntervalSpy).toHaveBeenCalledTimes(3);
+      expect(setIntervalSpy.mock.calls.map((call) => call[1])).toEqual([1000, 30_000, 60_000]);
     } finally {
       setIntervalSpy.mockRestore();
       vi.useRealTimers();

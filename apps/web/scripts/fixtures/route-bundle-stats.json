@@ -8,6 +8,10 @@
     "firstLoadChunkPaths": [".next/static/chunks/recipient.js", ".next/static/chunks/framework.js"]
   },
   {
+    "route": "/about",
+    "firstLoadChunkPaths": [".next/static/chunks/merchant.js", ".next/static/chunks/framework.js"]
+  },
+  {
     "route": "/_not-found",
     "firstLoadChunkPaths": [".next/static/chunks/framework.js"]
   }

@@ -12,9 +12,11 @@ const stats = JSON.parse(
   readFileSync(path.join(import.meta.dirname, 'fixtures/route-bundle-stats.json'), 'utf8'),
 ) as BuildFacts['stats'];
 
+// `/about` sits outside any route group: the default budget with a warning, not an error.
 const appPaths = {
   '/(merchant)/page': '/',
   '/(recipient)/track/[token]/page': '/track/[token]',
+  '/about/page': '/about',
   '/_not-found/page': '/_not-found',
 };
 
@@ -42,6 +44,7 @@ void describe('checkBudget', () => {
       [
         ['/', 'merchant', 180, true],
         ['/track/[token]', 'recipient', 90, true],
+        ['/about', null, 180, true],
       ],
     );
     const track = report.routes[1]!;
@@ -53,7 +56,7 @@ void describe('checkBudget', () => {
     const report = checkBudget(facts({ framework: 130, merchant: 181, recipient: 91 }));
     assert.deepEqual(
       report.routes.map((r) => r.ok),
-      [false, false],
+      [false, false, false],
     );
     assert.equal(report.floorOk, true);
   });
@@ -62,6 +65,15 @@ void describe('checkBudget', () => {
     const report = checkBudget(facts({ framework: 136, merchant: 10, recipient: 10 }));
     assert.equal(report.floorOk, false);
     assert.ok(report.routes.every((r) => r.ok));
+  });
+
+  void it('checks a route outside any route group against the default budget, with a warning', () => {
+    const report = checkBudget(facts({ framework: 130, merchant: 170, recipient: 85 }));
+    const about = report.routes.find((r) => r.route === '/about');
+    assert.deepEqual([about?.group, about?.budgetKb, about?.ok], [null, 180, true]);
+    assert.deepEqual(report.warnings, [
+      '/about is outside any route group (web §1.2); checked against 180 KB',
+    ]);
   });
 
   void it('refuses a route group without a budget', () => {
