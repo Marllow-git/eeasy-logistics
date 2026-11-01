@@ -26,6 +26,10 @@ import { publicConfig } from '@eeasy-logistics/config/driver'; // EXPO_PUBLIC_* 
 
 Next.js and Expo inline a public variable at build time only where the code says `process.env.NEXT_PUBLIC_<NAME>` or `process.env.EXPO_PUBLIC_<NAME>` literally, so `src/web.ts` and `src/driver.ts` spell each variable out and hand the record to the pure schema in `src/public.ts`. Both were checked against a real build (the value appears in the client bundle; see the PLAT-4 plan §8). These values are readable by anyone who has the bundle or the app: never a secret. Client code must not import the package root or `/node`, which are server code.
 
+## Contract-test runner
+
+`contractTestConfig()` from `@eeasy-logistics/config/contract-test` (`src/contract-test.ts`) reads `CONTRACT_API_URL` only: the origin of the running API for `pnpm --filter contracts test:contract` (PLAT-15). Optional, since the runner's `--api` flag wins. A test tool; no app imports it.
+
 ## Per-account credentials at rest
 
 `createCredentialsCipher(config.credentials)` gives `encrypt`, `decrypt` and `rotate` (plan 2.4, data §10): AES-256-GCM with a random 12-byte nonce. `encrypt` uses the active key and returns `{ keyId, blob }`: `blob` holds version, key id, nonce, tag and ciphertext for one `bytea` column, `keyId` goes in the row's `*_key_id` column. `decrypt` picks the key by the id inside the blob and throws a typed `CredentialsError` (`unknown_key_id`, `malformed`, `authentication_failed`, `invalid_context`). Every call takes a required `context` of the form `<table>:<row id>` (for example `core_channel_connections:<id>`), authenticated with the blob, so a blob copied to another row fails to decrypt. `CREDENTIALS_KEYS` holds every key that must still decrypt; rotation adds a key, makes it active, re-encrypts with `rotate`, then removes the old key.

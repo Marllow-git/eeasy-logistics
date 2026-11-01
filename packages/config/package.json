@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./node": "./src/node.ts",
     "./web": "./src/web.ts",
-    "./driver": "./src/driver.ts"
+    "./driver": "./src/driver.ts",
+    "./contract-test": "./src/contract-test.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

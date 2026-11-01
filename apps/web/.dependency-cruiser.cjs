@@ -28,6 +28,16 @@ module.exports = {
         ],
       },
     },
+    {
+      name: 'web-contracts-surfaces',
+      comment:
+        'PLAT-15: the web app imports @eeasy-logistics/contracts only through /staff, /recipient, ' +
+        '/http and /unions. /platform belongs to the admin app (ADR-0038); /driver and ' +
+        '/public belong to other clients; /<surface>/mocks are for tests, never for src.',
+      severity: 'error',
+      from: { pathNot: '(?:^|/)packages/contracts/' },
+      to: { path: '(?:^|/)packages/contracts/(?!src/(?:staff|recipient|http|unions)\\.ts$)' },
+    },
     ...environmentRules({ configEntry: 'web.ts' }),
     noUnresolvable,
   ],
