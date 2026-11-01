@@ -48,14 +48,21 @@ jobs:
       - name: Contracts generate twice and compare
         run: |
           digest() {
-            (cd packages/contracts/generated && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | sha256sum
+            local count
+            count=$(find packages/contracts/generated -type f | wc -l)
+            [ "$count" -gt 0 ] || {
+              echo "::error::Contracts generate twice and compare: packages/contracts/generated is empty" >&2
+              return 1
+            }
+            echo "files: $count" >&2
+            (cd packages/contracts/generated && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum) | sha256sum
           }
           rm -rf packages/contracts/generated
           pnpm --filter @eeasy-logistics/contracts run build > /dev/null
-          first=$(digest)
+          first=$(digest) || exit 1
           rm -rf packages/contracts/generated
           pnpm --filter @eeasy-logistics/contracts run build > /dev/null
-          second=$(digest)
+          second=$(digest) || exit 1
           echo "first:  $first"
           echo "second: $second"
           [ "$first" = "$second" ] || {

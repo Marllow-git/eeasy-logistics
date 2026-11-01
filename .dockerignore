@@ -24,4 +24,6 @@ node_modules/
 docs/
 # Except the API contracts: packages/contracts generates the web app's clients from them (PLAT-15).
 !docs/contracts/
+# and the domain event catalogue that expands the SSE event families (PLAT-15 review round 2).
+!docs/architecture/domain-model.md
 adr/

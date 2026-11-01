@@ -5,6 +5,7 @@
     "build": {
       "inputs": [
         "$TURBO_ROOT$/docs/contracts/**",
+        "$TURBO_ROOT$/docs/architecture/domain-model.md",
         "orval.config.ts",
         "scripts/**",
         "src/**",
@@ -21,7 +22,11 @@
     },
     "test": {
       "dependsOn": ["build", "^typecheck"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/docs/contracts/**"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/docs/contracts/**",
+        "$TURBO_ROOT$/docs/architecture/domain-model.md"
+      ]
     }
   }
 }
