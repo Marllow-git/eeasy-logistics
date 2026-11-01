@@ -1,4 +1,4 @@
--- reviewed: PLAT-5 item D, 2026-11-01. Hand-written (custom migration).
+-- reviewed: PLAT-5 item D, 2026-11-01; search_path per review L-3. Hand-written (custom migration).
 --
 -- The RLS switch (PLAT-5 plan 2.6, data §4.5). Policies are created with every table from wave 0;
 -- ALTER TABLE … ENABLE ROW LEVEL SECURITY runs only when the migration job runs with ELX_RLS=on
@@ -9,7 +9,8 @@
 -- once switched on stays on. ENABLE (not FORCE): elx_owner owns the tables and is not subject to
 -- RLS, the runtime roles own nothing and are. The wave 1 exit migration replaces the flag with a
 -- plain ENABLE for every operational table.
-CREATE FUNCTION core_enable_tenant_rls() RETURNS integer LANGUAGE plpgsql AS $$
+CREATE FUNCTION core_enable_tenant_rls() RETURNS integer LANGUAGE plpgsql
+  SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE
   target regclass;
   enabled integer := 0;

@@ -1,4 +1,5 @@
-import type { AppDatabase, Pool, RequestContext } from '@eeasy-logistics/db';
+import { randomBytes } from 'node:crypto';
+import type { AppDatabase, Pool, RequestContext, Transaction } from '@eeasy-logistics/db';
 import { createAppPool, uuidv7, withUnitOfWork } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import {
@@ -99,20 +100,56 @@ describe(`row-level security with ELX_RLS=${rlsOn ? 'on' : 'off'}`, () => {
     expect(after[0]?.n).toBe(rlsOn ? 0 : 2);
   });
 
-  it('elx_app cannot write another account through its context when on', async () => {
-    const intruder = uuidv7();
-    const insert = await sqlState(
-      withUnitOfWork(appPool.db, context(accountA), ({ tx }) =>
-        tx.insert(coreAccounts).values({ id: intruder, name: 'RLS test intruder' }),
+  it('elx_app cannot insert, update or delete any account: a platform table (review M-3)', async () => {
+    const write = (statement: (tx: Transaction) => PromiseLike<unknown>) =>
+      sqlState(
+        withUnitOfWork(appPool.db, context(accountA), async ({ tx }) => {
+          await statement(tx);
+        }),
+      );
+    // 42501 from the privileges, before any policy is consulted, whatever ELX_RLS says.
+    expect(
+      await write((tx) => tx.insert(coreAccounts).values({ id: uuidv7(), name: 'RLS test x' })),
+    ).toBe('42501');
+    expect(
+      await write((tx) =>
+        tx.execute(sql`UPDATE core_accounts SET name = 'x' WHERE id = ${accountA}`),
       ),
-    );
-    // 42501: new row violates row-level security policy (WITH CHECK).
-    expect(insert).toBe(rlsOn ? '42501' : 'none');
+    ).toBe('42501');
+    expect(
+      await write((tx) => tx.execute(sql`DELETE FROM core_accounts WHERE id = ${accountB}`)),
+    ).toBe('42501');
+  });
 
-    const renamed = await withUnitOfWork(appPool.db, context(accountA), ({ tx }) =>
-      tx.execute(sql`UPDATE core_accounts SET name = 'RLS test B' WHERE id = ${accountB}`),
-    );
-    expect(renamed.count).toBe(rlsOn ? 0 : 1);
+  it('the template policy WITH CHECK refuses a row for another account when on', async () => {
+    // An operational table with the data §4.3 template, in a scratch schema the schema test
+    // does not read, with RLS enabled exactly when the flag is on.
+    const schema = `scratch_${randomBytes(4).toString('hex')}`;
+    const table = owner(schema);
+    await owner`CREATE SCHEMA ${table}`;
+    try {
+      await owner`CREATE TABLE ${table}.rows (id uuid PRIMARY KEY, account_id uuid NOT NULL)`;
+      await owner`GRANT USAGE ON SCHEMA ${table} TO elx_app`;
+      await owner`GRANT SELECT, INSERT, UPDATE, DELETE ON ${table}.rows TO elx_app`;
+      await owner`
+        CREATE POLICY tenant_isolation ON ${table}.rows TO elx_app
+          USING (account_id = NULLIF(current_setting('elx.account_id', true), '')::uuid)
+          WITH CHECK (account_id = NULLIF(current_setting('elx.account_id', true), '')::uuid)`;
+      if (rlsOn) await owner`ALTER TABLE ${table}.rows ENABLE ROW LEVEL SECURITY`;
+      const insert = (accountId: string) =>
+        sqlState(
+          withUnitOfWork(appPool.db, context(accountA), ({ tx }) =>
+            tx.execute(
+              sql`INSERT INTO ${sql.raw(`"${schema}".rows`)} VALUES (${uuidv7()}, ${accountId})`,
+            ),
+          ),
+        );
+      expect(await insert(accountA)).toBe('none');
+      // 42501: new row violates row-level security policy (WITH CHECK).
+      expect(await insert(accountB)).toBe(rlsOn ? '42501' : 'none');
+    } finally {
+      await owner`DROP SCHEMA ${table} CASCADE`;
+    }
   });
 
   it('elx_platform reads every account, through the platform_access policy', async () => {

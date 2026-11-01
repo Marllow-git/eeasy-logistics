@@ -138,6 +138,19 @@ describe('tenancy schema (data §4.1)', () => {
     );
   });
 
+  it('gives elx_app no INSERT, UPDATE or DELETE on a platform table (review M-3)', async () => {
+    const problems: string[] = [];
+    for (const [table, exemption] of Object.entries(tenancyExemptions)) {
+      if (exemption.class !== 'platform table') continue;
+      const [grants] = await owner<{ writes: string | null }[]>`
+        SELECT string_agg(p, ', ') AS writes
+        FROM unnest(ARRAY['INSERT', 'UPDATE', 'DELETE']) p
+        WHERE has_table_privilege('elx_app', ${table}, p)`;
+      if (grants?.writes) problems.push(`${table}: elx_app may ${grants.writes}`);
+    }
+    expect(problems).toEqual([]);
+  });
+
   it('protects every append-only table with both triggers and no mutating grants', async () => {
     const problems: string[] = [];
     const triggered = await owner<{ table: string; timing: string }[]>`
