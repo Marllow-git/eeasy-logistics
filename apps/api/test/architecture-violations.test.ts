@@ -54,6 +54,23 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
     ]);
   });
 
+  it('refuses a committed side effect outside the kernel audit folder (PLAT-7 plan 2.4)', () => {
+    expect(rulesOf('delivery/committed-side-effect.ts')).toEqual([
+      'committed-side-effects-only-in-audit',
+    ]);
+  });
+
+  it('refuses the owner migration entry outside the owner jobs (PLAT-7 plan 2.8)', () => {
+    expect(rulesOf('delivery/migrate-runner.ts')).toEqual(['db-migrate-only-in-owner-jobs']);
+  });
+
+  it('refuses the migration job reaching the application or the contracts (PLAT-7 CI fix)', () => {
+    const rules = violations
+      .filter((violation) => violation.from === 'test/architecture/violations/migrate/loads-app.ts')
+      .map((violation) => violation.rule.name);
+    expect(rules).toContain('migrate-job-loads-no-application');
+  });
+
   it('refuses a barrel surface entry from a controller (contracts-server-entries-only)', () => {
     expect(rulesOf('kernel-barrel.controller.ts')).toEqual(['contracts-server-entries-only']);
   });
@@ -123,6 +140,18 @@ describe('A-17 ESLint rules fail on their violation fixtures (adversary M-6)', (
   it('reports @Controller() outside a *.controller.ts file', { timeout: 30_000 }, async () => {
     expect(await rulesOf('orders.service.ts')).toEqual(['no-restricted-syntax']);
   });
+
+  it(
+    'reports the owner URL read outside the owner jobs (PLAT-7)',
+    { timeout: 30_000 },
+    async () => {
+      expect(await rulesOf('owner-url.ts')).toEqual([
+        'no-restricted-syntax',
+        'no-restricted-syntax',
+        'no-restricted-syntax',
+      ]);
+    },
+  );
 
   it('reports a disable comment without a reason', { timeout: 30_000 }, async () => {
     expect(await rulesOf('unexplained-disable.ts')).toEqual(['elx/disable-needs-reason']);

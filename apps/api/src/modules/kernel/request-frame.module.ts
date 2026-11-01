@@ -1,6 +1,7 @@
 import type { Config } from '@eeasy-logistics/config';
 import type { DynamicModule } from '@nestjs/common';
 import { Global, Logger, Module } from '@nestjs/common';
+import { CURSOR_CODEC, CursorCodec, cursorHmacKey } from './audit/cursor.js';
 import { AccessTokenVerifier } from './auth/access-token.js';
 import { PrincipalResolver } from './auth/principal.js';
 import { IDEMPOTENCY_HMAC_KEY } from './idempotency/idempotency.interceptor.js';
@@ -46,6 +47,14 @@ export class RequestFrameModule {
           },
         },
         {
+          // List cursors (ADR-0029, PLAT-7 plan 2.6): signed under HKDF of the signing key.
+          provide: CURSOR_CODEC,
+          useFactory: () => {
+            const key = config.auth.signingKey;
+            return new CursorCodec(key === undefined ? undefined : cursorHmacKey(key.reveal()));
+          },
+        },
+        {
           // The origins of the web client marker (plan 2.11, ADR-0038): staff writes come from the
           // merchant web, platform writes from the console. Production requires both URLs.
           provide: WEB_ORIGINS,
@@ -76,7 +85,7 @@ export class RequestFrameModule {
           },
         },
       ],
-      exports: [PRINCIPAL_RESOLVER, IDEMPOTENCY_HMAC_KEY, RATE_LIMITER, WEB_ORIGINS],
+      exports: [PRINCIPAL_RESOLVER, IDEMPOTENCY_HMAC_KEY, CURSOR_CODEC, RATE_LIMITER, WEB_ORIGINS],
     };
   }
 }

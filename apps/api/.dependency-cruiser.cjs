@@ -47,9 +47,62 @@ module.exports = {
         'tool (src/seed/, local and ci only).',
       severity: 'error',
       from: {
-        pathNot: ['(?:^|/)modules/kernel/platform/', '(?:^|/)src/worker/system/', '^src/seed/'],
+        pathNot: [
+          '(?:^|/)modules/kernel/platform/',
+          '(?:^|/)src/worker/system/',
+          '^src/seed/',
+          // The package's own committed-side-effect entry (rule below) wraps the platform pool.
+          '(?:^|/)packages/db/src/committed\\.ts$',
+        ],
       },
       to: { path: '(?:^|/)packages/db/src/platform\\.ts$' },
+    },
+    {
+      name: 'committed-side-effects-only-in-audit',
+      comment:
+        'PLAT-6 adversary M-5, PLAT-7 plan 2.4: a transaction committed regardless of the ' +
+        "request's outcome (@eeasy-logistics/db/committed) is for refusal audits only, written " +
+        'by modules/kernel/audit/ (PLAT-11 adds its security counters here when it lands).',
+      severity: 'error',
+      from: { pathNot: ['(?:^|/)modules/kernel/audit/', '(?:^|/)packages/db/src/'] },
+      to: { path: '(?:^|/)packages/db/src/committed\\.ts$' },
+    },
+    {
+      name: 'db-migrate-only-in-owner-jobs',
+      comment:
+        'ADR-0031, PLAT-7 adversary M-3 and L-1: @eeasy-logistics/db/migrate opens elx_owner ' +
+        'connections; only the migration job (src/migrate/, with the audit partitions), the seed ' +
+        'tool (local and ci), /ready for the expected version, the database test harness and ' +
+        'packages/db itself import it.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '(?:^|/)src/migrate/',
+          '^src/seed/',
+          '^src/health/readiness\\.module\\.ts$',
+          '^test/(?:integration|schema)/',
+          '(?:^|/)packages/db/',
+        ],
+      },
+      to: { path: '(?:^|/)packages/db/src/migrate\\.ts$' },
+    },
+    {
+      name: 'migrate-job-loads-no-application',
+      comment:
+        'PLAT-7 CI fix: the migration job (src/migrate/) runs before anything else is built ' +
+        '(CI migrates before it generates the contracts) and needs packages/config and ' +
+        'packages/db only; it never reaches the application modules or the contracts. main.ts ' +
+        'imports the Nest graphs of the api and the worker lazily.',
+      severity: 'error',
+      from: { path: '(?:^|/)(?:src|violations)/migrate/' },
+      to: {
+        path: [
+          '(?:^|/)src/modules/',
+          '(?:^|/)src/app\\.module\\.ts$',
+          '(?:^|/)packages/contracts/',
+        ],
+        reachable: true,
+      },
     },
     {
       name: 'db-testing-only-in-tests',

@@ -21,8 +21,8 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| WEB-19 | #43 | `feat/WEB-19-admin-console-scaffold` | `.claude/worktrees/agent-a52dedd898c533aa7` | executor-web (general-purpose Opus run) | review done, final head on CI | none | two-way door; adversary no; owns `PUBLIC_ADMIN_URL` (PLAT-6 leg 2 consumes it) |
-| WEB-1 | #46 | `feat/WEB-1-web-shell-design-system-i18n` | harness worktree | executor-web (general-purpose Opus run; project agents not loaded in this session) | build, leg 1 (A–E) | none | two-way door; adversary no; Q-21 applied as default |
+| PLAT-7 | #58 | `feat/PLAT-7-audit-log` | `.claude/worktrees/agent-a34090733becbfb52` | executor-api (Opus) | review | none | one-way door; adversary required; one leg (A–E), draft PR #61 |
+| PLAT-8 | #59 | `feat/PLAT-8-outbox-relay-queues` | – | – | plan; brief after PLAT-7 closes | none | one-way door; adversary required; three legs |
 
 ## Next unblocked (roadmap §1.1)
 
