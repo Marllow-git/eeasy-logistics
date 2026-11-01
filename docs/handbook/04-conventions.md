@@ -27,7 +27,7 @@
 
 ## Internationalisation
 
-- Keys live in `packages/i18n/<locale>/<namespace>.json`, both `ar` and `en` in the same PR.
+- Keys live in `packages/i18n/<locale>/<namespace>.json`, both `ar` and `en` in the same PR; the platform console's `platform` namespace lives in `apps/admin/messages/<locale>/platform.json` only (ADR-0038).
 - Dates: Gregorian, Western digits, Asia/Riyadh. Currency: SAR with the riyal symbol component.
 - Arabic is the primary layout; screenshots in reviews are Arabic first.
 
