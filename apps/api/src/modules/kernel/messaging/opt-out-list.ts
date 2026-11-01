@@ -1,6 +1,6 @@
-import type { MessagingStore } from '../platform/messaging.repository.js';
+import type { MessagingRepository, MessagingStore } from '../platform/messaging.repository.js';
 import type { OptOutSource } from '../schema/messaging.js';
-import { normalisePhone } from './phone.js';
+import { e164Pattern, normalisePhone } from './phone.js';
 
 // The opt-out list (integrations §5.5; PLAT-9 plan 2.7, 2A.5; ADR-0041): an (account, phone) pair
 // on it gets no recipient template from that account (`done`, reason `opted_out`); OTP never asks.
@@ -47,6 +47,26 @@ export class OptOutList {
     const e164 = normalisePhone(phone);
     if (e164 === undefined) return false;
     await this.store.run((repo) => repo.removeOptOut(accountId, e164));
+    return true;
+  }
+
+  /**
+   * The engine's `suppression.changed` (plan 2A.2), written through the caller's repository so it
+   * commits or rolls back with the callback's claim in one transaction (lead review of PLAT-9). The
+   * engine suppresses any E.164 number, so a number our phone metadata does not normalise is kept
+   * under the engine's own string rather than dropped: a STOP is always honoured. False only for a
+   * string that is not E.164-shaped, which the door's schema already refuses.
+   */
+  async applySuppression(
+    repo: MessagingRepository,
+    accountId: string,
+    phone: string,
+    suppressed: boolean,
+  ): Promise<boolean> {
+    const key = normalisePhone(phone) ?? (e164Pattern.test(phone) ? phone : undefined);
+    if (key === undefined) return false;
+    if (suppressed) await repo.addOptOut(accountId, key, 'provider');
+    else await repo.removeOptOut(accountId, key);
     return true;
   }
 
