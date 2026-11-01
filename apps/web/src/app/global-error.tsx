@@ -2,7 +2,8 @@
 
 import '@eeasy-logistics/ui/styles.css';
 import { GlobalErrorDocument } from '@eeasy-logistics/ui/shell/global-error-document';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { track } from '../analytics';
 import { reportClientError } from '../observability/report';
 
 /**
@@ -14,6 +15,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
   const [reference] = useState(
     () => error.digest ?? reportClientError(error, { boundary: 'global' }),
   );
+  useEffect(() => track('shell.error_page.shown', { boundary: 'global', group: 'root' }), []);
   return (
     <GlobalErrorDocument
       reference={reference}
