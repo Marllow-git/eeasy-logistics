@@ -10,7 +10,7 @@ Owner rule of 2026-10-31: **Haiku researches, Opus builds, Fable reviews.** The 
 |---|---|---|---|---|---|
 | Owner | – (a person) | – | – | rulings, merges | – |
 | Lead | the main session | Fable | – | plan files, ADRs, ledger, PR review rulings, reports | merges without delegation; edits an executor's worktree; builds an order itself |
-| Researcher | `researcher` | Haiku | Sonnet for a census or teardown that needs judgement about what matters (reference products, provider comparisons); Haiku for lookups and fact checks | `docs/research/*.md` only | touches code or plan files |
+| Researcher | `researcher` | Haiku | Sonnet for a census or teardown that needs judgement about what matters (reference products, provider comparisons); Haiku for lookups and fact checks | `docs/research/*.md` and `docs/references/design/*.md` only | touches code or plan files |
 | Executor, API | `executor-api` | Opus | none; API orders carry tenancy, ledger and auth risk | its order branch, in its worktree | merges; edits `main`; answers owner questions; touches the shared dev database |
 | Executor, web | `executor-web` | Opus | Sonnet for an order whose roadmap row says `Adv. no`, whose plan has no open §7 question and whose items are screens over existing contracts | same | same |
 | Executor, driver app | `executor-driver` | Opus | same rule as web | same | same |
@@ -49,7 +49,7 @@ The question, the documents already consulted, where to write (`docs/research/<s
 
 - One worktree per executor, created by the harness under `.claude/worktrees/`; the lead records the path in the ledger. Nobody but that executor writes there.
 - Databases: each executor gets its own database name on the native stack, or its own stack pair in CI; nobody migrates the shared development database.
-- Researchers run without a worktree and without write tools outside `docs/research/`.
+- Researchers run without a worktree and without write tools outside `docs/research/` and `docs/references/design/`.
 - `.serena/memories/` is tracked in git so every worktree carries the same project notes; executors add to it when they learn something a later order needs.
 - No deploy, live credential or production data action without the owner's explicit instruction, for every role.
 
