@@ -14,13 +14,16 @@
     "./staff/mocks": "./src/mocks/staff.ts",
     "./platform/mocks": "./src/mocks/platform.ts",
     "./public/mocks": "./src/mocks/public.ts",
+    "./driver/mocks": "./src/mocks/driver.ts",
+    "./recipient/mocks": "./src/mocks/recipient.ts",
     "./http": "./src/http.ts",
     "./unions": "./src/unions.ts"
   },
   "scripts": {
-    "build": "pnpm run build:bundle && pnpm run build:unions && pnpm run build:client",
+    "build": "pnpm run build:bundle && pnpm run build:unions && pnpm run build:client && pnpm run build:operations",
     "build:bundle": "node scripts/bundle.ts",
     "build:client": "orval --config orval.config.ts",
+    "build:operations": "node scripts/operations.ts",
     "build:unions": "node scripts/unions.ts",
     "typecheck": "tsc --noEmit",
     "lint": "redocly lint --config ../../docs/contracts/redocly.yaml && eslint .",
