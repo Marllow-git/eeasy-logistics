@@ -94,8 +94,8 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | Code | HTTP | When | Enforces |
 |---|---|---|---|
 | `api_key_revoked` | 401 | revoked or rotated-out key past its overlap window | doc 4 §3.4 |
-| `webhook_url_invalid` | 422 | subscription URL is not `https` on port 443, or is a literal or resolved address in a refused class; reachability is checked later through the outbox, not here | ADR-0030 |
-| `verification_token_invalid` | 422 | wrong or reused subscription verification token | ADR-0030 |
+| `webhook_url_invalid` | 422 | subscription URL is not `https` on port 443, or is a literal or resolved address in a refused class; reachability is checked later through the outbox, not here | ADR-0040 |
+| `verification_token_invalid` | 422 | wrong or reused subscription verification token | ADR-0040 |
 | `reason_required` | 400 | cross-tenant platform call without `X-Support-Reason` | doc 4 §5, §7 |
 | `rollout_change_forbidden` | 403 | a platform admin (not super admin) changing a rollout mode | §2.4, doc 4 §2 |
 | `replay_not_allowed` | 409 | replaying an outbox row that is not `dead` | K-10, K-11 |

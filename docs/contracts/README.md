@@ -1,6 +1,6 @@
 # API contracts
 
-Foundation document 3. Date: 2026-10-31. Status: for owner review. Governed by ADR-0008 (idempotency and `409` on stale transitions), ADR-0009 (SSE and polling), ADR-0014 (pack-time shipments), ADR-0015 (storage and coverage first), ADR-0024 (outbox), ADR-0025 (tenancy), the proposed ADR-0027 (event envelope) and ADR-0028 (location pings), and the proposed ADR-0029 (cursor pagination and SSE event names) and ADR-0030 (merchant webhook signing and delivery); derives from the domain model (document 2); informs data (5), web (7), driver app (8), integrations (9). Order: ARCH-1, decisions 2.1 to 2.4.
+Foundation document 3. Date: 2026-10-31. Status: for owner review. Governed by ADR-0008 (idempotency and `409` on stale transitions), ADR-0009 (SSE and polling), ADR-0014 (pack-time shipments), ADR-0015 (storage and coverage first), ADR-0024 (outbox), ADR-0025 (tenancy), the proposed ADR-0027 (event envelope) and ADR-0028 (location pings), and the proposed ADR-0029 (cursor pagination and SSE event names) and ADR-0040 (merchant webhook signing and delivery, Standard Webhooks; supersedes ADR-0030); derives from the domain model (document 2); informs data (5), web (7), driver app (8), integrations (9). Order: ARCH-1, decisions 2.1 to 2.4.
 
 The domain model is the vocabulary. Aggregate names, attributes, states and invariants (K-, D-, W-) are cited from `docs/architecture/domain-model.md` by section and never redefined here. Actors, roles, tokens and rate-limit mechanics come from `docs/architecture/identity-and-tenancy.md` (document 4).
 
@@ -136,7 +136,7 @@ Every response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-R
 
 ## 8. Webhooks
 
-Merchant webhooks are the domain events marked "yes" in document 2 §6.3, delivered in the ADR-0027 envelope, signed and retried per ADR-0030. The catalogue, payloads and delivery rules are in `webhooks.md`; the subscription endpoints and the machine-readable `webhooks:` section are in `public.yaml`.
+Merchant webhooks are the domain events marked "yes" in document 2 §6.3, delivered in the ADR-0027 envelope, signed and retried per ADR-0040. The catalogue, payloads and delivery rules are in `webhooks.md`; the subscription endpoints and the machine-readable `webhooks:` section are in `public.yaml`.
 
 ## 9. OpenAPI files and validation
 
