@@ -73,6 +73,7 @@ Sessions, sign-in forms, TOTP (WEB-2); the design system, CSP and `proxy.ts` (WE
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A | this commit | `pnpm --filter admin build` exit 0 (routes `/`, `/sign-in`, `/sign-in/totp`, standalone `server.js`); `pnpm --filter admin test:smoke` 4/4 against `next start -p 3002` (two routes, `ar` and `en`; Arabic screenshot reviewed: right-aligned, `dir=rtl`); web smoke 6/6 against `next start -p 3001` after dropping `/platform`; `GET /platform` on the web 404 (and on admin 404); i18n Vitest 8/8 (parity included); `pnpm turbo run typecheck lint test` for admin, web, i18n 12/12 tasks; admin `test:architecture` 18 modules clean; `pnpm install --frozen-lockfile` and `--lockfile-only` leave the lock unchanged; `pnpm audit --audit-level moderate` exit 0 | Lockfile importer `apps/admin` written as a copy of `apps/web`'s (identical specifiers): a plain `pnpm install` re-resolved and refused tslib 2.9.1 under `minimumReleaseAge` (§8.2); base `.dependency-cruiser.cjs` (server-side access, environment, unresolvable) lands here so `test` runs; the contracts surface rules are item E |
 
 ### 8.1 Skills, documents and versions consulted
 

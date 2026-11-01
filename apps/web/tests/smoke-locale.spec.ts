@@ -11,7 +11,6 @@ type Locale = keyof typeof expectedDir;
 const routes = [
   { name: 'merchant', path: '/' },
   { name: 'sign-in', path: '/sign-in' },
-  { name: 'platform', path: '/platform' },
   { name: 'track', path: '/track/smoke-token' },
 ] as const;
 
