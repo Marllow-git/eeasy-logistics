@@ -1,19 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { MailSender } from '../../src/modules/kernel/messaging/mail-sender.js';
-import { StubMessageSender } from '../../src/modules/kernel/messaging/stub-message-sender.js';
 import { integrationConfig, mailpitUrl } from './support.js';
 
-// PLAT-9 item B against the stack's real services (integrations §9): the stub adapter's round trip
-// through tools/whatsapp-stub (the send is recorded, the code readable from `GET /sent`), and the
-// mail adapter's round trip through Mailpit in Arabic and English.
+// PLAT-9 item B against the stack's real services (integrations §9): the mail adapter's round trip
+// through Mailpit in Arabic and English. The WhatsApp round trip through the stub is the engine
+// adapter's, in message-delivery.test.ts (item F).
 
 const config = integrationConfig();
-
-interface StubRecord {
-  readonly path: string;
-  readonly body: { client_reference?: string; to?: string; params?: { code?: string } };
-}
 
 interface MailpitSummary {
   readonly ID: string;
@@ -36,32 +30,6 @@ async function mailpitMessage(messageId: string): Promise<{ Subject: string; Tex
   }
   throw new Error(`Mailpit has no message ${messageId}`);
 }
-
-describe('stub adapter against tools/whatsapp-stub (PLAT-9 item B)', () => {
-  it('records the send with the code, retrievable by the client reference', async () => {
-    const stubUrl = config.messaging.stubUrl;
-    if (stubUrl === undefined) throw new Error('MESSAGING_STUB_URL is required for this suite');
-    const sender = new StubMessageSender({
-      appEnv: config.app.env,
-      url: stubUrl,
-      templateNamespace: config.messaging.templateNamespace,
-    });
-    const reference = randomUUID();
-    const sent = await sender.sendTemplate({
-      to: '+966500000123',
-      templateKey: 'auth_otp',
-      locale: 'ar',
-      params: { code: '731904' },
-      idempotencyKey: reference,
-    });
-    expect(sent.providerMessageId).toMatch(/^[0-9a-f-]{36}$/);
-    const records = (await (await fetch(`${stubUrl}/sent`)).json()) as StubRecord[];
-    const mine = records.filter((record) => record.body.client_reference === reference);
-    expect(mine).toHaveLength(1);
-    expect(mine[0]?.path).toBe('/v1/messages');
-    expect(mine[0]?.body).toMatchObject({ to: '+966500000123', params: { code: '731904' } });
-  });
-});
 
 describe('mail adapter against Mailpit (PLAT-9 item B)', () => {
   const smtpUrl = config.mail.smtpUrl?.reveal();

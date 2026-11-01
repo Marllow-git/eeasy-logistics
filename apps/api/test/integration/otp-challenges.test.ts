@@ -160,7 +160,7 @@ describe('OtpService on the database (PLAT-9 item C)', () => {
       supersede_key: `otp:${phone}:driver_login`,
       aggregate_type: 'otp_challenge',
       aggregate_id: challenge?.id,
-      payload: { channel: 'whatsapp', template: 'auth_otp', to: phone, locale: 'ar' },
+      payload: { channel: 'whatsapp', template_key: 'auth_otp', to: phone, locale: 'ar' },
     });
     const code = codeOf(row as OutboxRow);
     expect(code).toMatch(/^[0-9]{6}$/);

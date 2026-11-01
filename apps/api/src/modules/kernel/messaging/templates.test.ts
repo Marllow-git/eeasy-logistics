@@ -1,11 +1,11 @@
 import { locales } from '@eeasy-logistics/i18n/templates';
 import { messageTemplateKeys, messageTemplateTexts } from '@eeasy-logistics/i18n/templates';
 import { describe, expect, it } from 'vitest';
+import type { TemplateDefinition } from './templates.js';
 import {
   TemplateParamsError,
   messageTemplates,
   placeholdersOf,
-  providerTemplateName,
   renderTemplate,
 } from './templates.js';
 
@@ -52,8 +52,11 @@ describe('message template registry', () => {
     });
   });
 
-  it('prefixes provider names with the namespace (integrations §5.2)', () => {
-    expect(providerTemplateName('auth_otp', 'elx')).toBe('elx_auth_otp');
+  it('gives every WhatsApp template, and only those, an engine message type (ADR-0041)', () => {
+    for (const definition of Object.values(messageTemplates) as TemplateDefinition[]) {
+      expect(definition.engineMessageType !== undefined).toBe(definition.channel === 'whatsapp');
+    }
+    expect(messageTemplates.auth_otp.engineMessageType).toBe('verification');
   });
 });
 

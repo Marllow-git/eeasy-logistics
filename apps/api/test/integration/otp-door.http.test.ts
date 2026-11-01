@@ -17,7 +17,7 @@ import {
 } from '../../src/modules/kernel/messaging/breaker.js';
 import { MESSAGING_BREAKERS } from '../../src/modules/kernel/messaging/messaging.module.js';
 import { OtpService } from '../../src/modules/kernel/messaging/otp.service.js';
-import { StubMessageSender } from '../../src/modules/kernel/messaging/stub-message-sender.js';
+import { EngineMessageSender } from '../../src/modules/kernel/messaging/engine/engine-message-sender.js';
 import type { ContractInput } from '../../src/modules/kernel/public/index.js';
 import { Input, Operation, Public } from '../../src/modules/kernel/public/index.js';
 import {
@@ -222,12 +222,21 @@ describe('OTP doors on the real operations (PLAT-9 item D)', () => {
     // The worker's adapter fails five times against a stub that answers 500: its breaker opens and
     // publishes the state the door reads (integrations §2.4).
     const stubUrl = config.messaging.stubUrl;
-    if (stubUrl === undefined) throw new Error('MESSAGING_STUB_URL is required for this suite');
+    const { serviceId, keyId, commandSecret } = config.messaging.engine;
+    if (
+      stubUrl === undefined ||
+      serviceId === undefined ||
+      keyId === undefined ||
+      commandSecret === undefined
+    ) {
+      throw new Error('MESSAGING_STUB_URL and the WHATSAPP_ENGINE_* variables are required');
+    }
     const failing = new BreakerSender(
-      new StubMessageSender({
+      new EngineMessageSender({
+        provider: 'stub',
         appEnv: config.app.env,
-        url: stubUrl,
-        templateNamespace: 'elx',
+        baseUrl: stubUrl,
+        key: { service: serviceId.reveal(), keyId: keyId.reveal(), secret: commandSecret.reveal() },
         headers: { 'x-stub-fault': '500' },
       }),
       breakers,
@@ -241,6 +250,7 @@ describe('OTP doors on the real operations (PLAT-9 item D)', () => {
           locale: 'en',
           params: { code: '000000' },
           idempotencyKey: `00000000-0000-7000-8000-00000000000${attempt}`,
+          route: { engineAccountId: 1, senderInstanceId: '00000000-0000-4000-8000-000000000001' },
         })
         .catch(() => undefined);
     }

@@ -8,7 +8,7 @@ import type {
   SentMessage,
   TemplateStatus,
 } from './message-sender.js';
-import { providerTimeoutMs } from './stub-message-sender.js';
+import { providerTimeoutMs } from './engine/engine-message-sender.js';
 import type { TemplateKey } from './templates.js';
 import { messageTemplates, renderTemplate } from './templates.js';
 

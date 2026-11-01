@@ -38,10 +38,12 @@ describe('defineConfig: valid input', () => {
     expect(config.db.urls.app?.reveal()).toBe(productionEnv.DATABASE_URL_APP);
     expect(config.storage.bucket).toBe('elx-proofs');
     expect(config.messaging).toMatchObject({
-      provider: 'meta',
+      provider: 'engine',
       disabled: false,
-      senderId: '100000000000001',
     });
+    expect(config.messaging.engine.platformInstanceId).toBe(
+      productionEnv.WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID,
+    );
     expect(Object.keys(config.credentials?.keys ?? {})).toEqual(['k1', 'k2']);
     expect(config.credentials?.activeKeyId).toBe('k2');
   });
@@ -173,14 +175,19 @@ describe('defineConfig: missing and malformed input', () => {
 
   it('requires grouped variables together and provider credentials for a real provider', () => {
     const error = configError(() =>
-      defineConfig({ APP_ENV: 'local', STORAGE_BUCKET: 'b', MESSAGING_PROVIDER: 'bsp' }),
+      defineConfig({ APP_ENV: 'local', STORAGE_BUCKET: 'b', MESSAGING_PROVIDER: 'engine' }),
     );
     expect(error.issues.map((issue) => issue.variable)).toEqual([
       'STORAGE_ENDPOINT',
       'STORAGE_ACCESS_KEY_ID',
       'STORAGE_SECRET_ACCESS_KEY',
-      'MESSAGING_ACCESS_TOKEN',
-      'MESSAGING_SENDER_ID',
+      'WHATSAPP_ENGINE_URL',
+      'WHATSAPP_ENGINE_SERVICE_ID',
+      'WHATSAPP_ENGINE_KEY_ID',
+      'WHATSAPP_ENGINE_COMMAND_SECRET',
+      'WHATSAPP_ENGINE_CALLBACK_KEY_ID',
+      'WHATSAPP_ENGINE_CALLBACK_SECRET',
+      'WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID',
     ]);
   });
 

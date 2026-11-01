@@ -1,12 +1,28 @@
 import type { Locale, MessageTemplateKey } from '@eeasy-logistics/i18n/templates';
 import { messageTemplateTexts } from '@eeasy-logistics/i18n/templates';
 
-// The template registry (PLAT-9 plan 2.3; ADR-0037; integrations §5.1, §5.2): which channel each
-// template leaves on, its provider category, the parameters it takes and which of them are secret.
+// The template registry (PLAT-9 plan 2.3, 2A.5; ADR-0037, ADR-0041; integrations §5.1): which channel
+// each template leaves on, its category, the parameters it takes and which of them are secret. The
+// kernel renders every text itself; the engine receives text, so there are no provider template
+// names or approvals (ADR-0041).
 // The texts live in `packages/i18n` (`<locale>/messages.json`); templates.test.ts fails when a
 // registry parameter is missing from a text, or a text names a parameter the registry lacks.
 
 export type MessageChannel = 'whatsapp' | 'mail';
+
+/**
+ * The engine's closed `message_type` a WhatsApp template is sent as (engine contract §6.1; plan
+ * 2A.1): it fixes the priority class and the hold the engine re-derives. `verification` goes through
+ * `message.send.verification`, every other type through `message.send.text`.
+ */
+export type EngineMessageType =
+  | 'verification'
+  | 'shipment_issued'
+  | 'digest_daily'
+  | 'digest_weekly'
+  | 'digest_monthly'
+  | 'manual_custom'
+  | 'connection_test';
 
 export interface TemplateDefinition {
   readonly channel: MessageChannel;
@@ -21,6 +37,8 @@ export interface TemplateDefinition {
   readonly secretParams: readonly string[];
   /** Waits out quiet hours (integrations §5.4); none in wave 0, and never OTP. */
   readonly deferrable: boolean;
+  /** WhatsApp templates only: the engine `message_type` it is sent as (ADR-0041). */
+  readonly engineMessageType?: EngineMessageType;
 }
 
 export const messageTemplates = {
@@ -30,6 +48,7 @@ export const messageTemplates = {
     params: ['code'],
     secretParams: ['code'],
     deferrable: false,
+    engineMessageType: 'verification',
   },
   invitation: {
     channel: 'mail',
@@ -59,14 +78,6 @@ export type { MessageTemplateKey };
 
 export function isTemplateKey(value: unknown): value is TemplateKey {
   return typeof value === 'string' && Object.hasOwn(messageTemplates, value);
-}
-
-/**
- * The name a template is approved under at the provider: the namespace prefix keeps a shared
- * WhatsApp Business account's names apart (integrations §5.2: `elx_auth_otp`).
- */
-export function providerTemplateName(key: TemplateKey, namespace: string): string {
-  return `${namespace}_${key}`;
 }
 
 /** Every `{name}` placeholder of a text, in order of appearance. */

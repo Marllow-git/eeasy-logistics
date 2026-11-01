@@ -261,6 +261,7 @@ export async function startWorker(
       // The relay first (no new jobs), then the workers drain (platform §5), then the clients.
       await relay?.stop();
       await queues.stop();
+      await registry.close();
       redis.disconnect();
       await Promise.all([pool.close(), app?.close()]);
     },

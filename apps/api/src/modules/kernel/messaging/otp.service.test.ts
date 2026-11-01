@@ -31,7 +31,17 @@ function availability(env: EnvRecord, open = false) {
 }
 
 describe('MessagingAvailability (review round 1, finding 2)', () => {
-  const stub = { MESSAGING_PROVIDER: 'stub', MESSAGING_STUB_URL: 'http://127.0.0.1:8080' };
+  const signing = {
+    WHATSAPP_ENGINE_SERVICE_ID: 'eeasy-laravel-control-plane',
+    WHATSAPP_ENGINE_KEY_ID: 'test-command',
+    WHATSAPP_ENGINE_COMMAND_SECRET: 'fake-command-secret-0123456789abcdef0123',
+    WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID: '00000000-0000-4000-8000-000000000001',
+  };
+  const stub = {
+    MESSAGING_PROVIDER: 'stub',
+    MESSAGING_STUB_URL: 'http://127.0.0.1:8080',
+    ...signing,
+  };
 
   it('is available with a built WhatsApp sender and its breaker closed', async () => {
     expect(await availability(stub).check()).toBe(true);
@@ -46,15 +56,11 @@ describe('MessagingAvailability (review round 1, finding 2)', () => {
   });
 
   it.each([
+    ['the stub without its URL', { MESSAGING_PROVIDER: 'stub', ...signing }],
     [
-      'meta',
-      { MESSAGING_PROVIDER: 'meta', MESSAGING_ACCESS_TOKEN: 'fake', MESSAGING_SENDER_ID: '1' },
+      'the stub without its signing secret',
+      { MESSAGING_PROVIDER: 'stub', MESSAGING_STUB_URL: 'http://127.0.0.1:8080' },
     ],
-    [
-      'bsp',
-      { MESSAGING_PROVIDER: 'bsp', MESSAGING_ACCESS_TOKEN: 'fake', MESSAGING_SENDER_ID: '1' },
-    ],
-    ['the stub without its URL', { MESSAGING_PROVIDER: 'stub' }],
   ])(
     'is unavailable with a provider configured but no sender in this build: %s',
     async (_name, env) => {
