@@ -16,6 +16,7 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | 2026-11-01 | `main.yml` no longer re-runs the seven PR checks on push to `main`; it builds, scans and pushes the images only. The gate's green-on-exact-head rule and path-disjoint in-flight orders cover the window. |
 | 2026-11-01 | Mobbin MCP is the design-reference source: every UI order gets `docs/references/design/<ORDER>.md` with Mobbin links before its brief (handbook 04 "Design references"); web, driver executors and the researcher carry the `mcp__mobbin__*` tools. |
 | 2026-11-01 | VROOM, Valkey and the other routing and map infrastructure are set up last (roadmap A-24): no Valkey switch in PLAT-8, INT-5 and INT-6 at the end of their waves, Q-19 and Q-45 ruled last. |
+| 2026-11-01 | While GitHub Actions is blocked by the organisation's billing, the owner allows a merge on a full local gate (typecheck, lint, unit, format, audit, integration in both RLS lanes) recorded in the plan §9; applied to PLAT-8 (PR #63). |
 | 2026-11-01 | Two web applications: `apps/web` (merchant, recipient) and `apps/admin` (platform console) on separate hostnames (ADR-0038, order WEB-19). |
 
 ## In flight
