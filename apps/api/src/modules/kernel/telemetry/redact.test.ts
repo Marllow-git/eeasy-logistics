@@ -1,0 +1,158 @@
+import { describe, expect, it } from 'vitest';
+import {
+  capText,
+  describeError,
+  isWithheldKey,
+  maskedEmail,
+  maxDepth,
+  maxItems,
+  redacted,
+  redactText,
+  redactValue,
+} from './redact.js';
+
+// PLAT-14 item D (plan 2.4; integrations §11 "Logging redaction"): the telemetry redactor.
+
+describe('redactText: phone numbers', () => {
+  it.each([
+    ['+966512345678', '[phone …78]'],
+    ['+966 51 234 5678', '[phone …78]'],
+    ['+44-20-7946-0958', '[phone …58]'],
+    ['00966512345678', '[phone …78]'],
+    ['966512345678', '[phone …78]'],
+    ['0512345678', '[phone …78]'],
+  ])('masks %s to its last two digits', (phone, masked) => {
+    expect(redactText(`sent to ${phone} at noon`)).toBe(`sent to ${masked} at noon`);
+  });
+
+  it('leaves ids, counts, timestamps and UUIDs alone', () => {
+    const text =
+      'row 0192f0e0-1234-7000-8000-00000000abcd took 1730000000000 ms, 12345678 rows, 2026-11-01';
+    expect(redactText(text)).toBe(text);
+  });
+});
+
+describe('redactText: emails and credentials', () => {
+  it('masks an email address whole', () => {
+    expect(redactText('owner sara.k+ops@merchant.example.sa replied')).toBe(
+      `owner ${maskedEmail} replied`,
+    );
+  });
+
+  it('removes bearer, basic and digest credentials', () => {
+    expect(redactText('Authorization: Bearer abc.def-123')).toBe(
+      `Authorization: ${redacted} ${redacted}`,
+    );
+    expect(redactText('sent Bearer abc.def-123 upstream')).toBe(`sent Bearer ${redacted} upstream`);
+    expect(redactText('Basic dXNlcjpwYXNz')).toBe(`Basic ${redacted}`);
+    expect(redactText('Digest username="a", response="b"')).toBe(`Digest ${redacted}`);
+  });
+
+  it('removes a JWT anywhere', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl';
+    expect(redactText(`token was ${jwt}.`)).toBe(`token was ${redacted}.`);
+  });
+
+  it('removes URL user-info and secret or personal query values', () => {
+    expect(
+      redactText('GET https://user:pw@host.example/hook?token=abc&page=2&phone=0512345678'),
+    ).toBe(`GET https://${redacted}@host.example/hook?token=${redacted}&page=2&phone=${redacted}`);
+  });
+
+  it('removes values of secret-named pairs in JSON and key=value text', () => {
+    expect(redactText('{"api_key":"k-1","otp_code":"123456","status":"failed"}')).toBe(
+      `{"api_key":"${redacted}","otp_code":"${redacted}","status":"failed"}`,
+    );
+    expect(redactText('password = hunter2, user=7')).toBe(`password = ${redacted}, user=7`);
+  });
+
+  it('replaces control characters, so a value cannot forge a second log line', () => {
+    expect(redactText('a\nb\r\u0000c')).toBe('a b  c');
+  });
+
+  it('caps text at the given length', () => {
+    expect(capText('x'.repeat(10), 4)).toBe('xxxx…');
+    expect(redactText('y'.repeat(3_000))).toHaveLength(2_001);
+  });
+});
+
+describe('isWithheldKey', () => {
+  it.each([
+    'authorization',
+    'Cookie',
+    'x-api-key',
+    'apiKey',
+    'recipient_phone',
+    'phoneNumber',
+    'email',
+    'contactEmail',
+    'address',
+    'requestBody',
+    'headers',
+    'payload',
+    'otp',
+    'otp_code',
+    'verificationCode',
+    'signing_key',
+    'clientSecret',
+  ])('withholds %s', (key) => {
+    expect(isWithheldKey(key)).toBe(true);
+  });
+
+  it.each(['status', 'code', 'status_code', 'kind', 'account_id', 'shipping_fee', 'attempts'])(
+    'keeps %s',
+    (key) => {
+      expect(isWithheldKey(key)).toBe(false);
+    },
+  );
+});
+
+describe('redactValue', () => {
+  it('withholds secret and personal keys at any depth and redacts every string', () => {
+    const value = {
+      order: { id: 'o-1', recipient: { phone: '+966512345678', name: 'Sara' } },
+      headers: { authorization: 'Bearer x' },
+      note: 'call +966512345678',
+      list: [{ email: 'a@b.example' }, 'Bearer abc'],
+      attempts: 3,
+      at: new Date('2026-11-01T00:00:00Z'),
+    };
+    expect(redactValue(value)).toEqual({
+      order: { id: 'o-1', recipient: { phone: redacted, name: 'Sara' } },
+      headers: redacted,
+      note: 'call [phone …78]',
+      list: [{ email: redacted }, `Bearer ${redacted}`],
+      attempts: 3,
+      at: '2026-11-01T00:00:00.000Z',
+    });
+  });
+
+  it('describes an error by class and redacted message only', () => {
+    const error = Object.assign(new TypeError('no route to +966512345678'), {
+      config: { headers: { authorization: 'Bearer x' } },
+    });
+    expect(redactValue({ error })).toEqual({
+      error: { type: 'TypeError', message: 'no route to [phone …78]' },
+    });
+    expect(describeError(error)).toEqual({ type: 'TypeError', message: 'no route to [phone …78]' });
+  });
+
+  it('stops at its depth, its item count and on cycles', () => {
+    let deep: Record<string, unknown> = { leaf: 1 };
+    for (let i = 0; i < maxDepth + 2; i += 1) deep = { next: deep };
+    expect(JSON.stringify(redactValue(deep))).toContain('[too_deep]');
+    const cyclic: Record<string, unknown> = { a: 1 };
+    cyclic.self = cyclic;
+    expect(redactValue(cyclic)).toEqual({ a: 1, self: '[too_deep]' });
+    expect(redactValue(Array.from({ length: 80 }, (_, i) => i))).toHaveLength(maxItems);
+  });
+
+  it('drops functions, symbols and __proto__ keys; turns bigint and non-finite numbers into JSON', () => {
+    const parsed = JSON.parse('{"__proto__":{"polluted":true},"n":1}') as object;
+    expect(redactValue(parsed)).toEqual({ n: 1 });
+    expect(redactValue({ f: () => 1, s: Symbol('x'), b: 10n, inf: Infinity })).toEqual({
+      b: '10',
+      inf: null,
+    });
+  });
+});

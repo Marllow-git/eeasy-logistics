@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { isUuid, uuidv7 } from '@eeasy-logistics/db';
 import type { NestMiddleware } from '@nestjs/common';
-import { ConsoleLogger, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import { getMetrics } from '../telemetry/metrics.js';
 import { annotateRequest, routeTemplateOf } from '../telemetry/spans.js';
@@ -13,7 +13,7 @@ import { annotateRequest, routeTemplateOf } from '../telemetry/spans.js';
 export const requestIdHeader = 'X-Request-Id';
 
 const serverIds = new WeakMap<Request, string>();
-const scope = new AsyncLocalStorage<string>();
+const scope = new AsyncLocalStorage<{ readonly server: string; readonly client: string | null }>();
 
 /** An incoming id is kept only when it is one UUID (any version); case is normalised. */
 export function acceptRequestId(value: unknown): string | undefined {
@@ -48,9 +48,14 @@ export function requestIdOf(request: Request): string {
   return clientRequestIdOf(request) ?? serverRequestIdOf(request);
 }
 
-/** The id of the request the current code serves, for log lines; undefined outside one. */
+/** The server's id of the request the current code serves, for log lines; undefined outside one. */
 export function currentRequestId(): string | undefined {
-  return scope.getStore();
+  return scope.getStore()?.server;
+}
+
+/** The client's own UUID for the request the current code serves, when it sent one. */
+export function currentClientRequestId(): string | undefined {
+  return scope.getStore()?.client ?? undefined;
 }
 
 @Injectable()
@@ -71,16 +76,8 @@ export class RequestIdMiddleware implements NestMiddleware {
         status: response.statusCode,
       });
     });
-    // Log lines name the server's id, and the client's next to it when it sent one.
-    scope.run(client === null || client === server ? server : `${server} client ${client}`, next);
-  }
-}
-
-/** The application logger: every line written while serving a request names its id. */
-export class RequestLogger extends ConsoleLogger {
-  protected override formatContext(context: string): string {
-    const id = currentRequestId();
-    const base = super.formatContext(context);
-    return id === undefined ? base : `${base}[request ${id}] `;
+    // Log lines name the server's id, and the client's next to it when it sent one (PLAT-14: the
+    // JSON logger's `request_id` and `client_request_id`).
+    scope.run({ server, client: client === server ? null : client }, next);
   }
 }

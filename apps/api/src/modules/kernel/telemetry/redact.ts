@@ -50,7 +50,8 @@ export function isWithheldKey(key: string): boolean {
 }
 
 const bearer = /\bbearer\s+[^\s,;"']+/gi;
-const basic = /\bbasic\s+[A-Za-z0-9+/=._~-]{8,}/gi;
+/** `Basic <base64>` credentials (the PLAT-8 `last_error` rule). */
+const basic = /\bbasic\s+[A-Za-z0-9+/=._~-]+/gi;
 const digest =
   /\bdigest\s+[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+)(?:\s*,\s*[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+))*/gi;
 /** URL user-info, `scheme://user:password@host`. */
@@ -58,8 +59,11 @@ const userInfo = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
 const jwt = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
 /** A quoted value of a `name=` / `name:` pair (it may hold spaces and commas). */
 const quotedPair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["'])((?:(?!\4).)*)\4/g;
-/** `name=value`, `name: value`, `"name":"value"` and query-string pairs. */
-const pair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["']?)([^\s,;&"'}]+)\4/g;
+/**
+ * `name=value`, `name: value`, `"name":"value"` and query-string pairs; a URL scheme (`https://`)
+ * is not a pair, so the query string after it is still read pair by pair.
+ */
+const pair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=](?!\/\/)\s*)(["']?)([^\s,;&"'}]+)\4/g;
 const email = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 /**
  * Phone numbers: E.164 (`+` and 8 to 15 digits, spaces or dashes allowed between groups), the
