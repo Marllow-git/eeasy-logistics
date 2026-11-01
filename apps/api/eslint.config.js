@@ -16,6 +16,9 @@ const txMessage =
 const unitOfWorkTxRestrictions = [
   { selector: "MemberExpression[property.name='tx']", message: txMessage },
   { selector: "ObjectPattern > Property[key.name='tx']", message: txMessage },
+  // Computed and quoted forms: uow['tx'], ({ ['tx']: t }) and ({ 'tx': t }) (adversary re-check).
+  { selector: "MemberExpression[computed=true][property.value='tx']", message: txMessage },
+  { selector: "ObjectPattern > Property[key.value='tx']", message: txMessage },
 ];
 
 export default defineConfig(

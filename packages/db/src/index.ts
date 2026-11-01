@@ -6,7 +6,9 @@
 export { findContext, getContext, type RequestContext } from './context.ts';
 export {
   createAppPool,
+  isPlainPoolRole,
   verifyPoolRole,
+  type PoolRoleFacts,
   type AppDatabase,
   type AppPoolSettings,
   type Pool,

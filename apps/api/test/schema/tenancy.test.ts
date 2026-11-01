@@ -151,6 +151,18 @@ describe('tenancy schema (data §4.1)', () => {
     expect(problems).toEqual([]);
   });
 
+  it('denies the runtime roles TEMP on the database and CREATE on public (review L-3, N-3)', async () => {
+    const rows = await owner<{ role: string; temp: boolean; create: boolean }[]>`
+      SELECT r AS role,
+             has_database_privilege(r, current_database(), 'TEMP') AS temp,
+             has_schema_privilege(r, 'public', 'CREATE') AS create
+      FROM unnest(ARRAY['elx_app', 'elx_platform']) r ORDER BY r`;
+    expect(rows).toEqual([
+      { role: 'elx_app', temp: false, create: false },
+      { role: 'elx_platform', temp: false, create: false },
+    ]);
+  });
+
   it('protects every append-only table with both triggers and no mutating grants', async () => {
     const problems: string[] = [];
     const triggered = await owner<{ table: string; timing: string }[]>`
