@@ -1,9 +1,10 @@
-import { createHash, createHmac, hkdfSync } from 'node:crypto';
+import { createHmac, hkdfSync } from 'node:crypto';
 
-// The idempotency request hash (PLAT-6 plan 2.8; contracts README §3 Idempotency): SHA-256 over
-// the method, the concrete path, the canonical JSON body with secret fields removed, and an
-// HMAC-SHA256 of the removed values under a key derived from the signing key. A replay with a
-// different secret is `idempotency_key_reused`, yet no secret is ever stored or hashed bare.
+// The idempotency request hash (PLAT-6 plan 2.8; contracts README §3 Idempotency; adversary M-2):
+// HMAC-SHA256 under a key derived from the signing key, over the method, the concrete path and the
+// whole canonical JSON body, secrets included. A replay with a different secret is
+// `idempotency_key_reused`; a stored hash cannot be brute-forced offline for a PIN or an OTP
+// without the server key. The secret-field list decides only what a stored response keeps.
 
 export const defaultSecretFields = ['cash_pin', 'password', 'otp', 'api_key', 'secret'] as const;
 
@@ -66,21 +67,14 @@ export interface HashInput {
   /** The concrete path and query (`req.originalUrl`), so a key cannot replay another resource. */
   readonly path: string;
   readonly body: unknown;
-  readonly secretFields: readonly string[];
   readonly hmacKey: Buffer;
 }
 
 export function requestHash(input: HashInput): Buffer {
-  const { value, secrets } = stripSecrets(input.body ?? null, input.secretFields);
-  const secretMac =
-    secrets.length === 0
-      ? null
-      : createHmac('sha256', input.hmacKey).update(canonicalJson(secrets)).digest('hex');
   const material = canonicalJson({
     method: input.method.toUpperCase(),
     path: input.path,
-    body: value,
-    secrets: secretMac,
+    body: input.body ?? null,
   });
-  return createHash('sha256').update(material).digest();
+  return createHmac('sha256', input.hmacKey).update(material).digest();
 }

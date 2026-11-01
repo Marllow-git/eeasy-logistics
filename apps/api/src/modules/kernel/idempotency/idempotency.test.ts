@@ -1,3 +1,4 @@
+import { createHash, createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { IdempotencyClaim, IdempotencyStore, StoredKey } from './idempotency.js';
 import { reserve } from './idempotency.js';
@@ -11,7 +12,7 @@ import {
 
 const hmacKey = idempotencyHmacKey('a-test-signing-key-with-enough-distinct-chars');
 const hash = (body: unknown, path = '/v1/driver/cash/handovers') =>
-  requestHash({ method: 'POST', path, body, secretFields: defaultSecretFields, hmacKey });
+  requestHash({ method: 'POST', path, body, hmacKey });
 
 describe('request hash (plan 2.8)', () => {
   it('ignores key order at every depth', () => {
@@ -30,13 +31,29 @@ describe('request hash (plan 2.8)', () => {
         method: 'PUT',
         path: '/v1/driver/cash/handovers',
         body: { amount: 100 },
-        secretFields: defaultSecretFields,
         hmacKey,
       }),
     ).not.toEqual(base);
   });
 
-  it('covers secret fields through the HMAC: another secret is another hash', () => {
+  it('is keyed (adversary M-2): another server key is another hash, a bare SHA-256 never matches', () => {
+    const body = { amount: 100, cash_pin: '1234' };
+    const other = idempotencyHmacKey('another-signing-key-with-enough-distinct-chars');
+    expect(requestHash({ method: 'POST', path: '/p', body, hmacKey: other })).not.toEqual(
+      requestHash({ method: 'POST', path: '/p', body, hmacKey }),
+    );
+    const bare = createHash('sha256')
+      .update(canonicalJson({ method: 'POST', path: '/p', body }))
+      .digest();
+    expect(requestHash({ method: 'POST', path: '/p', body, hmacKey })).not.toEqual(bare);
+    expect(requestHash({ method: 'POST', path: '/p', body, hmacKey })).toEqual(
+      createHmac('sha256', hmacKey)
+        .update(canonicalJson({ method: 'POST', path: '/p', body }))
+        .digest(),
+    );
+  });
+
+  it('covers secret fields: another secret is another hash', () => {
     expect(hash({ amount: 100, cash_pin: '1234' })).toEqual(
       hash({ amount: 100, cash_pin: '1234' }),
     );

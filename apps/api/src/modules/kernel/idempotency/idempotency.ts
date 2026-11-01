@@ -12,11 +12,11 @@ export const replayedHeader = 'Idempotency-Replayed';
 export const idempotencyTtlHours = 24;
 
 export interface IdempotentOptions {
-  /** Request and response fields never stored or hashed bare (default README §3's list). */
+  /** Response fields never stored (default README §3's list); the request hash is keyed. */
   readonly secretFields?: readonly string[];
   /**
-   * The response carries a one-time secret (API key, webhook secret, tracking link): it is stored
-   * without the secret fields and a replay answers `409 secret_already_issued` with
+   * The response carries a one-time secret (API key, webhook secret, tracking link): only its `id`
+   * is stored (adversary M-3) and a replay answers `409 secret_already_issued` with
    * `details.resource_id` instead of the body.
    */
   readonly secretResponse?: boolean;

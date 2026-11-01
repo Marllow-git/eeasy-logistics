@@ -58,6 +58,18 @@ class StaffController {
     return row;
   }
 
+  @Post('links')
+  @HttpCode(201)
+  @Idempotent({ secretResponse: true })
+  async link(@Body() body: ProbeBody): Promise<{ id: string; link: string }> {
+    const [row] = await new ProbeRepository(getUnitOfWork()).add({
+      id: uuidv7(),
+      label: body.label,
+    });
+    const token = randomBytes(24).toString('base64url');
+    return { id: row?.id ?? '', link: `https://track.example.test/t/${token}` };
+  }
+
   @Post('secrets')
   @HttpCode(201)
   @Idempotent({ secretResponse: true })
@@ -304,8 +316,31 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     });
     expect(replay.text).not.toContain(issued.secret);
     const [row] = await keyRows(key);
-    expect(row?.response_body).toEqual({ id: issued.id, label: 'api-key' });
+    expect(row?.response_body).toEqual({ id: issued.id });
     expect(JSON.stringify(row)).not.toContain(issued.secret);
+  });
+
+  it('stores only the id when the secret has another field name (adversary M-3: link)', async () => {
+    const key = randomUUID();
+    const first = await http()
+      .post('/v1/staff/probe-rows/links')
+      .set(webClientHeaders(config, 'staff'))
+      .set('Cookie', await staff())
+      .set('Idempotency-Key', key)
+      .send({ label: 'tracking' })
+      .expect(201);
+    const issued = first.body as { id: string; link: string };
+    const [row] = await keyRows(key);
+    expect(row?.response_body).toEqual({ id: issued.id });
+    expect(JSON.stringify(row)).not.toContain(issued.link);
+    const replay = await http()
+      .post('/v1/staff/probe-rows/links')
+      .set(webClientHeaders(config, 'staff'))
+      .set('Cookie', await staff())
+      .set('Idempotency-Key', key)
+      .send({ label: 'tracking' })
+      .expect(409);
+    expect(replay.body).toMatchObject({ details: { resource_id: issued.id } });
   });
 
   it('keys a driver by device, hashes the cash PIN only through the HMAC', async () => {

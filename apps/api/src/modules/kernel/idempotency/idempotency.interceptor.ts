@@ -58,6 +58,12 @@ function currentStore(): IdempotencyStore {
   }
 }
 
+/** What a secret-bearing response stores: `{ id }` when it names one, else nothing. */
+function storedSecretResponse(body: unknown): { id: string } | null {
+  const id = resourceIdOf(body);
+  return id === undefined ? null : { id };
+}
+
 /** The id a secret-bearing response names, for `details.resource_id`. */
 function resourceIdOf(body: unknown): string | undefined {
   const id = (body as { id?: unknown } | null)?.id;
@@ -100,7 +106,6 @@ export class IdempotencyInterceptor implements NestInterceptor {
         method: request.method,
         path: request.originalUrl,
         body: request.body as unknown,
-        secretFields: options.secretFields,
         hmacKey: this.hmacKey,
       }),
     };
@@ -126,9 +131,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
         }
         case 'reserved': {
           const value: unknown = await lastValueFrom(next.handle(), { defaultValue: undefined });
+          // A secret-bearing answer keeps only its id: the replay needs `resource_id` alone, and a
+          // secret under any field name (`link`, `token`) is never stored (adversary M-3). Other
+          // answers drop the secret fields at any depth.
           const stored = options.secretResponse
-            ? stripSecrets(value, options.secretFields).value
-            : value;
+            ? storedSecretResponse(value)
+            : stripSecrets(value, options.secretFields).value;
           await store.complete(outcome.id, response.statusCode, stored ?? null);
           return value;
         }
