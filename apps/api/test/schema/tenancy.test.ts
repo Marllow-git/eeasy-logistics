@@ -173,6 +173,19 @@ describe('tenancy schema (data §4.1)', () => {
     expect(problems).toEqual([]);
   });
 
+  it('gives elx_app no privilege on a users-class table, which only the platform pool reaches (PLAT-11 plan 2.1)', async () => {
+    const problems: string[] = [];
+    for (const [table, exemption] of Object.entries(tenancyExemptions)) {
+      if (exemption.class !== 'users') continue;
+      const [grants] = await owner<{ privileges: string | null }[]>`
+        SELECT string_agg(p, ', ') AS privileges
+        FROM unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) p
+        WHERE has_table_privilege('elx_app', ${table}, p)`;
+      if (grants?.privileges) problems.push(`${table}: elx_app may ${grants.privileges}`);
+    }
+    expect(problems).toEqual([]);
+  });
+
   it('denies the runtime roles TEMP on the database and CREATE on public (review L-3, N-3)', async () => {
     const rows = await owner<{ role: string; temp: boolean; create: boolean }[]>`
       SELECT r AS role,
