@@ -98,6 +98,89 @@ jobs:
         if: always()
         run: docker compose --profile ci down --volumes --remove-orphans || true
 
+  # Standalone web build, the API and the web server against the Compose ci profile, then
+  # Playwright in ar and en with screenshots as artifacts (decision 2.4; web §11). The census
+  # harness proper is WEB-1's; until then one smoke spec asserts lang and dir on every route.
+  web-build-census:
+    name: web-build-census
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: elx-ci
+      APP_ENV: ci
+      API_PORT: '3000'
+      WEB_PORT: '3001'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-scope: web-build-census
+      - name: Restore the Next.js build cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/web/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - name: Start the ci profile and wait for healthy
+        run: |
+          cp .env.example .env
+          docker compose --profile ci up --detach --wait --wait-timeout 300 || {
+            echo "::error::the Compose ci profile did not become healthy (service logs in the last steps)"
+            exit 1
+          }
+      - name: Build the API and the standalone web app
+        run: pnpm turbo run build --filter=@eeasy-logistics/api --filter=@eeasy-logistics/web
+      - name: Start the API and wait for /health
+        run: |
+          PORT="$API_PORT" nohup node apps/api/dist/main.js --role api > api.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS "http://127.0.0.1:$API_PORT/health" && echo && exit 0
+            sleep 1
+          done
+          echo "::error::the API did not answer /health on port $API_PORT within 60 s (api.log in the artifact)"
+          exit 1
+      - name: Start the standalone web server and wait for /
+        run: |
+          standalone=apps/web/.next/standalone/apps/web
+          test -f "$standalone/server.js" || {
+            echo "::error::no standalone output; is output: 'standalone' still in apps/web/next.config.ts?"
+            exit 1
+          }
+          cp -R apps/web/.next/static "$standalone/.next/static"
+          PORT="$WEB_PORT" HOSTNAME=127.0.0.1 nohup node "$standalone/server.js" > web.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS -o /dev/null "http://127.0.0.1:$WEB_PORT/" && exit 0
+            sleep 1
+          done
+          echo "::error::the web server did not answer / on port $WEB_PORT within 60 s (web.log in the artifact)"
+          exit 1
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @eeasy-logistics/web exec playwright install --with-deps chromium
+      - name: Playwright in ar and en
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:${{ env.WEB_PORT }}
+        run: pnpm --filter @eeasy-logistics/web run test:smoke
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-build-census
+          path: |
+            apps/web/test-results/
+            api.log
+            web.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose --profile ci logs --no-color --tail 200 || true
+      - name: Stop the ci profile
+        if: always()
+        run: docker compose --profile ci down --volumes --remove-orphans || true
+
   driver-test:
     name: driver-test
     runs-on: ubuntu-latest

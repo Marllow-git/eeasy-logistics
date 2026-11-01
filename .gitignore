@@ -21,3 +21,7 @@ expo-env.d.ts
 
 # Native local stack state and data (tools/native-stack.sh)
 .local/
+
+# Playwright output (apps/web)
+test-results/
+playwright-report/
