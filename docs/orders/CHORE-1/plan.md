@@ -1,0 +1,113 @@
+# CHORE-1 · Runtime and build chores: Node 24, drop dotenv, SWC builder
+
+- **Status:** planned
+- **Date:** 2026-11-01
+- **Wave:** 0. **Depends on:** PLAT-6 (merged, PR #41). **Blocks:** PLAT-7 by agreement between the two lead sessions (it is briefed when all three legs land).
+- **Lead:** architecture lead (session `eeasy-logistics-6e`). **Executor:** `executor-api` (Opus), own worktree, native stack database `elx_chore1` (scratch databases through the PLAT-5 harness). **Adversary:** no (no auth, tenancy, ledger, payment or private-data path).
+- **Issue:** #49. **Merge danger:** two-way door for every leg (a revert undoes it).
+- **Legs:** three, **one PR each**, stacked: leg 1 on `chore/node-24` (from `main`), leg 2 on `chore/drop-dotenv` (from `chore/node-24`, PR base `chore/node-24`), leg 3 on `chore/nest-swc` (from `chore/drop-dotenv`, PR base `chore/drop-dotenv`). GitHub retargets each base to `main` when the one below merges and its branch is deleted. One executor run builds all three.
+- **Stack:** native (`tools/native-stack.sh`), database `elx_chore1`.
+
+## 0. Goal
+
+Three small changes the 2026-11-01 dependency review queued for the first window after PLAT-6, because each touches `apps/api`, `packages/config` or `packages/db` and every later wave 0 API order holds those paths again: the runtime moves to Node 24 LTS (roadmap A-14), `packages/config` stops depending on `dotenv`, and `nest build` compiles with SWC.
+
+## 1. Binding rules and ADRs
+
+- `AGENTS.md` "Hard rules" (configuration only through `packages/config`; secrets never in code) and "Sizing a change".
+- `docs/roadmap.md` §5 row A-14 (Node 24 before wave 1 exit).
+- `docs/architecture/platform.md` §2 (runtime and images) and §4 (CI lanes).
+- `README.md` "Requirements" and the CI table row `node-24`.
+- `.github/workflows/pr.yml` job `node-24`; `.github/actions/setup/action.yml`; `.github/dependabot.yml` (the `@types/node` major ignore).
+- `packages/config/src/node.ts` (the only `dotenv` user) and `packages/config/test/env-example.test.ts`.
+- `apps/api/nest-cli.json`, `apps/api/package.json` `build`, `apps/api/Dockerfile`.
+- ADR-0003 (one monorepo), ADR-0022 (containers on a Gulf host: images are what ships).
+- PLAT-6 facts from its lead (2026-11-01): the API routes case-sensitively and strictly (`/health/` is 404; probes use the exact path), and the API image builds `packages/contracts` in its build stage and copies `generated/` into the runtime stage. A Dockerfile change must keep both.
+- `pnpm-workspace.yaml`: `minimumReleaseAge: 4320` (three days) and `trustPolicy: no-downgrade` apply to every version you pin.
+
+## 2. Decisions (with defaults)
+
+| # | Decision | Default |
+|---|---|---|
+| 2.1 | Node version | Latest Node 24 LTS patch at build time (24.22.2 on 2026-11-01), recorded in §8.1. `.nvmrc` holds the major (`24`) as today's file holds `22`; `engines.node` becomes `>=24.11.0 <25` (24.11 is the first 24 LTS release; adjust if §8.1 shows otherwise). |
+| 2.2 | Images | `NODE_IMAGE` in `apps/api`, `apps/web` and `apps/admin` Dockerfiles becomes `node:<2.1 version>-alpine@sha256:<digest>`. Resolve the digest from the Docker Hub registry API (no container runtime on this machine), the multi-arch index digest, as the current pins are. Nothing else in the Dockerfiles changes. |
+| 2.3 | Types | `@types/node` moves to the latest `24.x` in every workspace that pins it (exact pin, as today). The Dependabot ignore for `@types/node` majors stays (it now holds 24). |
+| 2.4 | CI | The default lanes already read `.nvmrc`, so they move with it. The advisory `node-24` job in `pr.yml` is removed, with its README row; no Node 22 lane is kept. |
+| 2.5 | Local verification on Node 24 | The machine runs Node 22. Use an existing version manager (`fnm`, `nvm`, `volta`, `mise`) if present; otherwise `brew install node@24` (keg-only, not linked) and put its `bin` first on `PATH` for your commands only. Do not change the system default. Record which in §8.1. |
+| 2.6 | `dotenv` replacement | `util.parseEnv` from `node:util`. Before replacing, compare `dotenv.parse` and `util.parseEnv` on `.env.example` and on the test fixtures (quotes, `#` comments, empty values, `export` prefix, multi-line values, `=` inside values). If any input our files or tests use parses differently, keep `dotenv`, record the difference in §8.3, and close leg 2 without a code change. Check the Node 24 stability index of `util.parseEnv` and record it in §8.1; if it is below "Stable" and emits a warning at runtime, the same stop rule applies. |
+| 2.7 | SWC | `apps/api/nest-cli.json` `compilerOptions.builder: "swc"` with `typeCheck: false` (`tsc --noEmit` stays the type check in `typecheck`). Pin `@swc/cli` and `@swc/core` exactly (latest stable older than three days). Keep decorator metadata: Nest's DI needs `emitDecoratorMetadata`-equivalent output (`.swcrc` `legacyDecorator` and `decoratorMetadata`, or what the Nest 12 SWC docs say), and ESM output for `"type": "module"`. Record the `.swcrc` or the Nest default you rely on in §8.2. `@swc/core` ships its binary through optional dependencies: add it to `ignoredBuiltDependencies` in `pnpm-workspace.yaml`, not to `onlyBuiltDependencies`. |
+| 2.8 | SWC stop rule | If the SWC build breaks DI, ESM resolution, a test or the image, and the Nest 12 docs give no supported fix, record it in §8.3 and close leg 3 without the change. |
+
+## 3. Build list
+
+### Leg 1 · `chore/node-24` (PR 1)
+
+| Item | Delivers | Verify |
+|---|---|---|
+| A | `.nvmrc`, root `engines.node`, `@types/node` 24 in every workspace per 2.1 and 2.3; lockfile | on Node 24 per 2.5: `pnpm install --frozen-lockfile` after the lockfile update; `pnpm turbo run typecheck lint test` green with counts; `pnpm audit --audit-level moderate` exit 0 |
+| B | The three Dockerfiles per 2.2 | `hadolint` if installed, else a manual read; CI `image (api)`, `image (web)`, `image (admin)` green on the PR |
+| C | CI per 2.4: `node-24` job and README row removed; `docs/architecture/platform.md` §2 and `README.md` "Requirements" say Node 24; roadmap A-14 status `done <date> (CHORE-1)`; memories (`tech_stack`, `suggested_commands` if a command changed) | `actionlint` clean; API integration on Node 24 with `ELX_RLS=off` and `on` against the native stack, counts recorded; the API boots (`node dist/main.js`) and answers `GET /health` with 200 |
+
+### Leg 2 · `chore/drop-dotenv` (PR 2)
+
+| Item | Delivers | Verify |
+|---|---|---|
+| D | Comparison per 2.6 recorded in §8.2 (a short table: input, `dotenv.parse`, `util.parseEnv`); then `packages/config/src/node.ts` on `util.parseEnv`, `dotenv` removed from `packages/config/package.json`; a unit test that pins the parsing of the cases in 2.6 that our files use | red then green: the new test fails against a deliberately broken parse, passes with `util.parseEnv`; `pnpm --filter @eeasy-logistics/config test` with counts; full `pnpm turbo run typecheck lint test` green |
+
+### Leg 3 · `chore/nest-swc` (PR 3)
+
+| Item | Delivers | Verify |
+|---|---|---|
+| E | SWC per 2.7; memories (`suggested_commands` or `api/core` if the build command or a quirk changed) | `nest build` time before and after (three runs each, median) in §8.0; `pnpm --filter @eeasy-logistics/api run test:unit` and integration with `ELX_RLS=off` and `on` green with counts; the built API boots and answers `GET /health` 200 and one authenticated route through the PLAT-6 test signer, proving DI and guards resolve; CI `image (api)` green |
+
+## 4. Commit plan
+
+One commit per item, `CHORE-1: <letter>, <what>`, each with its §8.0 row. The plan file and the ledger row are the first commit on `chore/node-24` (lead). Leg 2 branches from the tip of leg 1 and leg 3 from the tip of leg 2. Each leg ends with a **draft** PR from `.github/pull_request_template.md`, its base the branch below, the body naming its leg and saying "Release note: none (technical PR)" and listing the memories changed or "Memories: unchanged".
+
+## 5. Exit criteria
+
+- Three draft PRs, each green on CI, each with the template filled and exact counts.
+- Node 24 everywhere the runtime is pinned (`.nvmrc`, `engines`, images, `@types/node`); no `node:22` image left; no `node-24` advisory job.
+- `dotenv` gone from the lockfile's direct dependencies of `packages/config`, or §8.3 says why it stays.
+- `nest build` on SWC with the API booting and DI working, or §8.3 says why it does not.
+
+## 6. Not in this order
+
+ESLint 10, TypeScript 7 (owner rulings 2026-11-01: hold), Fastify (stay on Express), any Expo or React bump, any change to `packages/contracts` generation.
+
+## 7. Owner questions
+
+None open. Rulings relied on: Node 24 move (A-14, owner OK 2026-11-01 in the dependency review); stay on ESLint 9 and Express (2026-11-01).
+
+## 8. Executor notes (filled by the executor)
+
+### 8.0 Progress
+
+| Item | Commit | Tests (counts) | Interpretation |
+|---|---|---|---|
+| A | 72f47ac | On Node 24.22.2 (Homebrew `node@24`, keg-only, first on `PATH`): `pnpm install --frozen-lockfile` clean; `pnpm turbo run typecheck lint test` 29/29 tasks green (config 90 tests in 7 files, contracts 55/6, api 140/15 plus depcruise, db 10/2, i18n 11/2, driver Jest 4 tests in 3 suites, web, admin and ui depcruise green); `pnpm audit --audit-level moderate` exit 0 (summary: 1 low, 6 moderate, 4 ignored by `auditConfig`) | `.nvmrc` `24`, `engines.node` `>=24.11.0 <25`, `@types/node` `24.19.2` in the seven workspaces that pin it (driver pins none). Lockfile diff: only `@types/node` 22.20.5 → 24.19.2 (and the peer suffixes naming it) and `undici-types` 6.21.0 → 7.24.6. How the lockfile was resolved: §8.2 item 1 |
+| B | cba09c3 | `hadolint --failure-threshold warning` on the three Dockerfiles exit 0 (two `info` DL3059 on api lines 28 and 31, unchanged lines, already on `main`); manual read: only `ARG NODE_IMAGE` changed, the contracts build step and the `generated/` copy into the api runtime stage are untouched; `node --test tools/whatsapp-stub/server.test.mjs` on Node 24: 8 tests, 8 pass; CI `image (api)`, `image (web)`, `image (admin)`: see the PR checks | `NODE_IMAGE` = `node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85` (OCI index digest from `registry-1.docker.io`, same method as the 22 pin, whose index digest the same call returns). Also `compose.yaml` `x-whatsapp-stub` image and its README image-table row to `node:24.22.2-alpine` (§8.2 item 2) |
+| C | 49056f0 | `actionlint` exit 0; `pnpm format:check` clean; on Node 24.22.2 against the native stack (owner's PostgreSQL 17 on 5432, Redis on 6379, scratch MinIO on 9000): `APP_ENV=local DATABASE_URL_ADMIN=postgres://$(id -un)@127.0.0.1:5432/postgres ELX_RLS=off pnpm --filter @eeasy-logistics/api run test:integration` 97 tests in 15 files passed, the same with `ELX_RLS=on` 97/15 passed, scratch databases dropped; `elx_chore1` created as the harness does (owner `elx_owner`, `postgis`, `citext`, `pgcrypto`), `pnpm --filter @eeasy-logistics/api run migrate` (builds, then applies 6 migrations, at `0005_core_idempotency_keys`), `node dist/main.js` on Node 24: `GET /health` 200 `{"status":"ok"}`, `GET /health/` 404 (strict routing kept), `GET /ready` 200; server stopped | Removed the advisory `node-24` job from `pr.yml` and its README row and mention; README "Requirements" and the native-stack line say Node 24; platform §2 gains one sentence on the Node 24 images (§8.2 item 3); roadmap A-14 `done 2026-11-01 (CHORE-1)`; memories `tech_stack` (Node pins) and `suggested_commands` (Node 24 on this Mac, scratch MinIO when `up` refuses). The setup action's `node-version` input is now unused and kept (§8.2 item 4) |
+
+### 8.1 Skills and documents consulted
+
+Leg 1, all on 2026-11-01:
+
+- **Node version (2.1).** `https://nodejs.org/dist/index.json`: latest 24 LTS ("Krypton") is **24.22.2**, released 2026-10-27 (five days old); the first 24 LTS release is 24.11.0 (2025-10-28), so `engines.node` `>=24.11.0 <25` stands as planned.
+- **Local Node 24 (2.5).** No version manager on this machine (`fnm`, `nvm`, `volta`, `mise` absent). `brew install node@24` (24.22.2, keg-only, not linked); every command ran with `PATH=/opt/homebrew/opt/node@24/bin:$PATH`; the system default stays Node 22.23.4.
+- **Image digest (2.2).** Docker Hub registry API (`auth.docker.io` token, `HEAD registry-1.docker.io/v2/library/node/manifests/24.22.2-alpine` with the OCI index and manifest-list `Accept` types): `docker-content-digest` `sha256:8a32c8cf…542f85`, `application/vnd.oci.image.index.v1+json`; the Hub tag API gives the same digest, last pushed 2026-10-28T23:40Z. The same call on `22.23.4-alpine` returns the existing pin's digest, so the method matches.
+- **Types (2.3).** npm registry: `@types/node` latest 24.x is **24.19.2** (2026-10-09); it requires `undici-types >=7.24.0 <7.24.7`, resolved to 7.24.6 (2026-03-25).
+- **Context7.** Node.js v24 API docs (`/websites/nodejs_latest-v24_x_api`): `util.parseEnv` history ("v24.10.0: no longer experimental") and the env-file format (read for leg 2; recorded here because it was fetched now).
+- **Tools.** pnpm 10.34.9, hadolint (Homebrew), actionlint (Homebrew), PostgreSQL 17 (Homebrew, owner's server on 5432), Redis on 6379 (owner's, reused, not stopped), MinIO (Homebrew) from `/tmp/chore1-minio` on 9000 (stopped at the end of the run, after leg 3).
+- **Documents.** Plan §1 only: AGENTS.md "Hard rules" and "Sizing a change"; roadmap §5 row A-14; platform §2 and §4; README "Requirements", "Without Docker: the native stack" (for the Node mention), the image table and "CI"; `pr.yml` job `node-24`; `.github/actions/setup/action.yml`; `.github/dependabot.yml` ignore block; the three Dockerfiles; memories `memory_upkeep`, `tech_stack`, `suggested_commands`, `api/core`; PLAT-5 and PLAT-6 plan §8 lines on how they ran the native stack.
+
+### 8.2 Interpretations the lead should check
+
+1. **Lockfile resolution under the supply-chain gates (item A).** `main`'s lockfile cannot be re-resolved today under its own gates: any manifest change makes pnpm 10.34.9 re-resolve large subtrees (every package with an `@types/node` peer), and it then refuses versions `main` already locks: `tslib@2.9.1` (published 2026-10-30, under `minimumReleaseAge`), `@expo/log-box@58.0.14` (a driver direct dependency, published 2026-10-31) and `semver@6.3.1` (`ERR_PNPM_TRUST_DOWNGRADE`, via `@react-native/jest-preset` → `babel-jest`). Frozen installs (CI) do not re-check them. I resolved once with `minimumReleaseAge: 0` and `trustPolicy: off` set in a local copy of `pnpm-workspace.yaml`, restored the file byte for byte before anything was staged, and accepted the result only after checking the diff: the only versions it adds are `@types/node@24.19.2` (2026-10-09, same publisher as 22.20.5) and `undici-types@7.24.6` (2026-03-25, with SLSA provenance), both older than three days; every other locked version is unchanged. `pnpm install --frozen-lockfile` then passes with the real gates. The next order that changes a manifest before 2026-11-03 meets the same wall (the trust downgrade on `semver@6.3.1` does not age out); a `trustPolicyExclude` entry for it is the lead's call, not this order's. The `suggested_commands` memory already records this trap and its recipe; I followed it, setting the two values in a local copy of the file because pnpm ignored `--config.minimum-release-age-exclude` on the command line.
+2. **`compose.yaml` WhatsApp stub image (item B).** Plan 2.2 names the three Dockerfiles; §5 says "no `node:22` image left". The Compose stub service ran `node:22.23.4-alpine`, so it moves to `node:24.22.2-alpine`, pinned by tag as before (Compose pins no digests; changing that is not this order's). Its README row says "same major as `.nvmrc`", which this keeps true.
+3. **Platform §2 (item C).** The section's table names no Node version, so "say Node 24" became one sentence under it (images on Node 24 LTS Alpine by digest, major from `.nvmrc`, amendment marker A-14/CHORE-1) rather than a new column.
+4. **Setup action input (item C).** `.github/actions/setup` keeps its optional `node-version` input although no job passes it after the `node-24` job goes: plan 2.4 does not ask for a change to the shared action, and the empty default (read `.nvmrc`) is what every job uses. The lead may drop it in a later chore.
+
+### 8.3 Not done here
+
+## 9. Lead review

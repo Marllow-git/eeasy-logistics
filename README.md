@@ -16,7 +16,7 @@ Standalone last-mile delivery and warehouse (WMS) product for merchants that run
 
 ## Development
 
-Requirements: Node 22 LTS (`.nvmrc`) and pnpm 10 through Corepack.
+Requirements: Node 24 LTS (`.nvmrc`) and pnpm 10 through Corepack.
 
 ```sh
 corepack enable          # once per machine; pins pnpm from package.json "packageManager"
@@ -90,7 +90,7 @@ The `api-test` and `web-build-census` CI jobs start the `ci` profile on every pu
 
 ### Without Docker: the native stack
 
-On a Mac without a container runtime, `tools/native-stack.sh` runs the same services from Homebrew, on the same dev ports and with the same `.env` (plan decision 2.9). It needs `postgresql@17`, `postgis`, `redis`, `minio`, `minio-mc` and `mailpit` from Homebrew, plus Node 22.
+On a Mac without a container runtime, `tools/native-stack.sh` runs the same services from Homebrew, on the same dev ports and with the same `.env` (plan decision 2.9). It needs `postgresql@17`, `postgis`, `redis`, `minio`, `minio-mc` and `mailpit` from Homebrew, plus Node 24.
 
 ```sh
 cp .env.example .env              # if not done already
@@ -116,7 +116,7 @@ Images, checked on 2026-10-31 against Docker Hub and GHCR:
 | `pgsty/silo` | `RELEASE.2026-10-26T00-00-00Z` | MinIO server. Upstream MinIO now ships source only: `minio/minio` is gone from Docker Hub and the GitHub repository is archived. Silo is the maintained community fork, compatible with MinIO (`MINIO_*` settings, S3 API, `mc`) |
 | `pgsty/mc` | `RELEASE.2026-10-26T00-00-00Z` | the `mc` client for the bucket bootstrap, from the same fork |
 | `axllent/mailpit` | `v1.33.0` | latest release |
-| `node` | `22.23.4-alpine` | runs the WhatsApp stub; same major as `.nvmrc` |
+| `node` | `24.22.2-alpine` | runs the WhatsApp stub; same major as `.nvmrc` |
 
 ## Database
 
@@ -166,7 +166,7 @@ GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
 
 | Workflow | Runs on | Jobs |
 |---|---|---|
-| `.github/workflows/pr.yml` | every pull request | the seven required checks below and the advisory `node-24` |
+| `.github/workflows/pr.yml` | every pull request | the seven required checks below |
 | `.github/workflows/main.yml` | push to `main`; pull requests as a dry run | per image: build, run probe, Trivy scan, push to GHCR (push to `main` only). The PR checks are not re-run on `main` (owner ruling 2026-11-01): the merge gate requires them green on the exact head merged |
 
 | Check | What it runs | Locally |
@@ -178,7 +178,6 @@ GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
 | `admin-build-census` | the same for the platform console (ADR-0038): builds the API and the standalone admin app, starts both (admin on 3002), runs Playwright in `ar` and `en`; artifact `admin-build-census`. The contract tests run in `web-build-census` only | `pnpm --filter admin build && pnpm --filter admin start` (port 3002), then `pnpm --filter admin test:smoke` |
 | `driver-test` | typecheck, lint and Jest of `apps/driver`, then `expo-doctor` | `pnpm --filter driver test`, `pnpm --filter driver run doctor` |
 | `gitleaks` | gitleaks over the full history with `.gitleaks.toml` | the pre-commit hook below |
-| `node-24` | advisory: `typecheck lint test` on Node 24 (A-14); not required, its failure does not fail the run | |
 
 Integration tests that need the stack go in `apps/api/test/integration/` (run by `test:integration`); `test:unit` runs the rest. Turborepo's cache is kept in the GitHub Actions cache per job; test runs against the stack never come from that cache. Jobs time out after 20 minutes, `web-build-census` and `admin-build-census` after 30; a newer push to a pull request cancels the older run.
 

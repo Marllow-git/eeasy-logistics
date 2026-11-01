@@ -28,5 +28,7 @@
 - `git worktree list` / `git worktree prune` — executor worktrees live under `.claude/worktrees/`.
 
 ## Darwin notes
+- The owner's default `node` is 22; the repo needs 24. `brew install node@24` (keg-only, never linked) and prefix commands with `PATH=/opt/homebrew/opt/node@24/bin:$PATH`; the Homebrew `pnpm` shim then runs on 24 (CHORE-1).
+- The native stack's `up` refuses when the owner's server already holds `elx` it did not create: run integration through the scratch-database harness, and MinIO from a scratch dir (`minio server <dir> --address 127.0.0.1:9000`, bucket `elx-local` versioned via `mc`) for the `/ready` tests.
 - Homebrew paths: `/opt/homebrew/opt/postgresql@17/bin` (override `ELX_NATIVE_PG_BIN`). `brew install gitleaks` required for the pre-commit hook.
 - BSD `sed -i ''`; `base64 -d` works; use `grep -E` not `grep -P`.
