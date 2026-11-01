@@ -22,10 +22,11 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
 | WEB-19 | #43 | `feat/WEB-19-admin-console-scaffold` | `.claude/worktrees/agent-a52dedd898c533aa7` | executor-web (general-purpose Opus run) | review done, final head on CI | none | two-way door; adversary no; owns `PUBLIC_ADMIN_URL` (PLAT-6 leg 2 consumes it) |
+| WEB-1 | #46 | `feat/WEB-1-web-shell-design-system-i18n` | harness worktree | executor-web (general-purpose Opus run; project agents not loaded in this session) | build, leg 1 (A–E) | none | two-way door; adversary no; Q-21 applied as default |
 
 ## Next unblocked (roadmap §1.1)
 
-PLAT-5 (PR #33) and PLAT-15 (PR #36) are merged. WEB-1 (web shell) is unblocked after WEB-19 and touches disjoint paths from PLAT-6. OPS-1 (depends on PLAT-3, Q-10, Q-12) waits on the owner's go as a one-way door.
+PLAT-5 (PR #33) and PLAT-15 (PR #36) are merged. WEB-19 closed (PR #45); WEB-1 in flight; WEB-2 follows WEB-1 and PLAT-11 and touches disjoint paths from PLAT-6. OPS-1 (depends on PLAT-3, Q-10, Q-12) waits on the owner's go as a one-way door.
 
 CHORE-1 closed 2026-11-01: Node 24 (#52, A-14), `util.parseEnv` instead of `dotenv` (#53), SWC builder (#54); trust-policy fix #55. PLAT-7 is unblocked from the chores side.
 

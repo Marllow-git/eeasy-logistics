@@ -383,6 +383,8 @@ Notes:
 | Merchant and platform pages | ≤ 180 KB | ≤ 2.5 s on desktop broadband | ≤ 200 ms | ≤ 0.1 |
 | Dispatch board (map, board, stream) | ≤ 180 KB plus the lazy map chunk | ≤ 3.0 s | ≤ 200 ms with 500 cards | ≤ 0.1 |
 
+Budgets are route JavaScript above the shared framework chunk, which has its own cap of 135 KB gzip; measured by `check:budget` from Next's route bundle stats.
+
 The `web-build-census` check (document 6 §4) fails when a route exceeds its first-load budget in the build output. Field data comes from Web Vitals reported to PostHog per route template.
 
 ### 10.3 Edge caching behind Cloudflare
