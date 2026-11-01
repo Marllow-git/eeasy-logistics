@@ -6,9 +6,12 @@ packages:
 onlyBuiltDependencies:
   - esbuild
 
-# Install scripts deliberately not run: both ship prebuilt binaries through optional dependencies.
+# Install scripts deliberately not run: these ship prebuilt binaries through optional dependencies.
 ignoredBuiltDependencies:
   - '@parcel/watcher'
+  # The API's `nest build` compiler (CHORE-1). Its postinstall checks the native binary and,
+  # failing that, runs `npm install @swc/wasm`; the binary comes as an optional dependency.
+  - '@swc/core'
   - unrs-resolver
   # Its postinstall would write the hook; the root `prepare` script does that explicitly (PLAT-3).
   - simple-git-hooks
