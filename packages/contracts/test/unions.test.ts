@@ -43,10 +43,10 @@ function dottedNames(rows: string[]): string[] {
 }
 
 /**
- * Committed snapshot: errors.md holds 72 codes (2026-11-01; PLAT-6 added `internal_error` and
- * `idempotency_in_progress`). A new code changes this number.
+ * Committed snapshot: errors.md holds 73 codes (2026-11-01; PLAT-6 added `internal_error` and
+ * `idempotency_in_progress`, PLAT-9 `messaging_unavailable`). A new code changes this number.
  */
-const errorCodeCount = 72;
+const errorCodeCount = 73;
 
 describe('Permission', () => {
   it('equals the README §11 catalogue table, in count and members', () => {

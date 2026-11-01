@@ -254,7 +254,45 @@ rules:
     severity: page
     runbook: docs/architecture/platform.md §9 (Hudhud outage, confirm fallback; switch messaging provider)
     origin: integrations §10 "breaker open for more than 5 minutes on Hudhud, VROOM, the messaging provider or Eeasy shipping"
-    pending: INT orders and PLAT-9 (the breakers)
+  - name: otp_request_refusals_high
+    source: metric
+    metric: otp_requests_refused_total
+    condition: increase > threshold
+    threshold: 50
+    window: 10m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (pause messaging); look for one address or phone range driving the refusals (cooldown, budgets) before the platform number is reported
+    origin: PLAT-9 adversary M-1 (OTP request abuse against the platform WhatsApp number)
+  - name: whatsapp_sender_unauthorised
+    source: metric
+    metric: messaging_sender_alerts_total
+    labels: { event: unauthorised }
+    condition: increase > threshold
+    threshold: 0
+    window: 5m
+    severity: page
+    runbook: check WHATSAPP_ENGINE_KEY_ID and the command secret against the engine's (a rotation mistake parks every message; the OTP door answers 503 once the breaker opens)
+    origin: PLAT-9 adversary M-3
+  - name: whatsapp_platform_sender_down
+    source: metric
+    metric: messaging_sender_alerts_total
+    labels: { sender: platform }
+    condition: increase > threshold
+    threshold: 0
+    window: 5m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (pause messaging); relink the platform WhatsApp number (ADR-0041)
+    origin: ADR-0041 consequences "alerts on connection.event needs_relink and banned"; OTP expires within ten minutes without the platform sender
+  - name: whatsapp_account_sender_down
+    source: metric
+    metric: messaging_sender_alerts_total
+    labels: { sender: account }
+    condition: increase > threshold
+    threshold: 0
+    window: 1h
+    severity: warn
+    runbook: the merchant relinks the account's WhatsApp number (ADR-0041; linking is a later order)
+    origin: ADR-0041 consequences "alerts on connection.event needs_relink and banned"
   - name: inbound_rejected_rate
     source: metric
     metric: inbound_webhooks_total
@@ -265,7 +303,7 @@ rules:
     severity: page
     runbook: docs/architecture/platform.md §9 (replay or re-map an inbound webhook)
     origin: integrations §10 "inbound rejected above 20 per hour per provider"
-    pending: INT orders (inbound webhooks)
+    pending: INT orders (inbound webhooks; the engine callback door of PLAT-9 already emits it)
   - name: inbound_unmappable
     source: metric
     metric: inbound_webhooks_total
@@ -276,7 +314,7 @@ rules:
     severity: warn
     runbook: docs/architecture/platform.md §9 (replay or re-map an inbound webhook)
     origin: integrations §10 "unmappable any"
-    pending: INT orders (inbound webhooks)
+    pending: INT orders (inbound webhooks; the engine callback door of PLAT-9 already emits it)
   - name: channel_token_refresh_failed
     source: metric
     metric: integration_calls_total

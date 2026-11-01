@@ -18,6 +18,16 @@ export const tenancyExemptions: Readonly<Record<string, { class: string; reason:
     class: 'platform table',
     reason: 'the system role bundles (data §2.4), seeded by migration 0008; runtime SELECT only',
   },
+  core_engine_callback_nonces: {
+    class: 'platform table',
+    reason:
+      'the engine callback replay cache, keyed by (service, nonce); no account (PLAT-9 plan 2A.2, migration 0011)',
+  },
+  core_otp_challenges: {
+    class: 'users',
+    reason:
+      'the challenge precedes knowing the account; keyed by E.164 phone (data §2.4; PLAT-9, migration 0009)',
+  },
 };
 
 /**
@@ -46,6 +56,8 @@ export const globalUniqueIndexes: Readonly<Record<string, readonly (readonly str
   // Event ids are UUIDv7, unique across accounts (data §4.1 names `(consumer, event_id)`).
   core_consumer_receipts: [['consumer', 'event_id']],
   core_consumer_dead_letters: [['consumer', 'event_id']],
+  // An engine sender instance is bound to exactly one account by the engine (PLAT-9 plan 2A.4).
+  core_messaging_senders: [['sender_instance_id']],
 };
 
 /**
@@ -67,6 +79,7 @@ export const piiColumns: Readonly<Record<string, readonly string[]>> = {
   core_audit_log: ['actor_id', 'ip', 'user_agent', 'before', 'after', 'reason'],
   core_outbox: ['payload', 'last_error'],
   core_consumer_dead_letters: ['last_error'],
+  core_messaging_opt_outs: ['phone'],
 };
 
 /**

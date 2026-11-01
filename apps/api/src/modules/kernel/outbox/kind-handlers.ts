@@ -30,6 +30,11 @@ export type KindOutcome =
   | {
       readonly outcome: 'done';
       /**
+       * Why the effect was skipped on purpose (`opted_out`, `no_sender`, …), stored in
+       * `last_error` the way a superseded row's reason is; absent when the effect happened.
+       */
+      readonly skipped?: string;
+      /**
        * An audit row the worker writes in the same platform transaction as the outcome, so one
        * executed effect yields exactly one row (lead review round 2).
        */
@@ -82,6 +87,13 @@ export interface KindHandler {
    * (rate limited, unauthorised, permanent); anything else is retried and consumes an attempt.
    */
   execute(row: OutboxRow, job?: JobContext): Promise<KindOutcome>;
+  /**
+   * The retry schedule of a row when the kind has more than one (`QueuePolicy.variants`, e.g. `otp`
+   * for OTP messages); undefined for the kind's default.
+   */
+  policyVariant?(row: OutboxRow): string | undefined;
+  /** Releases what the handler holds (a Redis client); called once when the worker stops. */
+  close?(): Promise<void>;
 }
 
 /** The handlers of this build, one per kind. */
@@ -99,6 +111,15 @@ export class KindHandlerRegistry {
 
   get(kind: OutboxKind): KindHandler | undefined {
     return this.#handlers.get(kind);
+  }
+
+  /** Closes every handler that holds a resource (worker shutdown, after the queues drained). */
+  async close(): Promise<void> {
+    await Promise.all(
+      [...this.#handlers.values()].map((handler) =>
+        handler.close === undefined ? Promise.resolve() : handler.close(),
+      ),
+    );
   }
 
   /** The kinds with a handler, which the relay enqueues. */

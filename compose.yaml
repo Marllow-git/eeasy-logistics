@@ -90,6 +90,13 @@ x-whatsapp-stub: &whatsapp-stub
   environment:
     WHATSAPP_STUB_PORT: '8080'
     WHATSAPP_STUB_LOG: /tmp/whatsapp-stub/sent.jsonl
+    # The engine's signing settings (PLAT-9 plan 2A.7): the same .env values the API signs with.
+    WHATSAPP_ENGINE_SERVICE_ID: ${WHATSAPP_ENGINE_SERVICE_ID:-}
+    WHATSAPP_ENGINE_KEY_ID: ${WHATSAPP_ENGINE_KEY_ID:-}
+    WHATSAPP_ENGINE_COMMAND_SECRET: ${WHATSAPP_ENGINE_COMMAND_SECRET:-}
+    WHATSAPP_ENGINE_CALLBACK_KEY_ID: ${WHATSAPP_ENGINE_CALLBACK_KEY_ID:-}
+    WHATSAPP_ENGINE_CALLBACK_SECRET: ${WHATSAPP_ENGINE_CALLBACK_SECRET:-}
+    WHATSAPP_STUB_CALLBACK_URL: ${WHATSAPP_STUB_CALLBACK_URL:-}
   volumes:
     - ./tools/whatsapp-stub:/stub:ro
   healthcheck:

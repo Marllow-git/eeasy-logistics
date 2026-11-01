@@ -5,6 +5,22 @@ export function fakeKey(seed: number): string {
   return Buffer.alloc(32, seed).toString('base64');
 }
 
+/**
+ * The engine variables of `MESSAGING_PROVIDER=engine` (PLAT-9 plan 2A.1); fake values, the two
+ * secrets distinct.
+ */
+export function engineEnv(url = 'https://wa-engine.internal:8790'): Record<string, string> {
+  return {
+    WHATSAPP_ENGINE_URL: url,
+    WHATSAPP_ENGINE_SERVICE_ID: 'eeasy-laravel-control-plane',
+    WHATSAPP_ENGINE_KEY_ID: 'cmd-2026-11',
+    WHATSAPP_ENGINE_COMMAND_SECRET: 'fake-engine-command-secret-0123456789abcdef',
+    WHATSAPP_ENGINE_CALLBACK_KEY_ID: 'cb-2026-11',
+    WHATSAPP_ENGINE_CALLBACK_SECRET: 'fake-engine-callback-secret-0123456789abcdef',
+    WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID: '00000000-0000-4000-8000-000000000001',
+  };
+}
+
 /** The smallest valid environment. */
 export const minimalEnv = { APP_ENV: 'local' } as const;
 
@@ -28,12 +44,13 @@ export const productionEnv: Record<string, string> = {
   STORAGE_SECRET_ACCESS_KEY: 'fake-storage-secret',
   AUTH_SIGNING_KEY_ID: 'auth-2026-10',
   AUTH_SIGNING_KEY: 'fake-signing-key-abcdefghijklmnopqrstuvwxyz-0123456789',
-  MESSAGING_PROVIDER: 'meta',
-  MESSAGING_ACCESS_TOKEN: 'fake-messaging-token',
-  MESSAGING_SENDER_ID: '100000000000001',
+  MESSAGING_PROVIDER: 'engine',
+  ...engineEnv(),
   CREDENTIALS_KEYS: `k1:${fakeKey(1)},k2:${fakeKey(2)}`,
   CREDENTIALS_ACTIVE_KEY_ID: 'k2',
   ELX_RELEASE: 'sha-0123456789abcdef0123456789abcdef01234567',
+  MAIL_SMTP_URL: 'smtps://mailer:fake-smtp-pw@smtp.example.test:465',
+  MAIL_FROM: 'Eeasy Logistics <no-reply@example.test>',
 };
 
 /**
