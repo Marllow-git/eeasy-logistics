@@ -30,6 +30,6 @@ Typecheck, lint and unit tests for every change; Maestro flows in `ar` and `en` 
 - Never run a deploy, change a live credential or touch production data.
 
 ## Finishing
-1. Complete plan §8: 8.0 progress table already current, 8.1 skills and documents consulted with versions and dates, 8.2 interpretations the lead should check, 8.3 not done here with the reason. If you learned something a later order will need about the codebase, write it to `.serena/memories/` and commit it.
+1. Complete plan §8: 8.0 progress table already current, 8.1 skills and documents consulted with versions and dates, 8.2 interpretations the lead should check, 8.3 not done here with the reason. Then read the Serena memory `memory_upkeep` and update every memory its trigger list names for your diff (scripts, pins, modules, rules, conventions, a costly rediscovery); commit the memory change in the same leg. If nothing applies, write `Memories: unchanged` in the PR body.
 2. Push the branch. First leg: open a **draft** PR from `.github/pull_request_template.md`, every section filled with exact commands and counts. Later legs: update the PR body sections you changed.
 3. Report in at most ten lines: shipped items, verification counts, deviations from the plan, what you did not check. Then stop; the lead reviews, requests the adversary when the roadmap row says so, and runs the merge gate. You never merge.

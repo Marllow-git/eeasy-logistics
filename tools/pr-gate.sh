@@ -57,7 +57,15 @@ if grep -qE '^apps/(web|driver)/(app|src)/' <<<"$files"; then
     && ok "release note present" || bad "apps/web or apps/driver UI changed without docs/release-notes/ entry"
 fi
 
-# 6. Mergeable.
+# 6. Memory upkeep: a change to a trigger path needs a memory update or an explicit waiver.
+triggers='^(package\.json|apps/[^/]+/package\.json|packages/[^/]+/package\.json|tools/|\.github/workflows/|AGENTS\.md|docs/handbook/|dependency-cruiser\.shared\.cjs|packages/config-eslint/|packages/config-ts/|apps/api/src/modules/[^/]+/[^/]+\.module\.ts)'
+if grep -qE "$triggers" <<<"$files"; then
+  if grep -qE '^\.serena/memories/' <<<"$files"; then ok "memory trigger path changed and .serena/memories/ updated";
+  elif grep -qiE '^Memories: unchanged' <<<"$body"; then ok "memory trigger path changed; body says Memories: unchanged";
+  else bad "trigger path changed (scripts, tools, CI, handbook, lint config or a module) but no .serena/memories/ change and no 'Memories: unchanged' line in the body"; fi
+fi
+
+# 7. Mergeable.
 [[ "$(jq -r .mergeable <<<"$json")" == "MERGEABLE" ]] && ok "mergeable" || bad "not mergeable (conflicts or unknown)"
 
 echo
