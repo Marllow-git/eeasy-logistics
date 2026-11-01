@@ -32,6 +32,9 @@ async function bootstrap(): Promise<void> {
   // the loader hook sees them; the migration job above never loads it.
   const { serviceNames, startTelemetry } = await import('./modules/kernel/telemetry/sdk.js');
   startTelemetry(config, role, { loaderHook: true });
+  // Sentry when SENTRY_DSN is set: exceptions only, scrubbed (plan 2.5).
+  const { initSentry } = await import('./modules/kernel/telemetry/sentry.js');
+  initSentry(config, role);
   // JSON lines through the telemetry redactor for every Nest logger from here on (plan 2.4).
   const { JsonLogger } = await import('./modules/kernel/telemetry/logger.js');
   const jsonLogger = new JsonLogger({
