@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import dotenv from 'dotenv';
+import { parseEnv } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { defineConfig, serverVariables } from '../src/index.ts';
 import { contractTestVariables } from '../src/contract-test.ts';
@@ -7,7 +7,7 @@ import { driverPublicVariables, webPublicVariables } from '../src/public.ts';
 
 // .env.example at the repository root documents every variable (plan item F).
 const text = readFileSync(new URL('../../../.env.example', import.meta.url), 'utf8');
-const example = dotenv.parse(text);
+const example = parseEnv(text);
 
 // Read by compose.yaml, tools/native-stack.sh, tools/stack.sh and the compose-smoke workflow
 // (PLAT-2), not by the API; the same file serves both.
@@ -42,8 +42,9 @@ describe('.env.example', () => {
   });
 
   it('lists nothing the package does not read, except the service stack variables', () => {
+    // Sorted: `util.parseEnv` returns its keys in name order, not file order (CHORE-1 plan §8.2).
     const undeclared = Object.keys(example).filter((name) => !declared.includes(name));
-    expect(undeclared).toEqual(stackVariables);
+    expect(undeclared.sort()).toEqual([...stackVariables].sort());
   });
 
   it('comments every service stack variable too', () => {

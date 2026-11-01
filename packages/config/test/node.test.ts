@@ -38,6 +38,34 @@ describe('readEnvironment (.env only when APP_ENV=local, plan 2.7)', () => {
     expect(readEnvironment({}, dir)).toEqual({});
   });
 
+  // CHORE-1 plan 2.6: the `.env` syntax `.env.example` and its instructions use, pinned to what
+  // dotenv 18 returned for the same text before `util.parseEnv` replaced it.
+  it('parses comments, empty values and `=` inside values as dotenv did', () => {
+    writeFileSync(
+      join(dir, '.env'),
+      [
+        '# --- a section heading ------------------------------',
+        '# A comment line above the variable. [production]',
+        'DATABASE_URL_APP=postgres://elx_app:local-app-password@127.0.0.1:5432/elx',
+        'DATABASE_URL_ADMIN=postgres://postgres:pw@127.0.0.1:5432/postgres?sslmode=require&x=y',
+        '',
+        'OSRM_URL=',
+        'AUTH_SIGNING_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==',
+        'CREDENTIALS_KEYS=k1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=,k2:ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA=',
+        '',
+      ].join('\n'),
+    );
+    expect(readEnvironment({ APP_ENV: 'local' }, dir)).toEqual({
+      APP_ENV: 'local',
+      DATABASE_URL_APP: 'postgres://elx_app:local-app-password@127.0.0.1:5432/elx',
+      DATABASE_URL_ADMIN: 'postgres://postgres:pw@127.0.0.1:5432/postgres?sslmode=require&x=y',
+      OSRM_URL: '',
+      AUTH_SIGNING_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==',
+      CREDENTIALS_KEYS:
+        'k1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=,k2:ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA=',
+    });
+  });
+
   it('returns a copy of the process environment when there is no .env', () => {
     const processEnv = { APP_ENV: 'ci' };
     const env = readEnvironment(processEnv, dir);
