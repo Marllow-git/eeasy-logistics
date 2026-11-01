@@ -2,8 +2,31 @@
   "$schema": "https://turborepo.com/schema.json",
   "extends": ["//"],
   "tasks": {
+    "build": {
+      "inputs": [
+        "$TURBO_ROOT$/docs/contracts/**",
+        "$TURBO_ROOT$/docs/architecture/domain-model.md",
+        "orval.config.ts",
+        "scripts/**",
+        "src/**",
+        "package.json"
+      ],
+      "outputs": ["generated/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["build", "^typecheck"]
+    },
     "lint": {
+      "dependsOn": ["build", "^typecheck"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/docs/contracts/**"]
+    },
+    "test": {
+      "dependsOn": ["build", "^typecheck"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/docs/contracts/**",
+        "$TURBO_ROOT$/docs/architecture/domain-model.md"
+      ]
     }
   }
 }

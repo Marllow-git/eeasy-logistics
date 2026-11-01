@@ -40,6 +40,7 @@ paths:
       description: 'Events delivery.order.* for this order reduced to the public view, telemetry.driver_location only while out_for_delivery, stream.resync (README §6). The token is read from the header or the token query parameter.'
       tags: [tracking]
       x-wave: 1
+      x-sse-events: ['delivery.order.*', telemetry.driver_location, stream.resync]
       x-permission: delivery.tracking.view
       security: [{recipientToken: []}]
       parameters: [{name: token, in: query, description: 'Alternative to the X-Recipient-Token header, because EventSource cannot set headers; purpose track only; never logged', schema: {type: string}}, {$ref: './components.yaml#/components/parameters/LastEventId'}]

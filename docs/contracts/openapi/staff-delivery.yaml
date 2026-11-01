@@ -18,7 +18,7 @@ tags:
   - {name: drivers, description: "Drivers and devices"}
   - {name: vehicles, description: "Vehicles"}
   - {name: shifts, description: "Driver shifts (§3.17)"}
-  - {name: locations, description: "Driver positions (ADR-0028)"}
+  - {name: driver-locations, description: "Driver positions (ADR-0028)"}
   - {name: orders, description: "Orders (§3.1, §3.13)"}
   - {name: order-imports, description: "CSV import jobs"}
   - {name: dispatch, description: "Offers and assignments"}
@@ -275,7 +275,7 @@ paths:
       operationId: getDriverTrail
       summary: "Daily simplified trail for one business day"
       description: 'Trails are kept 90 days (document 2 §7).'
-      tags: [locations]
+      tags: [driver-locations]
       x-wave: 1
       x-permission: delivery.locations.read
       security: [{staffCookie: []}]
@@ -287,7 +287,7 @@ paths:
     get:
       operationId: listLatestDriverPositions
       summary: "Latest position per on-shift driver (polling twin of the stream)"
-      tags: [locations]
+      tags: [driver-locations]
       x-wave: 1
       x-permission: delivery.locations.read
       security: [{staffCookie: []}]
@@ -696,6 +696,7 @@ paths:
       description: 'Events job.progress and job.completed.'
       tags: [order-imports]
       x-wave: 1
+      x-sse-events: [job.progress, job.completed]
       x-permission: delivery.orders.import
       security: [{staffCookie: []}]
       parameters: [{name: import_id, in: path, required: true, schema: {type: string, format: uuid}}]
@@ -1080,6 +1081,7 @@ paths:
       description: 'Events delivery.order.*, delivery.offer.expired, delivery.driver.cash_blocked, delivery.shift.started, delivery.shift.ended, telemetry.driver_location, stream.resync (README §6, ADR-0029).'
       tags: [streams]
       x-wave: 1
+      x-sse-events: ['delivery.order.*', delivery.offer.expired, delivery.driver.cash_blocked, delivery.shift.started, delivery.shift.ended, telemetry.driver_location, stream.resync]
       x-permission: delivery.orders.read
       security: [{staffCookie: []}]
       parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/LastEventId'}]

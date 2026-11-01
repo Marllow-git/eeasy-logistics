@@ -18,6 +18,8 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+# Generated from docs/contracts by `pnpm --filter contracts build`, never committed (PLAT-15 plan 2.6)
+packages/contracts/generated/
 next-env.d.ts
 expo-env.d.ts
 
