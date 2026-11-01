@@ -1,0 +1,23 @@
+# Orders · in-flight ledger
+
+The lead's task ledger (handbook 01). One row per order between **Register** and **Close**. Updated in the same commit as the plan file when an order starts, and removed in the close step. A new lead session reads this file before anything else.
+
+Rules recorded here are owner rulings the pipeline depends on and that the code cannot show.
+
+## Standing rulings
+
+| Date | Ruling |
+|---|---|
+| 2026-10-31 | Merging is delegated to the lead for wave 0 two-way doors; one-way doors wait for the owner. Lead runs `tools/pr-gate.sh` before every merge. |
+| 2026-10-31 | No container runtime on the owner's machine; local verification on the native stack (`tools/native-stack.sh`), Compose only in CI. |
+| 2026-10-31 | Haiku researches, Opus builds, Fable reviews (handbook 05). |
+
+## In flight
+
+| Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
+|---|---|---|---|---|---|---|---|
+| PLAT-5 | #27 | `feat/PLAT-5-database-roles-migrations` | `.claude/worktrees/agent-a3cd22022c9f22ac5` | executor-api | build | native, default db | one-way door; adversary required |
+
+## Next unblocked (roadmap §1.1)
+
+PLAT-6 after PLAT-5. PLAT-15 and OPS-1 are unblocked now (depend on PLAT-1 and PLAT-3 only) and touch disjoint paths from PLAT-5; either may run as the second in-flight order.
