@@ -1,6 +1,6 @@
 # CHORE-1 · Runtime and build chores: Node 24, drop dotenv, SWC builder
 
-- **Status:** planned
+- **Status:** closed 2026-11-01 (PRs #52, #53, #54; issue #49)
 - **Date:** 2026-11-01
 - **Wave:** 0. **Depends on:** PLAT-6 (merged, PR #41). **Blocks:** PLAT-7 by agreement between the two lead sessions (it is briefed when all three legs land).
 - **Lead:** architecture lead (session `eeasy-logistics-6e`). **Executor:** `executor-api` (Opus), own worktree, native stack database `elx_chore1` (scratch databases through the PLAT-5 harness). **Adversary:** no (no auth, tenancy, ledger, payment or private-data path).
