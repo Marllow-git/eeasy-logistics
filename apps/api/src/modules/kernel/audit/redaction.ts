@@ -51,17 +51,23 @@ export function keyTokens(key: string): string[] {
 }
 
 /**
- * Whether `key` names a secret: any token, any two adjacent tokens joined, or the whole key with
- * its separators removed is in `secretKeyTokens`.
+ * Whether any token of `key`, any two adjacent tokens joined, or the whole key with its separators
+ * removed is in `set`. Shared by the audit rule (`isSecretKey`) and the telemetry rule
+ * (`isWithheldKey`, PLAT-14), which differ only in their token sets.
  */
-export function isSecretKey(key: string): boolean {
+export function keyHasToken(key: string, set: ReadonlySet<string>): boolean {
   const tokens = keyTokens(key);
   const candidates = [
     ...tokens,
     ...tokens.slice(1).map((token, index) => `${tokens[index] ?? ''}${token}`),
     tokens.join(''),
   ];
-  return candidates.some((candidate) => secretKeyTokens.has(candidate));
+  return candidates.some((candidate) => set.has(candidate));
+}
+
+/** Whether `key` names a secret (`secretKeyTokens`, by `keyHasToken`). */
+export function isSecretKey(key: string): boolean {
+  return keyHasToken(key, secretKeyTokens);
 }
 
 /** A bearer credential or a JWT (three base64url parts, the header starting `eyJ`) (M-2). */

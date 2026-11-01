@@ -1,9 +1,10 @@
-import { keyTokens, secretKeyTokens } from '../audit/redaction.js';
+import { keyHasToken, secretKeyTokens } from '../audit/redaction.js';
 
 // The telemetry redactor (PLAT-14 plan 2.4; integrations §11 "Logging redaction"): every log
 // argument, error message, span attribute string, Sentry event and `last_error` goes through it.
 // It generalises the PLAT-7 audit rule (secret key tokens) with value patterns: credentials
-// wherever they appear, phone numbers kept as their last two digits, email addresses masked.
+// wherever they appear (tokens in URL paths too), phone numbers kept as their last four digits,
+// email addresses masked.
 
 export const redacted = '[redacted]';
 /** Strings are cut to this many code points (a log line, a span attribute, an error message). */
@@ -38,15 +39,9 @@ export const telemetryKeyTokens: ReadonlySet<string> = new Set([
   'verificationcode',
 ]);
 
-/** Whether a key's value is withheld from telemetry (`telemetryKeyTokens`, joined pairs too). */
+/** Whether a key's value is withheld from telemetry (`telemetryKeyTokens`, by `keyHasToken`). */
 export function isWithheldKey(key: string): boolean {
-  const tokens = keyTokens(key);
-  const candidates = [
-    ...tokens,
-    ...tokens.slice(1).map((token, index) => `${tokens[index] ?? ''}${token}`),
-    tokens.join(''),
-  ];
-  return candidates.some((candidate) => telemetryKeyTokens.has(candidate));
+  return keyHasToken(key, telemetryKeyTokens);
 }
 
 const bearer = /\bbearer\s+[^\s,;"']+/gi;
@@ -72,20 +67,67 @@ const email = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}
  */
 const phone = /(?<![\w+])(?:(?:\+|00)[1-9](?:[ -]?\d){7,14}|9665\d{8}|05\d{8})(?![\w])/g;
 
-/** C0 controls and DEL become spaces: a value cannot forge a second log line. */
+/**
+ * C0 controls and DEL become spaces and runs of spaces collapse to one: a value cannot forge a
+ * second log line (the PLAT-8 `last_error` rule, now the only pass).
+ */
 function withoutControls(text: string): string {
   let out = '';
   for (const char of text) {
     const code = char.codePointAt(0) ?? 0;
     out += code < 0x20 || code === 0x7f ? ' ' : char;
   }
-  return out;
+  return out.replace(/ {2,}/g, ' ');
 }
 
-/** A phone number reduced to its last two digits. */
+/** A phone number reduced to its last four digits (integrations §11). */
 export function maskPhone(match: string): string {
   const digits = match.replace(/\D/g, '');
-  return `[phone …${digits.slice(-2)}]`;
+  return `[phone …${digits.slice(-4)}]`;
+}
+
+/**
+ * A run of URL path segments (`/a/b/c`), wherever it stands: a full URL, a path in an error
+ * message, a route. Segments end at whitespace, `?`, `#`, quotes and list separators.
+ */
+const pathRun = /(?:\/[^\s/?#"'<>,;]*)+/g;
+/** Path segments after one of these carry a provider's secret (integrations §3, the Zid path). */
+const secretPathMarkers: ReadonlySet<string> = new Set([
+  'webhook',
+  'webhooks',
+  'hooks',
+  'callbacks',
+]);
+const uuidSegment = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const jwtSegment = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
+const hexSegment = /^[0-9a-f]{32,}$/i;
+const base64urlSegment = /^[A-Za-z0-9_-]{24,}$/;
+/** A route template parameter (`:token`, `{token}`): a name, never a value. */
+const templateSegment = /^(?::[A-Za-z_]\w*|\{[A-Za-z_]\w*\})$/;
+
+/**
+ * Whether a path segment has the shape of a token (integrations §11 "tokens in URLs"): a JWT, hex
+ * of 32 or more, or base64url of 24 or more holding both a letter and a digit (a long kebab-case
+ * route word has no digit; a UUID, the ids of our routes, is never a token).
+ */
+export function isTokenSegment(segment: string): boolean {
+  if (uuidSegment.test(segment)) return false;
+  if (jwtSegment.test(segment) || hexSegment.test(segment)) return true;
+  return base64urlSegment.test(segment) && /\d/.test(segment) && /[A-Za-z]/.test(segment);
+}
+
+/** A path with token-shaped segments, and every segment after a webhook marker, redacted. */
+function redactPath(path: string): string {
+  let afterMarker = false;
+  return path
+    .split('/')
+    .map((segment) => {
+      if (segment === '' || templateSegment.test(segment)) return segment;
+      if (afterMarker || isTokenSegment(segment)) return redacted;
+      if (secretPathMarkers.has(segment.toLowerCase())) afterMarker = true;
+      return segment;
+    })
+    .join('/');
 }
 
 /** An email address masked whole (the domain can name a merchant's customer). */
@@ -100,9 +142,10 @@ export function capText(text: string, max: number = maxTextLength): string {
 
 /**
  * Free text fit for telemetry: credentials removed wherever they appear (bearer, basic and digest
- * credentials, URL user-info, JWTs, values of secret- or personal-named `name=value` pairs), phone
- * numbers kept as their last two digits, email addresses masked, control characters replaced, cut
- * to `max` code points.
+ * credentials, URL user-info, JWTs, token-shaped URL path segments and every segment after a
+ * webhook path marker, values of secret- or personal-named `name=value` pairs), phone numbers kept
+ * as their last four digits, email addresses masked, control characters replaced and spaces
+ * collapsed, cut to `max` code points.
  */
 export function redactText(text: string, max: number = maxTextLength): string {
   const withheld = (whole: string, q1: string, key: string, sep: string, q2: string) =>
@@ -113,6 +156,7 @@ export function redactText(text: string, max: number = maxTextLength): string {
     .replace(basic, `Basic ${redacted}`)
     .replace(userInfo, `$1${redacted}@`)
     .replace(jwt, redacted)
+    .replace(pathRun, redactPath)
     .replace(quotedPair, withheld)
     .replace(pair, withheld)
     .replace(email, maskedEmail)
