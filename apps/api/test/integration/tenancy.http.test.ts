@@ -19,6 +19,7 @@ import {
   insertProbeRows,
   probeLabels,
 } from './probe-table.js';
+import { webClientHeaders } from '../support/web-client.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-6 item C on the real database: the guard resolves the principal from the token, the
@@ -126,6 +127,7 @@ describe('request context and unit of work per request (PLAT-6 item C)', () => {
   it('never takes the account from the query, a header or the body', async () => {
     const response = await http()
       .post(`/v1/staff/probe-rows?account_id=${accountB}`)
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff(accountA))
       .set('X-Account-Id', accountB)
       .send({ label: 'smuggled', account_id: accountB, accountId: accountB })
@@ -149,6 +151,7 @@ describe('request context and unit of work per request (PLAT-6 item C)', () => {
   it('rolls the transaction back when the handler throws', async () => {
     const response = await http()
       .post('/v1/staff/probe-rows/then-fail')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff(accountA))
       .send({ label: 'rolled-back' })
       .expect(409);
