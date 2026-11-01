@@ -1,6 +1,6 @@
 # ADR-0030: Sign merchant webhooks with a timestamped HMAC and verify each subscription by token
 
-- **Status:** proposed
+- **Status:** superseded by ADR-0040
 - **Date:** 2026-10-31
 - **Deciders:** architecture lead, owner to accept
 - **Source:** API contracts (document 3) `webhooks.md`; foundation plan §9 (Bolesa store webhooks, Logestechs gap); ADR-0024, ADR-0027

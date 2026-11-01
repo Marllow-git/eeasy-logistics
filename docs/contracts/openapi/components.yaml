@@ -490,7 +490,7 @@ components:
         supersede_key: {type: [string, 'null']}
     WebhookSubscription:
       type: object
-      description: Merchant webhook subscription (webhooks.md, ADR-0030).
+      description: Merchant webhook subscription (webhooks.md, ADR-0040).
       allOf: [{$ref: '#/components/schemas/Base'}]
       properties:
         url: {type: string, format: uri}
@@ -525,7 +525,7 @@ components:
       type: object
       required: [url, event_types]
       properties:
-        url: {type: string, format: uri, pattern: '^https://', description: 'https only; private and loopback ranges refused (ADR-0030)'}
+        url: {type: string, format: uri, pattern: '^https://', description: 'https only; private and loopback ranges refused (ADR-0040)'}
         event_types: {type: array, minItems: 1, items: {type: string, description: An event type marked webhook in document 2 §6.3, example: delivery.order.delivered}}
         description: {type: string, maxLength: 200}
         status: {type: string, enum: [active, paused], description: Only on update}

@@ -34,7 +34,7 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 | [0027](0027-domain-event-envelope-and-versioning.md) | Publish domain events in one versioned envelope, ordered per aggregate | proposed |
 | [0028](0028-driver-location-pings-bypass-the-outbox.md) | Write driver location pings to a bounded ring and fan out by Redis, not through the outbox | proposed |
 | [0029](0029-cursor-pagination-and-sse-event-names.md) | Page lists by opaque cursor and name SSE events after domain event types | proposed |
-| [0030](0030-merchant-webhook-signing-and-delivery.md) | Sign merchant webhooks with a timestamped HMAC and verify each subscription by token | proposed |
+| [0030](0030-merchant-webhook-signing-and-delivery.md) | Sign merchant webhooks with a timestamped HMAC and verify each subscription by token | superseded by 0040 |
 | [0031](0031-database-roles-and-ledger-single-writer.md) | Separate database roles by duty and keep ledger writes in the application's ledger services | proposed |
 | [0032](0032-browser-reaches-api-on-web-origin.md) | Serve the API to the browser on the web origin and refresh staff sessions in web middleware | proposed |
 | [0033](0033-radix-tailwind-design-system-and-maplibre.md) | Build the design system on Radix primitives and Tailwind, with MapLibre behind a MapProvider | proposed |
@@ -44,6 +44,7 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 | [0037](0037-messaging-templates-only-no-sms-before-wave-3.md) | Send messages as approved WhatsApp templates only, with no SMS fallback before wave 3 | proposed |
 | [0038](0038-separate-admin-console-application.md) | Serve the platform console from its own application and hostname | accepted |
 | [0039](0039-own-adaptive-location-tracker.md) | Track driver location with our own adaptive tracker on Expo, without a commercial plugin | accepted |
+| [0040](0040-standard-webhooks-signing.md) | Sign merchant webhooks with the Standard Webhooks specification | accepted |
 
 ## Groups
 
@@ -56,4 +57,4 @@ One decision per file. Status `accepted` means the owner ruled it (in eeasynew b
 - **Proposed with the web app architecture (document 7):** 0032 browser reaches the API on the web origin, 0033 design system base and map provider.
 - **Proposed with the driver app architecture (document 8):** 0034 offline cash PIN verifier, 0035 Maestro end-to-end flows.
 - **Proposed with the integration architecture (document 9):** 0036 outbox kinds and worker queues, 0037 messaging templates only, no SMS before wave 3.
-- **Owner rulings during wave 0:** 0038 separate admin console application and hostname (2026-11-01; closes web open question 2 and Q-22, amends 0032); 0039 own adaptive location tracker, no commercial plugin (2026-11-01; Q-39, Q-40).
+- **Owner rulings during wave 0:** 0038 separate admin console application and hostname (2026-11-01; closes web open question 2 and Q-22, amends 0032); 0039 own adaptive location tracker, no commercial plugin (2026-11-01; Q-39, Q-40); 0040 Standard Webhooks signing (2026-11-01; Q-43, supersedes 0030).
