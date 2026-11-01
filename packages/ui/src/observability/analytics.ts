@@ -1,4 +1,4 @@
-import { redactText, scrubUrl } from './redact';
+import { isSecretKey, redactText, scrubUrl } from './redact';
 
 // PostHog scrubbing for the web apps (PLAT-14 plan 2.8, web §9, §10.4): the `before_send` of
 // posthog-js. Product events carry ids and enums only by type (each app's `src/analytics.ts`);
@@ -33,7 +33,9 @@ function scrubValue(value: unknown, depth: number): unknown {
   if (Array.isArray(value)) return value.slice(0, 50).map((item) => scrubValue(item, depth + 1));
   if (isObject(value)) {
     return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, scrubValue(item, depth + 1)]),
+      Object.entries(value)
+        .filter(([key]) => !isSecretKey(key))
+        .map(([key, item]) => [key, scrubValue(item, depth + 1)]),
     );
   }
   return value;
@@ -47,14 +49,20 @@ export interface AnalyticsCapture {
   $set_once?: Json;
 }
 
-/** posthog-js `before_send`: URLs rewritten, strings redacted, `$set`/`$set_once` dropped. */
+/**
+ * posthog-js `before_send`: secret-named keys dropped, URLs rewritten, strings redacted,
+ * `$set`/`$set_once` dropped.
+ */
 export function scrubAnalyticsEvent<Capture extends AnalyticsCapture>(
   capture: Capture | null,
 ): Capture | null {
   if (capture === null) return null;
   const properties: Json = {};
   for (const [key, value] of Object.entries(capture.properties)) {
-    properties[key] = sdkKeys.has(key) && typeof value === 'string' ? value : scrubValue(value, 1);
+    // The SDK's own ids first (`token` and `$session_id` would read as secret names), then
+    // every other secret-named key is dropped, at any depth (lead review round 2).
+    if (sdkKeys.has(key) && typeof value === 'string') properties[key] = value;
+    else if (!isSecretKey(key)) properties[key] = scrubValue(value, 1);
   }
   const scrubbed = { ...capture, properties };
   delete scrubbed.$set;

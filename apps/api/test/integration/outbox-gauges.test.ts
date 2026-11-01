@@ -29,6 +29,8 @@ describe('outbox gauges (PLAT-14 item C)', () => {
     account: string;
     status: 'pending' | 'dead';
     dueAgo: string;
+    kind?: 'internal_event' | 'message';
+    payload?: Record<string, unknown>;
   }): Promise<void> => {
     const id = nextOutboxId();
     planted.push(id);
@@ -36,7 +38,8 @@ describe('outbox gauges (PLAT-14 item C)', () => {
       INSERT INTO core_outbox (id, type, event_version, account_id, aggregate_type, aggregate_id,
                                sequence, payload, kind, status, next_attempt_at)
       VALUES (${id}, 'core.account.suspended', 1, ${row.account}, 'account', ${uuidv7()}, 1,
-              '{}', 'internal_event', ${row.status}, now() - ${row.dueAgo}::interval)`;
+              ${owner.json((row.payload ?? {}) as postgres.JSONValue)}, ${row.kind ?? 'internal_event'},
+              ${row.status}, now() - ${row.dueAgo}::interval)`;
   };
 
   beforeAll(async () => {
@@ -77,7 +80,34 @@ describe('outbox gauges (PLAT-14 item C)', () => {
     const kinds = points
       .filter((p) => p.name === 'outbox_due_oldest_age_seconds')
       .map((p) => p.attributes.kind);
-    expect(kinds).toHaveLength(7);
+    expect(kinds).toHaveLength(8);
+  });
+
+  it('labels message rows by template class: otp for auth_otp, other for the rest', async () => {
+    await plant({
+      account,
+      status: 'pending',
+      dueAgo: '90 seconds',
+      kind: 'message',
+      payload: { template_key: 'auth_otp', locale: 'ar', params: { code: '[encrypted]' } },
+    });
+    const { metrics, collect } = testMetrics();
+    await runOutboxGauges(pool.db, metrics, quiet);
+    const series = (await collect()).filter((p) => p.name === 'outbox_due_oldest_age_seconds');
+    const otp = series.find(
+      (p) => p.attributes.kind === 'message' && p.attributes.template_class === 'otp',
+    );
+    expect(Number(otp?.value)).toBeGreaterThanOrEqual(90);
+    // Every series carries the label: both classes for message, n/a for every other kind.
+    expect(
+      series
+        .filter((p) => p.attributes.kind === 'message')
+        .map((p) => p.attributes.template_class)
+        .sort(),
+    ).toEqual(['other', 'otp']);
+    expect(
+      series.filter((p) => p.attributes.kind !== 'message').map((p) => p.attributes.template_class),
+    ).toEqual(Array(6).fill('n/a'));
   });
 
   it('keeps the previous values and logs when the read fails', async () => {

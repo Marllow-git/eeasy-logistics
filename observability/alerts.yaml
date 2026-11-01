@@ -88,7 +88,8 @@ rules:
     severity: page
     runbook: docs/architecture/platform.md §9 (replay a dead-lettered outbox row; pause messaging)
     origin: integrations §4.5 "message OTP 30 s"
-    pending: PLAT-9 (the OTP split of the message kind)
+    # template_class comes from the gauge job: otp when a message row names the auth_otp template
+    # (lead review round 2); the series exists now, OTP rows arrive with the messaging orders.
   - name: outbox_due_message
     source: metric
     metric: outbox_due_oldest_age_seconds

@@ -3,7 +3,7 @@
 // apps wire them into @sentry/nextjs (`beforeSend`), the /monitoring tunnel and posthog-js
 // (`before_send`).
 export { isRecipientPath, scrubAnalyticsEvent, type AnalyticsCapture } from './analytics';
-export { maxInputLength, redactText, scrubPath, scrubUrl } from './redact';
+export { isSecretKey, maxInputLength, redactText, scrubPath, scrubUrl } from './redact';
 export {
   filterSentryEnvelope,
   maxEnvelopeBytes,

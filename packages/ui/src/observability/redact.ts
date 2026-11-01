@@ -74,6 +74,65 @@ function cut(text: string): string {
   return `${text.slice(0, end)}…`;
 }
 
+/**
+ * Key tokens that name a secret: the API's audit and telemetry rule (`apps/api` `audit/redaction.ts`
+ * `secretKeyTokens`, lead review round 2), plus `sig` and `verificationcode` this module already
+ * redacted. Tokens, not substrings: `shipping_fee` stays, `client_secret` goes.
+ */
+const secretKeyTokens: ReadonlySet<string> = new Set([
+  'password',
+  'passwd',
+  'secret',
+  'secrets',
+  'token',
+  'tokens',
+  'pin',
+  'otp',
+  'key',
+  'keys',
+  'ciphertext',
+  'authorization',
+  'cookie',
+  'cookies',
+  'credential',
+  'credentials',
+  'apikey',
+  'keyid',
+  'privatekey',
+  'passcode',
+  'session',
+  'jwt',
+  'bearer',
+  'signature',
+  'salt',
+  'cvv',
+  'iban',
+  'sig',
+  'verificationcode',
+]);
+
+/** The lower-cased tokens of a key: split on `_`, `-`, `.` and camelCase (`APIKey` → api, key). */
+function keyTokens(key: string): string[] {
+  return key
+    .split(/[_\-.]+/)
+    .flatMap((part) => part.match(/[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+/g) ?? [])
+    .map((token) => token.toLowerCase());
+}
+
+/**
+ * Whether `key` names a secret: any token, any two adjacent tokens joined, or the whole key without
+ * separators is in the secret set (`client_secret`, `signingKey`, `x-api-key`, `db_password`).
+ */
+export function isSecretKey(key: string): boolean {
+  const tokens = keyTokens(key.slice(0, 100));
+  const candidates = [
+    ...tokens,
+    ...tokens.slice(1).map((token, index) => `${tokens[index] ?? ''}${token}`),
+    tokens.join(''),
+  ];
+  return candidates.some((candidate) => secretKeyTokens.has(candidate));
+}
+
 function maskPhone(match: string): string {
   const digits = match.replace(/\D/g, '');
   return `[phone …${digits.slice(-4)}]`;
@@ -87,10 +146,12 @@ const replacements: readonly [RegExp, string | ((match: string, ...groups: strin
     [/(?<![\w-])eyJ[\w-]*\.[\w-]*\.[\w-]*/g, '[jwt]'],
     // Authorization schemes.
     [/\b(Bearer|Basic|Digest|Token)\s+[\w.~+/=-]+/gi, '$1 [redacted]'],
-    // Secret pairs in text, query strings and JSON.
+    // Secret pairs in text, query strings and JSON: a key (from the start of its run, at most 64
+    // characters) whose tokens name a secret (`isSecretKey`), then `=` or `:`, then the value.
     [
-      /(?<![\w-])((?:access_|refresh_|id_|recipient_|api_?)?(?:token|key|secret|password|passwd|otp|otp_code|verification_code|signature|sig|session|cookie|authorization))("?\s*[=:]\s*"?)[^\s&"',;]+/gi,
-      '$1$2[redacted]',
+      /(?<![\w.-])([A-Za-z][\w.-]{0,63})("?\s*[=:]\s*"?)([^\s&"',;]+)/g,
+      (match, key: string, separator: string) =>
+        isSecretKey(key) ? `${key}${separator}[redacted]` : match,
     ],
     // Email addresses.
     [/(?<![\w.%+-])[\w.%+-]+@[\w-]+(?:\.[\w-]+)+/g, '[email]'],
