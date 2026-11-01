@@ -137,7 +137,7 @@ describe('Sentry reports (PLAT-14 item E)', () => {
       (event?.tags as Record<string, string>).request_id,
     );
     const text = JSON.stringify(event);
-    expect(text).toContain('cannot read recipient [phone …78]');
+    expect(text).toContain('cannot read recipient [phone …5678]');
     expect(text).not.toContain('966512345678');
     expect(text).not.toMatch(/cookie|authorization|Bearer abc|eyJhbGci/i);
   });

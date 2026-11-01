@@ -50,7 +50,7 @@ describe('the span attribute allowlist (enforced at export)', () => {
     span.setAttribute('integration.provider', 'meta +966512345678 a@b.example Bearer abc.def');
     span.end();
     const value = only().attributes['integration.provider'];
-    expect(value).toBe('meta [phone …78] [email] Bearer [redacted]');
+    expect(value).toBe('meta [phone …5678] [email] Bearer [redacted]');
   });
 
   it('keeps exception events only, with a redacted message, and redacts the status message', () => {
@@ -62,7 +62,7 @@ describe('the span attribute allowlist (enforced at export)', () => {
     const exported = only();
     expect(exported.events.map((event) => event.name)).toEqual(['exception']);
     expect(exported.events[0]?.attributes?.['exception.message']).toBe(
-      'send to [phone …78] failed',
+      'send to [phone …5678] failed',
     );
     expect(exported.status.message).toBe('token=[redacted] rejected');
   });

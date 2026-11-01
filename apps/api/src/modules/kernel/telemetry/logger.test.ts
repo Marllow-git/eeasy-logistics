@@ -62,7 +62,7 @@ describe('JsonLogger', () => {
     const all = lines.join('');
     expect(all).not.toContain('966512345678');
     expect(all).not.toContain('"abc"');
-    expect(all).toContain('[phone …78]');
+    expect(all).toContain('[phone …5678]');
   });
 
   it('names the request, the tenant and the trace when inside them', async () => {
@@ -132,7 +132,7 @@ describe('JsonLogger', () => {
     expect(line).toMatchObject({
       level: 'warn',
       context: 'OutboxWorkers',
-      msg: 'Outbox job failed for [phone …78]',
+      msg: 'Outbox job failed for [phone …5678]',
     });
   });
 

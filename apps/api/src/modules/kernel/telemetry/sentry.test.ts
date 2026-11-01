@@ -65,10 +65,10 @@ describe('scrubEvent (beforeSend)', () => {
     expect(text).not.toContain('966512345678');
     expect(text).not.toContain('Bearer abc');
     expect(event.exception?.values?.[0]?.value).toBe(
-      'no route to [phone …78] with Bearer [redacted]',
+      'no route to [phone …5678] with Bearer [redacted]',
     );
     expect(event.tags?.request_id).toBe('0192f0e0-0000-7000-8000-000000000001');
-    expect(event.extra).toEqual({ body: '[redacted]', note: 'call [phone …78]' });
+    expect(event.extra).toEqual({ body: '[redacted]', note: 'call [phone …5678]' });
   });
 });
 

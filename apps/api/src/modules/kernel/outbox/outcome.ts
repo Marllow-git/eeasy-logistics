@@ -17,23 +17,14 @@ export const maxDeferrals = 50;
 /** No retry comes sooner than a second (adversary M-4: `retry_after 0` must not loop). */
 export const minRetryDelayMs = 1_000;
 
-/** C0 controls and DEL become spaces (a provider message may carry newlines or escapes). */
-const withoutControls = (text: string): string =>
-  Array.from(text, (char) => {
-    const code = char.codePointAt(0) ?? 0;
-    return code < 0x20 || code === 0x7f ? ' ' : char;
-  })
-    .join('')
-    .replace(/ {2,}/g, ' ');
-
 /**
  * A provider message fit for `last_error` (plan 2.5): the shared telemetry redactor (PLAT-14 plan
  * 2.4: credentials wherever they appear, values of secret- or personal-named fields, phone numbers
- * to their last two digits, emails masked), control characters dropped, cut to 500 characters.
- * The payload never reaches it: handlers pass the provider's answer only.
+ * to their last four digits, emails masked, control characters dropped and spaces collapsed), cut
+ * to 500 characters. The payload never reaches it: handlers pass the provider's answer only.
  */
 export function redactErrorMessage(message: string): string {
-  const clean = redactText(withoutControls(message), Number.MAX_SAFE_INTEGER).trim();
+  const clean = redactText(message, Number.MAX_SAFE_INTEGER).trim();
   const points = Array.from(clean);
   return points.length <= maxLastErrorLength ? clean : points.slice(0, maxLastErrorLength).join('');
 }
