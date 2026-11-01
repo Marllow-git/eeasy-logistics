@@ -82,6 +82,23 @@ describe('defineConfig: valid input', () => {
   });
 });
 
+describe('defineConfig: the RLS switch (PLAT-5 plan 2.6)', () => {
+  it('defaults ELX_RLS to off', () => {
+    expect(defineConfig({ APP_ENV: 'ci' }).db.rls).toBe(false);
+  });
+
+  it('reads on and off', () => {
+    expect(defineConfig({ APP_ENV: 'ci', ELX_RLS: 'on' }).db.rls).toBe(true);
+    expect(defineConfig({ APP_ENV: 'ci', ELX_RLS: 'off' }).db.rls).toBe(false);
+  });
+
+  it('rejects any other value, naming the variable', () => {
+    expect(() => defineConfig({ APP_ENV: 'ci', ELX_RLS: 'true' })).toThrow(
+      'ELX_RLS: is invalid: expected on or off',
+    );
+  });
+});
+
 describe('defineConfig: missing and malformed input', () => {
   it('names a missing required variable', () => {
     const error = configError(() => defineConfig({}));

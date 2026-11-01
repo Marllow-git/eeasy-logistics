@@ -3,3 +3,6 @@
 adr/
 docs/
 pnpm-lock.yaml
+
+# drizzle-kit writes these; they are regenerated, not hand-formatted (PLAT-5)
+apps/api/drizzle/meta/

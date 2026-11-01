@@ -83,8 +83,30 @@ jobs:
             exit 1
           }
           docker compose --profile ci ps --format '{{.Service}} {{.State}} {{.Health}} {{.Publishers}}'
+      # APP_ENV=ci never reads .env (packages/config), and the ci profile publishes random host
+      # ports, so the API's variables are built here from .env's local passwords and the ports.
+      # No DATABASE_URL_ADMIN: the suite then uses the migrated ci database itself (PLAT-5 2.9).
+      - name: Point the API at the ci services
+        run: |
+          set -a; . ./.env; set +a
+          port() { docker compose --profile ci port "$1" "$2"; }
+          pg=$(port postgres-ci 5432)
+          {
+            echo "DATABASE_URL_OWNER=postgres://elx_owner:${ELX_OWNER_PASSWORD}@${pg}/elx"
+            echo "DATABASE_URL_APP=postgres://elx_app:${ELX_APP_PASSWORD}@${pg}/elx"
+            echo "DATABASE_URL_PLATFORM=postgres://elx_platform:${ELX_PLATFORM_PASSWORD}@${pg}/elx"
+            echo "DATABASE_URL_MAINTENANCE=postgres://elx_maintenance:${ELX_MAINTENANCE_PASSWORD}@${pg}/elx"
+            echo "REDIS_URL=redis://$(port redis-ci 6379)"
+            echo "STORAGE_ENDPOINT=http://$(port minio-ci 9000)"
+            echo "STORAGE_BUCKET=${MINIO_BUCKET}"
+            echo "STORAGE_ACCESS_KEY_ID=${MINIO_ROOT_USER}"
+            echo "STORAGE_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}"
+          } >> "$GITHUB_ENV"
       - name: Migrate from zero
         run: pnpm --filter @eeasy-logistics/api run migrate
+      # ci seeds on every run (data §11.6): the deterministic fixtures, idempotent.
+      - name: Seed the fixtures
+        run: pnpm --filter @eeasy-logistics/api run seed
       - name: Unit tests
         run: pnpm --filter @eeasy-logistics/api run test:unit
       - name: Integration tests (ELX_RLS=${{ matrix.rls }})
