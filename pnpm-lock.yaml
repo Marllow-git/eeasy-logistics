@@ -35,6 +35,9 @@ importers:
       '@nestjs/platform-express':
         specifier: 12.3.2
         version: 12.3.2(@nestjs/common@12.3.2(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.3.2)
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(postgres@3.4.9)
       reflect-metadata:
         specifier: 0.2.2
         version: 0.2.2
@@ -63,6 +66,9 @@ importers:
       dependency-cruiser:
         specifier: 18.7.0
         version: 18.7.0
+      drizzle-kit:
+        specifier: 0.31.11
+        version: 0.31.11
       eslint:
         specifier: 9.39.5
         version: 9.39.5
@@ -279,9 +285,6 @@ importers:
       dependency-cruiser:
         specifier: 18.7.0
         version: 18.7.0
-      drizzle-kit:
-        specifier: 0.31.11
-        version: 0.31.11
       eslint:
         specifier: 9.39.5
         version: 9.39.5

@@ -47,6 +47,9 @@ COPY --from=prod-deps /repo/packages ./packages
 COPY --from=prod-deps /repo/apps/api/package.json ./apps/api/package.json
 COPY --from=prod-deps /repo/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /repo/apps/api/dist ./apps/api/dist
+# The reviewed SQL migrations and their journal: --role migrate applies them, /ready reads the
+# expected version from the journal (PLAT-5).
+COPY --from=build /repo/apps/api/drizzle ./apps/api/drizzle
 WORKDIR /app/apps/api
 # The base image's unprivileged user "node", by uid so runAsNonRoot can verify it. The files
 # stay root-owned, so the process cannot change them.
