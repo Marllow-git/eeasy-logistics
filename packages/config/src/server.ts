@@ -16,6 +16,7 @@ import {
   port,
   postgresUrl,
   redisUrl,
+  retentionMonths,
   seconds,
   secret,
 } from './formats.ts';
@@ -85,6 +86,10 @@ export const serverVariables = {
   DATABASE_URL_ADMIN: secret(postgresUrl()).optional(),
   // Row-level security switch read by the migration job (PLAT-5 plan 2.6, data §4.5).
   ELX_RLS: z.enum(['on', 'off']).default('off'),
+  // audit log (PLAT-7): retention of core_audit_log, dropped by monthly partition; the worker's
+  // daily partition job, the one worker job that holds DATABASE_URL_OWNER (refusals.ts).
+  AUDIT_RETENTION_MONTHS: retentionMonths().default(24),
+  AUDIT_PARTITION_JOB: z.enum(['on', 'off']).default('on'),
   // redis
   REDIS_URL: secret(redisUrl()).optional(),
   // storage
@@ -145,6 +150,8 @@ export const serverExpectations = {
   DATABASE_POOL_SIZE_PLATFORM: 'an integer from 1 to 200',
   DATABASE_URL_ADMIN: 'a postgres:// URL',
   ELX_RLS: 'on or off',
+  AUDIT_RETENTION_MONTHS: 'an integer from 24 to 120 (months; two years at least)',
+  AUDIT_PARTITION_JOB: 'on or off',
   REDIS_URL: 'a redis:// or rediss:// URL',
   STORAGE_ENDPOINT: 'an http(s) URL',
   STORAGE_BUCKET: 'a bucket name',
@@ -196,6 +203,12 @@ export interface Config {
     readonly poolSize: { readonly app: number; readonly platform: number };
     /** `ELX_RLS=on`: the migration job enables RLS on every table with a tenant_isolation policy. */
     readonly rls: boolean;
+  };
+  readonly audit: {
+    /** Months core_audit_log keeps; the partition job drops older monthly partitions. */
+    readonly retentionMonths: number;
+    /** `AUDIT_PARTITION_JOB=on`: the worker runs the daily partition job (as elx_owner). */
+    readonly partitionJob: boolean;
   };
   readonly redis: { readonly url: Secret | undefined };
   readonly storage: {
@@ -286,6 +299,8 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
     present,
     raw: (variable) => (Object.hasOwn(env, variable) ? env[variable] : undefined),
     messagingDisabled: v.MESSAGING_DISABLED,
+    auditPartitionJob:
+      v.AUDIT_PARTITION_JOB === undefined ? undefined : v.AUDIT_PARTITION_JOB === 'on',
     role,
   });
   issues.push(...refusals.filter((issue) => !reported.has(issue.variable)));
@@ -313,6 +328,10 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       },
       poolSize: { app: v.DATABASE_POOL_SIZE_APP, platform: v.DATABASE_POOL_SIZE_PLATFORM },
       rls: v.ELX_RLS === 'on',
+    },
+    audit: {
+      retentionMonths: v.AUDIT_RETENTION_MONTHS,
+      partitionJob: v.AUDIT_PARTITION_JOB === 'on',
     },
     redis: { url: v.REDIS_URL },
     storage: {

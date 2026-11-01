@@ -101,6 +101,31 @@ const elx = {
   },
 };
 
+/**
+ * PLAT-7 plan 2.8 (ADR-0031): the elx_owner URL reaches application code in two places only: the
+ * migration job (src/migrate/, and the local seed tool) and the worker's audit partition job
+ * (src/worker/system/audit-partitions.ts), which hands it to the partition functions and nothing
+ * else. Reading `config.db.urls.owner` anywhere else in src/ is refused.
+ */
+const ownerUrlMessage =
+  'The elx_owner URL is for the migration job and the audit partition job only (ADR-0031, PLAT-7).';
+const ownerUrlRestrictions = [
+  {
+    selector: "MemberExpression[property.name='owner'][object.property.name='urls']",
+    message: ownerUrlMessage,
+  },
+  {
+    selector: "ObjectPattern > Property[key.name='owner']",
+    message: ownerUrlMessage,
+  },
+];
+// The seed tool (local and ci only; staging and production refuse its admin URL) migrates too.
+const ownerUrlJobs = [
+  'src/migrate/**/*.ts',
+  'src/worker/system/audit-partitions.ts',
+  'src/seed/**/*.ts',
+];
+
 /** The violation fixtures of the lint rules, linted only by test/architecture-violations.test.ts. */
 const lintFixtures = 'test/architecture/violations/lint';
 
@@ -128,6 +153,7 @@ export default defineConfig(
         ...tenancySettingRestrictions,
         ...unitOfWorkTxRestrictions,
         ...controllerOutsideControllerFiles,
+        ...ownerUrlRestrictions,
       ],
     },
   },
@@ -140,6 +166,7 @@ export default defineConfig(
         ...processRestrictions,
         ...tenancySettingRestrictions,
         ...controllerOutsideControllerFiles,
+        ...ownerUrlRestrictions,
       ],
     },
   },
@@ -152,6 +179,20 @@ export default defineConfig(
         ...tenancySettingRestrictions,
         ...unitOfWorkTxRestrictions,
         ...rawInputRestrictions,
+        ...ownerUrlRestrictions,
+      ],
+    },
+  },
+  {
+    // The two owner jobs: every rule of the general block but the owner URL one.
+    files: ownerUrlJobs,
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...processRestrictions,
+        ...tenancySettingRestrictions,
+        ...unitOfWorkTxRestrictions,
+        ...controllerOutsideControllerFiles,
       ],
     },
   },

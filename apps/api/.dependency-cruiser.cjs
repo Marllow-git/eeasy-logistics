@@ -68,6 +68,26 @@ module.exports = {
       to: { path: '(?:^|/)packages/db/src/committed\\.ts$' },
     },
     {
+      name: 'db-migrate-only-in-owner-jobs',
+      comment:
+        'ADR-0031, PLAT-7 plan 2.8: @eeasy-logistics/db/migrate opens elx_owner connections; ' +
+        'only the migration job (src/migrate/), the audit partition job ' +
+        '(src/worker/system/audit-partitions.ts), the seed tool (local and ci), /ready for the ' +
+        'expected version, and the database test harness import it.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '(?:^|/)src/migrate/',
+          '(?:^|/)src/worker/system/audit-partitions\\.ts$',
+          '^src/seed/',
+          '^src/health/readiness\\.module\\.ts$',
+          '^test/(?:integration|schema)/',
+          '(?:^|/)packages/',
+        ],
+      },
+      to: { path: '(?:^|/)packages/db/src/migrate\\.ts$' },
+    },
+    {
       name: 'db-testing-only-in-tests',
       comment:
         'PLAT-5 plan 2.5: the test-only context setter (@eeasy-logistics/db/testing) never ' +

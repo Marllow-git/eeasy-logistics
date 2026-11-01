@@ -60,6 +60,10 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
     ]);
   });
 
+  it('refuses the owner migration entry outside the owner jobs (PLAT-7 plan 2.8)', () => {
+    expect(rulesOf('delivery/migrate-runner.ts')).toEqual(['db-migrate-only-in-owner-jobs']);
+  });
+
   it('refuses a barrel surface entry from a controller (contracts-server-entries-only)', () => {
     expect(rulesOf('kernel-barrel.controller.ts')).toEqual(['contracts-server-entries-only']);
   });
@@ -129,6 +133,17 @@ describe('A-17 ESLint rules fail on their violation fixtures (adversary M-6)', (
   it('reports @Controller() outside a *.controller.ts file', { timeout: 30_000 }, async () => {
     expect(await rulesOf('orders.service.ts')).toEqual(['no-restricted-syntax']);
   });
+
+  it(
+    'reports the owner URL read outside the owner jobs (PLAT-7)',
+    { timeout: 30_000 },
+    async () => {
+      expect(await rulesOf('owner-url.ts')).toEqual([
+        'no-restricted-syntax',
+        'no-restricted-syntax',
+      ]);
+    },
+  );
 
   it('reports a disable comment without a reason', { timeout: 30_000 }, async () => {
     expect(await rulesOf('unexplained-disable.ts')).toEqual(['elx/disable-needs-reason']);

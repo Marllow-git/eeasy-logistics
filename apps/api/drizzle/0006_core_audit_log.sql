@@ -85,6 +85,8 @@ BEGIN
   IF months_ahead IS NULL OR months_ahead < 0 OR months_ahead > 24 THEN
     RAISE EXCEPTION 'months_ahead must be from 0 to 24' USING ERRCODE = '22023';
   END IF;
+  -- The migration job and the worker's partition job may run at once: one at a time.
+  PERFORM pg_advisory_xact_lock(hashtext('core_audit_partitions'));
   FOR step IN 0..months_ahead LOOP
     lower_bound := (first_month + make_interval(months => step))::date;
     partition_name := 'core_audit_log_' || to_char(lower_bound, 'YYYYMM');
@@ -118,6 +120,7 @@ BEGIN
     RAISE EXCEPTION 'cutoff % is inside the 24-month audit retention', cutoff
       USING ERRCODE = '22023';
   END IF;
+  PERFORM pg_advisory_xact_lock(hashtext('core_audit_partitions'));
   FOR candidate IN
     SELECT c.relname AS name,
            substring(pg_get_expr(c.relpartbound, c.oid) FROM 'TO \(''([^'']+)''\)')::timestamptz AS bound
