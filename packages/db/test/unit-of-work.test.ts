@@ -1,0 +1,192 @@
+import { eq, sql } from 'drizzle-orm';
+import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { AppDatabase, Pool, RequestContext, TenantInsert, UnitOfWork } from '../src/index.ts';
+import {
+  ScopedRepository,
+  createAppPool,
+  findContext,
+  getContext,
+  uuidv7,
+  withUnitOfWork,
+} from '../src/index.ts';
+import { testConfig } from './database.ts';
+
+// Real PostgreSQL as elx_app (plan item A). One connection (pool size 1), so "two sequential
+// transactions on one connection" is literal. Only a temporary table is used: it lives in this
+// session and disappears when the connection closes.
+
+const rows = pgTable('uow_rows', {
+  id: uuid('id').primaryKey(),
+  accountId: uuid('account_id').notNull(),
+  label: text('label').notNull(),
+});
+
+class RowRepository extends ScopedRepository<typeof rows> {
+  constructor(uow: UnitOfWork) {
+    super(uow, rows);
+  }
+  all() {
+    return this.findMany();
+  }
+  byLabel(label: string) {
+    return this.findMany(eq(rows.label, label));
+  }
+  add(...input: TenantInsert<typeof rows>[]) {
+    return this.insertMany(input);
+  }
+  relabel(from: string, to: string) {
+    return this.updateWhere({ label: to }, eq(rows.label, from));
+  }
+  moveToAccount(accountId: string) {
+    return this.updateWhere({ accountId } as never);
+  }
+  removeAll() {
+    return this.deleteWhere();
+  }
+}
+
+const context = (accountId: string): RequestContext => ({
+  accountId,
+  membershipId: null,
+  userId: null,
+  deviceId: null,
+  actingCrossTenant: false,
+});
+
+const currentAccountSetting = async (db: AppDatabase | UnitOfWork['tx']) => {
+  const result = await db.execute<{ value: string | null }>(
+    sql`SELECT current_setting('elx.account_id', true) AS value`,
+  );
+  return result[0]?.value ?? null;
+};
+
+describe('withUnitOfWork on the elx_app pool', () => {
+  let pool: Pool<AppDatabase>;
+  const accountA = uuidv7();
+  const accountB = uuidv7();
+
+  beforeAll(async () => {
+    const config = testConfig();
+    pool = createAppPool({ ...config.db, poolSize: { app: 1 } }, 'elx-db-test');
+    await pool.db.execute(sql`SELECT 1`);
+    await pool.db.execute(sql`
+      CREATE TEMPORARY TABLE uow_rows (
+        id uuid PRIMARY KEY,
+        account_id uuid NOT NULL,
+        label text NOT NULL
+      )`);
+  });
+
+  afterAll(async () => {
+    await pool?.close();
+  });
+
+  it('runs as elx_app', async () => {
+    const result = await pool.db.execute<{ who: string }>(sql`SELECT current_user AS who`);
+    expect(result[0]?.who).toBe('elx_app');
+  });
+
+  it('sets elx.account_id inside the transaction only: nothing leaks to the next one', async () => {
+    const inside = await withUnitOfWork(pool.db, context(accountA), ({ tx }) =>
+      currentAccountSetting(tx),
+    );
+    expect(inside).toBe(accountA);
+
+    // Same connection, next transaction without a unit of work: the setting is gone. PostgreSQL
+    // returns '' (not NULL) once a transaction-local setting has been used on a connection, which
+    // is why the policies wrap it in NULLIF (data §4.3).
+    const next = await pool.db.transaction((tx) => currentAccountSetting(tx));
+    expect(next === '' || next === null).toBe(true);
+    const autocommit = await currentAccountSetting(pool.db);
+    expect(autocommit === '' || autocommit === null).toBe(true);
+
+    const other = await withUnitOfWork(pool.db, context(accountB), ({ tx }) =>
+      currentAccountSetting(tx),
+    );
+    expect(other).toBe(accountB);
+  });
+
+  it('does not leak the setting after a rollback either', async () => {
+    await expect(
+      withUnitOfWork(pool.db, context(accountA), () => Promise.reject(new Error('rolled back'))),
+    ).rejects.toThrow('rolled back');
+    const after = await currentAccountSetting(pool.db);
+    expect(after === '' || after === null).toBe(true);
+  });
+
+  it('exposes the context through getContext() inside, and nowhere else', async () => {
+    const seen = await withUnitOfWork(pool.db, context(accountA), () =>
+      Promise.resolve(getContext()),
+    );
+    expect(seen.accountId).toBe(accountA);
+    expect(Object.isFrozen(seen)).toBe(true);
+    expect(findContext()).toBeUndefined();
+    expect(() => getContext()).toThrow('No request context');
+  });
+
+  it('refuses a context without a valid account id', async () => {
+    await expect(
+      withUnitOfWork(pool.db, context("x', true); DROP TABLE uow_rows; --"), () =>
+        Promise.resolve(1),
+      ),
+    ).rejects.toThrow('no valid account id');
+  });
+
+  it('sets account_id from the context on insert, whatever the input says', async () => {
+    const inserted = await withUnitOfWork(pool.db, context(accountA), (uow) =>
+      new RowRepository(uow).add(
+        { id: uuidv7(), label: 'a-1' },
+        // A caller cannot pick the account: an accountId in the input is replaced.
+        { id: uuidv7(), label: 'a-2', accountId: accountB } as TenantInsert<typeof rows>,
+      ),
+    );
+    expect(inserted.map((row) => row.accountId)).toEqual([accountA, accountA]);
+    await withUnitOfWork(pool.db, context(accountB), (uow) =>
+      new RowRepository(uow).add({ id: uuidv7(), label: 'b-1' }),
+    );
+
+    const stored = await pool.db.execute<{ account_id: string; label: string }>(
+      sql`SELECT account_id, label FROM uow_rows ORDER BY label`,
+    );
+    expect(stored.map((row) => [row.label, row.account_id])).toEqual([
+      ['a-1', accountA],
+      ['a-2', accountA],
+      ['b-1', accountB],
+    ]);
+  });
+
+  it('adds the account predicate to reads, updates and deletes', async () => {
+    const seenByA = await withUnitOfWork(pool.db, context(accountA), (uow) =>
+      new RowRepository(uow).all(),
+    );
+    expect(seenByA.map((row) => row.label).sort()).toEqual(['a-1', 'a-2']);
+
+    // B asks for A's label: the predicate still limits it to B.
+    const crossRead = await withUnitOfWork(pool.db, context(accountB), (uow) =>
+      new RowRepository(uow).byLabel('a-1'),
+    );
+    expect(crossRead).toEqual([]);
+
+    const crossUpdate = await withUnitOfWork(pool.db, context(accountB), (uow) =>
+      new RowRepository(uow).relabel('a-1', 'taken'),
+    );
+    expect(crossUpdate).toEqual([]);
+
+    await expect(
+      withUnitOfWork(pool.db, context(accountA), (uow) =>
+        new RowRepository(uow).moveToAccount(accountB),
+      ),
+    ).rejects.toThrow('cannot change account_id');
+
+    const deletedByB = await withUnitOfWork(pool.db, context(accountB), (uow) =>
+      new RowRepository(uow).removeAll(),
+    );
+    expect(deletedByB.map((row) => row.label)).toEqual(['b-1']);
+
+    const left = await pool.db.execute<{ label: string }>(
+      sql`SELECT label FROM uow_rows ORDER BY label`,
+    );
+    expect(left.map((row) => row.label)).toEqual(['a-1', 'a-2']);
+  });
+});
