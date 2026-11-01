@@ -1,10 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { OutboxRow } from '@eeasy-logistics/contracts/platform/schemas';
 import { operationSchemas } from '@eeasy-logistics/contracts/platform/schemas';
-import type { Pool } from '@eeasy-logistics/db';
-import { uuidv7 } from '@eeasy-logistics/db';
+import type { AppDatabase, Pool } from '@eeasy-logistics/db';
+import { createAppPool, uuidv7, withUnitOfWork } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
-import { createPlatformPool, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
+import { createPlatformPool } from '@eeasy-logistics/db/platform';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Queue, Worker } from 'bullmq';
@@ -22,10 +22,7 @@ import {
   OutboxQueues,
   outboxQueueName,
 } from '../../src/modules/kernel/outbox/queues.js';
-import {
-  PlatformOutbox,
-  platformReplayStore,
-} from '../../src/modules/kernel/platform/outbox.repository.js';
+import { tenantReplayStore } from '../../src/modules/kernel/outbox/outbox.repository.js';
 import type { OutboxKind } from '../../src/modules/kernel/schema/outbox.js';
 import { pruneOutbox, runOutboxPrune } from '../../src/worker/system/outbox-prune.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
@@ -89,6 +86,7 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
   const reason = 'Ticket 42: replay after the fix';
   let owner: postgres.Sql;
   let pool: Pool<PlatformDatabase>;
+  let appPool: Pool<AppDatabase>;
   let redis: Redis;
   let queues: OutboxQueues;
   let app: INestApplication<App>;
@@ -147,6 +145,7 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
   beforeAll(async () => {
     owner = connectAs('owner', config);
     pool = createPlatformPool(config.db, 'outbox-platform-test');
+    appPool = createAppPool(config.db, 'outbox-platform-test-app');
     const token = await signAccessToken(signing, 'platform', { claims: { sub: platformUser } });
     platform = `${platformCookie}=${token}`;
     await owner`INSERT INTO core_accounts (id, name) VALUES
@@ -180,7 +179,7 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
       if (keys.length > 0) await redis.del(...keys);
     } while (cursor !== '0');
     redis?.disconnect();
-    await Promise.all([owner?.end(), pool?.close()]);
+    await Promise.all([owner?.end(), pool?.close(), appPool?.close()]);
   });
 
   describe('platformListOutbox', () => {
@@ -335,6 +334,8 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
       expect(audit.map((r) => [r.action, r.accountId, r.targetId])).toEqual([
         ['platform.cross_tenant.accessed', accountB, accountB],
       ]);
+      // The door's row names the outbox row it opened on (adversary L-6).
+      expect(audit[0]?.after).toMatchObject({ resource_id: id, outcome: 'ok' });
     });
 
     it('a platform-only row: metadata only, no door', async () => {
@@ -530,11 +531,12 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
         status: 'done',
       });
       const b1 = await plant({ account: accountB, kind: 'channel_publish', type: bulkType });
-      const response = await post(
-        '/v1/platform/outbox/replay-dead',
-        { account_id: accountA, kind: 'channel_publish', type: bulkType, reason },
-        { 'X-Support-Reason': reason },
-      ).expect(202);
+      const response = await post('/v1/platform/outbox/replay-dead', {
+        account_id: accountA,
+        kind: 'channel_publish',
+        type: bulkType,
+        reason,
+      }).expect(202);
       expect(bulkOp.responses['202'].parse(response.body)).toEqual({ matched: 3, replayed: 2 });
       expect((await stored(a1))?.status).toBe('pending');
       expect((await stored(a2))?.status).toBe('pending');
@@ -552,36 +554,56 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
         account_id: accountA,
         type: bulkType,
       });
-    });
-
-    it('without account_id: across accounts, no door, audited with no account', async () => {
-      const response = await post(
-        '/v1/platform/outbox/replay-dead',
-        { kind: 'channel_publish', type: bulkType, reason },
-        { 'X-Support-Reason': reason },
-      ).expect(202);
-      // Account A's 40-day row stays dead; account B's row replays.
-      expect(bulkOp.responses['202'].parse(response.body)).toEqual({ matched: 2, replayed: 1 });
-      const audit = await auditOf(response);
-      expect(audit.map((r) => [r.action, r.accountId])).toEqual([
-        ['platform.outbox_rows.replayed', null],
-      ]);
+      // The replayed rows by id (adversary M-1); the body's reason on both rows.
+      const listed = (audit[1]?.after as { outbox_ids: string[] }).outbox_ids;
+      expect([...listed].sort()).toEqual([a1, a2].sort());
+      expect(audit.map((r) => r.reason)).toEqual([reason, reason]);
       await owner`UPDATE core_outbox SET status = 'dead' WHERE type = ${bulkType} AND status = 'pending'`;
     });
 
-    it('requires kind (400) and the support reason', async () => {
-      const noKind = await post(
-        '/v1/platform/outbox/replay-dead',
-        { reason },
-        { 'X-Support-Reason': reason },
-      ).expect(400);
-      expect(errorOf(noKind.body).code).toBe('validation_failed');
-      const noReason = await post('/v1/platform/outbox/replay-dead', {
-        account_id: accountA,
+    it('refuses a bulk replay without account_id: 400 at /body/account_id, nothing replayed (adversary M-1)', async () => {
+      const response = await post('/v1/platform/outbox/replay-dead', {
         kind: 'channel_publish',
+        type: bulkType,
         reason,
       }).expect(400);
-      expect(errorOf(noReason.body).code).toBe('reason_required');
+      expect(errorOf(response.body)).toMatchObject({ code: 'validation_failed' });
+      expect(errorOf(response.body).details?.fields).toEqual(
+        expect.arrayContaining([expect.objectContaining({ pointer: '/body/account_id' })]),
+      );
+      const pending = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_outbox WHERE type = ${bulkType} AND status = 'pending'`;
+      expect(pending[0]?.n).toBe(0);
+    });
+
+    it('requires kind (400) and checks the body reason like the door (adversary L-7)', async () => {
+      const noKind = await post('/v1/platform/outbox/replay-dead', {
+        account_id: accountA,
+        reason,
+      }).expect(400);
+      expect(errorOf(noKind.body).code).toBe('validation_failed');
+      const blank = await post('/v1/platform/outbox/replay-dead', {
+        account_id: accountA,
+        kind: 'channel_publish',
+        reason: '   ',
+      }).expect(400);
+      expect(errorOf(blank.body).code).toBe('reason_required');
+      const control = await post('/v1/platform/outbox/replay-dead', {
+        account_id: accountA,
+        kind: 'channel_publish',
+        reason: 'Ticket 42\u0007 replay',
+      }).expect(400);
+      expect(errorOf(control.body).details?.fields).toEqual([
+        expect.objectContaining({ pointer: '/body/reason' }),
+      ]);
+      const long = await post('/v1/platform/outbox/replay-dead', {
+        account_id: accountA,
+        kind: 'channel_publish',
+        reason: 'x'.repeat(201),
+      }).expect(400);
+      expect(errorOf(long.body).details?.fields).toEqual([
+        expect.objectContaining({ pointer: '/body/reason' }),
+      ]);
     });
 
     it('replays in batches, one row per supersede key', async () => {
@@ -594,27 +616,21 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
         await plant({ account: accountA, kind: 'channel_publish', type, supersedeKey: key }),
         await plant({ account: null, kind: 'channel_publish', type }),
       ];
-      const counts = await withPlatformUnitOfWork(pool.db, (uow) =>
-        replayBulk(
-          platformReplayStore(new PlatformOutbox(uow), 'all'),
-          queues,
-          {
-            kind: 'channel_publish',
-            type,
-          },
-          2,
-        ),
+      // Through account A's unit of work, as the door runs it: B's and the platform row stay.
+      const context = {
+        accountId: accountA,
+        membershipId: null,
+        userId: null,
+        deviceId: null,
+        actingCrossTenant: false,
+      };
+      const counts = await withUnitOfWork(appPool.db, context, (uow) =>
+        replayBulk(tenantReplayStore(uow), queues, { kind: 'channel_publish', type }, 2),
       );
-      expect(counts).toEqual({ matched: 5, replayed: 4 });
+      expect(counts).toEqual({ matched: 3, replayed: 2, ids: [ids[3], ids[0]] });
       const statuses = await owner<{ id: string; status: string }[]>`
         SELECT id, status FROM core_outbox WHERE type = ${type} ORDER BY id`;
-      expect(statuses.map((r) => r.status)).toEqual([
-        'pending',
-        'dead',
-        'pending',
-        'pending',
-        'pending',
-      ]);
+      expect(statuses.map((r) => r.status)).toEqual(['pending', 'dead', 'dead', 'pending', 'dead']);
       expect(statuses.map((r) => r.id)).toEqual(ids);
       await owner`DELETE FROM core_outbox WHERE type = ${type}`;
     });

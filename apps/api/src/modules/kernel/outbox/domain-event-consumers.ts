@@ -1,3 +1,4 @@
+import type { UnitOfWork } from '@eeasy-logistics/db';
 import type { DomainEvent, DomainEventType } from './domain-event.js';
 
 // In-process consumers of `internal_event` rows (PLAT-8 plan 2.6; domain model §2.7, §6.2, §6.3;
@@ -10,11 +11,13 @@ export interface DomainEventConsumer {
   /** Stable, `<context>.<what>` (e.g. `kernel.account_suspended_log`). */
   readonly consumer: string;
   /**
-   * Handles one event, at least once per event and in `sequence` order per aggregate. Runs inside
-   * the platform-pool transaction that inserted its receipt (with `elx.account_id` set to the
-   * event's account), so a failure rolls the receipt back and the event is retried.
+   * Handles one event, at least once per event and in `sequence` order per aggregate. An account's
+   * event runs in a tenant unit of work on `elx_app` for the event's account (`uow`: repositories
+   * built on it see that account's rows only, by predicate and by RLS), the same transaction that
+   * inserted its receipt, so a failure rolls the receipt back and the event is retried. A
+   * platform-only event (no account) gets no unit of work (adversary M-3).
    */
-  handle(event: DomainEvent): Promise<void>;
+  handle(event: DomainEvent, uow?: UnitOfWork): Promise<void>;
 }
 
 type ConsumerClass = abstract new (...args: never[]) => DomainEventConsumer;

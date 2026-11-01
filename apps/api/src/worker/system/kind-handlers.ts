@@ -1,5 +1,5 @@
 import type { Config } from '@eeasy-logistics/config';
-import type { Pool } from '@eeasy-logistics/db';
+import type { AppDatabase, Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { Logger } from '@nestjs/common';
 import { kernelConsumers } from '../../modules/kernel/outbox/account-suspended.consumer.js';
@@ -25,18 +25,29 @@ export function objectStorageFor(config: Config): ObjectStorage | undefined {
   return env === 'local' || env === 'ci' ? new StubObjectStorage(env) : undefined;
 }
 
+/**
+ * `internal_event` needs the `elx_app` pool too (consumers run in a tenant unit of work, adversary
+ * M-3): without `DATABASE_URL_APP` the kind has no handler and its rows wait `pending`.
+ */
 export function buildKindHandlers(
   config: Config,
   pool: Pool<PlatformDatabase>,
+  app: Pool<AppDatabase> | undefined,
   logger: { warn(message: string): void } = new Logger('OutboxHandlers'),
 ): KindHandler[] {
-  const handlers: KindHandler[] = [
-    new InternalEventDispatcher({
-      db: pool.db,
-      consumers: new DomainEventConsumerRegistry(kernelConsumers()),
-      logger,
-    }),
-  ];
+  const handlers: KindHandler[] = [];
+  if (app === undefined) {
+    logger.warn('internal_event has no handler: DATABASE_URL_APP not configured');
+  } else {
+    handlers.push(
+      new InternalEventDispatcher({
+        db: pool.db,
+        app: app.db,
+        consumers: new DomainEventConsumerRegistry(kernelConsumers()),
+        logger,
+      }),
+    );
+  }
   const storage = objectStorageFor(config);
   if (storage === undefined) {
     logger.warn('storage_lifecycle has no handler: no object storage adapter before OPS-1');

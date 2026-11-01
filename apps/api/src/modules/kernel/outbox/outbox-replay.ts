@@ -17,6 +17,8 @@ import type { OutboxQueues } from './queues.js';
 export const replayWindowDays = 35;
 /** Rows per bulk replay batch (plan 2.7). */
 export const replayBatchSize = 500;
+/** Replayed row ids a bulk replay's audit row lists at most (adversary M-1). */
+export const replayAuditIdLimit = 500;
 
 export type ReplayRefusal =
   'not_dead' | 'outside_receipt_window' | 'supersede_pending' | 'job_active';
@@ -60,6 +62,7 @@ export function replayedState() {
   return {
     status: 'pending',
     attempts: 0,
+    deferrals: 0,
     nextAttemptAt: new Date(),
     enqueuedAt: null,
     doneAt: null,
@@ -159,6 +162,8 @@ export interface BulkReplayCounts {
   readonly matched: number;
   /** Rows set `pending`. */
   readonly replayed: number;
+  /** Their ids, at most `replayAuditIdLimit`. */
+  readonly ids: readonly string[];
 }
 
 /**
@@ -174,6 +179,7 @@ export async function replayBulk(
 ): Promise<BulkReplayCounts> {
   let matched = 0;
   let replayed = 0;
+  const replayedIds: string[] = [];
   let afterId: string | undefined;
   for (;;) {
     const batch = await store.deadRows(filter, afterId, batchSize);
@@ -209,7 +215,8 @@ export async function replayBulk(
       await store.markDeadLettersReplayed(changed);
     }
     replayed += changed.length;
+    replayedIds.push(...changed.slice(0, Math.max(0, replayAuditIdLimit - replayedIds.length)));
     if (batch.length < batchSize) break;
   }
-  return { matched, replayed };
+  return { matched, replayed, ids: replayedIds };
 }

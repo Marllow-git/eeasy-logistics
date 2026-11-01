@@ -1,5 +1,5 @@
-import type { Pool } from '@eeasy-logistics/db';
-import { uuidv7 } from '@eeasy-logistics/db';
+import type { AppDatabase, Pool, UnitOfWork } from '@eeasy-logistics/db';
+import { createAppPool, uuidv7 } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { createPlatformPool, withPlatformAccountTransaction } from '@eeasy-logistics/db/platform';
 import { DelayedError } from 'bullmq';
@@ -15,6 +15,7 @@ import {
 } from '../../src/modules/kernel/outbox/domain-event-consumers.js';
 import { KindHandlerRegistry } from '../../src/modules/kernel/outbox/kind-handlers.js';
 import { nextOutboxId } from '../../src/modules/kernel/outbox/outbox-id.js';
+import { OutboxRepository } from '../../src/modules/kernel/outbox/outbox.repository.js';
 import type { OutboxJobData } from '../../src/modules/kernel/outbox/queues.js';
 import { InternalEventDispatcher, parkWindowMs } from '../../src/worker/system/internal-events.js';
 import type { JobResult, OutboxJob } from '../../src/worker/system/outbox-workers.js';
@@ -53,10 +54,27 @@ class SiteOnly implements DomainEventConsumer {
   }
 }
 
+/** Reads two rows through the unit of work it is given (adversary M-3). */
+@OnDomainEvent('core.site.updated')
+class Snooper implements DomainEventConsumer {
+  readonly consumer = 'test.snooper';
+  readonly found: Record<string, boolean> = {};
+  accountSeen: string | undefined;
+  constructor(private readonly ids: readonly string[]) {}
+  async handle(_event: DomainEvent, uow?: UnitOfWork): Promise<void> {
+    if (uow === undefined) throw new Error('no unit of work');
+    this.accountSeen = uow.context.accountId;
+    const rows = new OutboxRepository(uow);
+    for (const id of this.ids) this.found[id] = (await rows.find(id)) !== undefined;
+  }
+}
+
 describe('internal event dispatcher (plan 2.6)', () => {
   const account = uuidv7();
+  const other = uuidv7();
   let owner: postgres.Sql;
   let pool: Pool<PlatformDatabase>;
+  let app: Pool<AppDatabase>;
   const eventIds: string[] = [];
 
   const insert = async (
@@ -65,13 +83,14 @@ describe('internal event dispatcher (plan 2.6)', () => {
     type: DomainEventType = 'core.site.updated',
     attempts = 0,
     enqueuedAgoMs = 0,
+    accountId: string = account,
   ) => {
     const id = nextOutboxId();
     eventIds.push(id);
     await owner`
       INSERT INTO core_outbox (id, type, event_version, account_id, aggregate_type, aggregate_id,
                                sequence, payload, kind, status, attempts, enqueued_at)
-      VALUES (${id}, ${type}, 1, ${account}, 'site', ${aggregateId}, ${sequence}, '{}',
+      VALUES (${id}, ${type}, 1, ${accountId}, 'site', ${aggregateId}, ${sequence}, '{}',
               'internal_event', 'enqueued', ${attempts},
               now() - make_interval(secs => ${enqueuedAgoMs / 1_000}))`;
     return id;
@@ -116,6 +135,7 @@ describe('internal event dispatcher (plan 2.6)', () => {
     const now = () => new Date(nowMs);
     const dispatcher = new InternalEventDispatcher({
       db: pool.db,
+      app: app.db,
       consumers: new DomainEventConsumerRegistry(consumers),
       logger: quiet,
       now,
@@ -147,15 +167,17 @@ describe('internal event dispatcher (plan 2.6)', () => {
   beforeAll(async () => {
     owner = connectAs('owner', config);
     pool = createPlatformPool(config.db, 'outbox-consumers-test');
-    await owner`INSERT INTO core_accounts (id, name, status) VALUES (${account}, 'consumers', 'active')`;
+    app = createAppPool(config.db, 'outbox-consumers-test-app');
+    await owner`INSERT INTO core_accounts (id, name, status)
+                VALUES (${account}, 'consumers', 'active'), (${other}, 'consumers other', 'active')`;
   });
 
   afterAll(async () => {
     await owner`DELETE FROM core_consumer_receipts WHERE event_id IN ${owner(eventIds)}`;
     await owner`DELETE FROM core_consumer_dead_letters WHERE event_id IN ${owner(eventIds)}`;
     await owner`DELETE FROM core_outbox WHERE id IN ${owner(eventIds)}`;
-    await owner`DELETE FROM core_accounts WHERE id = ${account}`;
-    await Promise.all([owner.end(), pool.close()]);
+    await owner`DELETE FROM core_accounts WHERE id IN (${account}, ${other})`;
+    await Promise.all([owner.end(), pool.close(), app.close()]);
   });
 
   it("runs receipts in a platform transaction set to the event's account (none without one)", async () => {
@@ -281,6 +303,35 @@ describe('internal event dispatcher (plan 2.6)', () => {
     expect((await receipts(second)).map((r) => r.consumer)).toEqual(['test.site_only']);
     expect(recorder.seen).toEqual([]);
     expect(await row(second)).toMatchObject({ status: 'dead', parked_consumers: null });
+  });
+
+  it('runs a consumer in a tenant unit of work on elx_app: it cannot read another account (adversary M-3)', async () => {
+    const own = await insert(uuidv7(), 1, 'core.feature_flag.changed');
+    const foreign = await insert(uuidv7(), 1, 'core.feature_flag.changed', 0, 0, other);
+    const snooper = new Snooper([own, foreign]);
+    const id = await insert(uuidv7(), 1);
+    expect(await deliver([snooper], id)).toBe('done');
+    expect(snooper.accountSeen).toBe(account);
+    expect(snooper.found).toEqual({ [own]: true, [foreign]: false });
+    // The receipt was written in that tenant transaction, with the event's account.
+    expect(await receipts(id)).toEqual([{ consumer: 'test.snooper', account_id: account }]);
+    await owner`UPDATE core_outbox SET status = 'done' WHERE id IN (${own}, ${foreign})`;
+  });
+
+  it('ends dead, never done, when a consumer is settled by a live dead letter (adversary L-5)', async () => {
+    const recorder = new Recorder();
+    const site = new SiteOnly();
+    const id = await insert(uuidv7(), 1);
+    await owner`
+      INSERT INTO core_consumer_dead_letters (id, consumer, event_id, account_id, attempts, last_error)
+      VALUES (${uuidv7()}, 'test.recorder', ${id}, ${account}, 10, 'recorder down')`;
+    expect(await deliver([recorder, site], id)).toBe('dead');
+    expect(recorder.seen).toEqual([]);
+    expect(site.seen).toEqual([id]);
+    expect(await row(id)).toMatchObject({
+      status: 'dead',
+      last_error: 'dead-lettered for test.recorder',
+    });
   });
 
   it('measures the park window from the first park, not from enqueued_at (lead review round 3)', async () => {

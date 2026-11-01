@@ -3,7 +3,7 @@ import type { KindOutcome, OutboxRow, OutcomeError } from './kind-handlers.js';
 import { parkedRetryS } from './connection-parker.js';
 import { ProviderFailure } from './provider-failure.js';
 import type { QueuePolicy } from './queue-options.js';
-import { isFinalFailure, retryDelayMs } from './queue-options.js';
+import { baseDelayMs, isFinalFailure, retryDelayMs } from './queue-options.js';
 
 // The outcome of one execution as it is written back to the row (PLAT-8 plan 2.5; integrations
 // §4.2, §4.4). Pure, so the rules are unit-tested; the queue worker does the writing.
@@ -12,6 +12,10 @@ import { isFinalFailure, retryDelayMs } from './queue-options.js';
 export const maxLastErrorLength = 500;
 /** A provider's `Retry-After` is honoured up to a day. */
 export const maxRetryAfterS = 24 * 60 * 60;
+/** Retries that consume no attempt, at most; the next one is `dead` (adversary M-4). */
+export const maxDeferrals = 50;
+/** No retry comes sooner than a second (adversary M-4: `retry_after 0` must not loop). */
+export const minRetryDelayMs = 1_000;
 
 const redacted = '[redacted]';
 /** C0 controls and DEL become spaces (a provider message may carry newlines or escapes). */
@@ -23,6 +27,15 @@ const withoutControls = (text: string): string =>
     .join('')
     .replace(/ {2,}/g, ' ');
 const bearer = /\bbearer\s+[^\s,;"']+/gi;
+/** `Basic <base64>` credentials. */
+const basic = /\bbasic\s+[A-Za-z0-9+/=._~-]+/gi;
+/** `Digest k="v", k=v, …` credentials: every parameter goes. */
+const digest =
+  /\bdigest\s+[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+)(?:\s*,\s*[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+))*/gi;
+/** URL user-info, `scheme://user:password@host`. */
+const userInfo = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
+/** A quoted value (it may hold spaces and commas) of a `name=` / `name:` pair. */
+const quotedPair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["'])((?:(?!\4).)*)\4/g;
 const jwt = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
 /** `name=value`, `name: value` and `"name":"value"` pairs; the value goes when the name is a secret. */
 const pair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["']?)([^\s,;&"'}]+)\4/g;
@@ -36,7 +49,13 @@ const pair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["']?)([^\s,;&"'}]+
 export function redactErrorMessage(message: string): string {
   const clean = withoutControls(message)
     .replace(bearer, `Bearer ${redacted}`)
+    .replace(digest, `Digest ${redacted}`)
+    .replace(basic, `Basic ${redacted}`)
+    .replace(userInfo, `$1${redacted}@`)
     .replace(jwt, redacted)
+    .replace(quotedPair, (whole, q1: string, key: string, sep: string, q2: string) =>
+      isSecretKey(key) ? `${q1}${key}${q1}${sep}${q2}${redacted}${q2}` : whole,
+    )
     .replace(pair, (whole, q1: string, key: string, sep: string, q2: string) =>
       isSecretKey(key) ? `${q1}${key}${q1}${sep}${q2}${redacted}${q2}` : whole,
     )
@@ -103,6 +122,8 @@ export type RowWrite =
       readonly lastError: string | null;
       /** The consumers the row is parked for; null when the retry is not a park. */
       readonly parkedConsumers: readonly string[] | null;
+      /** Retries so far that consumed no attempt. */
+      readonly deferrals: number;
     };
 
 const finiteSeconds = (value: number | undefined): number | undefined =>
@@ -117,7 +138,7 @@ const finiteSeconds = (value: number | undefined): number | undefined =>
  * stays `enqueued` (its job is moved to delayed, so successors stay held by the relay).
  */
 export function resolveOutcome(
-  row: Pick<OutboxRow, 'attempts' | 'createdAt'>,
+  row: Pick<OutboxRow, 'attempts' | 'createdAt' | 'deferrals'>,
   outcome: KindOutcome,
   policy: QueuePolicy,
   now: Date,
@@ -137,10 +158,26 @@ export function resolveOutcome(
       if (outcome.consumesAttempt && isFinalFailure(policy, attempts, ageMs)) {
         return { status: 'dead', attempts, lastError: lastError ?? 'retry budget spent' };
       }
+      // A retry that consumes no attempt still ages out on the kind's time budget and stops after
+      // 50 of them (adversary M-4), so a provider that keeps answering 429 cannot hold a row
+      // forever.
+      const deferrals = row.deferrals + (outcome.consumesAttempt ? 0 : 1);
+      if (!outcome.consumesAttempt) {
+        const aged = 'afterMs' in policy.deadAfter && ageMs >= policy.deadAfter.afterMs;
+        if (aged || deferrals > maxDeferrals) {
+          return {
+            status: 'dead',
+            attempts,
+            lastError: lastError ?? (aged ? 'retry budget spent' : 'too many deferrals'),
+          };
+        }
+      }
       const afterS = finiteSeconds(outcome.retryAfterS);
+      // A provider's time is floored at the kind's first backoff step and a second.
+      const floorMs = Math.max(minRetryDelayMs, baseDelayMs(policy.backoff, 1));
       const delayMs =
         afterS !== undefined
-          ? afterS * 1_000
+          ? Math.max(afterS * 1_000, floorMs)
           : retryDelayMs(policy.backoff, Math.max(attempts, 1), random);
       return {
         status: 'enqueued',
@@ -148,6 +185,7 @@ export function resolveOutcome(
         nextAttemptAt: new Date(now.getTime() + delayMs),
         lastError,
         parkedConsumers: outcome.parked === undefined ? null : [...outcome.parked.consumers],
+        deferrals,
       };
     }
   }

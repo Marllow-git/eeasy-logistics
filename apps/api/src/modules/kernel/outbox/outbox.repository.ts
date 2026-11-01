@@ -1,7 +1,7 @@
 import type { UnitOfWork } from '@eeasy-logistics/db';
 import { ScopedRepository } from '@eeasy-logistics/db';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { coreConsumerDeadLetters, coreOutbox } from '../schema/outbox.js';
+import { coreConsumerDeadLetters, coreConsumerReceipts, coreOutbox } from '../schema/outbox.js';
 import type { OutboxPageQuery, OutboxRecord } from './outbox-list.js';
 import { outboxPageCondition, outboxPageOrder } from './outbox-list.js';
 import type { BulkReplayFilter, ReplayCandidate, ReplayStore } from './outbox-replay.js';
@@ -106,6 +106,22 @@ export class ConsumerDeadLetterRepository extends ScopedRepository<typeof coreCo
   async markReplayed(eventIds: readonly string[]): Promise<void> {
     if (eventIds.length === 0) return;
     await this.updateWhere({ replayedAt: new Date() }, liveDeadLetters(eventIds));
+  }
+}
+
+/**
+ * The tenant side of `core_consumer_receipts` (adversary M-3): an internal consumer of an account's
+ * event claims its receipt in the tenant unit of work it then runs in, on `elx_app`.
+ */
+export class ConsumerReceiptRepository extends ScopedRepository<typeof coreConsumerReceipts> {
+  constructor(uow: UnitOfWork) {
+    super(uow, coreConsumerReceipts);
+  }
+
+  /** Inserts the receipt; false when it exists (the event was processed: skip). */
+  async claim(consumer: string, eventId: string): Promise<boolean> {
+    const inserted = await this.insertIgnoringConflicts([{ consumer, eventId }]);
+    return inserted.length === 1;
   }
 }
 

@@ -1,6 +1,6 @@
 import type { Config } from '@eeasy-logistics/config';
-import type { Pool } from '@eeasy-logistics/db';
-import { verifyPoolRole } from '@eeasy-logistics/db';
+import type { AppDatabase, Pool } from '@eeasy-logistics/db';
+import { createAppPool, verifyPoolRole } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { createPlatformPool, listenOnPlatformPool } from '@eeasy-logistics/db/platform';
 import { Logger } from '@nestjs/common';
@@ -38,10 +38,16 @@ type PurgeRedis = Pick<Redis, 'set' | 'eval' | 'status' | 'connect' | 'disconnec
 /** What the worker builds from the configuration; replaced by doubles in unit tests. */
 export interface WorkerDependencies {
   readonly platformPool: (config: Config) => Pool<PlatformDatabase>;
+  /** The `elx_app` pool internal consumers run on (adversary M-3); only with `DATABASE_URL_APP`. */
+  readonly appPool: (config: Config) => Pool<AppDatabase>;
   readonly redis: (config: Config) => PurgeRedis;
   readonly verifyRole: (db: PlatformDatabase) => Promise<void>;
   /** The outbox kind handlers of this build (plan 2.5). */
-  readonly kindHandlers: (config: Config, pool: Pool<PlatformDatabase>) => readonly KindHandler[];
+  readonly kindHandlers: (
+    config: Config,
+    pool: Pool<PlatformDatabase>,
+    app: Pool<AppDatabase> | undefined,
+  ) => readonly KindHandler[];
   /** Starts the outbox relay on the platform pool, with the lock on `redis` (OUTBOX_RELAY=on). */
   readonly outboxRelay: (
     config: Config,
@@ -121,6 +127,7 @@ async function startOutboxWorkers(
 
 const defaults: WorkerDependencies = {
   platformPool: (config) => createPlatformPool(config.db, 'elx-worker-platform'),
+  appPool: (config) => createAppPool(config.db, 'elx-worker-app'),
   redis: (config) => {
     const client = new Redis(config.redis.url?.reveal() ?? '', {
       lazyConnect: true,
@@ -221,7 +228,8 @@ export async function startWorker(
   } else {
     deps.logger.log('Outbox prune off (OUTBOX_PRUNE=off)');
   }
-  const registry = new KindHandlerRegistry(deps.kindHandlers(config, pool));
+  const app = config.db.urls.app === undefined ? undefined : deps.appPool(config);
+  const registry = new KindHandlerRegistry(deps.kindHandlers(config, pool, app));
   let relay: StartedJob | undefined;
   if (config.outbox.relay) {
     if (redis.status === 'wait') await redis.connect().catch(() => undefined);
@@ -243,7 +251,7 @@ export async function startWorker(
       await relay?.stop();
       await queues.stop();
       redis.disconnect();
-      await pool.close();
+      await Promise.all([pool.close(), app?.close()]);
     },
   };
 }

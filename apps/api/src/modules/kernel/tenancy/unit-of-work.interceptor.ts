@@ -151,6 +151,8 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
     platform: PlatformFrames,
   ): Promise<unknown> {
     const { principal, request, requestId, handle } = call;
+    /** A `lookup` door's resource (the outbox row), named in its audit rows (adversary L-6). */
+    let resourceId: string | undefined;
     const event = (
       action: 'accessed' | 'refused',
       fields: {
@@ -168,7 +170,12 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       targetType: fields.targetType ?? 'account',
       targetId: fields.targetId,
       action: `platform.cross_tenant.${action}`,
-      after: { operation: call.operation, outcome: fields.outcome, status: fields.status },
+      after: {
+        operation: call.operation,
+        outcome: fields.outcome,
+        status: fields.status,
+        ...(resourceId === undefined ? {} : { resource_id: resourceId }),
+      },
       reason: fields.reason,
       requestId,
       clientRequestId: clientRequestIdOf(request),
@@ -203,16 +210,17 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
     if (source.from === 'lookup') {
       // The resource names the account (PLAT-8 plan 2.7): resolved on the platform pool first. An
       // unknown resource is refused like an unknown account; one of no account is platform work.
-      const resourceId = target.accountId;
+      resourceId = target.accountId;
+      const lookupId = resourceId;
       const found = await platform.runPlatform({ userId: principal.userId, requestId }, () =>
-        source.lookup(resourceId),
+        source.lookup(lookupId),
       );
       if (found === undefined) {
         const error = new ApiException('not_found');
         await write('refused', {
           accountId: null,
           targetType: resourceType,
-          targetId: resourceId,
+          targetId: lookupId,
           reason: target.reason,
           outcome: 'not_found',
           status: error.status,

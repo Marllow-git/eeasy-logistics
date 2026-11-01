@@ -78,8 +78,8 @@ const before = (a: RelayRow, b: RelayRow): boolean =>
   a.sequence < b.sequence || (a.sequence === b.sequence && a.id < b.id);
 
 /**
- * The rows of `candidates` that may leave now: those whose ordering scope (kind, aggregate and the
- * handler's key) has no earlier row among `open` (rows still `pending` or `enqueued`, the
+ * The rows of `candidates` that may leave now: those whose ordering scope (kind, account,
+ * aggregate and the handler's key; adversary L-3) has no earlier row among `open` (rows still `pending` or `enqueued`, the
  * candidates included). A row without a key is never held. Pure, so it is unit-tested.
  */
 export function releasable(
@@ -92,7 +92,7 @@ export function releasable(
   for (const row of open) {
     const key = keyOf(row);
     if (key === null) continue;
-    const scope = `${row.kind}\u0000${row.aggregateId}\u0000${key}`;
+    const scope = `${row.kind}\u0000${row.accountId ?? ''}\u0000${row.aggregateId}\u0000${key}`;
     const rows = scopes.get(scope) ?? [];
     rows.push(row);
     scopes.set(scope, rows);
@@ -100,7 +100,9 @@ export function releasable(
   return candidates.filter((row) => {
     const key = keyOf(row);
     if (key === null) return true;
-    const scope = scopes.get(`${row.kind}\u0000${row.aggregateId}\u0000${key}`) ?? [];
+    const scope =
+      scopes.get(`${row.kind}\u0000${row.accountId ?? ''}\u0000${row.aggregateId}\u0000${key}`) ??
+      [];
     return !scope.some((other) => other.id !== row.id && before(other, row));
   });
 }
@@ -116,7 +118,8 @@ export interface RelayBatch {
 
 /**
  * One relay batch, in one transaction on the platform pool: selects up to `batchSize` due rows of
- * kinds with a handler, of accounts that are not suspended (K-2; platform-only rows always;
+ * kinds with a handler, of accounts that are provisioned or active (K-2: not suspended or closed,
+ * adversary L-2; platform-only rows always;
  * `internal_event` rows always, lead ruling on leg 2: the suspension event itself drives the
  * internal effects, and internal consumers make no external call),
  * `ORDER BY id … FOR UPDATE OF o SKIP LOCKED` (a second leader after a lost lock skips them),
@@ -139,7 +142,8 @@ export async function relayBatch(
         LEFT JOIN core_accounts a ON a.id = o.account_id
         WHERE o.status = 'pending' AND o.next_attempt_at <= now()
           AND o.kind IN (${list(kinds)})
-          AND (o.account_id IS NULL OR o.kind = 'internal_event' OR a.status <> 'suspended')
+          AND (o.account_id IS NULL OR o.kind = 'internal_event'
+               OR a.status IN ('provisioned', 'active'))
         ORDER BY o.id
         LIMIT ${batchSize}
         FOR UPDATE OF o SKIP LOCKED`)

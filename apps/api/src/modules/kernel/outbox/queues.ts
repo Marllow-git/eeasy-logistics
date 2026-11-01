@@ -69,10 +69,30 @@ export class OutboxQueues {
     return queue;
   }
 
-  /** Adds one job per row id (`jobId` = row id; an existing job of that id is left as it is). */
+  /**
+   * Adds one job per row id (`jobId` = row id). A waiting, delayed or running job of that id is left
+   * as it is; a finished one (completed or failed, retained) is removed first, since the relay
+   * offers only `pending` rows and a finished job would make the add a no-op (a row the worker
+   * returned to `pending` for its suspended account, adversary M-2).
+   */
   async add(kind: OutboxKind, outboxIds: readonly string[]): Promise<void> {
     if (outboxIds.length === 0) return;
-    await this.#queue(kind).addBulk(
+    const queue = this.#queue(kind);
+    const pipeline = this.connection.pipeline();
+    for (const id of outboxIds) {
+      pipeline.zscore(queue.toKey('completed'), id);
+      pipeline.zscore(queue.toKey('failed'), id);
+    }
+    const results = (await pipeline.exec()) ?? [];
+    const finished = outboxIds.filter((_, index) =>
+      [results[2 * index], results[2 * index + 1]].some((reply) => {
+        if (reply === undefined) throw new Error('no reply');
+        if (reply[0] !== null) throw reply[0];
+        return reply[1] !== null;
+      }),
+    );
+    await Promise.all(finished.map((id) => queue.remove(id, { removeChildren: false })));
+    await queue.addBulk(
       outboxIds.map((outboxId) => ({
         name: kind,
         data: { outboxId },

@@ -47,12 +47,17 @@ describe('outbox outcomes (plan 2.5)', () => {
   let owner: postgres.Sql;
   let pool: Pool<PlatformDatabase>;
 
-  const insert = async (rowKind: OutboxKind = kind, attempts = 0, payload: object = {}) => {
+  const insert = async (
+    rowKind: OutboxKind = kind,
+    attempts = 0,
+    payload: object = {},
+    accountId: string = account,
+  ) => {
     const id = nextOutboxId();
     await owner`
       INSERT INTO core_outbox (id, type, event_version, account_id, aggregate_type, aggregate_id,
                                sequence, payload, kind, status, attempts, enqueued_at)
-      VALUES (${id}, 'core.account.suspended', 1, ${account}, 'account', ${uuidv7()}, 1,
+      VALUES (${id}, 'core.account.suspended', 1, ${accountId}, 'account', ${uuidv7()}, 1,
               ${owner.json(payload as postgres.JSONValue)}, ${rowKind}, 'enqueued', ${attempts}, now())`;
     return id;
   };
@@ -98,6 +103,30 @@ describe('outbox outcomes (plan 2.5)', () => {
     await owner`DELETE FROM core_outbox WHERE account_id = ${account}`;
     // The account keeps its audit rows (FK, K-7): it is left, like the audit suites do.
     await Promise.all([owner.end(), pool.close()]);
+  });
+
+  it("returns a suspended or closed account's row to pending without an attempt or the handler (adversary M-2)", async () => {
+    const execute = vi.fn(() => Promise.resolve<KindOutcome>({ outcome: 'done' }));
+    const handler: KindHandler = { kind, orderingKey: () => null, execute };
+    for (const status of ['suspended', 'closed']) {
+      const held = uuidv7();
+      await owner`INSERT INTO core_accounts (id, name, status) VALUES (${held}, 'held', ${status})`;
+      const id = await insert(kind, 2, {}, held);
+      const { result, moveToDelayed } = runJob(handler, id);
+      expect(await result).toBe('held');
+      expect(await stored(id)).toMatchObject({ status: 'pending', attempts: 2 });
+      expect(moveToDelayed).not.toHaveBeenCalled();
+      await owner`DELETE FROM core_outbox WHERE id = ${id}`;
+      await owner`DELETE FROM core_accounts WHERE id = ${held}`;
+    }
+    expect(execute).not.toHaveBeenCalled();
+    // A provisioned account's row runs.
+    const fresh = uuidv7();
+    await owner`INSERT INTO core_accounts (id, name, status) VALUES (${fresh}, 'fresh', 'provisioned')`;
+    const id = await insert(kind, 0, {}, fresh);
+    expect(await runJob(handler, id).result).toBe('done');
+    await owner`DELETE FROM core_outbox WHERE id = ${id}`;
+    await owner`DELETE FROM core_accounts WHERE id = ${fresh}`;
   });
 
   it('done: the row is done with done_at', async () => {

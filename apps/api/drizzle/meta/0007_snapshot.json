@@ -724,6 +724,13 @@
           "notNull": true,
           "default": 0
         },
+        "deferrals": {
+          "name": "deferrals",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "next_attempt_at": {
           "name": "next_attempt_at",
           "type": "timestamp with time zone",
@@ -953,6 +960,10 @@
         "core_outbox_attempts_check": {
           "name": "core_outbox_attempts_check",
           "value": "\"core_outbox\".\"attempts\" >= 0"
+        },
+        "core_outbox_deferrals_check": {
+          "name": "core_outbox_deferrals_check",
+          "value": "\"core_outbox\".\"deferrals\" >= 0"
         }
       },
       "isRLSEnabled": false

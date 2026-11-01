@@ -3,17 +3,19 @@ import {
   failureOutcome,
   formatLastError,
   maxLastErrorLength,
+  maxDeferrals,
   redactErrorMessage,
   resolveOutcome,
 } from './outcome.js';
 import { ProviderFailure } from './provider-failure.js';
-import { outboxQueuePolicies } from './queue-options.js';
+import { baseDelayMs, outboxQueuePolicies } from './queue-options.js';
 
 // PLAT-8 item E: the outcome rules (plan 2.5; integrations §4.2, §4.4).
 
 const now = new Date('2026-11-01T12:00:00Z');
-const row = (attempts: number, ageMs = 0) => ({
+const row = (attempts: number, ageMs = 0, deferrals = 0) => ({
   attempts,
+  deferrals,
   createdAt: new Date(now.getTime() - ageMs),
 });
 const internal = outboxQueuePolicies.internal_event;
@@ -31,6 +33,31 @@ describe('last_error redaction', () => {
     }
     expect(clean).toContain('order_id=42');
     expect(clean).toContain('upstream refused');
+  });
+
+  it('removes quoted values with spaces or commas, URL user-info, Basic and Digest credentials (adversary L-1)', () => {
+    const cases: [string, string][] = [
+      ['rejected password="correct horse, battery" for user', 'correct horse, battery'],
+      ["rejected {'client_secret': 'a b,c'} ok", 'a b,c'],
+      ['GET https://svc-user:p4ss-w0rd@api.example.com/v1 failed', 'p4ss-w0rd'],
+      ['Authorization: Basic dXNlcjpwYXNz rejected', 'dXNlcjpwYXNz'],
+      [
+        'Authorization: Digest username="bob", realm="x", response="6629fae49393a053" rejected',
+        '6629fae49393a053',
+      ],
+    ];
+    for (const [message, secret] of cases) {
+      const clean = redactErrorMessage(message);
+      expect(clean, message).not.toContain(secret);
+      expect(clean, message).toContain('[redacted]');
+    }
+    expect(redactErrorMessage('GET https://svc-user:pw@api.example.com/v1')).toBe(
+      'GET https://[redacted]@api.example.com/v1',
+    );
+    // A quoted value of a harmless name stays.
+    expect(redactErrorMessage('status="not found, retry later"')).toBe(
+      'status="not found, retry later"',
+    );
   });
 
   it('drops control characters and caps the length', () => {
@@ -110,6 +137,7 @@ describe('resolveOutcome', () => {
       nextAttemptAt: new Date(now.getTime() + 2_000),
       lastError: '500 oops',
       parkedConsumers: null,
+      deferrals: 0,
     });
   });
 
@@ -127,6 +155,7 @@ describe('resolveOutcome', () => {
       nextAttemptAt: new Date(now.getTime() + 30_000),
       lastError: null,
       parkedConsumers: null,
+      deferrals: 1,
     });
     // A park names its consumers for `parked_consumers` (lead review round 3).
     const park = resolveOutcome(
@@ -147,6 +176,24 @@ describe('resolveOutcome', () => {
       lastError: 'parked: sequence gap',
       parkedConsumers: ['kernel.a', 'kernel.b'],
     });
+    // `retry_after 0` is floored at the kind's first step and a second (adversary M-4).
+    const zero = resolveOutcome(
+      row(0),
+      { outcome: 'retry', consumesAttempt: false, retryAfterS: 0 },
+      internal,
+      now,
+    );
+    expect(zero).toMatchObject({ status: 'enqueued', deferrals: 1 });
+    expect(zero.status === 'enqueued' && zero.nextAttemptAt.getTime() - now.getTime()).toBe(1_000);
+    const carrier = resolveOutcome(
+      row(0),
+      { outcome: 'retry', consumesAttempt: false, retryAfterS: 0 },
+      outboxQueuePolicies.carrier_call,
+      now,
+    );
+    expect(carrier.status === 'enqueued' && carrier.nextAttemptAt.getTime() - now.getTime()).toBe(
+      baseDelayMs(outboxQueuePolicies.carrier_call.backoff, 1),
+    );
     // A provider asking for a week gets a day; a nonsense value falls back to the schedule.
     const week = resolveOutcome(
       row(0),
@@ -157,6 +204,26 @@ describe('resolveOutcome', () => {
     expect(week.status === 'enqueued' && week.nextAttemptAt.getTime() - now.getTime()).toBe(
       86_400_000,
     );
+  });
+
+  it('caps retries that consume no attempt at 50 and ages them out on a time budget (adversary M-4)', () => {
+    const limited = { outcome: 'retry', consumesAttempt: false, retryAfterS: 5 } as const;
+    expect(resolveOutcome(row(0, 0, maxDeferrals - 1), limited, internal, now)).toMatchObject({
+      status: 'enqueued',
+      deferrals: maxDeferrals,
+    });
+    expect(resolveOutcome(row(0, 0, maxDeferrals), limited, internal, now)).toEqual({
+      status: 'dead',
+      attempts: 0,
+      lastError: 'too many deferrals',
+    });
+    const webhook = outboxQueuePolicies.webhook;
+    expect(resolveOutcome(row(0, 24 * 3_600_000), limited, webhook, now)).toEqual({
+      status: 'dead',
+      attempts: 0,
+      lastError: 'retry budget spent',
+    });
+    expect(resolveOutcome(row(0, 23 * 3_600_000), limited, webhook, now).status).toBe('enqueued');
   });
 
   it('is dead at the budget: the 10th failure of internal_event, or 24 h for webhook', () => {
