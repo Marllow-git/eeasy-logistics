@@ -95,6 +95,7 @@ Handlers for `webhook` (INT-10), `message` (PLAT-9), `push`, `channel_publish`, 
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A | `PLAT-8: A migration 0007 core_outbox` | integration `outbox-table.test.ts` + `test/schema/tenancy.test.ts`: red 10 failed / 16 passed with the trigger statement removed, green 26/26; migration job twice on a scratch database (applied 8, then "nothing to migrate"); psql: 3 tables, 2 triggers, 6 policies, 11 indexes, DML grants, `pii:` comments; `tsc --noEmit` and eslint clean | receipts and dead letters are nullable-account tables like the outbox (8.2 #1); the NOTIFY is an `AFTER INSERT` statement trigger (8.2 #2); `type` CHECK on the `<context>.<aggregate>.<verb>` shape |
 
 ### 8.1 Skills, documents and versions consulted
 
