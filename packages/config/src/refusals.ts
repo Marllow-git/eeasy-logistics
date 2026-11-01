@@ -4,13 +4,14 @@ import type { AppRole, ServerVariable } from './server.ts';
 /**
  * What production refuses to start without (plan 2.3, platform §3), per process role. Each role gets
  * only the database credential of its duty (data §4.4, ADR-0031; PLAT-5 review H-2, amending PLAT-4):
- * `api` and `worker` need the `elx_app` and `elx_platform` URLs plus the public web URL, Redis,
+ * `api` and `worker` need the `elx_app` and `elx_platform` URLs plus the public web and admin URLs, Redis,
  * object storage, the token signing key and the credentials keys; the one-shot `migrate` job needs
  * only the `elx_owner` URL. No role needs `DATABASE_URL_MAINTENANCE` yet: the deletion tool is a
  * wave 1 order and will get its own role.
  */
 const requiredForRuntime: readonly ServerVariable[] = [
   'PUBLIC_WEB_URL',
+  'PUBLIC_ADMIN_URL',
   'DATABASE_URL_APP',
   'DATABASE_URL_PLATFORM',
   'REDIS_URL',

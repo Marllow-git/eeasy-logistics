@@ -16,6 +16,7 @@ export const productionEnv: Record<string, string> = {
   APP_ENV: 'production',
   PORT: '8080',
   PUBLIC_WEB_URL: 'https://app.example.test',
+  PUBLIC_ADMIN_URL: 'https://admin.example.test',
   PUBLIC_API_URL: 'https://api.example.test',
   DATABASE_URL_APP: 'postgres://elx_app:fake-app-pw@db.internal:5432/elx',
   DATABASE_URL_PLATFORM: 'postgres://elx_platform:fake-platform-pw@db.internal:5432/elx',
