@@ -1,4 +1,4 @@
-import type { OnApplicationShutdown } from '@nestjs/common';
+import type { OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Redis } from 'ioredis';
@@ -32,8 +32,13 @@ export interface WindowCount {
 /** Where the counters live: Redis in the app, a fake in unit tests. */
 export interface RateLimitStore {
   hit(key: string, windowMs: number): Promise<WindowCount>;
+  /** Resolves once the store can answer, or after a bounded wait when it cannot (boot). */
+  ready?(): Promise<void>;
   close(): void;
 }
+
+/** How long boot waits for Redis before serving with rate limits failing open. */
+export const storeReadyTimeoutMs = 2000;
 
 // INCR and PEXPIRE in one script (atomic): the first hit of a window sets its expiry; a counter
 // left without one (never expected) gets it again, so a key can never live forever.
@@ -73,6 +78,18 @@ export function redisRateLimitStore(url: string): RateLimitStore {
       const [count, ttlMs] = await scripted.elxRateLimitHit(key, window);
       return { count: Number(count), ttlMs: Number(ttlMs) };
     },
+    ready: () =>
+      client.status === 'ready'
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            const timer = setTimeout(done, storeReadyTimeoutMs);
+            function done(): void {
+              clearTimeout(timer);
+              client.off('ready', done);
+              resolve();
+            }
+            client.once('ready', done);
+          }),
     close: () => client.disconnect(),
   };
 }
@@ -97,7 +114,7 @@ export interface RateLimiterOptions {
   readonly now?: () => number;
 }
 
-export class RateLimiter implements OnApplicationShutdown {
+export class RateLimiter implements OnModuleInit, OnApplicationShutdown {
   /** Requests served without a check because the store failed (the metric of plan 2.10). */
   failOpenCount = 0;
   readonly #store: RateLimitStore;
@@ -154,6 +171,11 @@ export class RateLimiter implements OnApplicationShutdown {
     this.#logger.warn(
       `rate limits not enforced: the Redis store is unavailable (${this.failOpenCount} requests served unchecked so far)`,
     );
+  }
+
+  /** Boot waits briefly for the store, so the first requests are not served unchecked. */
+  async onModuleInit(): Promise<void> {
+    await this.#store.ready?.();
   }
 
   onApplicationShutdown(): void {

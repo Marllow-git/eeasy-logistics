@@ -23,6 +23,7 @@ import {
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import type { ProbeRow } from './probe-table.js';
 import { ProbeRepository, createProbeTable, dropProbeTable, probeLabels } from './probe-table.js';
+import { webClientHeaders } from '../support/web-client.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-6 item E on the real database: idempotent writes (plan 2.8) and the purge (plan 2.9). The
@@ -150,12 +151,14 @@ describe('idempotent writes (PLAT-6 item E)', () => {
   it('requires a UUID Idempotency-Key and stores nothing without one', async () => {
     const missing = await http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff())
       .send({ label: 'no-key' })
       .expect(400);
     expect(codeOf(missing)).toBe('idempotency_key_required');
     const malformed = await http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff())
       .set('Idempotency-Key', 'not-a-uuid')
       .send({ label: 'no-key' })
@@ -168,6 +171,7 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     const key = randomUUID();
     const first = await http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff())
       .set('Idempotency-Key', key)
       .send({ label: 'once' })
@@ -175,6 +179,7 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     expect(first.headers['idempotency-replayed']).toBeUndefined();
     const replay = await http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff())
       .set('Idempotency-Key', key.toUpperCase())
       .send({ label: 'once' })
@@ -198,12 +203,14 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     const key = randomUUID();
     await http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff())
       .set('Idempotency-Key', key)
       .send({ label: 'first-body' })
       .expect(201);
     const reused = await http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff())
       .set('Idempotency-Key', key)
       .send({ label: 'second-body' })
@@ -220,6 +227,7 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     const cookie = await staff();
     const first = http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', cookie)
       .set('Idempotency-Key', key)
       .send({ label: 'slow' })
@@ -227,6 +235,7 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     await started;
     const second = await http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', cookie)
       .set('Idempotency-Key', key)
       .send({ label: 'slow' })
@@ -242,6 +251,7 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       await http()
         .post('/v1/staff/probe-rows')
+        .set(webClientHeaders(config, 'staff'))
         .set('Cookie', await staff())
         .set('Idempotency-Key', key)
         .send({ label: 'fail' })
@@ -255,12 +265,14 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     const key = randomUUID();
     await http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff())
       .set('Idempotency-Key', key)
       .send({ label: 'per-principal' })
       .expect(201);
     const other = await http()
       .post('/v1/staff/probe-rows')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff(uuidv7()))
       .set('Idempotency-Key', key)
       .send({ label: 'per-principal' })
@@ -273,6 +285,7 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     const key = randomUUID();
     const first = await http()
       .post('/v1/staff/probe-rows/secrets')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff())
       .set('Idempotency-Key', key)
       .send({ label: 'api-key' })
@@ -280,6 +293,7 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     const issued = first.body as { id: string; secret: string };
     const replay = await http()
       .post('/v1/staff/probe-rows/secrets')
+      .set(webClientHeaders(config, 'staff'))
       .set('Cookie', await staff())
       .set('Idempotency-Key', key)
       .send({ label: 'api-key' })
@@ -326,12 +340,14 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     })}`;
     const first = await http()
       .post('/v1/platform/probe-notes')
+      .set(webClientHeaders(config, 'platform'))
       .set('Cookie', cookie)
       .set('Idempotency-Key', key)
       .send({ label: 'note' })
       .expect(201);
     const replay = await http()
       .post('/v1/platform/probe-notes')
+      .set(webClientHeaders(config, 'platform'))
       .set('Cookie', cookie)
       .set('Idempotency-Key', key)
       .send({ label: 'note' })
