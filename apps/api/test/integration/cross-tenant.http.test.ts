@@ -224,7 +224,7 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
     expect(codeOf(response)).toBe('internal_error');
     // No tenant row leaks: the body is the bare Error shape, and no quoted row label appears. A bare
     // 'b-1' would also match inside a random request_id UUID (…afcb-19e9…) about once in 100 runs.
-    expect(Object.keys(response.body).sort()).toEqual(['code', 'message', 'request_id']);
+    expect(Object.keys(response.body as Record<string, unknown>).sort()).toEqual(['code', 'message', 'request_id']);
     expect(response.text).not.toContain('"b-1"');
   });
 
