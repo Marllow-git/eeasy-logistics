@@ -18,11 +18,12 @@ ENV PNPM_HOME=/pnpm \
 RUN corepack enable
 WORKDIR /repo
 COPY . .
-# The web app and the workspace packages it depends on, nothing else.
+# The web app and the workspace packages it depends on, nothing else. The build runs in dependency
+# order, so packages/contracts generates its clients (PLAT-15) before next build typechecks.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "@eeasy-logistics/web..."
 RUN --mount=type=cache,id=next-cache,target=/repo/apps/web/.next/cache \
-    pnpm --filter @eeasy-logistics/web run build
+    pnpm --filter "@eeasy-logistics/web..." run build
 
 # ---------------------------------------------------------------- runtime
 FROM ${NODE_IMAGE} AS runtime
