@@ -1,5 +1,5 @@
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { UnitOfWork } from './unit-of-work.ts';
 
@@ -32,10 +32,14 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
     return this.#uow.context.accountId;
   }
 
-  /** `account_id = <context account>`, and `condition` when given. */
+  /**
+   * `account_id = <context account> AND (<condition>)`. The caller's condition is bracketed on its
+   * own: Drizzle's `and()` does not bracket its parts, so a raw `x OR true` would otherwise bind
+   * looser than the tenant predicate and escape it (review H-1).
+   */
   protected scoped(condition?: SQL): SQL {
     const tenant = eq(this.table.accountId, this.accountId);
-    return condition === undefined ? tenant : (and(tenant, condition) ?? tenant);
+    return condition === undefined ? tenant : (and(tenant, sql`(${condition})`) ?? tenant);
   }
 
   protected async findMany(condition?: SQL): Promise<InferSelectModel<TTable>[]> {
