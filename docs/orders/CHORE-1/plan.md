@@ -85,10 +85,13 @@ None open. Rulings relied on: Node 24 move (A-14, owner OK 2026-11-01 in the dep
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A | this commit | On Node 24.22.2 (Homebrew `node@24`, keg-only, first on `PATH`): `pnpm install --frozen-lockfile` clean; `pnpm turbo run typecheck lint test` 29/29 tasks green (config 90 tests in 7 files, contracts 55/6, api 140/15 plus depcruise, db 10/2, i18n 11/2, driver Jest 4 tests in 3 suites, web, admin and ui depcruise green); `pnpm audit --audit-level moderate` exit 0 (summary: 1 low, 6 moderate, 4 ignored by `auditConfig`) | `.nvmrc` `24`, `engines.node` `>=24.11.0 <25`, `@types/node` `24.19.2` in the seven workspaces that pin it (driver pins none). Lockfile diff: only `@types/node` 22.20.5 → 24.19.2 (and the peer suffixes naming it) and `undici-types` 6.21.0 → 7.24.6. How the lockfile was resolved: §8.2 item 1 |
 
 ### 8.1 Skills and documents consulted
 
 ### 8.2 Interpretations the lead should check
+
+1. **Lockfile resolution under the supply-chain gates (item A).** `main`'s lockfile cannot be re-resolved today under its own gates: any manifest change makes pnpm 10.34.9 re-resolve large subtrees (every package with an `@types/node` peer), and it then refuses versions `main` already locks: `tslib@2.9.1` (published 2026-10-30, under `minimumReleaseAge`), `@expo/log-box@58.0.14` (a driver direct dependency, published 2026-10-31) and `semver@6.3.1` (`ERR_PNPM_TRUST_DOWNGRADE`, via `@react-native/jest-preset` → `babel-jest`). Frozen installs (CI) do not re-check them. I resolved once with `minimumReleaseAge: 0` and `trustPolicy: off` set in a local copy of `pnpm-workspace.yaml`, restored the file byte for byte before anything was staged, and accepted the result only after checking the diff: the only versions it adds are `@types/node@24.19.2` (2026-10-09, same publisher as 22.20.5) and `undici-types@7.24.6` (2026-03-25, with SLSA provenance), both older than three days; every other locked version is unchanged. `pnpm install --frozen-lockfile` then passes with the real gates. The next order that changes a manifest before 2026-11-03 meets the same wall (the trust downgrade on `semver@6.3.1` does not age out); a `trustPolicyExclude` entry for it is the lead's call, not this order's.
 
 ### 8.3 Not done here
 
