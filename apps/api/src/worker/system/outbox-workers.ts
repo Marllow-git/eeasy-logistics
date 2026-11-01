@@ -2,14 +2,19 @@ import { isUuid } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import type { Job } from 'bullmq';
 import { DelayedError, UnrecoverableError, Worker } from 'bullmq';
+import type { SQL } from 'drizzle-orm';
 import { eq, sql } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
+import type { ConnectionParker } from '../../modules/kernel/outbox/connection-parker.js';
+import { LoggingConnectionParker } from '../../modules/kernel/outbox/connection-parker.js';
 import type {
-  KindHandler,
   KindHandlerRegistry,
   KindOutcome,
   OutboxRow,
 } from '../../modules/kernel/outbox/kind-handlers.js';
+import type { RowWrite } from '../../modules/kernel/outbox/outcome.js';
+import { failureOutcome, resolveOutcome } from '../../modules/kernel/outbox/outcome.js';
+import { ProviderFailure } from '../../modules/kernel/outbox/provider-failure.js';
 import type { QueuePolicy } from '../../modules/kernel/outbox/queue-options.js';
 import {
   bullLimiter,
@@ -51,10 +56,14 @@ export interface OutboxWorkerDependencies {
   readonly policies?: Partial<Record<OutboxKind, QueuePolicy>>;
   /** For full jitter; tests pin it. */
   readonly random?: () => number;
+  /** The clock for retry times and age budgets; tests advance it. */
+  readonly now?: () => Date;
+  /** Where `unauthorised` failures go (plan 2.5); the logging stub by default. */
+  readonly parker?: ConnectionParker;
 }
 
 /** What happened to one job, for logs and tests. */
-export type JobResult = 'skipped' | KindOutcome['outcome'];
+export type JobResult = 'skipped' | RowWrite['status'];
 
 /** The row of `outboxId`, or undefined when it is gone (pruned) or never existed. */
 async function readRow(db: PlatformDatabase, outboxId: string): Promise<OutboxRow | undefined> {
@@ -63,49 +72,61 @@ async function readRow(db: PlatformDatabase, outboxId: string): Promise<OutboxRo
 }
 
 /**
- * Writes `outcome` to the row in one statement on the platform pool, only while the row is still
- * `pending` or `enqueued` (a replay or a second delivery that finished first wins). Returns whether
- * the row changed.
+ * Writes the outcome to the row in one statement (one transaction) on the platform pool, only
+ * while the row is still `pending` or `enqueued` (a replay or a second delivery that finished
+ * first wins). Returns whether the row changed.
  */
 export async function writeOutcome(
   db: PlatformDatabase,
-  row: OutboxRow,
-  outcome: KindOutcome,
+  id: string,
+  write: RowWrite,
 ): Promise<boolean> {
-  let set;
-  switch (outcome.outcome) {
+  let set: SQL;
+  switch (write.status) {
     case 'done':
       set = sql`status = 'done', done_at = now()`;
       break;
     case 'superseded':
-      set = sql`status = 'superseded', done_at = now(), last_error = ${outcome.reason}`;
+      set = sql`status = 'superseded', done_at = now(), last_error = ${write.lastError}`;
       break;
-    default:
-      throw new Error(`Outcome ${outcome.outcome} is not written yet`);
+    case 'dead':
+      set = sql`status = 'dead', attempts = ${write.attempts}, last_error = ${write.lastError}`;
+      break;
+    case 'enqueued':
+      set = sql`status = 'enqueued', attempts = ${write.attempts},
+        next_attempt_at = ${write.nextAttemptAt.toISOString()}::timestamptz,
+        last_error = coalesce(${write.lastError}, last_error),
+        enqueued_at = coalesce(enqueued_at, now())`;
+      break;
   }
   const changed = await db.execute<{ id: string }>(sql`
     UPDATE core_outbox SET ${set}
-    WHERE id = ${row.id} AND status IN ('pending', 'enqueued')
+    WHERE id = ${id} AND status IN ('pending', 'enqueued')
     RETURNING id`);
   return changed.length === 1;
 }
 
-/** Runs the handler; E turns thrown failures into outcomes. */
-async function execute(handler: KindHandler, row: OutboxRow): Promise<KindOutcome> {
-  return handler.execute(row);
-}
+/** The job operations the processor uses (a retry moves the job itself to delayed). */
+export type OutboxJob = Pick<Job<OutboxJobData>, 'data' | 'moveToDelayed'>;
+
+export type ProcessDependencies = Pick<
+  OutboxWorkerDependencies,
+  'db' | 'registry' | 'logger' | 'policies' | 'random' | 'now' | 'parker'
+>;
 
 /**
  * One job of the queue of `kind`: re-reads the row, skips it unless it is `pending` or `enqueued`
  * (already finished, superseded, replayed elsewhere, or pruned), executes it and writes the outcome
- * before returning. A retry moves the job to delayed (`DelayedError`), so the job stays in Redis
- * and the row stays `enqueued` until it runs again. A thrown error here means the outcome could
- * not be written; BullMQ retries the job (`outboxJobRetries`).
+ * before returning (plan 2.5). A thrown handler error is a failure (`failureOutcome`): an
+ * `unauthorised` one is handed to the `ConnectionParker` first. A retry moves the job to delayed
+ * (`DelayedError`), so the job stays in Redis and the row stays `enqueued` until it runs again.
+ * A thrown error here means the outcome could not be written; BullMQ retries the job.
  */
 export async function processOutboxJob(
-  deps: Pick<OutboxWorkerDependencies, 'db' | 'registry' | 'logger'>,
+  deps: ProcessDependencies,
   kind: OutboxKind,
-  job: Pick<Job<OutboxJobData>, 'data'>,
+  job: OutboxJob,
+  token?: string,
 ): Promise<JobResult> {
   const outboxId: unknown = (job.data as { outboxId?: unknown } | undefined)?.outboxId;
   if (typeof outboxId !== 'string' || !isUuid(outboxId)) {
@@ -115,9 +136,28 @@ export async function processOutboxJob(
   if (handler === undefined) throw new Error(`No outbox handler for kind ${kind}`);
   const row = await readRow(deps.db, outboxId);
   if (row === undefined || row.kind !== kind || !runnable.has(row.status)) return 'skipped';
-  const outcome = await execute(handler, row);
-  await writeOutcome(deps.db, row, outcome);
-  return outcome.outcome;
+
+  let outcome: KindOutcome;
+  try {
+    outcome = await handler.execute(row);
+  } catch (error) {
+    if (error instanceof ProviderFailure && error.reason === 'unauthorised') {
+      await (deps.parker ?? new LoggingConnectionParker(deps.logger)).park(row, error);
+    }
+    outcome = failureOutcome(error);
+  }
+  const policy = deps.policies?.[kind] ?? outboxQueuePolicies[kind];
+  const now = deps.now?.() ?? new Date();
+  const write = resolveOutcome(row, outcome, policy, now, deps.random);
+  if (!(await writeOutcome(deps.db, row.id, write))) return 'skipped';
+  if (write.status === 'dead') {
+    deps.logger.warn(`Outbox row ${row.id} (${kind}) dead after ${write.attempts} attempts`);
+  }
+  if (write.status === 'enqueued') {
+    await job.moveToDelayed(write.nextAttemptAt.getTime(), token);
+    throw new DelayedError();
+  }
+  return write.status;
 }
 
 /** The BullMQ worker options of a kind (integrations §4.2), for `new Worker()`. */
@@ -163,7 +203,7 @@ export class OutboxWorkers {
       const policy = this.#deps.policies?.[kind] ?? outboxQueuePolicies[kind];
       const worker = new Worker<OutboxJobData>(
         outboxQueueName(kind),
-        (job) => processOutboxJob(this.#deps, kind, job),
+        (job, token) => processOutboxJob(this.#deps, kind, job, token),
         workerOptions(policy, connection, prefix, random),
       );
       worker.on('error', (error) => {
