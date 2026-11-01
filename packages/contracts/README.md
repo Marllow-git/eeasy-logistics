@@ -10,7 +10,8 @@ The typed seam between the API, the web app and the driver app (ADR-0003). The O
 | `pnpm --filter contracts lint` | Redocly with `docs/contracts/redocly.yaml` and the repository rules of `redocly/plugin.js`, then ESLint |
 | `pnpm --filter contracts lint:bundles` | Redocly recommended rules over the five bundles |
 | `pnpm --filter contracts typecheck` | `tsc` over `src`, `test`, `scripts` and `generated` |
-| `pnpm --filter contracts test` | Vitest (lint rules, fetcher, unions), then the dependency-cruiser architecture test |
+| `pnpm --filter contracts test` | Vitest (lint rules, fetcher, unions, contract-harness self-test), then the dependency-cruiser architecture test |
+| `pnpm --filter contracts test:contract -- --api http://127.0.0.1:3000` | The contract tests against a running API (below); `CONTRACT_API_URL` when `--api` is absent |
 
 Turborepo runs `build` before this package's own `typecheck`, `lint` and `test`, and before those tasks in `apps/web` and `apps/driver` (`^build`), so a fresh checkout needs no manual step.
 
@@ -48,3 +49,24 @@ const { data } = await client.listSites({ limit: 50 }, { fetcher });
 - Every call sends `Accept-Language` (when `locale` is set) and a fresh `X-Request-Id`; every non-GET sends `X-EL-Client: web` unless `webClient: false` (the driver app). `Idempotency-Key` and `If-Match` are operation parameters the caller passes.
 - A non-2xx answer throws `ApiError` (`status`, `code: ErrorCode | 'unexpected_response'`, `message`, `details`, `requestId`); network failures reject unchanged. No retry and no token refresh here (WEB-1 wraps the fetcher).
 - Hooks take the fetcher through `{ request: { fetcher } }`.
+
+## Contract tests (`test/contract/`, `test/scenarios/`)
+
+`test:contract` checks the running API against the bundles (document 3 §9, handbook 03 "Contract" row). It first asks the API for `GET /health`, then runs every scenario and prints a coverage table of operations with and without a passing scenario (advisory). CI runs it in `web-build-census` against the API on port 3000.
+
+- A scenario is one file per operation, `test/scenarios/<surface>/<operationId>.ts`, added by the order that implements the operation:
+
+  ```ts
+  import { client } from '../../../src/staff.ts';
+  import { defineScenario } from '../../contract/scenario.ts';
+
+  export default defineScenario({
+    expectedStatus: 200,
+    run: ({ fetcher }) => client.listSites({ limit: 10 }, { fetcher }),
+  });
+  ```
+
+  `run` calls the generated client with the `fetcher` it receives (signing in first if it must); an `ApiError` is expected for an error status. Every answer of a documented operation the scenario caused is checked, not only the last.
+- A response fails on: a status the operation does not document (exact, `4XX` range or `default`), a field no schema declares (`undocumented_field`, even where the schema leaves `additionalProperties` unset; an explicit `additionalProperties` is a documented open map), an error `code` outside `ErrorCode`, a schema mismatch (ajv, JSON Schema 2020-12 with formats), an undocumented content type, or a missing or malformed documented header.
+- The self-test (`test/contract/self-test.test.ts`) plays the API in process for `platformListAccounts` and proves each of those checks red; it also runs in `test`.
+

@@ -43,6 +43,25 @@ jobs:
       # Every workspace; lint includes the contracts Redocly lint (packages/contracts).
       - name: Typecheck and lint every workspace
         run: pnpm turbo run typecheck lint
+      # PLAT-15 plan 2.6: generated/ is not committed, so determinism is asserted by hashing two
+      # fresh generations (the script, not turbo, so a cache hit cannot stand in for a run).
+      - name: Contracts generate twice and compare
+        run: |
+          digest() {
+            (cd packages/contracts/generated && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | sha256sum
+          }
+          rm -rf packages/contracts/generated
+          pnpm --filter @eeasy-logistics/contracts run build > /dev/null
+          first=$(digest)
+          rm -rf packages/contracts/generated
+          pnpm --filter @eeasy-logistics/contracts run build > /dev/null
+          second=$(digest)
+          echo "first:  $first"
+          echo "second: $second"
+          [ "$first" = "$second" ] || {
+            echo "::error::two generations of packages/contracts/generated differ; the generator is not deterministic"
+            exit 1
+          }
       - name: Prettier
         run: |
           pnpm format:check || {
@@ -165,6 +184,10 @@ jobs:
           done
           echo "::error::the API did not answer /health on port $API_PORT within 60 s (api.log in the artifact)"
           exit 1
+      # PLAT-15 plan 2.8, 2.10: the harness self-test plus every scenario of test/scenarios against
+      # the running API; prints the advisory coverage table.
+      - name: Contract tests against the API
+        run: pnpm --filter @eeasy-logistics/contracts run test:contract -- --api "http://127.0.0.1:$API_PORT"
       - name: Start the standalone web server and wait for /
         run: |
           standalone=apps/web/.next/standalone/apps/web
