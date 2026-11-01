@@ -78,6 +78,11 @@ export const coreOutbox = pgTable(
       .on(table.enqueuedAt)
       .where(sql`${table.status} = 'enqueued'`),
     index('core_outbox_account_idx').on(table.accountId, table.status, table.createdAt.desc()),
+    // Finished rows by age: the daily pruning job (plan 2.8, data §5.2) and the platform list of
+    // dead rows across accounts (plan 2.7).
+    index('core_outbox_finished_idx')
+      .on(table.status, table.createdAt)
+      .where(sql`${table.status} IN ('done', 'superseded', 'dead')`),
     index('core_outbox_aggregate_idx').on(table.aggregateId, table.sequence),
     // One pending row per key and account, as `supersedePending` is account-scoped (lead review
     // round 2): two accounts may share a key. Migration 0007 adds NULLS NOT DISTINCT by hand (the
@@ -121,6 +126,8 @@ export const coreConsumerReceipts = pgTable(
   (table) => [
     primaryKey({ name: 'core_consumer_receipts_pk', columns: [table.consumer, table.eventId] }),
     index('core_consumer_receipts_account_idx').on(table.accountId, table.processedAt),
+    // The receipt purge after 35 days, across accounts (plan 2.8, data §5.3).
+    index('core_consumer_receipts_processed_idx').on(table.processedAt),
   ],
 );
 

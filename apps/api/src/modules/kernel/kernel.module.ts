@@ -9,6 +9,7 @@ import { ContractPipe } from './contract/contract-pipe.js';
 import { IdempotentRoutesCheck } from './idempotency/idempotency.interceptor.js';
 import { ApiExceptionFilter } from './errors/exception.filter.js';
 import { OutboxWriter } from './outbox/outbox-writer.js';
+import { PlatformOutboxController } from './outbox/platform-outbox.controller.js';
 import { RequestIdMiddleware } from './request/request-id.js';
 import { ContentTypeGuard } from './request/content-type.guard.js';
 import { WebClientGuard } from './request/web-client.guard.js';
@@ -25,8 +26,9 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
  */
 @Module({
   imports: [DiscoveryModule],
-  // The audit log reads (PLAT-7): listAuditLog, platformListAccountAudit, platformListAudit.
-  controllers: [AuditLogController, PlatformAuditLogController],
+  // The audit log reads (PLAT-7): listAuditLog, platformListAccountAudit, platformListAudit; the
+  // platform outbox operations (PLAT-8): list, read and replay rows, list the consumers.
+  controllers: [AuditLogController, PlatformAuditLogController, PlatformOutboxController],
   providers: [
     IdempotentRoutesCheck,
     { provide: APP_FILTER, useClass: ApiExceptionFilter },

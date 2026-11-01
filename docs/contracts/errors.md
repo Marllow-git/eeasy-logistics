@@ -98,5 +98,5 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `verification_token_invalid` | 422 | wrong or reused subscription verification token | ADR-0040 |
 | `reason_required` | 400 | cross-tenant platform call without `X-Support-Reason` | doc 4 §5, §7 |
 | `rollout_change_forbidden` | 403 | a platform admin (not super admin) changing a rollout mode | §2.4, doc 4 §2 |
-| `replay_not_allowed` | 409 | replaying an outbox row that is not `dead` | K-10, K-11 |
+| `replay_not_allowed` | 409 | replaying an outbox row that is not `dead`, is older than the 35-day consumer-receipt window, would collide with a pending row of the same supersede key, or whose queue job is still running; `details` holds `current_status` and `reason` (`not_dead`, `outside_receipt_window`, `supersede_pending`, `job_active`) | K-10, K-11, data §5.2 |
 | `fix_not_whitelisted` | 403 | a diagnose fix not marked safe for the caller's role | doc 4 §2 |

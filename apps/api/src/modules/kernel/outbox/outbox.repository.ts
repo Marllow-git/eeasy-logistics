@@ -1,7 +1,16 @@
 import type { UnitOfWork } from '@eeasy-logistics/db';
 import { ScopedRepository } from '@eeasy-logistics/db';
-import { and, eq } from 'drizzle-orm';
-import { coreOutbox } from '../schema/outbox.js';
+import { and, desc, eq, inArray } from 'drizzle-orm';
+import { coreConsumerDeadLetters, coreOutbox } from '../schema/outbox.js';
+import type { OutboxPageQuery, OutboxRecord } from './outbox-list.js';
+import { outboxPageCondition, outboxPageOrder } from './outbox-list.js';
+import type { BulkReplayFilter, ReplayCandidate, ReplayStore } from './outbox-replay.js';
+import {
+  deadRowsCondition,
+  liveDeadLetters,
+  replayableCondition,
+  replayedState,
+} from './outbox-replay.js';
 
 /** An outbox row as the writer inserts it; the delivery state comes from the column defaults. */
 export type OutboxInsert = Pick<
@@ -53,4 +62,61 @@ export class OutboxRepository
     if (inserted === undefined) throw new Error('The outbox insert returned no row');
     return inserted.occurredAt;
   }
+
+  /** One page of the context account's rows, payload included (the door's `platformListOutbox`). */
+  page(query: OutboxPageQuery): Promise<OutboxRecord[]> {
+    return this.findMany(outboxPageCondition(query), {
+      orderBy: outboxPageOrder(query.sort),
+      limit: query.limit,
+    });
+  }
+
+  async find(id: string): Promise<OutboxRecord | undefined> {
+    const [row] = await this.findMany(eq(coreOutbox.id, id), { limit: 1 });
+    return row;
+  }
+
+  deadRows(
+    filter: BulkReplayFilter,
+    afterId: string | undefined,
+    limit: number,
+  ): Promise<ReplayCandidate[]> {
+    return this.findMany(deadRowsCondition(filter, afterId), {
+      orderBy: [desc(coreOutbox.id)],
+      limit,
+    });
+  }
+
+  async markPending(ids: readonly string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.updateWhere(
+      replayedState(),
+      and(inArray(coreOutbox.id, [...ids]), replayableCondition()),
+    );
+    return rows.map((row) => row.id);
+  }
+}
+
+/** The tenant side of `core_consumer_dead_letters` (the door's replay). */
+export class ConsumerDeadLetterRepository extends ScopedRepository<typeof coreConsumerDeadLetters> {
+  constructor(uow: UnitOfWork) {
+    super(uow, coreConsumerDeadLetters);
+  }
+
+  async markReplayed(eventIds: readonly string[]): Promise<void> {
+    if (eventIds.length === 0) return;
+    await this.updateWhere({ replayedAt: new Date() }, liveDeadLetters(eventIds));
+  }
+}
+
+/** The replay store of the door: the context account's rows only. */
+export function tenantReplayStore(uow: UnitOfWork): ReplayStore {
+  const rows = new OutboxRepository(uow);
+  const letters = new ConsumerDeadLetterRepository(uow);
+  return {
+    find: (id) => rows.find(id),
+    deadRows: (filter, afterId, limit) => rows.deadRows(filter, afterId, limit),
+    markPending: (ids) => rows.markPending(ids),
+    markDeadLettersReplayed: (ids) => letters.markReplayed(ids),
+  };
 }

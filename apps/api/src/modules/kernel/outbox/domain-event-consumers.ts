@@ -59,6 +59,11 @@ export class DomainEventConsumerRegistry {
     return this.#byType.get(type) ?? [];
   }
 
+  /** The consumer names, in registration order (`platformListConsumers`). */
+  names(): readonly string[] {
+    return [...this.#types.keys()];
+  }
+
   /** The types `consumer` is subscribed to. */
   typesOf(consumer: string): readonly DomainEventType[] {
     return this.#types.get(consumer) ?? [];

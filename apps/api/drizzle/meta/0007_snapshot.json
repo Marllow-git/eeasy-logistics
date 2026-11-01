@@ -587,6 +587,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "core_consumer_receipts_processed_idx": {
+          "name": "core_consumer_receipts_processed_idx",
+          "columns": [
+            {
+              "expression": "processed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -820,6 +835,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "core_outbox_finished_idx": {
+          "name": "core_outbox_finished_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"core_outbox\".\"status\" IN ('done', 'superseded', 'dead')",
           "concurrently": false,
           "method": "btree",
           "with": {}

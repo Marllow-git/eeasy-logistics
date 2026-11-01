@@ -10,6 +10,9 @@ import { outboxBackoffType, outboxJobAttempts } from './queue-options.js';
 
 export const outboxQueuePrefix = 'elx';
 
+/** The API's producer side of the queues (replays, consumer counts), from `RequestFrameModule`. */
+export const OUTBOX_QUEUES = Symbol('OUTBOX_QUEUES');
+
 export function outboxQueueName(kind: OutboxKind): string {
   return `outbox.${kind}`;
 }
@@ -96,6 +99,34 @@ export class OutboxQueues {
   /** Whether the queue of `kind` still holds a job for the row, in any state. */
   async hasJob(kind: OutboxKind, outboxId: string): Promise<boolean> {
     return (await this.existingJobs(kind, [outboxId])).has(outboxId);
+  }
+
+  /**
+   * Removes the retained jobs of the rows (PLAT-8 plan 2.7: a replayed row's old job, completed or
+   * failed, would make the relay's re-add a no-op under the same `jobId`). A running job is locked
+   * and stays; returns the ids whose job is still there afterwards.
+   */
+  async removeJobs(kind: OutboxKind, outboxIds: readonly string[]): Promise<Set<string>> {
+    if (outboxIds.length === 0) return new Set();
+    const queue = this.#queue(kind);
+    await Promise.all(outboxIds.map((id) => queue.remove(id, { removeChildren: false })));
+    return this.existingJobs(kind, outboxIds);
+  }
+
+  /** The row ids of `outboxIds` whose job waits in the delayed set of `kind` (one round trip). */
+  async delayedAmong(kind: OutboxKind, outboxIds: readonly string[]): Promise<Set<string>> {
+    if (outboxIds.length === 0) return new Set();
+    const key = this.#queue(kind).toKey('delayed');
+    const pipeline = this.connection.pipeline();
+    for (const id of outboxIds) pipeline.zscore(key, id);
+    const results = (await pipeline.exec()) ?? [];
+    const delayed = new Set<string>();
+    outboxIds.forEach((id, index) => {
+      const [error, score] = results[index] ?? [new Error('no reply'), null];
+      if (error !== null) throw error;
+      if (score !== null) delayed.add(id);
+    });
+    return delayed;
   }
 
   async close(): Promise<void> {
