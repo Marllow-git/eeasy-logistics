@@ -1,0 +1,19 @@
+{
+  "auth_otp": {
+    "body": "{code} is your verification code. For your security, do not share this code.",
+    "footer": "This code expires in 5 minutes.",
+    "button": "Copy code"
+  },
+  "invitation": {
+    "subject": "You are invited to join {account_name} on Eeasy Logistics",
+    "body": "You have been invited to join {account_name} on Eeasy Logistics.\n\nAccept the invitation within 72 hours:\n{link}\n\nIf you did not expect this invitation, you can ignore this email."
+  },
+  "password_reset": {
+    "subject": "Reset your Eeasy Logistics password",
+    "body": "We received a request to reset your Eeasy Logistics password.\n\nSet a new password within 30 minutes:\n{link}\n\nIf you did not ask for this, you can ignore this email. Your password stays the same."
+  },
+  "platform_invitation": {
+    "subject": "You are invited to the Eeasy Logistics platform console",
+    "body": "You have been invited to the Eeasy Logistics platform console.\n\nAccept the invitation:\n{link}\n\nIf you did not expect this invitation, you can ignore this email."
+  }
+}

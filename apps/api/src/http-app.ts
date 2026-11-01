@@ -3,6 +3,7 @@ import type { NestApplicationOptions } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
+import { engineCallbackPath } from './modules/kernel/messaging/engine/envelope.js';
 
 /**
  * Options for `NestFactory.create` (adversary H-1): Nest's default parsers are off, so no
@@ -31,7 +32,19 @@ export function createHttpAdapter(config: Config): ExpressAdapter {
   return new ExpressAdapter(instance);
 }
 
-/** After creation, before `init()`/`listen()`: JSON is the only body format (contracts §3). */
+/**
+ * After creation, before `init()`/`listen()`: JSON is the only body format (contracts §3). The
+ * engine's callback door is the one path the parser leaves alone (PLAT-9 plan 2A.2): its handler
+ * verifies the signature from the headers first and only then reads the raw body, bounded, to check
+ * its hash (engine contract §2.3).
+ */
 export function configureHttp(app: NestExpressApplication): void {
-  app.useBodyParser('json');
+  const json = express.json();
+  app.use((request: express.Request, response: express.Response, next: express.NextFunction) => {
+    if (request.path === engineCallbackPath) {
+      next();
+      return;
+    }
+    json(request, response, next);
+  });
 }

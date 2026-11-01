@@ -27,8 +27,12 @@ function doubles(verify: () => Promise<void> = () => Promise.resolve()) {
   const counts = { finished: 3, dead: 1, receipts: 2, deadLetters: 0 };
   const outboxPrune = vi.fn(() => Promise.resolve({ ran: true as const, counts }));
   const outboxGauges = vi.fn(() => Promise.resolve());
+  const otpPurge = vi.fn(() =>
+    Promise.resolve({ ran: true as const, counts: { messages: 1, challenges: 2, nonces: 3 } }),
+  );
   const deps: Partial<WorkerDependencies> = {
     outboxGauges,
+    otpPurge,
     platformPool: () => ({ db: { execute } as unknown as PlatformDatabase, close: closed }),
     redis: () =>
       ({
@@ -47,6 +51,7 @@ function doubles(verify: () => Promise<void> = () => Promise.resolve()) {
   return {
     outboxPrune,
     outboxGauges,
+    otpPurge,
     deps,
     closed,
     execute,
@@ -110,6 +115,7 @@ describe('worker startup', () => {
       outboxWorkers,
       queuesStopped,
       outboxGauges,
+      otpPurge,
     } = doubles();
     const worker = await startWorker(
       config({ DATABASE_URL_PLATFORM: platformUrl, REDIS_URL: redisUrl }),
@@ -117,11 +123,14 @@ describe('worker startup', () => {
     );
     expect(worker.jobs).toEqual([
       'idempotency-purge',
+      'otp-purge',
       'outbox-prune',
       'outbox-relay',
       'outbox-queues',
       'outbox-gauges',
     ]);
+    // PLAT-9 plan 2.6: the OTP purge at once and every hour.
+    expect(otpPurge).toHaveBeenCalledTimes(1);
     // PLAT-14 plan 2.3: the outbox gauges at once and every 30 s, until stopped.
     expect(outboxGauges).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(30_000);
@@ -134,6 +143,7 @@ describe('worker startup', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(purgeIntervalMs);
     expect(set).toHaveBeenCalledTimes(2);
+    expect(otpPurge).toHaveBeenCalledTimes(2);
     await worker.stop();
     expect(relayStopped).toHaveBeenCalledTimes(1);
     expect(queuesStopped).toHaveBeenCalledTimes(1);
@@ -153,6 +163,7 @@ describe('worker startup', () => {
     );
     expect(worker.jobs).toEqual([
       'idempotency-purge',
+      'otp-purge',
       'outbox-prune',
       'outbox-queues',
       'outbox-gauges',
@@ -212,6 +223,7 @@ describe('worker startup', () => {
     expect(outboxPrune).not.toHaveBeenCalled();
     expect(worker.jobs).toEqual([
       'idempotency-purge',
+      'otp-purge',
       'outbox-relay',
       'outbox-queues',
       'outbox-gauges',

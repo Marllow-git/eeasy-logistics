@@ -12,6 +12,9 @@ export const domainEventTypes = [
   'core.site.updated',
   'core.channel_order.received',
   'core.carrier_update.received',
+  // PLAT-9: the `message` row of an OTP challenge (an effect of the kernel, never an internal event;
+  // not a row of domain model §6.3, which lists business events only).
+  'core.otp_challenge.created',
 ] as const;
 export type DomainEventType = (typeof domainEventTypes)[number];
 

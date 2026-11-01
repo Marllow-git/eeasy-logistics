@@ -4,16 +4,17 @@ import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { Logger } from '@nestjs/common';
 import { kernelConsumers } from '../../modules/kernel/outbox/account-suspended.consumer.js';
 import { DomainEventConsumerRegistry } from '../../modules/kernel/outbox/domain-event-consumers.js';
+import { messageKindHandlerFor } from './message-handler.js';
 import type { KindHandler } from '../../modules/kernel/outbox/kind-handlers.js';
 import { StorageLifecycleHandler } from '../../modules/kernel/outbox/storage-lifecycle.handler.js';
 import type { ObjectStorage } from '../../modules/kernel/storage/object-storage.js';
 import { StubObjectStorage } from '../../modules/kernel/storage/object-storage.js';
 import { InternalEventDispatcher } from './internal-events.js';
 
-// The outbox kind handlers of this build (PLAT-8 plan 2.5, 2.6): `internal_event` (the kernel's
-// consumers) and `storage_lifecycle`. The relay enqueues only these kinds
-// and the worker consumes only their queues. `webhook`, `message`, `push`, `channel_publish` and
-// `carrier_call` have none yet (PLAT-9, INT orders): their rows wait `pending`, counted.
+// The outbox kind handlers of this build (PLAT-8 plan 2.5, 2.6; PLAT-9): `internal_event` (the
+// kernel's consumers), `storage_lifecycle` and `message`. The relay enqueues only these kinds and
+// the worker consumes only their queues. `webhook`, `push`, `channel_publish` and `carrier_call`
+// have none yet (INT orders): their rows wait `pending`, counted.
 
 /**
  * The object storage of `storage_lifecycle`: the stub in `local` and `ci`; elsewhere none until
@@ -54,5 +55,7 @@ export function buildKindHandlers(
   } else {
     handlers.push(new StorageLifecycleHandler(storage));
   }
+  const message = messageKindHandlerFor(config, pool, logger);
+  if (message !== undefined) handlers.push(message);
   return handlers;
 }

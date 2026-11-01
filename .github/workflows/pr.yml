@@ -159,6 +159,18 @@ jobs:
             echo "STORAGE_BUCKET=${MINIO_BUCKET}"
             echo "STORAGE_ACCESS_KEY_ID=${MINIO_ROOT_USER}"
             echo "STORAGE_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}"
+            # PLAT-9: the WhatsApp stub, Mailpit's SMTP for the mail adapter and its API for tests.
+            echo "MESSAGING_STUB_URL=http://$(port whatsapp-stub-ci 8080)"
+            # PLAT-9 leg 2: the engine signing settings the stub verifies (the .env values).
+            echo "WHATSAPP_ENGINE_SERVICE_ID=${WHATSAPP_ENGINE_SERVICE_ID}"
+            echo "WHATSAPP_ENGINE_KEY_ID=${WHATSAPP_ENGINE_KEY_ID}"
+            echo "WHATSAPP_ENGINE_COMMAND_SECRET=${WHATSAPP_ENGINE_COMMAND_SECRET}"
+            echo "WHATSAPP_ENGINE_CALLBACK_KEY_ID=${WHATSAPP_ENGINE_CALLBACK_KEY_ID}"
+            echo "WHATSAPP_ENGINE_CALLBACK_SECRET=${WHATSAPP_ENGINE_CALLBACK_SECRET}"
+            echo "WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID=${WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID}"
+            echo "MAIL_SMTP_URL=smtp://$(port mailpit-ci 1025)"
+            echo "MAIL_FROM=${MAIL_FROM}"
+            echo "MAILPIT_URL=http://$(port mailpit-ci 8025)"
           } >> "$GITHUB_ENV"
       # The API imports the generated operation schemas (PLAT-6 item I, A-17); built before the
       # API's own build so every role starts from a complete tree (PLAT-7: the migrate role no

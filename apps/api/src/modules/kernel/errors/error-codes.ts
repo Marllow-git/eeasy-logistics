@@ -23,6 +23,7 @@ export const errorStatus = {
   limit_exceeded: 422,
   rate_limited: 429,
   internal_error: 500,
+  messaging_unavailable: 503,
   // §2 Authentication and devices
   role_combination_forbidden: 422,
   invalid_credentials: 401,

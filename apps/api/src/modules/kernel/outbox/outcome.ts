@@ -79,7 +79,7 @@ export function failureOutcome(error: unknown): KindOutcome {
 
 /** What the worker writes to the row. */
 export type RowWrite =
-  | { readonly status: 'done' }
+  | { readonly status: 'done'; readonly lastError?: string }
   | { readonly status: 'superseded'; readonly lastError: string }
   | { readonly status: 'dead'; readonly attempts: number; readonly lastError: string }
   | {
@@ -114,7 +114,12 @@ export function resolveOutcome(
 ): RowWrite {
   switch (outcome.outcome) {
     case 'done':
-      return { status: 'done' };
+      return outcome.skipped === undefined
+        ? { status: 'done' }
+        : {
+            status: 'done',
+            lastError: formatLastError({ message: `skipped: ${outcome.skipped}` }),
+          };
     case 'superseded':
       return { status: 'superseded', lastError: formatLastError({ message: outcome.reason }) };
     case 'dead':

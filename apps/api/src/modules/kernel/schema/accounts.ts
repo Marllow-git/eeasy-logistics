@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 export const accountStatuses = ['provisioned', 'active', 'suspended', 'closed'] as const;
 export type AccountStatus = (typeof accountStatuses)[number];
@@ -16,6 +16,10 @@ export const coreAccounts = pgTable(
     id: uuid('id').primaryKey(),
     name: text('name').notNull(),
     status: text('status', { enum: accountStatuses }).notNull().default('provisioned'),
+    // The integer the Eeasy WhatsApp engine knows this account by (`eeasy_account_id`, PLAT-9 plan
+    // 2A.3): allocated from `core_accounts_engine_account_id_seq` (from 2) at first use; 1 is the
+    // platform's reserved id. Never taken from a request.
+    engineAccountId: bigint('engine_account_id', { mode: 'number' }).unique(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -25,5 +29,6 @@ export const coreAccounts = pgTable(
       'core_accounts_status_check',
       sql`${table.status} IN ('provisioned', 'active', 'suspended', 'closed')`,
     ),
+    check('core_accounts_engine_account_id_check', sql`${table.engineAccountId} >= 2`),
   ],
 );

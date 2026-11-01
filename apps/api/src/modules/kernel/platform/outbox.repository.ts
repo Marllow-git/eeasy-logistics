@@ -78,7 +78,12 @@ export class PlatformOutbox
     let set: PgUpdateSetSource<typeof coreOutbox>;
     switch (write.status) {
       case 'done':
-        set = { status: 'done', doneAt: now, parkedConsumers: null };
+        set = {
+          status: 'done',
+          doneAt: now,
+          parkedConsumers: null,
+          ...(write.lastError === undefined ? {} : { lastError: write.lastError }),
+        };
         break;
       case 'superseded':
         set = {

@@ -181,3 +181,45 @@ describe('RateLimiter', () => {
     expect(warnings).toHaveLength(2);
   });
 });
+
+// PLAT-9 plan 2.4: named budgets charged by a service to the identity it chose.
+describe('RateLimiter.charge (named budgets)', () => {
+  it('allows 5 OTP requests per phone in an hour, then 429 with Retry-After', async () => {
+    const hits: { key: string; windowMs: number }[] = [];
+    const counts = new Map<string, number>();
+    const store: RateLimitStore = {
+      hit: (key, windowMs) => {
+        hits.push({ key, windowMs });
+        const count = (counts.get(key) ?? 0) + 1;
+        counts.set(key, count);
+        return Promise.resolve({ count, ttlMs: 1_800_000 });
+      },
+      close: () => undefined,
+    };
+    const limiter = new RateLimiter(store, { prefix: 'p' });
+    for (let index = 0; index < 5; index += 1) await limiter.charge('otp_request_phone', 'phone:a');
+    const refused = await limiter
+      .charge('otp_request_phone', 'phone:a')
+      .catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(ApiException);
+    expect(refused).toMatchObject({
+      code: 'rate_limited',
+      options: { details: { retry_after_s: 1800 }, headers: { 'Retry-After': '1800' } },
+    });
+    await expect(limiter.charge('otp_request_phone', 'phone:b')).resolves.toBeUndefined();
+    expect(hits[0]).toEqual({ key: 'p:named:otp_request_phone:phone:a', windowMs: 3_600_000 });
+  });
+
+  it('allows 20 per address', async () => {
+    const limiter = new RateLimiter(memoryStore());
+    for (let index = 0; index < 20; index += 1) await limiter.charge('otp_request_ip', 'ip:x');
+    await expect(limiter.charge('otp_request_ip', 'ip:x')).rejects.toBeInstanceOf(ApiException);
+    expect(defaultBudgets.named?.otp_request_ip).toEqual({ limit: 20, windowMs: 3_600_000 });
+  });
+
+  it('fails open when the store fails', async () => {
+    const limiter = new RateLimiter(failingStore, { logger: { warn: () => undefined } });
+    await expect(limiter.charge('otp_request_phone', 'phone:a')).resolves.toBeUndefined();
+    expect(limiter.failOpenCount).toBe(1);
+  });
+});
