@@ -51,10 +51,13 @@ if [[ "$branch" =~ ^feat/([A-Z]+-[0-9]+) ]]; then
   fi
 fi
 
-# 5. User-visible change needs an Arabic release note.
-if grep -qE '^apps/(web|driver)/(app|src)/' <<<"$files"; then
-  grep -qE '^docs/release-notes/[0-9]{4}-[0-9]{2}-[0-9]{2}-.+\.md$' <<<"$files" \
-    && ok "release note present" || bad "apps/web or apps/driver UI changed without docs/release-notes/ entry"
+# 5. User-visible change needs an Arabic release note (AGENTS.md workflow 6). A purely technical
+#    change under the app source trees (a type import, an architecture rule, a build setting) says so
+#    with a body line starting 'Release note: none' followed by the reason.
+if grep -qE '^apps/(web|driver|admin)/(app|src)/' <<<"$files"; then
+  if grep -qE '^docs/release-notes/[0-9]{4}-[0-9]{2}-[0-9]{2}-.+\.md$' <<<"$files"; then ok "release note present";
+  elif grep -qiE '^Release note: none' <<<"$body"; then ok "app source changed; body says Release note: none (reason given)";
+  else bad "apps/web, apps/admin or apps/driver source changed without docs/release-notes/ entry and no 'Release note: none <reason>' line in the body"; fi
 fi
 
 # 6. Memory upkeep: a change to a trigger path needs a memory update or an explicit waiver.
