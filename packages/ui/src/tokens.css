@@ -1,0 +1,106 @@
+/*
+ * Design tokens (web §6.2, ADR-0033): CSS custom properties consumed by the Tailwind theme.
+ * Light theme only in wave 0. Every colour pair used for text meets WCAG 2.2 AA (4.5:1) and every
+ * control boundary 3:1; test/tokens.test.ts computes the ratios from this file.
+ *
+ * The `@theme` block defines Tailwind's namespaces (colour, font, text, leading, radius, shadow,
+ * ease, spacing) so each token is both a CSS variable and a utility (`bg-primary`, `rounded-md`).
+ * The `:root` block holds tokens without a Tailwind namespace: one colour per state of the order,
+ * offer, attempt and custody state machines (document 2 §3.13 to §3.16), named
+ * `--status-<machine>-<state>`, so chips, the board and map markers agree.
+ */
+
+@theme {
+  /* Colour: semantic. */
+  --color-background: #ffffff;
+  --color-foreground: #0f172a;
+  --color-surface: #f8fafc;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #475569;
+  --color-border: #e2e8f0;
+  --color-input: #64748b;
+  --color-ring: #0b6b6b;
+  --color-primary: #0b6b6b;
+  --color-primary-hover: #095757;
+  --color-primary-foreground: #ffffff;
+  --color-danger: #b42318;
+  --color-danger-foreground: #ffffff;
+  --color-warning: #8a4b00;
+  --color-warning-foreground: #ffffff;
+  --color-success: #067647;
+  --color-success-foreground: #ffffff;
+
+  /*
+   * Typography. The family is one token, so the brand font (web §12.1, Q-21) is a one-file
+   * change: `--font-plex` is set on <html> by next/font/local in the shell.
+   */
+  --font-sans: var(--font-plex), 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  /* Arabic glyphs have taller ascenders and descenders: one step more line height (web §6.2). */
+  --leading-en-tight: 1.25;
+  --leading-en-normal: 1.5;
+  --leading-en-relaxed: 1.625;
+  --leading-ar-tight: 1.5;
+  --leading-ar-normal: 1.75;
+  --leading-ar-relaxed: 2;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+
+  /* Spacing: Tailwind multiplies this base (p-4 = 1rem). */
+  --spacing: 0.25rem;
+
+  /* Radius. */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-full: 9999px;
+
+  /* Elevation. */
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.12);
+  --shadow-lg: 0 12px 32px -8px rgb(15 23 42 / 0.2);
+
+  /* Motion. */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+}
+
+:root {
+  /* Order, document 2 §3.13. */
+  --status-order-pending: #475569;
+  --status-order-accepted: #1d4ed8;
+  --status-order-offered: #6d28d9;
+  --status-order-assigned: #4338ca;
+  --status-order-picked_up: #0e7490;
+  --status-order-out_for_delivery: #0369a1;
+  --status-order-attempted: #b45309;
+  --status-order-delivered: #15803d;
+  --status-order-failed: #b91c1c;
+  --status-order-returned: #9d174d;
+  --status-order-cancelled: #52525b;
+
+  /* Offer, document 2 §3.14. */
+  --status-offer-sent: #1d4ed8;
+  --status-offer-accepted: #15803d;
+  --status-offer-declined: #b91c1c;
+  --status-offer-expired: #52525b;
+  --status-offer-withdrawn: #b45309;
+
+  /* Attempt, document 2 §3.15. */
+  --status-attempt-open: #0369a1;
+  --status-attempt-succeeded: #15803d;
+  --status-attempt-failed: #b91c1c;
+  --status-attempt-voided: #52525b;
+
+  /* COD custody, document 2 §3.16. */
+  --status-custody-collected: #b45309;
+  --status-custody-with_cashier: #6d28d9;
+  --status-custody-with_bank: #15803d;
+  --status-custody-not_held: #52525b;
+}

@@ -150,9 +150,9 @@ jobs:
         if: always()
         run: docker compose --profile ci down --volumes --remove-orphans || true
 
-  # Standalone web build, the API and the web server against the Compose ci profile, then
-  # Playwright in ar and en with screenshots as artifacts (decision 2.4; web §11). The census
-  # harness proper is WEB-1's; until then one smoke spec asserts lang and dir on every route.
+  # Standalone web build and its first-load budget, the API and the web server against the Compose
+  # ci profile, then the census in ar and en with screenshots as artifacts (decision 2.4; web §11,
+  # §10.2; WEB-1 plan 2.9, 2.10).
   web-build-census:
     name: web-build-census
     runs-on: ubuntu-latest
@@ -160,7 +160,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: elx-ci
       APP_ENV: ci
-      # The ports of .env.example; tests/playwright.config.ts expects the web app on 3001.
+      # The ports of .env.example; tests/census.config.ts expects the web app on 3001.
       API_PORT: '3000'
       WEB_PORT: '3001'
     steps:
@@ -186,6 +186,10 @@ jobs:
           }
       - name: Build the API and the standalone web app
         run: pnpm turbo run build --filter=@eeasy-logistics/api --filter=@eeasy-logistics/web
+      # WEB-1 plan 2.10 (web §10.2): fails when a route's first-load JavaScript (gzip) is over its
+      # class budget (recipient 90 KB, merchant and platform 180 KB); prints every route's size.
+      - name: First-load JavaScript budget
+        run: pnpm --filter @eeasy-logistics/web run check:budget
       - name: Start the API and wait for /health
         run: |
           PORT="$API_PORT" nohup node apps/api/dist/main.js --role api > api.log 2>&1 &
@@ -216,8 +220,10 @@ jobs:
           exit 1
       - name: Install Chromium for Playwright
         run: pnpm --filter @eeasy-logistics/web exec playwright install --with-deps chromium
-      - name: Playwright in ar and en
-        run: pnpm --filter @eeasy-logistics/web run test:smoke
+      # WEB-1 plan 2.9: the census (projects ar at 1440 and 390 px, en at 1440 px) with the locale,
+      # axe and security assertions and the screenshot baselines of tests/census/__screenshots__.
+      - name: Census in ar and en
+        run: pnpm --filter @eeasy-logistics/web run test:census
       - name: Upload screenshots and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -246,7 +252,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: elx-ci
       APP_ENV: ci
-      # The ports of .env.example; tests/playwright.config.ts expects the admin app on 3002.
+      # The ports of .env.example; tests/census.config.ts expects the admin app on 3002.
       API_PORT: '3000'
       ADMIN_PORT: '3002'
     steps:
@@ -272,6 +278,10 @@ jobs:
           }
       - name: Build the API and the standalone admin app
         run: pnpm turbo run build --filter=@eeasy-logistics/api --filter=@eeasy-logistics/admin
+      # WEB-1 plan 2.10 (web §10.2): fails when a route's first-load JavaScript (gzip) is over its
+      # class budget (recipient 90 KB, merchant and platform 180 KB); prints every route's size.
+      - name: First-load JavaScript budget
+        run: pnpm --filter @eeasy-logistics/admin run check:budget
       - name: Start the API and wait for /health
         run: |
           PORT="$API_PORT" nohup node apps/api/dist/main.js --role api > api.log 2>&1 &
@@ -298,8 +308,10 @@ jobs:
           exit 1
       - name: Install Chromium for Playwright
         run: pnpm --filter @eeasy-logistics/admin exec playwright install --with-deps chromium
-      - name: Playwright in ar and en
-        run: pnpm --filter @eeasy-logistics/admin run test:smoke
+      # WEB-1 plan 2.9 (leg 2): the same census harness as apps/web (projects ar at 1440 and 390 px,
+      # en at 1440 px) with the baselines of apps/admin/tests/census/__screenshots__.
+      - name: Census in ar and en
+        run: pnpm --filter @eeasy-logistics/admin run test:census
       - name: Upload screenshots and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

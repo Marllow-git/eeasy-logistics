@@ -6,6 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import { noPhysicalDirectionUtilities } from './rules/no-physical-direction-utilities.js';
 
 const envMessage =
   'Read configuration through @eeasy-logistics/config, never the environment directly (AGENTS.md).';
@@ -119,6 +120,18 @@ export const base = defineConfig(
   // Last: turn off every stylistic rule Prettier owns.
   prettier,
 );
+
+/**
+ * WEB-1 plan 2.3 (web §5, ADR-0033): logical Tailwind utilities only, in packages/ui, apps/web
+ * and apps/admin. See rules/no-physical-direction-utilities.js.
+ */
+export const logicalCss = defineConfig({
+  files: ['**/*.{ts,tsx,js,jsx}'],
+  plugins: {
+    eeasy: { rules: { 'no-physical-direction-utilities': noPhysicalDirectionUtilities } },
+  },
+  rules: { 'eeasy/no-physical-direction-utilities': 'error' },
+});
 
 export const react = defineConfig({
   files: ['**/*.tsx', '**/*.jsx'],
