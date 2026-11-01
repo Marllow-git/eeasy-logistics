@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import {
   expect,
   expectAxeClean,
@@ -8,6 +6,7 @@ import {
   expectNoHorizontalOverflow,
   expectNoRawKeys,
   expectSecurityHeaders,
+  message,
   settle,
   test,
   type Locale,
@@ -17,20 +16,6 @@ import {
 // `(platform)` and `(auth)` groups render inside the shared shell in the project's locale, pass the
 // locale, accessibility and security checks, and match their screenshot baselines. Replaces
 // WEB-19's smoke-locale.spec.ts.
-
-/** The catalogue text a page must show: `platform` from this app, the rest from packages/i18n. */
-function message(locale: Locale, namespace: string, key: string): string {
-  const root =
-    namespace === 'platform'
-      ? path.join(import.meta.dirname, '../messages')
-      : path.join(import.meta.dirname, '../../../packages/i18n');
-  let node: unknown = JSON.parse(
-    readFileSync(path.join(root, locale, `${namespace}.json`), 'utf8'),
-  );
-  for (const part of key.split('.')) node = (node as Record<string, unknown>)[part];
-  if (typeof node !== 'string') throw new Error(`no message ${locale}/${namespace}.${key}`);
-  return node;
-}
 
 const routes = [
   { name: 'platform', path: '/', title: ['platform', 'nav.home'] },

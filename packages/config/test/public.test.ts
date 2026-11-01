@@ -22,6 +22,8 @@ describe('web public config (NEXT_PUBLIC_*)', () => {
       appEnv: 'staging',
       sentryDsn: 'https://public@o1.ingest.example.test/1',
       posthogKey: undefined,
+      release: 'dev',
+      posthogHost: 'https://eu.i.posthog.com',
     });
     expect(Object.isFrozen(config)).toBe(true);
   });
@@ -35,7 +37,37 @@ describe('web public config (NEXT_PUBLIC_*)', () => {
 
   it('ignores variables it does not declare', () => {
     const config = parseWebPublicConfig({ NEXT_PUBLIC_APP_ENV: 'ci', AUTH_SIGNING_KEY: 'x' });
-    expect(Object.keys(config)).toEqual(['appEnv', 'sentryDsn', 'posthogKey']);
+    expect(Object.keys(config)).toEqual([
+      'appEnv',
+      'sentryDsn',
+      'posthogKey',
+      'release',
+      'posthogHost',
+    ]);
+  });
+
+  it('takes the release and the PostHog host (PLAT-14 plan 2.7, 2.8)', () => {
+    const config = parseWebPublicConfig({
+      NEXT_PUBLIC_APP_ENV: 'production',
+      NEXT_PUBLIC_RELEASE: 'sha-0123abc',
+      NEXT_PUBLIC_POSTHOG_HOST: 'https://us.i.posthog.com',
+    });
+    expect(config).toMatchObject({
+      release: 'sha-0123abc',
+      posthogHost: 'https://us.i.posthog.com',
+    });
+  });
+
+  it('refuses a malformed release and a PostHog host with credentials', () => {
+    expect(
+      issuesOf(() =>
+        parseWebPublicConfig({
+          NEXT_PUBLIC_APP_ENV: 'ci',
+          NEXT_PUBLIC_RELEASE: 'sha 1;rm',
+          NEXT_PUBLIC_POSTHOG_HOST: 'https://user:secret@eu.i.posthog.com',
+        }),
+      ),
+    ).toEqual(['NEXT_PUBLIC_RELEASE', 'NEXT_PUBLIC_POSTHOG_HOST']);
   });
 });
 
@@ -48,11 +80,15 @@ describe('publicConfig() entry points', () => {
   it('web reads each NEXT_PUBLIC_* variable', async () => {
     vi.stubEnv('NEXT_PUBLIC_APP_ENV', 'ci');
     vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'phc_fake_project_key');
+    vi.stubEnv('NEXT_PUBLIC_RELEASE', 'sha-census');
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', 'https://posthog.example.test');
     const { publicConfig } = await import('../src/web.ts');
     expect(publicConfig()).toEqual({
       appEnv: 'ci',
       sentryDsn: undefined,
       posthogKey: 'phc_fake_project_key',
+      release: 'sha-census',
+      posthogHost: 'https://posthog.example.test',
     });
   });
 

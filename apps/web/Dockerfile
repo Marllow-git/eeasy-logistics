@@ -22,6 +22,9 @@ COPY . .
 # order, so packages/contracts generates its clients (PLAT-15) before next build typechecks.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "@eeasy-logistics/web..."
+# The release Sentry tags errors with (PLAT-14 plan 2.7): main.yml passes sha-<commit>; next build
+# inlines NEXT_PUBLIC_* values, so it is a build argument, declared after the install layer.
+ARG NEXT_PUBLIC_RELEASE=dev
 RUN --mount=type=cache,id=next-cache,target=/repo/apps/web/.next/cache \
     pnpm --filter "@eeasy-logistics/web..." run build
 

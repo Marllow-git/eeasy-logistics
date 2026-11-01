@@ -16,7 +16,9 @@
     "./components/*": "./src/components/*/*.tsx",
     "./shell": "./src/shell/index.ts",
     "./shell/request-config": "./src/shell/request-config.ts",
-    "./shell/locale-switch": "./src/shell/locale-switch.tsx"
+    "./shell/locale-switch": "./src/shell/locale-switch.tsx",
+    "./shell/global-error-document": "./src/shell/global-error-document.tsx",
+    "./observability": "./src/observability/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -24,6 +24,9 @@ COPY . .
 # typechecks. The Next.js cache mount has its own id so the web and admin builds never share it.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "@eeasy-logistics/admin..."
+# The release Sentry tags errors with (PLAT-14 plan 2.7): main.yml passes sha-<commit>; next build
+# inlines NEXT_PUBLIC_* values, so it is a build argument, declared after the install layer.
+ARG NEXT_PUBLIC_RELEASE=dev
 RUN --mount=type=cache,id=next-cache-admin,target=/repo/apps/admin/.next/cache \
     pnpm --filter "@eeasy-logistics/admin..." run build
 

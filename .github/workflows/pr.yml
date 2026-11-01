@@ -201,6 +201,14 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: elx-ci
       APP_ENV: ci
+      # PLAT-14 plan 2.9: the census build's public values (tests/census/helpers.ts censusBuild):
+      # the fault routes of a ci build, Sentry and PostHog pointed at .invalid hosts (nothing
+      # leaves the runner; the census intercepts /monitoring and /ingest in the browser).
+      NEXT_PUBLIC_APP_ENV: ci
+      NEXT_PUBLIC_RELEASE: census
+      NEXT_PUBLIC_SENTRY_DSN: https://census@sentry.invalid/1
+      NEXT_PUBLIC_POSTHOG_KEY: phc_census
+      NEXT_PUBLIC_POSTHOG_HOST: https://posthog.invalid
       # The ports of .env.example; tests/census.config.ts expects the web app on 3001.
       API_PORT: '3000'
       WEB_PORT: '3001'
@@ -295,6 +303,14 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: elx-ci
       APP_ENV: ci
+      # PLAT-14 plan 2.9: the census build's public values (tests/census/helpers.ts censusBuild):
+      # the fault routes of a ci build, Sentry and PostHog pointed at .invalid hosts (nothing
+      # leaves the runner; the census intercepts /monitoring and /ingest in the browser).
+      NEXT_PUBLIC_APP_ENV: ci
+      NEXT_PUBLIC_RELEASE: census
+      NEXT_PUBLIC_SENTRY_DSN: https://census@sentry.invalid/1
+      NEXT_PUBLIC_POSTHOG_KEY: phc_census
+      NEXT_PUBLIC_POSTHOG_HOST: https://posthog.invalid
       # The ports of .env.example; tests/census.config.ts expects the admin app on 3002.
       API_PORT: '3000'
       ADMIN_PORT: '3002'

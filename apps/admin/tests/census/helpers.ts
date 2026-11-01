@@ -1,5 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { test as base, expect, type Page, type Request, type Response } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 // Census helpers, a copy of apps/web/tests/census/helpers.ts (plan 2.9: a shared package waits for a
 // third consumer) (web §11 "Locale assertions", "Accessibility", "Security assertions"; plan 2.9).
@@ -25,6 +27,20 @@ export const test = base.extend<{ locale: Locale }>({
 });
 
 export { expect };
+
+/** The catalogue text a page must show: `platform` from this app, the rest from packages/i18n. */
+export function message(locale: Locale, namespace: string, key: string): string {
+  const root =
+    namespace === 'platform'
+      ? path.join(import.meta.dirname, '../../messages')
+      : path.join(import.meta.dirname, '../../../../packages/i18n');
+  let node: unknown = JSON.parse(
+    readFileSync(path.join(root, locale, `${namespace}.json`), 'utf8'),
+  );
+  for (const part of key.split('.')) node = (node as Record<string, unknown>)[part];
+  if (typeof node !== 'string') throw new Error(`no message ${locale}/${namespace}.${key}`);
+  return node;
+}
 
 /** `<html lang dir>` match the locale (web §5). */
 export async function expectLocale(page: Page, locale: Locale) {
@@ -104,4 +120,38 @@ export async function expectNoSessionCookies(traffic: ReturnType<typeof recordTr
 /** Waits for the self-hosted fonts, so screenshots never catch the fallback face. */
 export async function settle(page: Page) {
   await page.evaluate(() => document.fonts.ready);
+}
+
+/**
+ * The public values the census build carries (PLAT-14 plan 2.9; the CI census lanes and
+ * `mem:suggested_commands` build with them): fake Sentry and PostHog targets on `.invalid` hosts,
+ * so nothing leaves the machine. The census intercepts the browser's /monitoring and /ingest
+ * requests and reads what they carry.
+ */
+export const censusBuild = {
+  sentryDsn: 'https://census@sentry.invalid/1',
+  posthogKey: 'phc_census',
+} as const;
+
+/** A phone number the census plants in URLs and errors; no report or event may carry it. */
+export const plantedPhone = '+966501234567';
+
+/** What must never leave in a report or an event: the planted phone (any spelling), cookies. */
+export function expectNothingPersonal(payload: string, plantedToken?: string) {
+  expect(payload, 'planted phone number').not.toMatch(/501234567/);
+  expect(payload, 'cookie names').not.toMatch(/\bel_(?:locale|staff|platform)/);
+  if (plantedToken !== undefined) expect(payload, 'recipient token').not.toContain(plantedToken);
+}
+
+/**
+ * Holds the browser's Sentry envelopes posted to /monitoring (fulfilled here, never forwarded),
+ * so a test can read what an error report would carry.
+ */
+export async function captureMonitoring(page: Page) {
+  const envelopes: string[] = [];
+  await page.route('**/monitoring', async (route) => {
+    envelopes.push(route.request().postData() ?? '');
+    await route.fulfill({ status: 200, body: '' });
+  });
+  return envelopes;
 }
