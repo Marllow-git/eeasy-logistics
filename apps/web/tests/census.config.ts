@@ -16,7 +16,7 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: '.',
-  testMatch: ['census-shell.spec.ts'],
+  testMatch: ['census-shell.spec.ts', 'census-errors.spec.ts'],
   outputDir: '../test-results',
   forbidOnly: true,
   retries: 0,

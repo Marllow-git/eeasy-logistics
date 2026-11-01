@@ -3,7 +3,7 @@ import { ConfigError } from './errors.ts';
 import type { EnvRecord } from './fields.ts';
 import { deepFreeze, parseVariables } from './fields.ts';
 import type { AppEnv } from './formats.ts';
-import { appEnvs, httpUrl } from './formats.ts';
+import { appEnvs, httpUrl, release, releaseExpectation } from './formats.ts';
 
 // Public configuration for the web app (`NEXT_PUBLIC_*`) and the driver app (`EXPO_PUBLIC_*`).
 // These values are inlined into client bundles at build time and are readable by anyone: never put
@@ -13,18 +13,29 @@ export const webPublicVariables = {
   NEXT_PUBLIC_APP_ENV: z.enum(appEnvs),
   NEXT_PUBLIC_SENTRY_DSN: httpUrl().optional(),
   NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1).optional(),
+  // The image tag the build carries (`sha-<commit>`, PLAT-14 plan 2.7): the Sentry release of the
+  // browser and the server. `dev` outside an image.
+  NEXT_PUBLIC_RELEASE: release().default('dev'),
+  // PostHog ingestion host the /ingest route forwards to (web §10.4); the browser never calls it.
+  NEXT_PUBLIC_POSTHOG_HOST: httpUrl().default('https://eu.i.posthog.com'),
 };
 
 const webExpectations = {
   NEXT_PUBLIC_APP_ENV: `one of ${appEnvs.join(', ')}`,
   NEXT_PUBLIC_SENTRY_DSN: 'an http(s) URL',
   NEXT_PUBLIC_POSTHOG_KEY: 'a PostHog project API key',
+  NEXT_PUBLIC_RELEASE: releaseExpectation,
+  NEXT_PUBLIC_POSTHOG_HOST: 'an http(s) URL without credentials',
 } satisfies Record<keyof typeof webPublicVariables, string>;
 
 export interface WebPublicConfig {
   readonly appEnv: AppEnv;
   readonly sentryDsn: string | undefined;
   readonly posthogKey: string | undefined;
+  /** The release Sentry tags browser and server events with (`NEXT_PUBLIC_RELEASE`). */
+  readonly release: string;
+  /** Where /ingest forwards PostHog requests (`NEXT_PUBLIC_POSTHOG_HOST`). */
+  readonly posthogHost: string;
 }
 
 export function parseWebPublicConfig(env: EnvRecord): WebPublicConfig {
@@ -34,6 +45,8 @@ export function parseWebPublicConfig(env: EnvRecord): WebPublicConfig {
     appEnv: values.NEXT_PUBLIC_APP_ENV,
     sentryDsn: values.NEXT_PUBLIC_SENTRY_DSN,
     posthogKey: values.NEXT_PUBLIC_POSTHOG_KEY,
+    release: values.NEXT_PUBLIC_RELEASE,
+    posthogHost: values.NEXT_PUBLIC_POSTHOG_HOST,
   });
 }
 
