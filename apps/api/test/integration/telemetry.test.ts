@@ -83,16 +83,17 @@ describe('telemetry spans on the real stack (PLAT-14 item B)', () => {
     try {
       const id = nextOutboxId();
       const correlation = uuidv7();
-      // `webhook`: no other suite writes this kind.
+      // `internal_event` on a fresh aggregate and a test handler: `webhook` and `channel_publish`
+      // belong to outbox-platform.http.test.ts, and no relay in the suite handles this row.
       await owner`
         INSERT INTO core_outbox (id, type, event_version, account_id, aggregate_type,
                                  aggregate_id, sequence, payload, kind, status, enqueued_at,
                                  correlation_id)
         VALUES (${id}, 'core.account.suspended', 1, ${account}, 'account', ${uuidv7()}, 1,
-                ${owner.json({ phone })}, 'webhook', 'enqueued', now(), ${correlation})`;
+                ${owner.json({ phone })}, 'internal_event', 'enqueued', now(), ${correlation})`;
       const registry = new KindHandlerRegistry([
         {
-          kind: 'webhook',
+          kind: 'internal_event',
           orderingKey: () => null,
           execute: () => Promise.resolve({ outcome: 'done' }),
         },
@@ -103,15 +104,15 @@ describe('telemetry spans on the real stack (PLAT-14 item B)', () => {
         updateData: () => Promise.resolve(),
       };
       const quiet = { log: () => undefined, warn: () => undefined };
-      expect(await tracedOutboxJob({ db: pool.db, registry, logger: quiet }, 'webhook', job)).toBe(
-        'done',
-      );
+      expect(
+        await tracedOutboxJob({ db: pool.db, registry, logger: quiet }, 'internal_event', job),
+      ).toBe('done');
       const jobs = exporter.getFinishedSpans().filter((span) => span.name === 'outbox.job');
       expect(jobs).toHaveLength(1);
       expect(jobs[0]?.kind).toBe(SpanKind.CONSUMER);
       expect(jobs[0]?.parentSpanContext).toBeUndefined();
       expect(jobs[0]?.attributes).toEqual({
-        'elx.outbox.kind': 'webhook',
+        'elx.outbox.kind': 'internal_event',
         'elx.outbox.row_id': id,
         'elx.account.id': account,
         'elx.correlation_id': correlation,

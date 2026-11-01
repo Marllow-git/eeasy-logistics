@@ -1,5 +1,5 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
-import { Public } from '../modules/kernel/public/index.js';
+import { getMetrics, Public } from '../modules/kernel/public/index.js';
 import { Controller, Get, HttpStatus, Inject, Logger, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import type { CheckName, ReadinessCheck } from './readiness.js';
@@ -61,6 +61,12 @@ export class ReadyController implements OnApplicationShutdown {
       .then((failing) => {
         this.cached = { at: Date.now(), failing };
         if (failing.length > 0) this.logger.warn(`Not ready: ${failing.join(', ')}`);
+        // `ready_checks` per check, 1 passing and 0 failing (PLAT-14 plan 2.3).
+        for (const check of this.checks) {
+          getMetrics().set('ready_checks', failing.includes(check.name) ? 0 : 1, {
+            check: check.name,
+          });
+        }
         return failing;
       })
       .finally(() => {

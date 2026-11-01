@@ -30,6 +30,7 @@ import { PlatformOutbox } from '../../modules/kernel/platform/outbox.repository.
 import { coreAccounts } from '../../modules/kernel/schema/accounts.js';
 import { coreOutbox } from '../../modules/kernel/schema/outbox.js';
 import { SpanKind } from '@opentelemetry/api';
+import { getMetrics } from '../../modules/kernel/telemetry/metrics.js';
 import { annotateActiveSpan, withSpan } from '../../modules/kernel/telemetry/spans.js';
 
 // The consumer side of the outbox queues (PLAT-8 plan 2.4, 2.5, 2.9; ADR-0024, ADR-0036;
@@ -198,6 +199,8 @@ export async function processOutboxJob(
   if (!(await writeOutcome(deps.db, row.id, write, audit))) return 'skipped';
   if (write.status === 'dead') {
     deps.logger.warn(`Outbox row ${row.id} (${kind}) dead after ${write.attempts} attempts`);
+    // ADR-0036: dead rows of some kinds page one by one, others by rate (PLAT-14 plan 2.3).
+    getMetrics().add('outbox_dead_total', 1, { kind });
   }
   if (write.status === 'enqueued') {
     // A park carries its first-park time to the next run; any other retry ends the park.

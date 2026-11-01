@@ -9,7 +9,9 @@ import { AuditWriter } from '../../modules/kernel/audit/audit-writer.js';
 import type { KindHandler } from '../../modules/kernel/outbox/kind-handlers.js';
 import { KindHandlerRegistry } from '../../modules/kernel/outbox/kind-handlers.js';
 import { OutboxQueues } from '../../modules/kernel/outbox/queues.js';
+import { getMetrics } from '../../modules/kernel/telemetry/metrics.js';
 import { purgeIntervalMs, runIdempotencyPurge } from './idempotency-purge.js';
+import { gaugeIntervalMs, runOutboxGauges } from './outbox-gauges.js';
 import { buildKindHandlers } from './kind-handlers.js';
 import type { PruneRun } from './outbox-prune.js';
 import { pruneIntervalMs, runOutboxPrune } from './outbox-prune.js';
@@ -20,7 +22,8 @@ import { OutboxWorkers } from './outbox-workers.js';
 // (PLAT-6 plan 2.9) and the single-leader outbox relay (PLAT-8 plan 2.3); the outbox queue
 // workers (PLAT-8 plan 2.4) consume the queues of the kinds with a handler.
 
-export type WorkerJob = 'idempotency-purge' | 'outbox-prune' | 'outbox-relay' | 'outbox-queues';
+export type WorkerJob =
+  'idempotency-purge' | 'outbox-prune' | 'outbox-relay' | 'outbox-queues' | 'outbox-gauges';
 
 /** A started background job: stopped on shutdown. */
 export interface StartedJob {
@@ -64,6 +67,8 @@ export interface WorkerDependencies {
   /** One daily outbox pruning run under its Redis lock (OUTBOX_PRUNE=on, plan 2.8). */
   readonly outboxPrune: (db: PlatformDatabase, redis: PurgeRedis) => Promise<PruneRun>;
   readonly logger: Pick<Logger, 'log' | 'warn'>;
+  /** One outbox gauge run: one query, values stored for the next metric export (PLAT-14). */
+  readonly outboxGauges: (db: PlatformDatabase) => Promise<void>;
 }
 
 /** The real relay: its own BullMQ connection, the handler registry of this build, LISTEN. */
@@ -142,6 +147,7 @@ const defaults: WorkerDependencies = {
   outboxRelay: startOutboxRelay,
   outboxWorkers: startOutboxWorkers,
   outboxPrune: (db, redis) => runOutboxPrune(db, redis),
+  outboxGauges: (db) => runOutboxGauges(db, getMetrics(), new Logger('OutboxGauges')),
   logger: new Logger('Worker'),
 };
 
@@ -242,11 +248,16 @@ export async function startWorker(
   const queues = await deps.outboxWorkers(config, pool, registry);
   jobs.push('outbox-queues');
   deps.logger.log(`Outbox queue workers started: ${registry.kinds.join(', ') || 'no kind'}`);
+  // PLAT-14 plan 2.3: the outbox gauges, at once and every 30 s.
+  await deps.outboxGauges(pool.db);
+  const gaugeTimer = setInterval(() => void deps.outboxGauges(pool.db), gaugeIntervalMs);
+  jobs.push('outbox-gauges');
   return {
     jobs,
     stop: async () => {
       clearInterval(timer);
       clearInterval(pruneTimer);
+      clearInterval(gaugeTimer);
       // The relay first (no new jobs), then the workers drain (platform §5), then the clients.
       await relay?.stop();
       await queues.stop();

@@ -1,5 +1,6 @@
 import { SpanKind } from '@opentelemetry/api';
 import { ProviderFailure } from '../outbox/provider-failure.js';
+import { getMetrics } from './metrics.js';
 import { withSpan } from './spans.js';
 
 // One span per port call (PLAT-14 plan 2.2; integrations §10): `integration.<port>.<method>` with
@@ -58,17 +59,28 @@ export async function withPortSpan<T>(
       'integration.attempt': call.attempt,
     },
     async (span) => {
+      const started = performance.now();
+      // integrations §10 metrics, by port and provider (never the account or the row).
+      const count = (outcome: PortOutcome) => {
+        const metrics = getMetrics();
+        const labels = { port: call.port, provider: call.provider };
+        metrics.add('integration_calls_total', 1, { ...labels, outcome });
+        metrics.record('integration_latency_ms', performance.now() - started, labels);
+      };
       try {
         const result = await fn({
           setHttpStatus: (status) => span.setAttribute('http.response.status_code', status),
         });
         span.setAttribute('integration.outcome', 'ok');
+        count('ok');
         return result;
       } catch (error) {
-        span.setAttribute('integration.outcome', portOutcomeOf(error));
+        const outcome = portOutcomeOf(error);
+        span.setAttribute('integration.outcome', outcome);
         if (error instanceof ProviderFailure && typeof error.status === 'number') {
           span.setAttribute('http.response.status_code', error.status);
         }
+        count(outcome);
         throw error;
       }
     },

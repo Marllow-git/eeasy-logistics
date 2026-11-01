@@ -28,3 +28,6 @@ export {
 export { OutboxWriter, type OutboxEntry } from '../outbox/outbox-writer.js';
 export type { DomainEvent, DomainEventType, EventPayload } from '../outbox/domain-event.js';
 export type { OutboxKind } from '../schema/outbox.js';
+// Telemetry (PLAT-14): one span per provider call for every adapter, and the metric catalogue.
+export { withPortSpan, type PortCall, type PortSpan } from '../telemetry/port-span.js';
+export { getMetrics, type MetricName } from '../telemetry/metrics.js';

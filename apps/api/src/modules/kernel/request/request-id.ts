@@ -3,7 +3,8 @@ import { isUuid, uuidv7 } from '@eeasy-logistics/db';
 import type { NestMiddleware } from '@nestjs/common';
 import { ConsoleLogger, Injectable } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
-import { annotateRequest } from '../telemetry/spans.js';
+import { getMetrics } from '../telemetry/metrics.js';
+import { annotateRequest, routeTemplateOf } from '../telemetry/spans.js';
 
 // Request ids (PLAT-6 plan 2.1; contracts README §3 "Request ids"). The middleware runs first in
 // the chain: it keeps an incoming `X-Request-Id` only when it is a UUID, else mints a UUIDv7, sets
@@ -60,6 +61,16 @@ export class RequestIdMiddleware implements NestMiddleware {
     const client = clientRequestIdOf(request);
     // The request span carries the server's id (PLAT-14 plan 2.2), never the client's.
     annotateRequest(request, { 'elx.request_id': server });
+    // `http_request_duration_ms` by route template, method and status (plan 2.3); a request no
+    // route matched counts as `unmatched`, never under its path.
+    const started = performance.now();
+    response.once('finish', () => {
+      getMetrics().record('http_request_duration_ms', performance.now() - started, {
+        route: routeTemplateOf(request) ?? 'unmatched',
+        method: request.method,
+        status: response.statusCode,
+      });
+    });
     // Log lines name the server's id, and the client's next to it when it sent one.
     scope.run(client === null || client === server ? server : `${server} client ${client}`, next);
   }
