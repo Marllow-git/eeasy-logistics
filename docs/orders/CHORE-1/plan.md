@@ -141,3 +141,15 @@ Leg 1, all on 2026-11-01:
 - `admin` and `web` builds, Playwright censuses and the driver app were not run locally; nothing in this order reaches them beyond Node 24 itself, which their CI lanes run.
 
 ## 9. Lead review
+
+Lead review 2026-11-01 (session `eeasy-logistics-6e`), all three diffs read against §2 and §5. Adversary not required (§0).
+
+| # | Point | Ruling |
+|---|---|---|
+| 1 | Leg 2: `util.parseEnv` returns keys in name order; `env-example.test.ts` now compares sorted lists | accepted. Config reads keys by name, so order carries no meaning; stop rule 2.6 covers parsed values, which match on every input our files use |
+| 2 | Leg 1: lock resolved with the age and trust gates relaxed in an uncommitted local copy, then every new version checked against the registry; `http2-wrapper` held at 2.2.1 | accepted. The trust half was a false positive of `trustPolicy` on old versions, fixed by PR #55 (`trustPolicyIgnoreAfter`); the age half clears by 2026-11-04 |
+| 3 | Leg 1: the Compose WhatsApp stub image moved to Node 24 beyond 2.2 | accepted; §5 requires no `node:22` image |
+| 4 | Leg 3: the authenticated check used a probe controller mounted in the test, not in `src` | accepted; no authenticated route exists in `src` yet |
+| 5 | Flaky `cross-tenant.http.test.ts` line 225 (a random `request_id` containing `b-1`, about 1 in 100) | out of scope; reported to the PLAT-6 lead session to fix |
+
+Verdict: accept all three legs; merge in stack order through `tools/pr-gate.sh`.
