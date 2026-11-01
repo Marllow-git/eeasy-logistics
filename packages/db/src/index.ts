@@ -4,7 +4,13 @@
 //   @eeasy-logistics/db/migrate    the migration runner (elx_owner, the migration job only)
 //   @eeasy-logistics/db/testing    a context setter and scratch-database helpers for tests
 export { findContext, getContext, type RequestContext } from './context.ts';
-export { createAppPool, type AppDatabase, type AppPoolSettings, type Pool } from './pools.ts';
+export {
+  createAppPool,
+  verifyPoolRole,
+  type AppDatabase,
+  type AppPoolSettings,
+  type Pool,
+} from './pools.ts';
 export {
   ScopedRepository,
   type TenantInsert,

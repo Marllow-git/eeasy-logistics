@@ -38,6 +38,14 @@ describe('GET /ready on the real stack', () => {
     expect(response.body).toEqual({ status: 'not_ready', failing: ['redis'] });
   });
 
+  it('answers 503 naming database when the app URL logs in as another role (review M-6)', async () => {
+    const platform = integrationConfig().db.urls.platform;
+    expect(platform).toBeDefined();
+    const http = await start(integrationConfig({ DATABASE_URL_APP: platform?.reveal() }));
+    const response = await http.get('/ready').expect(503);
+    expect(response.body).toEqual({ status: 'not_ready', failing: ['database'] });
+  });
+
   it('answers 503 naming storage when the bucket does not exist', async () => {
     const http = await start(integrationConfig({ STORAGE_BUCKET: 'elx-missing-bucket' }));
     const response = await http.get('/ready').expect(503);

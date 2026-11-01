@@ -1,5 +1,6 @@
 import type { Secret } from '@eeasy-logistics/config';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
@@ -50,6 +51,25 @@ export function openPool<Role extends string>(
 export interface AppPoolSettings {
   readonly urls: { readonly app: Secret | undefined };
   readonly poolSize: { readonly app: number };
+}
+
+/**
+ * Proves a pool is what it claims (review M-6): logged in as `expected`, and that role is neither
+ * superuser nor BYPASSRLS, so the policies and the withheld grants apply to it. Throws otherwise;
+ * the message names the expected role only, never the URL.
+ */
+export async function verifyPoolRole(
+  db: PostgresJsDatabase,
+  expected: 'elx_app' | 'elx_platform',
+): Promise<void> {
+  const rows = await db.execute<{ who: string; superuser: boolean; bypass: boolean }>(
+    sql`SELECT current_user AS who, rolsuper AS superuser, rolbypassrls AS bypass
+        FROM pg_roles WHERE rolname = current_user`,
+  );
+  const row = rows[0];
+  if (row?.who !== expected || row.superuser || row.bypass) {
+    throw new Error(`The pool is not a plain ${expected} connection`);
+  }
 }
 
 /** The `elx_app` pool (ADR-0031): the only pool tenant code receives. */

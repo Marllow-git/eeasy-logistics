@@ -1,6 +1,7 @@
 import type { Config } from '@eeasy-logistics/config';
 import { recreateDatabase, withDatabase } from '@eeasy-logistics/db/admin';
 import { runMigrations } from '@eeasy-logistics/db/migrate';
+import { verifyPoolRole } from '@eeasy-logistics/db';
 import { createPlatformPool, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { migrationsFolder } from '../migrate/run.js';
 import { coreAccounts } from '../modules/kernel/schema/accounts.js';
@@ -17,6 +18,7 @@ export const seedTemplateDatabase = 'elx_seed';
 export async function seedFixtures(db: Config['db']): Promise<number> {
   const pool = createPlatformPool({ ...db, poolSize: { ...db.poolSize, platform: 1 } }, 'elx-seed');
   try {
+    await verifyPoolRole(pool.db, 'elx_platform');
     return await withPlatformUnitOfWork(pool.db, async ({ tx }) => {
       const inserted = await tx
         .insert(coreAccounts)
