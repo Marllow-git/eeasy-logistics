@@ -166,8 +166,8 @@ GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
 
 | Workflow | Runs on | Jobs |
 |---|---|---|
-| `.github/workflows/pr.yml` | every pull request; called by `main.yml` on every push to `main` | the seven required checks below and the advisory `node-24` |
-| `.github/workflows/main.yml` | push to `main`; pull requests as a dry run | `pr.yml` again (push only), then per image: build, run probe, Trivy scan, push to GHCR (push to `main` only) |
+| `.github/workflows/pr.yml` | every pull request | the seven required checks below and the advisory `node-24` |
+| `.github/workflows/main.yml` | push to `main`; pull requests as a dry run | per image: build, run probe, Trivy scan, push to GHCR (push to `main` only). The PR checks are not re-run on `main` (owner ruling 2026-11-01): the merge gate requires them green on the exact head merged |
 
 | Check | What it runs | Locally |
 |---|---|---|
