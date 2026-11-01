@@ -26,7 +26,7 @@ Turborepo runs `build` before this package's own `typecheck`, `lint` and `test`,
 |---|---|---|
 | `@eeasy-logistics/contracts/staff` | model types; `client`, `schemas` (Zod), `hooks` (TanStack Query) namespaces | `apps/web` |
 | `@eeasy-logistics/contracts/recipient` | model types; `client`, `schemas` | `apps/web` |
-| `@eeasy-logistics/contracts/platform`, `/public` | as staff | not `apps/web` until the admin-console decision; `/public` for integrators |
+| `@eeasy-logistics/contracts/platform`, `/public` | as staff | never `apps/web` (the admin app, ADR-0038); `/public` for integrators |
 | `@eeasy-logistics/contracts/driver` | model types; `client`, `schemas`; no hooks, no MSW | `apps/driver` |
 | `@eeasy-logistics/contracts/<staff,platform,public>/mocks` | MSW handlers and mock factories, tests only | test code |
 | `@eeasy-logistics/contracts/http` | `createFetcher`, `apiFetch` (the Orval mutator), `ApiError` | every client |

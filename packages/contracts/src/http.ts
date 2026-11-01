@@ -54,20 +54,37 @@ export interface FetcherOptions {
    * which is not a web client, passes false.
    */
   webClient?: boolean;
-  /** Generates the per-call `X-Request-Id`; `crypto.randomUUID` by default (React Native passes its own). */
+  /** Generates the per-call `X-Request-Id`; `defaultRequestId` (Web Crypto) by default. */
   requestId?: () => string;
 }
 
 /** A configured transport. Pass it to a generated call as `{ fetcher }`. */
 export type Fetcher = (path: string, init: RequestInit) => Promise<Response>;
 
-const readMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
+/**
+ * A UUID v4 for `X-Request-Id`: `crypto.randomUUID` where it exists, else built from
+ * `crypto.getRandomValues` (RFC 9562 §5.4). Throws when the platform has neither.
+ */
+export function defaultRequestId(): string {
+  const crypto = globalThis.crypto as Partial<Crypto> | undefined;
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+  if (typeof crypto?.getRandomValues !== 'function') {
+    throw new Error(
+      'No crypto.randomUUID or crypto.getRandomValues here: pass the requestId option to createFetcher.',
+    );
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // variant 10
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 /** Builds the transport the generated clients call through `apiFetch`. */
 export function createFetcher(options: FetcherOptions): Fetcher {
   const baseUrl = options.baseUrl.replace(/\/+$/, '');
   const webClient = options.webClient ?? true;
-  const newRequestId = options.requestId ?? (() => globalThis.crypto.randomUUID());
+  const newRequestId = options.requestId ?? defaultRequestId;
 
   return (path, init) => {
     const doFetch = options.fetch ?? globalThis.fetch;
@@ -82,7 +99,7 @@ export function createFetcher(options: FetcherOptions): Fetcher {
     }
     if (!headers.has('x-request-id')) headers.set('X-Request-Id', newRequestId());
     const method = (init.method ?? 'GET').toUpperCase();
-    if (webClient && !readMethods.has(method)) headers.set('X-EL-Client', 'web');
+    if (webClient && method !== 'GET') headers.set('X-EL-Client', 'web');
 
     return doFetch(`${baseUrl}${path}`, { ...init, method, headers });
   };

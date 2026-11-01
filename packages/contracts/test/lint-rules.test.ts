@@ -139,6 +139,18 @@ describe('contract lint rules (document 3 §9)', () => {
     expect(result.out).toContain('eeasy/idempotency-key');
   });
 
+  it('fails a write whose Idempotency-Key is not required', async () => {
+    for (const required of [false, undefined]) {
+      const doc = cleanDoc();
+      const parameters = (doc.components as Record<string, Record<string, Doc>>).parameters!;
+      if (required === undefined) delete parameters.IdempotencyKey!.required;
+      else parameters.IdempotencyKey!.required = required;
+      const result = await lint(`optional-key-${String(required)}`, doc);
+      expect(result.ok).toBe(false);
+      expect(result.out).toContain('without required: true');
+    }
+  });
+
   it('accepts a write without the key when its operationId is exempt', async () => {
     const doc = cleanDoc();
     const post = paths(doc)['/things']!.post!;

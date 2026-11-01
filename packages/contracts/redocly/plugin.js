@@ -17,7 +17,8 @@ function deref(node, ctx) {
 
 /**
  * Every POST, PUT, PATCH and DELETE declares the `Idempotency-Key` header parameter, on the
- * operation or its path item, unless its operationId is listed in `exempt` (README §3).
+ * operation or its path item, with `required: true`, unless its operationId is listed in `exempt`
+ * (README §3).
  */
 function IdempotencyKey({ exempt = [] }) {
   const exemptIds = new Set(exempt);
@@ -33,12 +34,19 @@ function IdempotencyKey({ exempt = [] }) {
           if (operation === undefined) continue;
           if (exemptIds.has(operation.operationId)) continue;
           const own = (operation.parameters ?? []).map((p) => deref(p, ctx));
-          const declared = [...shared, ...own].some(
+          const key = [...shared, ...own].find(
             (p) => p?.in === 'header' && p?.name?.toLowerCase() === 'idempotency-key',
           );
-          if (!declared) {
+          const id = operation.operationId ?? '(no operationId)';
+          if (key === undefined) {
             ctx.report({
-              message: `${method.toUpperCase()} ${operation.operationId ?? '(no operationId)'} declares no Idempotency-Key parameter and is not in the exempt list.`,
+              message: `${method.toUpperCase()} ${id} declares no Idempotency-Key parameter and is not in the exempt list.`,
+              location: ctx.location.child([method]).key(),
+            });
+          } else if (key.required !== true) {
+            // A missing key is `400 idempotency_key_required` (README §3), so the header is required.
+            ctx.report({
+              message: `${method.toUpperCase()} ${id} declares Idempotency-Key without required: true.`,
               location: ctx.location.child([method]).key(),
             });
           }
