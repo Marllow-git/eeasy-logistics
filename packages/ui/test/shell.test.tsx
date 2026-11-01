@@ -23,9 +23,28 @@ describe.each(directions)('frame in $locale ($dir)', ({ locale, dir }) => {
       <AppShell
         brand="Eeasy"
         navigation={[
-          { href: '/', label: nav.home, active: true },
-          { href: '/orders', label: 'Orders' },
+          {
+            items: [
+              { href: '/', label: nav.home, active: false },
+              {
+                href: '/orders',
+                label: 'Orders',
+                active: true,
+                children: [{ href: '/orders/drafts', label: 'Drafts', active: false }],
+              },
+              {
+                href: '/drivers',
+                label: 'Drivers',
+                active: false,
+                children: [{ href: '/drivers/shifts', label: 'Shifts', active: false }],
+              },
+            ],
+          },
+          { label: 'Channels', items: [{ href: '/channels', label: 'Stores', active: false }] },
         ]}
+        account={<p>Account block</p>}
+        sidebarAction={<button type="button">New order</button>}
+        search={<input type="search" aria-label="Search" />}
         topBar={<button type="button">Lang</button>}
       >
         <p>Content</p>
@@ -36,11 +55,22 @@ describe.each(directions)('frame in $locale ($dir)', ({ locale, dir }) => {
     ).toBe('#main');
     const navigation = screen.getByRole('navigation', { name: nav.primary });
     expect(
-      within(navigation).getByRole('link', { name: nav.home }).getAttribute('aria-current'),
+      within(navigation).getByRole('link', { name: 'Orders' }).getAttribute('aria-current'),
     ).toBe('page');
     expect(
-      within(navigation).getByRole('link', { name: 'Orders' }).getAttribute('aria-current'),
+      within(navigation).getByRole('link', { name: nav.home }).getAttribute('aria-current'),
     ).toBeNull();
+    // Sub-pages unfold only under the current item (Shopify reference, plan §8.2).
+    expect(within(navigation).getByRole('link', { name: 'Drafts' }).className).toContain('ps-9');
+    expect(within(navigation).queryByRole('link', { name: 'Shifts' })).toBeNull();
+    expect(within(navigation).getByText('Channels')).toBeTruthy();
+    // Account block on top, primary action at the bottom of the sidebar (Square reference).
+    const aside = navigation.closest('aside')!;
+    expect(within(aside).getByText('Account block')).toBeTruthy();
+    expect(within(aside).getByRole('button', { name: 'New order' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('banner')).getByRole('searchbox', { name: 'Search' }),
+    ).toBeTruthy();
     expect(screen.getByRole('main').id).toBe('main');
     expect(screen.getByRole('button', { name: 'Lang' })).toBeTruthy();
     // The sidebar's edge is logical, so it sits on the right in Arabic and the left in English.
@@ -50,7 +80,10 @@ describe.each(directions)('frame in $locale ($dir)', ({ locale, dir }) => {
   it('AppShell opens the navigation as a sheet from the start edge on small screens', () => {
     renderIn(
       locale,
-      <AppShell brand="Eeasy" navigation={[{ href: '/', label: nav.home, active: true }]}>
+      <AppShell
+        brand="Eeasy"
+        navigation={[{ items: [{ href: '/', label: nav.home, active: true }] }]}
+      >
         <p>Content</p>
       </AppShell>,
     );

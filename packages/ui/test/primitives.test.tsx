@@ -70,4 +70,10 @@ describe.each(directions)('primitives in $locale ($dir)', ({ locale, dir }) => {
     expect(screen.getByText('All orders')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'New' })).toBeTruthy();
   });
+
+  it('PageHeader renders a tab row under the title', () => {
+    renderIn(locale, <PageHeader title="Orders" tabs={<nav aria-label="States">All</nav>} />);
+    const header = screen.getByRole('heading', { level: 1 }).closest('header')!;
+    expect(header.lastElementChild?.getAttribute('aria-label')).toBe('States');
+  });
 });
