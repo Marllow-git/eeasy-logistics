@@ -35,7 +35,11 @@ const run = randomBytes(4).toString('hex');
 const prefix = `elx-test-${run}`;
 const lockKey = `${prefix}:lock:outbox-relay`;
 const kind: OutboxKind = 'carrier_call';
-const perAggregate: KindHandler = { kind, orderingKey: (row) => row.aggregateId };
+const perAggregate: KindHandler = {
+  kind,
+  orderingKey: (row) => row.aggregateId,
+  execute: () => Promise.resolve({ outcome: 'done' }),
+};
 const registry = new KindHandlerRegistry([perAggregate]);
 const quiet = { log: () => undefined, warn: () => undefined };
 const fast = {
