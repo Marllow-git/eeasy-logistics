@@ -21,10 +21,15 @@ const webOrigins: EnvRecord = {
   PUBLIC_ADMIN_URL: 'http://localhost:3002',
 };
 
-/** The validated configuration with every database URL pointed at this run's database. */
-export function integrationConfig(overrides: EnvRecord = {}): Config {
+/**
+ * The validated configuration with every database URL pointed at `database`: this run's database,
+ * or a file's own scratch database (migrate.test.ts, CHORE-2).
+ */
+export function integrationConfig(
+  overrides: EnvRecord = {},
+  database: string = harnessDatabase(),
+): Config {
   const config = defineConfig({ ...webOrigins, ...readEnvironment(), ...overrides });
-  const database = harnessDatabase();
   const point = (url: Config['db']['urls']['app']) =>
     url === undefined ? undefined : withDatabase(url, database);
   const { urls } = config.db;
