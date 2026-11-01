@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import { migratorFiles } from './test/integration/migrator-files.js';
 
 // Integration suite against the real stack (handbook 03): PostgreSQL, Redis and storage of the
 // Compose `ci` profile in CI, the native stack locally. global-setup.ts migrates a scratch database
@@ -7,11 +8,12 @@ import { defineConfig } from 'vitest/config';
 // tenancy schema test (data §4.1).
 //
 // Files run in parallel workers on that one database. The files that run the migrator (its
-// advisory lock, `core_enable_tenant_rls()`, audit partition DDL) take table locks the other files'
-// writes can deadlock with (issue #71, CHORE-2): they form the `migrator` project, which starts
-// only after every `parallel` file has finished (`sequence.groupOrder`), one file at a time. With
-// DATABASE_URL_ADMIN they also use a scratch database of their own (migrate.test.ts).
-const migratorFiles = ['test/integration/migrate.test.ts'];
+// advisory lock, `core_enable_tenant_rls()`, audit partition DDL), call its SQL functions, or run
+// DDL outside a throwaway schema take table locks the other files' writes can deadlock with (issue
+// #71, CHORE-2): they form the `migrator` project, which starts only after every `parallel` file
+// has finished (`sequence.groupOrder`), one file at a time. With DATABASE_URL_ADMIN migrate.test.ts
+// also uses a scratch database of its own. The list lives in test/integration/migrator-files.ts,
+// which test/integration-projects.test.ts (unit) keeps complete.
 
 export default defineConfig({
   test: {
@@ -25,7 +27,7 @@ export default defineConfig({
         test: {
           name: 'parallel',
           include: ['test/integration/**/*.test.ts', 'test/schema/**/*.test.ts'],
-          exclude: migratorFiles,
+          exclude: [...migratorFiles],
           sequence: { groupOrder: 0 },
         },
       },
@@ -33,7 +35,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'migrator',
-          include: migratorFiles,
+          include: [...migratorFiles],
           fileParallelism: false,
           sequence: { groupOrder: 1 },
         },
