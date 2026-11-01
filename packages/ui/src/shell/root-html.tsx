@@ -11,8 +11,8 @@ import '../intl';
  * The `<html>` every route group's own root layout renders (web §1.2: separate root layouts, one
  * shell). `lang` and `dir` come from the request locale on the server (web §5); the font variable
  * sits on `<html>` so the `--font-sans` token resolves; Radix gets the direction; the client
- * receives only the message namespaces the group renders (ADR-0038: no `platform` strings in the
- * merchant bundle). The app's layout imports `@eeasy-logistics/ui/styles.css`.
+ * receives only the shared namespaces the group renders (the `platform` namespace is apps/admin's and
+ * stays on its server, ADR-0038). The app's layout imports `@eeasy-logistics/ui/styles.css`.
  */
 export async function RootHtml({
   namespaces,
