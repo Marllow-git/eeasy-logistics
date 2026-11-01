@@ -73,14 +73,14 @@ Columns are the same for every port. "Wave" is the first wave that needs a worki
 |---|---|
 | Methods | `sendTemplate({to E.164, template_key, locale ar\|en, params, idempotency_key}) → {provider_message_id}`; `listTemplates() → [{key, locale, status, category}]`; status callbacks and replies arrive inbound (§3) |
 | Owner | kernel: driver and staff OTP (document 4 §3) and Delivery's recipient messages both send through it |
-| Adapters | one WhatsApp Business provider adapter (provider choice is open question 1); SMS is a named second adapter with no implementation before wave 3 (ADR-0037) |
+| Adapters | one WhatsApp Business provider adapter, for the provider eeasynew already uses (owner ruling 2026-11-01, Q-27; which provider is **to confirm** with eeasynew); SMS is a named second adapter with no implementation before wave 3 (ADR-0037) |
 | Kind | outbox, kind `message` |
 | Timeout | 5 s |
 | Retry | §4.2 |
 | Idempotency | the outbox row id, sent as the provider's client reference where supported; a resend after a timeout checks the reference first when the provider allows lookup (**to confirm** per provider) |
 | Breaker and degraded | breaker per provider; while open, OTP requests return `503 messaging_unavailable` at the door (document 4 §3.2 budgets still apply) and recipient messages wait in the queue; platform §3 `MESSAGING_DISABLED=true` stops sends and marks rows `superseded` with reason `disabled` |
 | Stub | `whatsapp-stub` (platform §2): records sends, exposes the last OTP per phone to tests |
-| Credentials | provider token and webhook secret, platform secrets; templates are platform-level, one set for all accounts |
+| Credentials | provider token and webhook secret, platform secrets, **issued for this product only** (a system user or API key scoped to this product's number), never eeasynew's token; templates are platform-level, one set for all accounts |
 | Wave | 0 (OTP template), 1 (recipient templates) |
 
 ### 2.5 `PushSender` (Delivery)
@@ -190,7 +190,7 @@ Raw payloads hold recipient PII: retained 30 days, then the body is deleted and 
 |---|---|---|---|
 | Salla | `/hooks/salla` | an app-level webhook URL; a signature header computed as HMAC-SHA256 of the body with the app's webhook secret when the app chooses the signature strategy (header names `X-Salla-Signature` and `X-Salla-Security-Strategy`; **to confirm** on the partner portal); store events carry the merchant (store) id; app events (`app.store.authorize`, `app.uninstalled`) arrive on the same URL | signature strategy is required for our app; verify HMAC with the app secret; no timestamp in the signature (**to confirm**), so step 4 is skipped and step 5 dedupes on the event id plus body hash |
 | Zid | `/hooks/zid/{connection_id}` | webhooks registered per store through the Zid API with an event and target URL; no body signature is documented (**to confirm**) | the path carries the connection id, and the per-connection random secret is sent as the Basic Auth password Zid supports at registration (`username` and `password` fields, confirmed 2026-10-31, `docs/research/provider-facts-2026-10.md`); it is compared in constant time and redacted from logs; then the consumer re-fetches the order with `fetchOrder` before acting (verify by fetch), so a forged call can at most trigger a read |
-| Eeasy shipping | `/hooks/eeasy-shipping` | signed webhooks are a listed need of eeasynew #885 (foundation plan §5); the scheme is not yet defined | we ask #885 to adopt the ADR-0040 scheme unchanged (`X-Eeasy-Timestamp`, `X-Eeasy-Signature: v1=` HMAC over `"<timestamp>.<raw body>"`, per-account secret, 300 s window, event id); until then **to confirm** |
+| Eeasy shipping | `/hooks/eeasy-shipping` | signed webhooks are a listed need of eeasynew #885 (foundation plan §5); the scheme is not yet defined | we ask #885 to adopt the ADR-0040 scheme unchanged (Standard Webhooks v1: `webhook-id`, `webhook-timestamp`, `webhook-signature: v1,` HMAC-SHA256 over `"<id>.<timestamp>.<raw body>"`, per-account `whsec_` secret, 300 s window); until then **to confirm** |
 | WhatsApp provider | `/hooks/whatsapp` | message status (sent, delivered, read, failed) and inbound replies; Meta Cloud API signs with `X-Hub-Signature-256` (HMAC-SHA256 with the app secret); business solution providers use their own schemes (**to confirm** with the chosen provider) | provider scheme; statuses update the message log; an opt-out reply updates the opt-out list (§5.5) |
 | Expo push | none | Expo exposes receipts by polling, not webhooks | not applicable (§2.5) |
 
@@ -278,7 +278,7 @@ Each account chooses which recipient templates are on (default: out for delivery
 
 ### 5.2 Approval
 
-Templates are submitted under the platform's WhatsApp Business account. Meta states review takes up to 24 hours (confirmed 2026-10-31, `docs/research/provider-facts-2026-10.md`); re-categorisation of a utility template as marketing is not stated publicly (**to confirm** current policy with the provider). Rule: submit a wave's templates when its order starts and no later than three weeks before its exit; a wave does not exit on a template still pending. Template text lives in `packages/i18n` with the template key, so review comments change one file.
+Templates are submitted under the Eeasy business that eeasynew already verified with Meta, on **this product's own phone number** and display name (owner ruling 2026-11-01, Q-27), so business verification is not repeated and the two products do not share a number's quality rating. Preferred: a separate WhatsApp Business account under that verified business, which keeps our template namespace apart. If the provider puts the new number in eeasynew's WhatsApp Business account instead, every template name carries the `elx_` prefix so the shared namespace cannot collide. Whether Meta's messaging limits are counted per number or per business is **to confirm** with the provider. Meta states review takes up to 24 hours (confirmed 2026-10-31, `docs/research/provider-facts-2026-10.md`); re-categorisation of a utility template as marketing is not stated publicly (**to confirm** current policy with the provider). Rule: submit a wave's templates when its order starts and no later than three weeks before its exit; a wave does not exit on a template still pending. Template text lives in `packages/i18n` with the template key, so review comments change one file.
 
 ### 5.3 SMS fallback
 
@@ -486,7 +486,7 @@ Rules:
 
 ## 12. Open questions for the owner
 
-1. **WhatsApp provider.** Meta Cloud API directly (lowest per-message cost, we build template management) or a business solution provider with a Saudi presence such as Unifonic (support, local billing, a markup per message). Needed before wave 0 exits, because the driver OTP depends on it.
+1. **WhatsApp provider.** Ruled 2026-11-01 (Q-27): reuse the WhatsApp setup eeasynew already runs (its verified Meta business and its provider), with a new phone number and our own credentials for this product (§2.4, §5.2). Open: which provider that is (Meta Cloud API direct or a business solution provider), to confirm with eeasynew before PLAT-9 builds its adapter.
 2. **Hudhud contract.** Who signs the B2B agreement, the quota, the price per geocode and per matrix element, and whether National Address short-code lookup is included or needs the SPL API. Needed before wave 1 (geocoding at intake).
 3. **eeasynew #885 timeline.** Accept the 2027-01-15 go or no-go date for carrier fulfilment in wave 3 (§7.7), and the request that Eeasy shipping signs its webhooks with the ADR-0040 scheme.
 4. **Second partner apps.** Register new Salla and Zid partner apps for this product (proposed), which on Salla may need a second partner account; or reuse eeasynew's apps, which couples the two products' review cycles and tokens.
