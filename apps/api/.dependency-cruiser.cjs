@@ -87,6 +87,24 @@ module.exports = {
       to: { path: '(?:^|/)packages/db/src/migrate\\.ts$' },
     },
     {
+      name: 'migrate-job-loads-no-application',
+      comment:
+        'PLAT-7 CI fix: the migration job (src/migrate/) runs before anything else is built ' +
+        '(CI migrates before it generates the contracts) and needs packages/config and ' +
+        'packages/db only; it never reaches the application modules or the contracts. main.ts ' +
+        'imports the Nest graphs of the api and the worker lazily.',
+      severity: 'error',
+      from: { path: '(?:^|/)(?:src|violations)/migrate/' },
+      to: {
+        path: [
+          '(?:^|/)src/modules/',
+          '(?:^|/)src/app\\.module\\.ts$',
+          '(?:^|/)packages/contracts/',
+        ],
+        reachable: true,
+      },
+    },
+    {
       name: 'db-testing-only-in-tests',
       comment:
         'PLAT-5 plan 2.5: the test-only context setter (@eeasy-logistics/db/testing) never ' +

@@ -1,15 +1,14 @@
 import { loadConfig } from '@eeasy-logistics/config/node';
 import { Logger } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { AppModule } from './app.module.js';
-import { configureHttp, createHttpAdapter, httpAppOptions } from './http-app.js';
 import { EX_CONFIG } from '@eeasy-logistics/config';
-import { BootChecks } from './modules/kernel/platform/boot-checks.js';
-import { RequestLogger } from './modules/kernel/request/request-id.js';
 import { runMigrateJob } from './migrate/run.js';
 import { parseRole } from './role.js';
-import { WorkerModule } from './worker/system/worker.module.js';
+
+// Static imports stop here: the migration job needs packages/config and packages/db only. The
+// worker and the api load their Nest graphs lazily; the api's reaches the generated contracts
+// (the audit controllers, PLAT-7), which CI builds only after it migrates. Dependency-cruiser rule
+// `migrate-job-loads-no-application` keeps src/migrate/ off src/modules/ and the contracts.
 
 const logger = new Logger('Bootstrap');
 
@@ -29,10 +28,14 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
+  const { NestFactory } = await import('@nestjs/core');
+  const { RequestLogger } = await import('./modules/kernel/request/request-id.js');
+
   if (role === 'worker') {
     // System jobs on timers until PLAT-8's queues: the hourly idempotency purge (PLAT-6 plan 2.9).
     // The platform pool's role is checked first; a mismatch exits 78 naming the role (plan 2.12).
     try {
+      const { WorkerModule } = await import('./worker/system/worker.module.js');
       const worker = await NestFactory.createApplicationContext(WorkerModule.forRoot(config), {
         abortOnError: false,
         logger: new RequestLogger(),
@@ -47,6 +50,9 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
+  const { AppModule } = await import('./app.module.js');
+  const { BootChecks } = await import('./modules/kernel/platform/boot-checks.js');
+  const { configureHttp, createHttpAdapter, httpAppOptions } = await import('./http-app.js');
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule.forRoot(config),
     createHttpAdapter(config),
