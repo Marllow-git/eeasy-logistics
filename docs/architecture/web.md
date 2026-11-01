@@ -24,7 +24,7 @@ There is no locale segment in any URL; the locale comes from a preference cookie
 apps/web/
   src/
     app/
-      (auth)/          layout.tsx  sign-in/  invitations/[token]/  password-reset/  platform/sign-in/
+      (auth)/          layout.tsx  sign-in/  invitations/[token]/  password-reset/
       (merchant)/      layout.tsx  page.tsx  orders/  dispatch/  zones/  drivers/  vehicles/  shifts/
                        slots/  cash/  wms/  channels/  settings/
       (recipient)/     layout.tsx  track/[token]/  reschedule/[token]/  pin/[token]/  embed/track/[token]/
