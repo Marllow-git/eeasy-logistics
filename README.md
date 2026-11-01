@@ -27,7 +27,8 @@ pnpm turbo run typecheck lint test build   # the local gate; CI runs more (secti
 | Path | Holds |
 |---|---|
 | `apps/api` | NestJS API; contexts `kernel`, `delivery`, `wms` under `src/modules/` (ADR-0026) |
-| `apps/web` | Next.js App Router web app (merchant, platform, recipient, auth route groups) |
+| `apps/web` | Next.js App Router web app (merchant, recipient, auth route groups) |
+| `apps/admin` | Next.js App Router platform console on its own hostname (platform, auth route groups; ADR-0038) |
 | `apps/driver` | Expo driver app with Expo Router (ADR-0021) |
 | `packages/contracts` | OpenAPI lint now; generated clients later (PLAT-15) |
 | `packages/i18n` | Arabic and English catalogues and the typed `t()` helper |
@@ -35,13 +36,13 @@ pnpm turbo run typecheck lint test build   # the local gate; CI runs more (secti
 | `packages/db`, `packages/ui` | placeholders for PLAT-5 and WEB-1 |
 | `packages/config-ts`, `packages/config-eslint` | shared TypeScript and ESLint configuration |
 
-Useful commands: `pnpm --filter api dev` (API on port 3000, `GET /health`), `pnpm --filter web dev`, `pnpm --filter driver start`, `pnpm --filter api test:architecture` (module boundary check), `pnpm --filter contracts lint`.
+Useful commands: `pnpm --filter api dev` (API on port 3000, `GET /health`), `pnpm --filter web dev`, `pnpm --filter admin dev` (port 3002), `pnpm --filter driver start`, `pnpm --filter api test:architecture` (module boundary check), `pnpm --filter contracts lint`.
 
 ### Configuration
 
 Every setting is an environment variable declared once in `packages/config` (schema, format, default) and read once at boot; nothing else reads the environment, and lint plus the architecture tests fail on a raw `process.env` (AGENTS.md). `.env.example` lists every variable with a comment. One file serves the service stack (below) and the API: as copied, it points the API at the Compose `dev` profile or the native stack, which share ports.
 
-- Local: `cp .env.example .env` at the repository root. The API reads `.env` only when the process environment itself says `APP_ENV=local` (`pnpm --filter api dev` sets it; the file's own `APP_ENV` is ignored); variables already in the environment win. The web app (`NEXT_PUBLIC_*`) and the driver app (`EXPO_PUBLIC_*`) read their own files: put those lines in `apps/web/.env.local` and `apps/driver/.env`.
+- Local: `cp .env.example .env` at the repository root. The API reads `.env` only when the process environment itself says `APP_ENV=local` (`pnpm --filter api dev` sets it; the file's own `APP_ENV` is ignored); variables already in the environment win. The web app (`NEXT_PUBLIC_*`) and the driver app (`EXPO_PUBLIC_*`) read their own files: put those lines in `apps/web/.env.local`, `apps/admin/.env.local` and `apps/driver/.env`.
 - A missing or malformed variable stops the API with exit code 78 and a list of every bad variable by name, never its value.
 - `APP_ENV=production` refuses to start without the public web and admin URLs, the database URLs, Redis, storage, the signing key and the credentials keys, refuses any `stub` adapter, and needs a real messaging provider or `MESSAGING_DISABLED=true`. It also requires `rediss://` for Redis and `https://` for the storage and OTLP endpoints; plain `redis://` and `http://` are allowed only outside production, for the local stacks.
 - `ci`, `staging` and `production` never read `.env`; their values come from the environment or the host's secret store.
@@ -145,7 +146,7 @@ GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
 
 | Workflow | Runs on | Jobs |
 |---|---|---|
-| `.github/workflows/pr.yml` | every pull request; called by `main.yml` on every push to `main` | the six required checks below and the advisory `node-24` |
+| `.github/workflows/pr.yml` | every pull request; called by `main.yml` on every push to `main` | the seven required checks below and the advisory `node-24` |
 | `.github/workflows/main.yml` | push to `main`; pull requests as a dry run | `pr.yml` again (push only), then per image: build, run probe, Trivy scan, push to GHCR (push to `main` only) |
 
 | Check | What it runs | Locally |
@@ -154,13 +155,14 @@ GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
 | `api-test` | the Compose `ci` profile, `pnpm --filter api migrate` then `seed` (the ci services' URLs exported from their random ports), `test:unit`, `test:integration`, `test:architecture`, with `APP_ENV=ci` | `APP_ENV=local pnpm --filter api test` (unit and architecture) and `APP_ENV=local DATABASE_URL_ADMIN=… pnpm --filter api test:integration` against the native stack (README "Database") |
 | `api-test-rls` | the same with `ELX_RLS=on` (A-6; data §4.5) | as above with `ELX_RLS=on` |
 | `web-build-census` | builds the API and the standalone web app, starts both against the `ci` profile, runs Playwright in `ar` and `en`; screenshots and logs are the job's artifact `web-build-census` | `pnpm --filter web build && pnpm --filter web start -p 3001`, then `pnpm --filter web test:smoke` (first time: `pnpm --filter web exec playwright install chromium`) |
+| `admin-build-census` | the same for the platform console (ADR-0038): builds the API and the standalone admin app, starts both (admin on 3002), runs Playwright in `ar` and `en`; artifact `admin-build-census`. The contract tests run in `web-build-census` only | `pnpm --filter admin build && pnpm --filter admin start` (port 3002), then `pnpm --filter admin test:smoke` |
 | `driver-test` | typecheck, lint and Jest of `apps/driver`, then `expo-doctor` | `pnpm --filter driver test`, `pnpm --filter driver run doctor` |
 | `gitleaks` | gitleaks over the full history with `.gitleaks.toml` | the pre-commit hook below |
 | `node-24` | advisory: `typecheck lint test` on Node 24 (A-14); not required, its failure does not fail the run | |
 
-Integration tests that need the stack go in `apps/api/test/integration/` (run by `test:integration`); `test:unit` runs the rest. Turborepo's cache is kept in the GitHub Actions cache per job; test runs against the stack never come from that cache. Jobs time out after 20 minutes, `web-build-census` after 30; a newer push to a pull request cancels the older run.
+Integration tests that need the stack go in `apps/api/test/integration/` (run by `test:integration`); `test:unit` runs the rest. Turborepo's cache is kept in the GitHub Actions cache per job; test runs against the stack never come from that cache. Jobs time out after 20 minutes, `web-build-census` and `admin-build-census` after 30; a newer push to a pull request cancels the older run.
 
-Images (`main.yml`): `apps/api/Dockerfile` (one image, `--role api|worker|migrate`, default `api`) and `apps/web/Dockerfile` (Next.js standalone, `PORT` 3000), both built from the repository root, for example `docker build -f apps/api/Dockerfile .`. On `main` they are pushed to `ghcr.io/marllow-git/eeasy-logistics/api` and `.../web`, tagged `sha-<commit>` and `main`, after a non-root check, a run probe and a Trivy scan that fails on a fixable critical vulnerability. Deployment to staging is OPS-1's.
+Images (`main.yml`): `apps/api/Dockerfile` (one image, `--role api|worker|migrate`, default `api`), `apps/web/Dockerfile` and `apps/admin/Dockerfile` (Next.js standalone, `PORT` 3000), all built from the repository root, for example `docker build -f apps/api/Dockerfile .`. On `main` they are pushed to `ghcr.io/marllow-git/eeasy-logistics/api`, `.../web` and `.../admin`, tagged `sha-<commit>` and `main`, after a non-root check, a run probe and a Trivy scan that fails on a fixable critical vulnerability. Deployment to staging is OPS-1's.
 
 Secret scanning: `pnpm install` installs a pre-commit hook (simple-git-hooks, root `package.json`) that runs `gitleaks` on the staged changes and blocks the commit on a finding. It needs the gitleaks binary (`brew install gitleaks`). `.gitleaks.toml` excuses only `.env.example`, whose values are local placeholders.
 
@@ -176,6 +178,7 @@ gh api -X PUT repos/Marllow-git/eeasy-logistics/branches/main/protection --input
       { "context": "api-test", "app_id": 15368 },
       { "context": "api-test-rls", "app_id": 15368 },
       { "context": "web-build-census", "app_id": 15368 },
+      { "context": "admin-build-census", "app_id": 15368 },
       { "context": "driver-test", "app_id": 15368 },
       { "context": "gitleaks", "app_id": 15368 }
     ]
@@ -185,7 +188,7 @@ gh api -X PUT repos/Marllow-git/eeasy-logistics/branches/main/protection --input
   "restrictions": null
 }
 JSON
-gh api repos/Marllow-git/eeasy-logistics/branches/main/protection/required_status_checks   # shows the six
+gh api repos/Marllow-git/eeasy-logistics/branches/main/protection/required_status_checks   # shows the seven
 ```
 
 `app_id` 15368 is GitHub Actions, so only an Actions job can satisfy a check of that name. `enforce_admins: false` keeps the owner's merge habit unchanged (decision 2.9).
