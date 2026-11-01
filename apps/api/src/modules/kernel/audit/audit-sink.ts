@@ -1,47 +1,45 @@
-import { Injectable, Logger } from '@nestjs/common';
+import type { AuditActorType } from '../schema/audit-log.js';
 
 /**
- * One cross-tenant call by platform staff (PLAT-6 plan 2.7; identity and tenancy §5, §7): who, on
- * which account, through which operation, why, in which request, and whether the door let it
- * through. Every attempt is recorded, refusals included (review round 1).
+ * One audited action (PLAT-7 plan 2.4; identity and tenancy §7; data §2.1 `core_audit_log`): who
+ * (`actorType`, `actorId`), on which account, on what (`targetType`, `targetId`), what
+ * (`action`, `<module>.<object>.<verb>` in the past tense, e.g. `platform.cross_tenant.accessed`),
+ * the state before and after (redacted before storage), why (`reason`) and in which request.
  */
 export interface AuditEvent {
-  readonly kind: 'cross_tenant_access';
-  /** The platform user id. */
-  readonly actor: string;
-  /** The target account id; null when the path value was not a well-formed id. */
+  readonly actorType: AuditActorType;
+  /** The user, key, driver or platform user; null only for `system`. */
+  readonly actorId: string | null;
+  /** The acting account; null for platform actions with no account. */
   readonly accountId: string | null;
-  /** `<Controller>.<handler>` until operation ids come from the contracts (PLAT-15). */
-  readonly operation: string;
-  /** The `X-Support-Reason` text, 1 to 200 characters; null when missing or refused. */
-  readonly reason: string | null;
-  /** `ok`: the handler ran; otherwise the door refused the call before any tenant row was read. */
-  readonly outcome: 'ok' | 'not_found' | 'reason_missing' | 'reason_invalid';
-  /** The id the server minted for the request (adversary L-4). */
+  readonly targetType: string;
+  readonly targetId: string;
+  readonly action: string;
+  readonly before?: unknown;
+  readonly after?: unknown;
+  /** `X-Support-Reason` on cross-tenant calls; free text otherwise. */
+  readonly reason?: string | null;
+  /** The id the server minted for the request (PLAT-6 adversary L-4), or the job run's id. */
   readonly requestId: string;
-  /** The caller's own `X-Request-Id` (a UUID) when it sent one; never used as the request id. */
-  readonly clientRequestId: string | null;
-  readonly at: string;
+  /** The caller's own `X-Request-Id`, folded into `after.client_request_id`; never trusted. */
+  readonly clientRequestId?: string | null;
+  /** The client address as Express resolves it behind the trusted proxies (`request.ip`). */
+  readonly ip?: string | null;
+  /** Stored truncated to 512 characters. */
+  readonly userAgent?: string | null;
 }
 
 /**
- * Where audit events go. An `ok` event is recorded inside the door's transaction, before the
- * handler; a refusal after the door refused (no transaction is left). PLAT-7 replaces the log
- * implementation with the `core_audit_log` writer, which must persist refusals on its own.
+ * Where audit events go: `core_audit_log` (the kernel binds `AuditWriter` to `AUDIT_SINK`).
+ *
+ * - `record` writes in the current unit of work (tenant or platform), so the row commits or rolls
+ *   back with the action it describes; it throws outside a unit of work.
+ * - `recordCommitted` writes on a transaction of its own, committed whatever the request does
+ *   (refusals, and the outcome of a cross-tenant call; PLAT-6 rulings M-5 and L-4).
  */
 export interface AuditSink {
   record(event: AuditEvent): Promise<void>;
+  recordCommitted(event: AuditEvent): Promise<void>;
 }
 
 export const AUDIT_SINK = Symbol('AUDIT_SINK');
-
-/** The wave 0 sink: one structured JSON log line per event (JSON escapes any control text). */
-@Injectable()
-export class LogAuditSink implements AuditSink {
-  private readonly logger = new Logger('Audit');
-
-  record(event: AuditEvent): Promise<void> {
-    this.logger.log(JSON.stringify(event));
-    return Promise.resolve();
-  }
-}

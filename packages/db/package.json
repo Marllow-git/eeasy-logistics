@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./platform": "./src/platform.ts",
+    "./committed": "./src/committed.ts",
     "./migrate": "./src/migrate.ts",
     "./admin": "./src/admin.ts",
     "./testing": "./src/testing.ts"

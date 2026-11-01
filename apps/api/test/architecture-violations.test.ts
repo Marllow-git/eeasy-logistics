@@ -54,6 +54,12 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
     ]);
   });
 
+  it('refuses a committed side effect outside the kernel audit folder (PLAT-7 plan 2.4)', () => {
+    expect(rulesOf('delivery/committed-side-effect.ts')).toEqual([
+      'committed-side-effects-only-in-audit',
+    ]);
+  });
+
   it('refuses a barrel surface entry from a controller (contracts-server-entries-only)', () => {
     expect(rulesOf('kernel-barrel.controller.ts')).toEqual(['contracts-server-entries-only']);
   });
