@@ -11,7 +11,8 @@
 - Integration suite locally: `APP_ENV=local DATABASE_URL_ADMIN=postgres://$(id -un)@127.0.0.1:5432/postgres ELX_RLS=off|on pnpm --filter @eeasy-logistics/api run test:integration` — migrates a scratch `elx_test_<hex>` per run and drops it; without the admin URL it refuses locally (in `ci` it uses the migrated ci database).
 - `pnpm --filter @eeasy-logistics/web run typecheck` (runs `next typegen` first), `test:smoke` (Playwright, both locales; needs API + web built and running).
 - `pnpm --filter @eeasy-logistics/driver run test` (Jest + architecture), `doctor`.
-- `pnpm --filter @eeasy-logistics/contracts run lint` (redocly).
+- `pnpm --filter @eeasy-logistics/contracts run build` (`build:bundle` → `generated/openapi/<surface>.{yaml,json}`, `build:unions` → `generated/unions.ts`, `build:client` → Orval `generated/<surface>/`); `lint` (redocly with repo rules + eslint); `lint:bundles`; `typecheck`; `test` (Vitest + architecture). Turbo runs contracts `build` before its own and the apps' `typecheck`/`lint`/`test` (`^build` in `apps/{web,driver}/turbo.json`).
+- Contract change: edit YAML under `docs/contracts/openapi/`; a new permission goes in README §11 and `docs/contracts/permissions.yaml` together; a new write needs `Idempotency-Key` or an entry in the `exempt` list in `docs/contracts/redocly.yaml`; a stream needs `x-sse-events`.
 - Quiet test output for agents: `vitest run --reporter=dot`; re-run a failing file verbosely only.
 
 ## Local stack (no Docker on the owner's machine)
