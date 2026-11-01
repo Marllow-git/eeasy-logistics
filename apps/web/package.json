@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "test": "pnpm run test:architecture",
     "test:architecture": "depcruise src next.config.ts --config .dependency-cruiser.cjs",
-    "test:smoke": "playwright test --config tests/playwright.config.ts"
+    "test:census": "playwright test --config tests/census.config.ts"
   },
   "dependencies": {
     "@eeasy-logistics/config": "workspace:*",
@@ -26,6 +26,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eeasy-logistics/config-eslint": "workspace:*",
     "@eeasy-logistics/config-ts": "workspace:*",
     "@next/eslint-plugin-next": "16.4.3",

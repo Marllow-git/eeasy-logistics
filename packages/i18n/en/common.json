@@ -19,7 +19,8 @@
     "skip_to_content": "Skip to content",
     "open_navigation": "Open navigation",
     "close_navigation": "Close navigation",
-    "account": "Account"
+    "account": "Account",
+    "notifications": "Notifications"
   },
   "actions": {
     "close": "Close"

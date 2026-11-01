@@ -19,7 +19,8 @@
     "skip_to_content": "انتقل إلى المحتوى",
     "open_navigation": "افتح القائمة",
     "close_navigation": "أغلق القائمة",
-    "account": "الحساب"
+    "account": "الحساب",
+    "notifications": "الإشعارات"
   },
   "actions": {
     "close": "إغلاق"

@@ -157,7 +157,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: elx-ci
       APP_ENV: ci
-      # The ports of .env.example; tests/playwright.config.ts expects the web app on 3001.
+      # The ports of .env.example; tests/census.config.ts expects the web app on 3001.
       API_PORT: '3000'
       WEB_PORT: '3001'
     steps:
@@ -213,8 +213,10 @@ jobs:
           exit 1
       - name: Install Chromium for Playwright
         run: pnpm --filter @eeasy-logistics/web exec playwright install --with-deps chromium
-      - name: Playwright in ar and en
-        run: pnpm --filter @eeasy-logistics/web run test:smoke
+      # WEB-1 plan 2.9: the census (projects ar at 1440 and 390 px, en at 1440 px) with the locale,
+      # axe and security assertions and the screenshot baselines of tests/census/__screenshots__.
+      - name: Census in ar and en
+        run: pnpm --filter @eeasy-logistics/web run test:census
       - name: Upload screenshots and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -12,6 +12,12 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(import.meta.dirname, '../..'),
   // Workspace packages ship TypeScript source; Next compiles them.
   transpilePackages: ['@eeasy-logistics/config', '@eeasy-logistics/i18n', '@eeasy-logistics/ui'],
+  // The one response header this order asserts (plan 2.9); CSP and frame headers per group are
+  // WEB-2's (web §3.6).
+  headers: () =>
+    Promise.resolve([
+      { source: '/:path*', headers: [{ key: 'X-Content-Type-Options', value: 'nosniff' }] },
+    ]),
 };
 
 export default withNextIntl(nextConfig);

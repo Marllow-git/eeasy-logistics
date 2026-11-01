@@ -1,0 +1,16 @@
+# packages/ui and packages/i18n (WEB-1)
+
+## packages/ui (ADR-0033)
+- Source only, compiled by the apps (`transpilePackages`). Entry points: `./styles.css` (Tailwind 4 `@import 'tailwindcss'`, tokens, `@source '.'`, per-`lang` line height), `./tokens.css`, `./cn`, `./status`, `./components/<name>` (→ `src/components/<name>/<name>.tsx`), `./shell` (server: `RootHtml`, `rootMetadata`, `requestLocale`, `localeCookie`), `./shell/request-config` (next-intl `getRequestConfig`), `./shell/locale-switch` (client).
+- Tokens `src/tokens.css`: a Tailwind `@theme` block (semantic colours incl. `surface`, `input`, `ring`, `*-foreground`; `--font-sans: var(--font-plex), …`; `--leading-ar-*` above `--leading-en-*`; spacing, radius, shadow, motion) plus `:root` `--status-<machine>-<state>` for order/offer/attempt/custody. `test/tokens.test.ts` computes WCAG ratios from the file (text 4.5:1 on background/surface/muted, controls 3:1, every status token 4.5:1).
+- `src/status.ts`: state lists typed both ways against the generated contract unions (`OrderStatus`, `OfferStatus`, `AttemptStatus`, `CodCollectionCustody` from `@eeasy-logistics/contracts/staff`, type-only); a new contract state fails typecheck until it has a token, an icon and a label. `apps/admin`'s `admin-contracts-surfaces` rule would flag `/staff` if admin imports `StatusChip`.
+- Components: Radix through the umbrella `radix-ui` package, `cva`, `lucide-react`; `src/intl.ts` holds the next-intl `AppConfig` augmentation (Locale, Messages) and re-exports `useLocale`/`useTranslations`; translate through it so every program sees the typing. Toast swipe direction comes from the Radix direction; Dialog centres with `inset-0 m-auto`.
+- Fonts: `fonts/IBMPlexSansArabic-{Regular,SemiBold}.woff2` (subset with `pyftsubset`, needs the `brotli` module; OFL in `fonts/OFL.txt`), loaded by `src/shell/font.ts` (`next/font/local`, variable `--font-plex` on `<html>`).
+- Tests: Vitest + Testing Library in jsdom 26 (`vitest.config.ts`); `test/render.tsx` `renderIn(locale, ui)` (NextIntlClientProvider + DirectionProvider + `<html lang dir>`); every component in `describe.each(directions)`. Radix roving focus moves in a timeout: assert with `waitFor`.
+- No server actions anywhere (web §2.2): `LocaleSwitch` writes `el_locale` with `document.cookie` and calls `router.refresh()`.
+
+## packages/i18n
+- Catalogues `<locale>/{common,nav,auth,errors,recipient,platform}.json`; `src/messages.ts` `messages`, `Messages` (from `ar`), `Namespace`, `pickMessages(locale, namespaces)` (root layouts pass only their namespaces to the client); `src/locale.ts`; `t(locale, CommonKey)` for the driver and metadata (no ICU).
+- `errors` has one key per `ErrorCode` (`test/errors.test.ts` compares with `@eeasy-logistics/contracts/unions` `errorCodes`, so the i18n `test` depends on the contracts `build`).
+- `src/format.ts`: `formatDateTime`, `formatDate` (business dates in UTC from their parts), `formatNumber`, `formatMoney` (`SAR 150.00`), `formatMoneyAmount`, `formatPhone` (LRM-wrapped), `intlLocale` (`-u-ca-gregory-nu-latn`), `timeZone`. ICU plurals take a pre-formatted `{value}`; never `#` (bare-locale digits).
+- No next-intl dependency (the driver app uses this package); tests use `use-intl/core` `createTranslator`.
