@@ -111,8 +111,20 @@ describe('production refusals (plan 2.3)', () => {
       MESSAGING_ACCESS_TOKEN: 'fake-token',
       MESSAGING_SENDER_ID: '1',
     });
-    expect(Object.keys(found).sort()).toEqual([...requiredInProduction('api')].sort());
+    expect(Object.keys(found).sort()).toEqual(
+      [...requiredInProduction('api'), 'ELX_RELEASE'].sort(),
+    );
     expect(found.REDIS_URL).toBe('is required when APP_ENV=production');
+  });
+
+  it('refuses a production api or worker without its image release, or with dev (PLAT-14 A-8)', () => {
+    const release = 'must name the image release (sha-<commit>) when APP_ENV=production';
+    expect(problems(without('ELX_RELEASE'))).toEqual({ ELX_RELEASE: release });
+    expect(problems({ ...productionEnv, ELX_RELEASE: 'dev' })).toEqual({ ELX_RELEASE: release });
+    expect(() =>
+      defineConfig({ ...productionEnv, ELX_RELEASE: 'dev' }, { role: 'worker' }),
+    ).toThrow('ELX_RELEASE');
+    expect(defineConfig(productionEnv).observability.release).toBe(productionEnv.ELX_RELEASE);
   });
 
   it('refuses the stub messaging provider in production', () => {

@@ -7,3 +7,4 @@
 - Config: public values via `@eeasy-logistics/config/web` (`publicConfig()`, same `NEXT_PUBLIC_*` set as web). Contracts: `/platform`, `/http`, `/unions` only (`admin-contracts-surfaces`); `/platform/mocks` from `tests/` only (`admin-contracts-mocks-in-tests-only`).
 - Ports: dev/start 3002; CI lane `admin-build-census` (API 3000, admin 3002; build → `check:budget` → census); `main.yml` image `ghcr.io/marllow-git/eeasy-logistics/admin`, probed with `GET /`.
 - Not built yet: `proxy.ts`, CSP, sessions and TOTP (WEB-2), screens (WEB-4), per-host edge 404 (OPS-1).
+- Observability (PLAT-14 leg 2): a copy of apps/web's (`mem:web/core`): groups `platform` and `auth` in `RouteError`/the catalogue, `serverName` `elx-admin`, census specs `census-errors.spec.ts` and `census-analytics.spec.ts`; `tests/census/helpers.ts` is web's copy except its `message()` (reads `platform` from `messages/`).

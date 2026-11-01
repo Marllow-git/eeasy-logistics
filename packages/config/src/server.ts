@@ -3,7 +3,7 @@ import type { ConfigIssue } from './errors.ts';
 import { ConfigError } from './errors.ts';
 import type { EnvRecord } from './fields.ts';
 import { deepFreeze, parseVariables } from './fields.ts';
-import type { AppEnv } from './formats.ts';
+import type { AppEnv, LogLevel } from './formats.ts';
 import {
   appEnvs,
   boolean,
@@ -13,9 +13,14 @@ import {
   keyId,
   keyIdExpectation,
   keyIdPattern,
+  logLevels,
   port,
+  otlpHeaders,
   postgresUrl,
+  ratio,
   redisUrl,
+  release,
+  releaseExpectation,
   retentionMonths,
   seconds,
   secret,
@@ -128,8 +133,17 @@ export const serverVariables = {
   OSRM_URL: httpUrl().optional(),
   // observability
   OTEL_EXPORTER_OTLP_ENDPOINT: httpUrl().optional(),
+  // The collector's headers (its credentials), `name=value,...` percent-encoded (adversary A-7).
+  OTEL_EXPORTER_OTLP_HEADERS: otlpHeaders().optional(),
   SENTRY_DSN: httpUrl().optional(),
   POSTHOG_API_KEY: z.string().min(1).optional(),
+  // PLAT-14: the image tag (`sha-<commit>`) the Dockerfile bakes in from its build argument;
+  // `service.version` of every span and the Sentry release. `dev` outside an image.
+  ELX_RELEASE: release().default('dev'),
+  // Log level of the JSON logger; unset means `debug` in local and `info` elsewhere.
+  LOG_LEVEL: z.enum(logLevels).optional(),
+  // Root-span sampling ratio (parent-based); unset means 1.0, or 0.1 in production.
+  OTEL_TRACES_SAMPLER_ARG: ratio().optional(),
   // credentials
   CREDENTIALS_KEYS: credentialsKeys().optional(),
   CREDENTIALS_ACTIVE_KEY_ID: keyId().optional(),
@@ -178,8 +192,12 @@ export const serverExpectations = {
   VROOM_URL: 'an http(s) URL',
   OSRM_URL: 'an http(s) URL',
   OTEL_EXPORTER_OTLP_ENDPOINT: 'an http(s) URL',
+  OTEL_EXPORTER_OTLP_HEADERS: 'comma-separated name=value pairs, values percent-encoded',
   SENTRY_DSN: 'an http(s) URL',
   POSTHOG_API_KEY: 'a PostHog project API key',
+  ELX_RELEASE: releaseExpectation,
+  LOG_LEVEL: `one of ${logLevels.join(', ')}`,
+  OTEL_TRACES_SAMPLER_ARG: 'a number from 0 to 1',
   CREDENTIALS_KEYS: 'comma-separated <key id>:<base64 of 32 bytes> entries',
   CREDENTIALS_ACTIVE_KEY_ID: keyIdExpectation,
 } satisfies Record<ServerVariable, string>;
@@ -252,8 +270,16 @@ export interface Config {
   };
   readonly observability: {
     readonly otlpEndpoint: string | undefined;
+    /** `OTEL_EXPORTER_OTLP_HEADERS`; parse the revealed text with `parseOtlpHeaders`. */
+    readonly otlpHeaders: Secret | undefined;
     readonly sentryDsn: string | undefined;
     readonly posthogApiKey: string | undefined;
+    /** The image tag the process runs (`ELX_RELEASE`, `sha-<commit>`), `dev` outside an image. */
+    readonly release: string;
+    /** The lowest level the JSON logger writes. */
+    readonly logLevel: LogLevel;
+    /** Ratio of root traces sampled (parent-based sampling keeps a sampled parent's children). */
+    readonly traceSampleRatio: number;
   };
   /** `null` when no credentials keys are configured (allowed outside production). */
   readonly credentials: {
@@ -370,8 +396,12 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
     geo: { hudhudApiKey: v.HUDHUD_API_KEY, vroomUrl: v.VROOM_URL, osrmUrl: v.OSRM_URL },
     observability: {
       otlpEndpoint: v.OTEL_EXPORTER_OTLP_ENDPOINT,
+      otlpHeaders: v.OTEL_EXPORTER_OTLP_HEADERS,
       sentryDsn: v.SENTRY_DSN,
       posthogApiKey: v.POSTHOG_API_KEY,
+      release: v.ELX_RELEASE,
+      logLevel: v.LOG_LEVEL ?? (appEnv === 'local' ? 'debug' : 'info'),
+      traceSampleRatio: v.OTEL_TRACES_SAMPLER_ARG ?? (appEnv === 'production' ? 0.1 : 1),
     },
     credentials:
       v.CREDENTIALS_KEYS !== undefined && v.CREDENTIALS_ACTIVE_KEY_ID !== undefined

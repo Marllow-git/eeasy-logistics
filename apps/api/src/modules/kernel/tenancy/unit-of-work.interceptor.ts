@@ -1,5 +1,5 @@
 import type { AppDatabase, Pool, RequestContext } from '@eeasy-logistics/db';
-import { withUnitOfWork } from '@eeasy-logistics/db';
+import { findContext, withUnitOfWork } from '@eeasy-logistics/db';
 import type { CallHandler, ExecutionContext, NestInterceptor } from '@nestjs/common';
 import { HttpException, Inject, Injectable, Optional } from '@nestjs/common';
 import { HTTP_CODE_METADATA } from '@nestjs/common/constants.js';
@@ -14,6 +14,7 @@ import { requestSiteScope } from '../authz/site-scope.js';
 import type { Principal } from '../auth/principal.js';
 import { ApiException } from '../errors/api-exception.js';
 import { clientRequestIdOf, serverRequestIdOf } from '../request/request-id.js';
+import { annotateRequest } from '../telemetry/spans.js';
 import type { CrossTenantSource } from './cross-tenant.js';
 import { crossTenantTarget, isRefusal } from './cross-tenant.js';
 import type { PlatformFrames } from './frame.js';
@@ -94,6 +95,8 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
     const handler = context.getHandler();
     const crossTenant = this.reflector.get<CrossTenantSource | undefined>(CROSS_TENANT, handler);
     const handle = async () => {
+      // The tenant the unit of work runs for (a cross-tenant target too), on the request span.
+      annotateRequest(request, { 'elx.account.id': findContext()?.accountId });
       const value: unknown = await lastValueFrom(next.handle(), { defaultValue: undefined });
       if (response.statusCode >= 300) throw new RollbackWith(value);
       return value;

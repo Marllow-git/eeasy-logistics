@@ -4,7 +4,9 @@
 #   docker run IMAGE --role worker      queue consumers, outbox relay, schedulers
 #   docker run IMAGE --role migrate     one-shot migration job (data §11 step 5)
 # Build from the repository root: docker build -f apps/api/Dockerfile .
-# Configuration comes from the environment at run time (packages/config); nothing is baked in.
+# Configuration comes from the environment at run time (packages/config); nothing is baked in but
+# the release name: --build-arg ELX_RELEASE=sha-<commit> (main.yml) becomes ELX_RELEASE, the
+# service.version of the telemetry and the Sentry release (PLAT-14 plan 2.1); default dev.
 
 ARG NODE_IMAGE=node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
 
@@ -62,6 +64,9 @@ WORKDIR /app/apps/api
 # The base image's unprivileged user "node", by uid so runAsNonRoot can verify it. The files
 # stay root-owned, so the process cannot change them.
 USER 1000:1000
+# Last, so a new commit reuses every layer above (PLAT-14).
+ARG ELX_RELEASE=dev
+ENV ELX_RELEASE=${ELX_RELEASE}
 EXPOSE 3000
 ENTRYPOINT ["node", "dist/main.js"]
 CMD ["--role", "api"]

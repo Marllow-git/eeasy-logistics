@@ -1,5 +1,9 @@
 import AxeBuilder from '@axe-core/playwright';
 import { test as base, expect, type Page, type Request, type Response } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { gunzipSync } from 'node:zlib';
+import { analyticsEvents } from '../../src/analytics';
 
 // Census helpers (web §11 "Locale assertions", "Accessibility", "Security assertions"; plan 2.9).
 // Every census spec imports `test` from here, so the project's locale is set before each page.
@@ -24,6 +28,20 @@ export const test = base.extend<{ locale: Locale }>({
 });
 
 export { expect };
+
+/** The catalogue text a page must show, read from packages/i18n (the census never mocks). */
+export function message(locale: Locale, namespace: string, key: string): string {
+  const file = path.join(
+    import.meta.dirname,
+    '../../../../packages/i18n',
+    locale,
+    `${namespace}.json`,
+  );
+  let node: unknown = JSON.parse(readFileSync(file, 'utf8'));
+  for (const part of key.split('.')) node = (node as Record<string, unknown>)[part];
+  if (typeof node !== 'string') throw new Error(`no message ${locale}/${namespace}.${key}`);
+  return node;
+}
 
 /** `<html lang dir>` match the locale (web §5). */
 export async function expectLocale(page: Page, locale: Locale) {
@@ -103,4 +121,100 @@ export async function expectNoSessionCookies(traffic: ReturnType<typeof recordTr
 /** Waits for the self-hosted fonts, so screenshots never catch the fallback face. */
 export async function settle(page: Page) {
   await page.evaluate(() => document.fonts.ready);
+}
+
+/**
+ * The public values the census build carries (PLAT-14 plan 2.9; the CI census lanes and
+ * `mem:suggested_commands` build with them): fake Sentry and PostHog targets on `.invalid` hosts,
+ * so nothing leaves the machine. The census intercepts the browser's /monitoring and /ingest
+ * requests and reads what they carry.
+ */
+export const censusBuild = {
+  sentryDsn: 'https://census@sentry.invalid/1',
+  posthogKey: 'phc_census',
+} as const;
+
+/** A phone number the census plants in URLs and errors; no report or event may carry it. */
+export const plantedPhone = '+966501234567';
+
+/** What must never leave in a report or an event: the planted phone (any spelling), cookies. */
+export function expectNothingPersonal(payload: string, plantedToken?: string) {
+  expect(payload, 'planted phone number').not.toMatch(/501234567/);
+  expect(payload, 'cookie names').not.toMatch(/\bel_(?:locale|staff|platform)/);
+  if (plantedToken !== undefined) expect(payload, 'recipient token').not.toContain(plantedToken);
+}
+
+/**
+ * Holds the browser's Sentry envelopes posted to /monitoring (fulfilled here, never forwarded),
+ * so a test can read what an error report would carry.
+ */
+export async function captureMonitoring(page: Page) {
+  const envelopes: string[] = [];
+  await page.route('**/monitoring', async (route) => {
+    envelopes.push(route.request().postData() ?? '');
+    await route.fulfill({ status: 200, body: '' });
+  });
+  return envelopes;
+}
+
+/** One PostHog event as the browser sent it to /ingest. */
+export interface CapturedEvent {
+  event: string;
+  properties: Record<string, unknown>;
+}
+
+/** The events of one /ingest request body: plain, gzip or base64 form encoded JSON. */
+function decodeBatch(body: Buffer): { text: string; events: CapturedEvent[] } {
+  let text =
+    body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body).toString('utf8') : body.toString();
+  if (text.startsWith('data=')) {
+    text = Buffer.from(decodeURIComponent(text.slice(5)), 'base64').toString('utf8');
+  }
+  const parsed = JSON.parse(text) as CapturedEvent | CapturedEvent[] | { batch: CapturedEvent[] };
+  const events = Array.isArray(parsed) ? parsed : 'batch' in parsed ? parsed.batch : [parsed];
+  return { text, events };
+}
+
+/**
+ * Holds the browser's PostHog requests to /ingest (fulfilled here, never forwarded), decoded, so a
+ * test can read every event and every byte an analytics request would carry (web §11).
+ */
+export async function captureAnalytics(page: Page) {
+  // posthog-js drops every event from an automated browser (`navigator.webdriver`, a
+  // `HeadlessChrome` brand); the census shows it an ordinary one.
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => false });
+    Object.defineProperty(Navigator.prototype, 'userAgentData', { get: () => undefined });
+  });
+  const captured = { bodies: [] as string[], events: [] as CapturedEvent[] };
+  await page.route('**/ingest/**', async (route) => {
+    const body = route.request().postDataBuffer();
+    if (body !== null) {
+      const { text, events } = decodeBatch(body);
+      captured.bodies.push(text);
+      captured.events.push(...events);
+    }
+    await route.fulfill({ status: 200, json: { status: 1 } });
+  });
+  return captured;
+}
+
+/**
+ * The census helper of web §10.4: the events a screen claims to send are in the catalogue of
+ * src/analytics.ts and were sent; every product event sent is a catalogue event (PostHog's own
+ * `$` events aside, page views among them).
+ */
+export async function expectAnalyticsEvents(
+  captured: Awaited<ReturnType<typeof captureAnalytics>>,
+  declared: readonly string[],
+) {
+  const catalogue: readonly string[] = analyticsEvents;
+  for (const name of declared) expect(catalogue, `${name} in src/analytics.ts`).toContain(name);
+  // The SDK loads after the page's load event and sends in batches.
+  await expect
+    .poll(() => captured.events.map((event) => event.event), { timeout: 15_000 })
+    .toEqual(expect.arrayContaining([...declared]));
+  for (const { event } of captured.events) {
+    if (!event.startsWith('$')) expect(catalogue, `${event} in src/analytics.ts`).toContain(event);
+  }
 }

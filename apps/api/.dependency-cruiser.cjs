@@ -100,8 +100,27 @@ module.exports = {
           '(?:^|/)src/modules/',
           '(?:^|/)src/app\\.module\\.ts$',
           '(?:^|/)packages/contracts/',
+          // PLAT-14 plan 2.1: the migrate role stays telemetry-free.
+          '(?:^|/)node_modules/@opentelemetry/',
+          '(?:^|/)node_modules/@sentry/',
         ],
         reachable: true,
+      },
+    },
+    {
+      name: 'main-loads-telemetry-lazily',
+      comment:
+        'PLAT-14 plan 2.1: main.ts imports the OpenTelemetry SDK and Sentry only with a dynamic ' +
+        'import() after the role is known, so `--role migrate` never loads them.',
+      severity: 'error',
+      from: { path: '(?:^|/)(?:src|violations/main)/main\\.ts$' },
+      to: {
+        path: [
+          '(?:^|/)node_modules/@opentelemetry/',
+          '(?:^|/)node_modules/@sentry/',
+          '(?:^|/)src/modules/kernel/telemetry/',
+        ],
+        dynamic: false,
       },
     },
     {

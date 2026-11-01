@@ -16,6 +16,7 @@ import { PlatformOutboxController } from './outbox/platform-outbox.controller.js
 import { RequestIdMiddleware } from './request/request-id.js';
 import { ContentTypeGuard } from './request/content-type.guard.js';
 import { WebClientGuard } from './request/web-client.guard.js';
+import { RequestTelemetryInterceptor } from './telemetry/request-telemetry.interceptor.js';
 import { TenancyGuard } from './tenancy/tenancy.guard.js';
 import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
 
@@ -47,6 +48,9 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
     // JSON bodies only (adversary H-1): a form post is refused before any interceptor.
     { provide: APP_GUARD, useClass: ContentTypeGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
+    // PLAT-14: the operation id on the request span; opens nothing, so the unit of work stays the
+    // first interceptor that does.
+    { provide: APP_INTERCEPTOR, useClass: RequestTelemetryInterceptor },
     { provide: APP_INTERCEPTOR, useClass: UnitOfWorkInterceptor },
     // Every `@Input()` parsed with its operation's generated strict schemas (A-17).
     { provide: APP_PIPE, useClass: ContractPipe },

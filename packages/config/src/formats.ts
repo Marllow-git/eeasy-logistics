@@ -23,6 +23,53 @@ export const hops = () => integer(0, 10);
 /** Months the audit log is kept (identity and tenancy §7: two years at least; PLAT-7). */
 export const retentionMonths = () => integer(24, 120);
 
+/** A ratio from 0 to 1 in plain decimal notation (`0`, `1`, `0.1`, `1.0`). */
+export const ratio = () =>
+  z
+    .string()
+    .regex(/^(0|1)(\.\d{1,6})?$/)
+    .transform(Number)
+    .pipe(z.number().min(0).max(1));
+
+/** Levels of the JSON logger, most severe first (PLAT-14). */
+export const logLevels = ['error', 'warn', 'info', 'debug'] as const;
+export type LogLevel = (typeof logLevels)[number];
+
+/** A release name: the image tag `sha-<commit>`, a version or `dev`; printable, at most 128. */
+export const release = () => z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
+export const releaseExpectation =
+  'a release name of 1 to 128 letters, digits, dot, underscore or dash';
+
+const headerName = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
+
+/**
+ * `OTEL_EXPORTER_OTLP_HEADERS` (OpenTelemetry specification): comma-separated `name=value`, values
+ * percent-encoded. Returns the headers, or undefined when the text is malformed; never echoes it.
+ */
+export function parseOtlpHeaders(text: string): Record<string, string> | undefined {
+  const headers = Object.create(null) as Record<string, string>;
+  for (const entry of text.split(',')) {
+    const separator = entry.indexOf('=');
+    if (separator === -1) return undefined;
+    const name = entry.slice(0, separator).trim();
+    if (!headerName.test(name)) return undefined;
+    try {
+      headers[name] = decodeURIComponent(entry.slice(separator + 1).trim());
+    } catch {
+      return undefined;
+    }
+  }
+  return { ...headers };
+}
+
+/** OTLP exporter headers: a secret (they carry the collector's credentials), well formed. */
+export const otlpHeaders = () =>
+  secret(
+    z.string().refine((value) => parseOtlpHeaders(value) !== undefined, {
+      message: 'is not comma-separated name=value pairs',
+    }),
+  );
+
 /** Only the literal strings `true` and `false`. */
 export const boolean = () => z.enum(['true', 'false']).transform((value) => value === 'true');
 

@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import {
   expect,
   expectAxeClean,
@@ -9,6 +7,7 @@ import {
   expectNoRawKeys,
   expectNoSessionCookies,
   expectSecurityHeaders,
+  message,
   recordTraffic,
   settle,
   test,
@@ -18,20 +17,6 @@ import {
 // Census of the shell (WEB-1 plan 2.9): the placeholder routes of the three groups render inside
 // the shared shell in the project's locale, pass the locale, accessibility and security checks,
 // and match their screenshot baselines. Replaces PLAT-3's smoke-locale.spec.ts.
-
-/** The catalogue text a page must show, read from packages/i18n (the census never mocks). */
-function message(locale: Locale, namespace: string, key: string): string {
-  const file = path.join(
-    import.meta.dirname,
-    '../../../packages/i18n',
-    locale,
-    `${namespace}.json`,
-  );
-  let node: unknown = JSON.parse(readFileSync(file, 'utf8'));
-  for (const part of key.split('.')) node = (node as Record<string, unknown>)[part];
-  if (typeof node !== 'string') throw new Error(`no message ${locale}/${namespace}.${key}`);
-  return node;
-}
 
 const routes = [
   { name: 'merchant', path: '/', group: 'merchant', title: ['nav', 'home'] },

@@ -1,0 +1,290 @@
+# Alert rules (PLAT-14 plan 2.6): platform §7 "Observability", integrations §4.5 "Dead letters and
+# alerts" and §10 "Observability per integration", ADR-0036. Provider-neutral: OPS-1 turns each
+# rule into the host's alerting and routes it to the owner's channel; nothing here is wired yet.
+#
+# Fields (validated by apps/api/test/alerts.test.ts):
+#   name       unique, snake_case
+#   source     metric (an instrument of apps/api/src/modules/kernel/telemetry/metrics.ts),
+#              log (a JSON log line field) or host (OPS-1's infrastructure checks)
+#   metric     the instrument name, for source: metric
+#   labels     label filter on the metric (equality only)
+#   condition  what fires, in words a host's rule language expresses directly:
+#              value | max | min | p95 | increase | rate, then a comparison
+#   threshold  the number the comparison uses
+#   window     how long the condition holds (or the range of increase/rate): 30s, 5m, 1h
+#   severity   page (wake the owner) or warn (next working hour)
+#   runbook    where the on-call reads what to do
+#   origin     the document section that asks for the rule
+#   pending    the order whose code first emits the series, while none does yet
+version: 1
+rules:
+  # ---------------------------------------------------------------- platform §7
+  - name: ready_failing
+    source: metric
+    metric: ready_checks
+    condition: min < threshold
+    threshold: 1
+    window: 2m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (readiness of database, migrations, Redis, storage)
+    origin: platform §7 "/ready failing"
+  - name: api_latency_p95
+    source: metric
+    metric: http_request_duration_ms
+    condition: p95 > threshold
+    threshold: 800
+    window: 5m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (API latency)
+    origin: platform §7 "p95 API latency above 800 ms for 5 minutes"
+  - name: ledger_assertion_not_green
+    source: metric
+    metric: ledger_assertion_drift
+    condition: max > threshold
+    threshold: 0
+    window: 1m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (ledger assertion)
+    origin: platform §7 "nightly ledger assertion not green"
+    pending: ledger orders (the nightly assertion job)
+  - name: otp_failure_spike
+    source: metric
+    metric: otp_failures_total
+    condition: increase > threshold
+    threshold: 20
+    window: 5m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (pause messaging; switch messaging provider)
+    origin: platform §7 "OTP failure rate spike"; integrations §10 "OTP send failure rate"
+    pending: PLAT-11
+  - name: disk_usage_high
+    source: host
+    condition: max > threshold
+    threshold: 85
+    window: 10m
+    severity: warn
+    runbook: OPS-1 (host disk)
+    origin: platform §7 "disk and backup job failures"
+    pending: OPS-1
+  - name: backup_job_failed
+    source: host
+    condition: value > threshold
+    threshold: 0
+    window: 1m
+    severity: page
+    runbook: docs/architecture/platform.md §6 (backups, WAL archiving, restore drill)
+    origin: platform §7 "disk and backup job failures"
+    pending: OPS-1
+
+  # ---------------------------------------------------------------- outbox, oldest due row per kind
+  # integrations §4.5, ADR-0036: refines platform §7 "outbox oldest unsent row older than 5 min".
+  - name: outbox_due_otp_message
+    source: metric
+    metric: outbox_due_oldest_age_seconds
+    labels: { kind: message, template_class: otp }
+    condition: max > threshold
+    threshold: 30
+    window: 1m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (replay a dead-lettered outbox row; pause messaging)
+    origin: integrations §4.5 "message OTP 30 s"
+    # template_class comes from the gauge job: otp when a message row names the auth_otp template
+    # (lead review round 2); the series exists now, OTP rows arrive with the messaging orders.
+  - name: outbox_due_message
+    source: metric
+    metric: outbox_due_oldest_age_seconds
+    labels: { kind: message }
+    condition: max > threshold
+    threshold: 120
+    window: 1m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (pause messaging)
+    origin: integrations §4.5 "other messages 2 min"
+  - name: outbox_due_push
+    source: metric
+    metric: outbox_due_oldest_age_seconds
+    labels: { kind: push }
+    condition: max > threshold
+    threshold: 60
+    window: 1m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (replay a dead-lettered outbox row)
+    origin: integrations §4.5 "push 1 min"
+  - name: outbox_due_carrier_call
+    source: metric
+    metric: outbox_due_oldest_age_seconds
+    labels: { kind: carrier_call }
+    condition: max > threshold
+    threshold: 120
+    window: 1m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (rotate the Eeasy shipping key for an account)
+    origin: integrations §4.5 "carrier_call 2 min"
+  - name: outbox_due_internal_event
+    source: metric
+    metric: outbox_due_oldest_age_seconds
+    labels: { kind: internal_event }
+    condition: max > threshold
+    threshold: 300
+    window: 1m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (replay a dead-lettered outbox row)
+    origin: integrations §4.5 "internal_event 5 min"; platform §7 "older than 5 minutes"
+  - name: outbox_due_channel_publish
+    source: metric
+    metric: outbox_due_oldest_age_seconds
+    labels: { kind: channel_publish }
+    condition: max > threshold
+    threshold: 1800
+    window: 1m
+    severity: warn
+    runbook: docs/architecture/platform.md §9 (re-sync channel stock for a connection)
+    origin: integrations §4.5 "channel_publish 30 min"
+  - name: outbox_due_webhook
+    source: metric
+    metric: outbox_due_oldest_age_seconds
+    labels: { kind: webhook }
+    condition: max > threshold
+    threshold: 1800
+    window: 1m
+    severity: warn
+    runbook: docs/architecture/platform.md §9 (replay a dead-lettered outbox row)
+    origin: integrations §4.5 "webhook 30 min"
+  - name: outbox_due_storage_lifecycle
+    source: metric
+    metric: outbox_due_oldest_age_seconds
+    labels: { kind: storage_lifecycle }
+    condition: max > threshold
+    threshold: 21600
+    window: 1m
+    severity: warn
+    runbook: docs/architecture/platform.md §9 (restore a deleted object from versioning)
+    origin: integrations §4.5 "storage_lifecycle 6 h"
+  - name: outbox_rows_without_handler
+    source: metric
+    metric: outbox_rows_without_handler
+    condition: min > threshold
+    threshold: 0
+    window: 15m
+    severity: warn
+    runbook: PLAT-8 plan 2.3 (due rows of a kind this build has no handler for)
+    origin: PLAT-8 sweeper metric
+
+  # ---------------------------------------------------------------- outbox, dead rows
+  # ADR-0036: these kinds page on every dead row.
+  - name: outbox_dead_internal_event
+    source: metric
+    metric: outbox_dead_total
+    labels: { kind: internal_event }
+    condition: increase > threshold
+    threshold: 0
+    window: 5m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (replay a dead-lettered outbox row)
+    origin: integrations §4.5; ADR-0036
+  - name: outbox_dead_message
+    source: metric
+    metric: outbox_dead_total
+    labels: { kind: message }
+    condition: increase > threshold
+    threshold: 0
+    window: 5m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (replay a dead-lettered outbox row)
+    origin: integrations §4.5 "message (OTP)"; ADR-0036
+  - name: outbox_dead_carrier_call
+    source: metric
+    metric: outbox_dead_total
+    labels: { kind: carrier_call }
+    condition: increase > threshold
+    threshold: 0
+    window: 5m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (replay a dead-lettered outbox row)
+    origin: integrations §4.5; ADR-0036
+  - name: outbox_dead_storage_lifecycle
+    source: metric
+    metric: outbox_dead_total
+    labels: { kind: storage_lifecycle }
+    condition: increase > threshold
+    threshold: 0
+    window: 5m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (replay a dead-lettered outbox row)
+    origin: integrations §4.5; ADR-0036
+  # Merchant-side failures the merchant sees and fixes: by rate across the platform.
+  - name: outbox_dead_webhook_rate
+    source: metric
+    metric: outbox_dead_total
+    labels: { kind: webhook }
+    condition: increase > threshold
+    threshold: 20
+    window: 1h
+    severity: warn
+    runbook: docs/architecture/integrations.md §4.5 (merchants see their dead webhooks)
+    origin: integrations §4.5 "more than 20 per hour across the platform"
+  - name: outbox_dead_channel_publish_rate
+    source: metric
+    metric: outbox_dead_total
+    labels: { kind: channel_publish }
+    condition: increase > threshold
+    threshold: 20
+    window: 1h
+    severity: warn
+    runbook: docs/architecture/platform.md §9 (rotate a channel token and reconnect a store)
+    origin: integrations §4.5 "more than 20 per hour across the platform"
+  - name: channel_connection_all_dead
+    source: metric
+    metric: channel_publication_drift
+    condition: min > threshold
+    threshold: 0
+    window: 1h
+    severity: warn
+    runbook: docs/architecture/platform.md §9 (re-sync channel stock for a connection)
+    origin: integrations §4.5 "every row of one connection dead for 1 hour"
+    pending: INT orders (per-connection outcomes)
+
+  # ---------------------------------------------------------------- integrations §10
+  - name: breaker_open
+    source: metric
+    metric: integration_breaker_state
+    condition: min >= threshold
+    threshold: 2
+    window: 5m
+    severity: page
+    runbook: docs/architecture/platform.md §9 (Hudhud outage, confirm fallback; switch messaging provider)
+    origin: integrations §10 "breaker open for more than 5 minutes on Hudhud, VROOM, the messaging provider or Eeasy shipping"
+    pending: INT orders and PLAT-9 (the breakers)
+  - name: inbound_rejected_rate
+    source: metric
+    metric: inbound_webhooks_total
+    labels: { status: rejected }
+    condition: increase > threshold
+    threshold: 20
+    window: 1h
+    severity: page
+    runbook: docs/architecture/platform.md §9 (replay or re-map an inbound webhook)
+    origin: integrations §10 "inbound rejected above 20 per hour per provider"
+    pending: INT orders (inbound webhooks)
+  - name: inbound_unmappable
+    source: metric
+    metric: inbound_webhooks_total
+    labels: { status: unmappable }
+    condition: increase > threshold
+    threshold: 0
+    window: 5m
+    severity: warn
+    runbook: docs/architecture/platform.md §9 (replay or re-map an inbound webhook)
+    origin: integrations §10 "unmappable any"
+    pending: INT orders (inbound webhooks)
+  - name: channel_token_refresh_failed
+    source: metric
+    metric: integration_calls_total
+    labels: { port: channel_auth, outcome: unauthorised }
+    condition: increase > threshold
+    threshold: 0
+    window: 5m
+    severity: warn
+    runbook: docs/architecture/platform.md §9 (rotate a channel token and reconnect a store)
+    origin: integrations §10 "channel token refresh failure"
+    pending: INT orders (channel adapters)
