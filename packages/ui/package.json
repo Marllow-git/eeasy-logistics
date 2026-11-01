@@ -12,6 +12,7 @@
     "./tokens.css": "./src/tokens.css",
     "./cn": "./src/cn.ts",
     "./status": "./src/status.ts",
+    "./intl": "./src/intl.ts",
     "./components/*": "./src/components/*/*.tsx",
     "./shell": "./src/shell/index.ts",
     "./shell/request-config": "./src/shell/request-config.ts",

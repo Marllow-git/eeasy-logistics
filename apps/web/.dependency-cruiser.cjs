@@ -38,6 +38,15 @@ module.exports = {
       from: { pathNot: '(?:^|/)packages/contracts/' },
       to: { path: '(?:^|/)packages/contracts/(?!src/(?:staff|recipient|http|unions)\\.ts$)' },
     },
+    {
+      name: 'web-no-admin-code-or-catalogue',
+      comment:
+        'ADR-0038, WEB-1 leg 2: the platform console is a separate app; apps/web never imports ' +
+        'apps/admin, so its `platform` catalogue (apps/admin/messages) cannot reach this build.',
+      severity: 'error',
+      from: {},
+      to: { path: ['(?:^|/)apps/admin/', '^\\.\\./admin/'] },
+    },
     ...environmentRules({ configEntry: 'web.ts' }),
     noUnresolvable,
   ],
