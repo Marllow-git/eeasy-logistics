@@ -18,6 +18,61 @@ importers:
         specifier: 2.11.10
         version: 2.11.10
 
+  apps/admin:
+    dependencies:
+      '@eeasy-logistics/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@eeasy-logistics/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@eeasy-logistics/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
+      '@tanstack/react-query':
+        specifier: 5.105.0
+        version: 5.105.0(@types/react@19.3.0)(react@19.3.0)
+      next:
+        specifier: 16.4.3
+        version: 16.4.3(@playwright/test@1.64.1)(@types/node@22.20.5)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+    devDependencies:
+      '@eeasy-logistics/config-eslint':
+        specifier: workspace:*
+        version: link:../../packages/config-eslint
+      '@eeasy-logistics/config-ts':
+        specifier: workspace:*
+        version: link:../../packages/config-ts
+      '@next/eslint-plugin-next':
+        specifier: 16.4.3
+        version: 16.4.3(eslint@9.39.5(jiti@2.7.0))
+      '@playwright/test':
+        specifier: 1.64.1
+        version: 1.64.1
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
+      '@types/react':
+        specifier: 19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      dependency-cruiser:
+        specifier: 18.7.0
+        version: 18.7.0
+      eslint:
+        specifier: 9.39.5
+        version: 9.39.5(jiti@2.7.0)
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   apps/api:
     dependencies:
       '@aws-sdk/client-s3':
