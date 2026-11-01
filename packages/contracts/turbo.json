@@ -12,10 +12,15 @@
       ],
       "outputs": ["generated/**"]
     },
+    "typecheck": {
+      "dependsOn": ["build", "^typecheck"]
+    },
     "lint": {
+      "dependsOn": ["build", "^typecheck"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/docs/contracts/**"]
     },
     "test": {
+      "dependsOn": ["build", "^typecheck"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/docs/contracts/**"]
     }
   }
