@@ -3,6 +3,7 @@ import { isUuid, uuidv7 } from '@eeasy-logistics/db';
 import type { NestMiddleware } from '@nestjs/common';
 import { ConsoleLogger, Injectable } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
+import { annotateRequest } from '../telemetry/spans.js';
 
 // Request ids (PLAT-6 plan 2.1; contracts README §3 "Request ids"). The middleware runs first in
 // the chain: it keeps an incoming `X-Request-Id` only when it is a UUID, else mints a UUIDv7, sets
@@ -57,6 +58,8 @@ export class RequestIdMiddleware implements NestMiddleware {
     response.setHeader(requestIdHeader, requestIdOf(request));
     const server = serverRequestIdOf(request);
     const client = clientRequestIdOf(request);
+    // The request span carries the server's id (PLAT-14 plan 2.2), never the client's.
+    annotateRequest(request, { 'elx.request_id': server });
     // Log lines name the server's id, and the client's next to it when it sent one.
     scope.run(client === null || client === server ? server : `${server} client ${client}`, next);
   }
