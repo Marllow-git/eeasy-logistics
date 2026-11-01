@@ -6,6 +6,8 @@
 #   tools/native-stack.sh down     stop every process this script started (data is kept)
 #   tools/native-stack.sh reset    down, then delete the data: .local/native-stack and, in
 #                                  database mode, the elx database and the roles up created
+#   tools/native-stack.sh migrate  run the migration job (pnpm --filter api migrate, APP_ENV=local)
+#                                  against the database in .env (PLAT-5)
 #
 # Same ports and the same .env as the Compose dev profile, so app settings work
 # against either stack. VROOM has no native build here; use the Compose stack (or CI) for it.
@@ -38,7 +40,7 @@ pg_admin=${ELX_NATIVE_PG_ADMIN:-$(id -un)}
 roles=(elx_owner elx_app elx_platform elx_maintenance)
 
 usage() {
-  echo "usage: $0 up|down|status|reset" >&2
+  echo "usage: $0 up|down|status|reset|migrate" >&2
   exit 2
 }
 
@@ -322,6 +324,12 @@ case $1 in
     ;;
   down)
     down
+    ;;
+  migrate)
+    # The one-shot job of data §11.5 as elx_owner. packages/config reads .env itself (APP_ENV=local)
+    # and the process environment wins over it, so DATABASE_URL_OWNER=... targets another database.
+    [[ -f .env ]] || die ".env is missing: cp .env.example .env"
+    APP_ENV=local pnpm --filter @eeasy-logistics/api run migrate
     ;;
   reset)
     load_env

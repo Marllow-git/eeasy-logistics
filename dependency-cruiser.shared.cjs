@@ -6,10 +6,11 @@
 /**
  * Rules for every workspace. `configEntry` is the only `packages/config/src/` file the workspace may
  * import directly (`web.ts` for apps/web, `driver.ts` for apps/driver); omit it for server code.
- * @param {{ configEntry?: string }} [options]
+ * `databaseDriver` is true only for packages/db, the one workspace that may open connections.
+ * @param {{ configEntry?: string, databaseDriver?: boolean }} [options]
  * @returns {import('dependency-cruiser').IForbiddenRuleType[]}
  */
-function environmentRules({ configEntry } = {}) {
+function environmentRules({ configEntry, databaseDriver = false } = {}) {
   /** @type {import('dependency-cruiser').IForbiddenRuleType[]} */
   const rules = [
     {
@@ -23,6 +24,21 @@ function environmentRules({ configEntry } = {}) {
       to: { dependencyTypes: ['core'], path: '^(?:node:)?process$' },
     },
   ];
+  if (!databaseDriver) {
+    rules.push({
+      name: 'database-driver-only-in-packages-db',
+      comment:
+        'PLAT-5 review M-2, ADR-0031: only packages/db opens database connections (pools per ' +
+        'role, the unit of work, the migration runner). Elsewhere, importing postgres or ' +
+        'drizzle-orm/postgres-js would make a pool that skips the role checks and the tenancy ' +
+        'setting.',
+      severity: 'error',
+      from: { pathNot: '(?:^|/)packages/db/' },
+      to: {
+        path: ['node_modules/postgres/', 'node_modules/drizzle-orm/postgres-js/'],
+      },
+    });
+  }
   if (configEntry !== undefined) {
     const entry = configEntry.replace(/[.]/g, '\\.');
     rules.push({

@@ -117,6 +117,28 @@ Images, checked on 2026-10-31 against Docker Hub and GHCR:
 | `axllent/mailpit` | `v1.33.0` | latest release |
 | `node` | `22.23.4-alpine` | runs the WhatsApp stub; same major as `.nvmrc` |
 
+## Database
+
+PostgreSQL with PostGIS, one database, schema `public`, tables prefixed by context (`core_`, `del_`, `wms_`; data architecture §1). Order PLAT-5; ADR-0019, ADR-0020, ADR-0025, proposed ADR-0031.
+
+- **Roles.** Four roles, each for one duty (ADR-0031, data §4.4): `elx_owner` owns every object and is used only by the migration job; `elx_app` is the API and worker pool for tenant work; `elx_platform` is the cross-tenant pool (platform module and worker system jobs only); `elx_maintenance` is for the per-account deletion tool (no pool yet). The runtime roles own nothing, hold `SELECT, INSERT, UPDATE, DELETE` on operational tables and only `SELECT, INSERT` on append-only tables, so they can neither change a ledger row nor disable a trigger. Each role has its own URL in `.env` (`DATABASE_URL_OWNER`, `_APP`, `_PLATFORM`, `_MAINTENANCE`), read through `packages/config` only.
+- **Migrations.** Reviewed SQL in `apps/api/drizzle/`, each file with a `-- reviewed` header. Schema files live in `apps/api/src/modules/<context>/schema/`; `pnpm --filter api exec drizzle-kit generate --name=<slug>` writes the SQL, which is reviewed and may be hand-edited; triggers, policies and grants are custom migrations (`--custom`). `pnpm --filter api migrate` (the image's `--role migrate`) applies them as `elx_owner` under an advisory lock, refuses an edited or reordered history, records the version in `core_schema_meta`, and exits 0 when nothing is pending. Expand and contract: a destructive step ships in a later PR (data §11). Every migration PR is a one-way door.
+- **Tenancy.** Every operational table carries `account_id` with a foreign key and a leading index, and the `tenant_isolation` and `platform_access` policies from its first migration; `apps/api/test/schema/tenancy.test.ts` fails CI otherwise, and `exemptions.ts` lists the exceptions. Tenant work runs in `withUnitOfWork` (`packages/db`), which sets `elx.account_id` transaction-locally; `ScopedRepository` adds the account predicate to every statement.
+- **Row-level security.** Policies exist from wave 0 but RLS stays disabled (data §4.5) unless the migration job runs with `ELX_RLS=on`, as the `api-test-rls` lane does.
+- **Append-only tables.** A migration calls `SELECT core_make_append_only('<table>')` (both triggers, no mutating grants) and lists the table in `exemptions.ts`; any update, delete or truncate raises SQLSTATE `EL001`.
+- **Readiness.** `GET /ready` checks the `elx_app` pool, the schema version, Redis and the storage bucket, and answers 503 with the failing check names only.
+
+Local commands (`APP_ENV=local`, `.env` from `.env.example`):
+
+```sh
+tools/native-stack.sh migrate               # or: APP_ENV=local pnpm --filter api migrate
+APP_ENV=local pnpm --filter api seed        # two fixture accounts, idempotent
+APP_ENV=local pnpm --filter api seed --template   # rebuild elx_seed for tools/stack.sh clone
+APP_ENV=local pnpm --filter api test:integration  # scratch database per run, dropped afterwards
+```
+
+`seed --template` and the integration suite need `DATABASE_URL_ADMIN`, a superuser for local and ci tooling only (staging and production refuse it). With the native stack in database mode that is your own login, for example `DATABASE_URL_ADMIN=postgres://$(id -un)@127.0.0.1:5432/postgres`. The suite never migrates the development database `elx`.
+
 ## CI
 
 GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
@@ -129,7 +151,7 @@ GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
 | Check | What it runs | Locally |
 |---|---|---|
 | `typecheck-lint` | `pnpm turbo run typecheck lint` (every workspace, contracts Redocly lint included) and `pnpm format:check` | the same commands |
-| `api-test` | the Compose `ci` profile, `pnpm --filter api migrate` (a no-op until PLAT-5), `test:unit`, `test:integration`, `test:architecture`, with `APP_ENV=ci` | `APP_ENV=local pnpm --filter api migrate`, `pnpm --filter api test` against the native stack |
+| `api-test` | the Compose `ci` profile, `pnpm --filter api migrate` then `seed` (the ci services' URLs exported from their random ports), `test:unit`, `test:integration`, `test:architecture`, with `APP_ENV=ci` | `APP_ENV=local pnpm --filter api test` (unit and architecture) and `APP_ENV=local DATABASE_URL_ADMIN=… pnpm --filter api test:integration` against the native stack (README "Database") |
 | `api-test-rls` | the same with `ELX_RLS=on` (A-6; data §4.5) | as above with `ELX_RLS=on` |
 | `web-build-census` | builds the API and the standalone web app, starts both against the `ci` profile, runs Playwright in `ar` and `en`; screenshots and logs are the job's artifact `web-build-census` | `pnpm --filter web build && pnpm --filter web start -p 3001`, then `pnpm --filter web test:smoke` (first time: `pnpm --filter web exec playwright install chromium`) |
 | `driver-test` | typecheck, lint and Jest of `apps/driver`, then `expo-doctor` | `pnpm --filter driver test`, `pnpm --filter driver run doctor` |
