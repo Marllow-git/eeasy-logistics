@@ -2,6 +2,7 @@
 
 ## Whole repo (from root)
 - `pnpm install` (pnpm 10 runs no install scripts except those in `pnpm-workspace.yaml`).
+- `pnpm audit --audit-level moderate` — the CI `pnpm-audit` job (`.github/workflows/audit.yml`, every PR and weekly on main). Accepted advisories live in `pnpm-workspace.yaml` `auditConfig.ignoreGhsas`, each with a reason; add one only after checking it never reaches an image or bundle.
 - `pnpm turbo run typecheck lint test build` — the full local gate.
 - `pnpm format` / `pnpm format:check`.
 
