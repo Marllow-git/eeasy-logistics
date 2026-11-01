@@ -2,8 +2,21 @@
   "name": "@eeasy-logistics/contracts",
   "version": "0.0.0",
   "private": true,
-  "description": "Lints docs/contracts/openapi with Redocly; bundling and generated clients arrive in PLAT-15.",
+  "description": "The typed seam over docs/contracts/openapi: lint rules, per-surface bundles, generated clients, hooks, Zod schemas, MSW handlers and the Permission, StreamEventName and ErrorCode unions (PLAT-15).",
   "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./staff": "./src/staff.ts",
+    "./platform": "./src/platform.ts",
+    "./public": "./src/public.ts",
+    "./driver": "./src/driver.ts",
+    "./recipient": "./src/recipient.ts",
+    "./staff/mocks": "./src/mocks/staff.ts",
+    "./platform/mocks": "./src/mocks/platform.ts",
+    "./public/mocks": "./src/mocks/public.ts",
+    "./http": "./src/http.ts",
+    "./unions": "./src/unions.ts"
+  },
   "scripts": {
     "build": "pnpm run build:bundle && pnpm run build:unions && pnpm run build:client",
     "build:bundle": "node scripts/bundle.ts",
@@ -11,8 +24,28 @@
     "build:unions": "node scripts/unions.ts",
     "typecheck": "tsc --noEmit",
     "lint": "redocly lint --config ../../docs/contracts/redocly.yaml && eslint .",
-    "test": "vitest run",
-    "lint:bundles": "redocly lint generated/openapi/staff.yaml generated/openapi/platform.yaml generated/openapi/driver.yaml generated/openapi/recipient.yaml generated/openapi/public.yaml"
+    "lint:bundles": "redocly lint generated/openapi/staff.yaml generated/openapi/platform.yaml generated/openapi/driver.yaml generated/openapi/recipient.yaml generated/openapi/public.yaml",
+    "test": "vitest run && pnpm run test:architecture",
+    "test:architecture": "depcruise src test scripts --config .dependency-cruiser.cjs"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "@faker-js/faker": "10.6.0",
+    "@tanstack/react-query": "5.105.0",
+    "msw": "3.0.3"
+  },
+  "peerDependenciesMeta": {
+    "@faker-js/faker": {
+      "optional": true
+    },
+    "@tanstack/react-query": {
+      "optional": true
+    },
+    "msw": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eeasy-logistics/config-eslint": "workspace:*",
@@ -22,6 +55,7 @@
     "@tanstack/react-query": "5.105.0",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
+    "dependency-cruiser": "18.7.0",
     "eslint": "9.39.5",
     "msw": "3.0.3",
     "orval": "8.46.0",
@@ -29,8 +63,5 @@
     "typescript": "6.0.3",
     "vitest": "5.0.5",
     "yaml": "2.9.1"
-  },
-  "dependencies": {
-    "zod": "4.6.7"
   }
 }

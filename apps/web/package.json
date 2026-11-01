@@ -2,7 +2,7 @@
   "name": "@eeasy-logistics/web",
   "version": "0.0.0",
   "private": true,
-  "description": "Next.js App Router web app: merchant, platform, recipient and auth route groups (web \u00a71).",
+  "description": "Next.js App Router web app: merchant, platform, recipient and auth route groups (web §1).",
   "type": "module",
   "scripts": {
     "dev": "next dev",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@eeasy-logistics/config": "workspace:*",
+    "@eeasy-logistics/contracts": "workspace:*",
     "@eeasy-logistics/i18n": "workspace:*",
     "next": "16.4.3",
     "react": "19.3.0",
