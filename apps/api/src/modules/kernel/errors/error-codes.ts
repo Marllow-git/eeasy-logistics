@@ -8,6 +8,7 @@ export const errorStatus = {
   validation_failed: 400,
   idempotency_key_required: 400,
   idempotency_key_reused: 422,
+  idempotency_in_progress: 409,
   unauthenticated: 401,
   token_expired: 401,
   token_invalid: 401,

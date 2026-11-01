@@ -9,6 +9,7 @@ Part of foundation document 3 (`README.md` §4). Every non-2xx response is `{ "c
 | `validation_failed` | 400 | body or parameter fails the schema; `details.fields[]` holds `{ pointer, code, message }` | contract schemas; D-4 (non-negative halalas) |
 | `idempotency_key_required` | 400 | a retryable write without `Idempotency-Key` | K-8, README §3 |
 | `idempotency_key_reused` | 422 | same key, different request hash within 24 h | K-8 |
+| `idempotency_in_progress` | 409 | same key and request hash while the first request is still running; `Retry-After` says when to retry (added by PLAT-6, additive) | K-8, data §5.1 |
 | `unauthenticated` | 401 | no credential, bad signature, credential of another surface | doc 4 §4 |
 | `token_expired` | 401 | access JWT, invite, reset or recipient token past `expires_at`; the client refreshes or asks for a new link | doc 4 §3.1, §3.5, §4 |
 | `token_invalid` | 401 | unknown, used or revoked one-time token; reuse of a rotated refresh token also revokes the family | doc 4 §3.1, §4 |

@@ -64,6 +64,34 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
     return inserted;
   }
 
+  /**
+   * Inserts rows whose unique key does not exist yet and returns those inserted (`ON CONFLICT DO
+   * NOTHING`): a duplicate is no error, so the transaction stays usable (idempotency reserve).
+   */
+  protected async insertIgnoringConflicts(
+    rows: readonly TenantInsert<TTable>[],
+  ): Promise<InferSelectModel<TTable>[]> {
+    if (rows.length === 0) return [];
+    const values = rows.map((row) => ({ ...withoutAccount(row), accountId: this.accountId }));
+    const inserted = await this.#tx
+      .insert(this.table)
+      .values(values as never)
+      .onConflictDoNothing()
+      .returning();
+    return inserted;
+  }
+
+  /**
+   * Takes a transaction-scoped advisory lock on `<account>/<name>` without waiting: true when this
+   * transaction holds it (until commit or rollback), false when another transaction does.
+   */
+  protected async tryTransactionLock(name: string): Promise<boolean> {
+    const rows = await this.#tx.execute<{ locked: boolean }>(
+      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${`${this.accountId}/${name}`}, 0)) AS locked`,
+    );
+    return rows[0]?.locked === true;
+  }
+
   protected async updateWhere(
     values: TenantUpdate<TTable>,
     condition?: SQL,

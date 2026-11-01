@@ -3,6 +3,7 @@
     "validation_failed": "بعض الحقول ناقصة أو غير صحيحة.",
     "idempotency_key_required": "يحتاج هذا الطلب إلى ترويسة Idempotency-Key بقيمة UUID.",
     "idempotency_key_reused": "استُخدم مفتاح Idempotency-Key هذا لطلب مختلف من قبل.",
+    "idempotency_in_progress": "طلب سابق بمفتاح Idempotency-Key هذا ما زال قيد التنفيذ. حاول بعد قليل.",
     "unauthenticated": "سجّل الدخول للمتابعة.",
     "token_expired": "انتهت جلستك. سجّل الدخول مرة أخرى.",
     "token_invalid": "هذا الرابط أو الرمز لم يعد صالحًا.",
