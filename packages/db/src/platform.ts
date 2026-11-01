@@ -67,21 +67,31 @@ export function withPlatformUnitOfWork<T>(
 
 /**
  * The cross-tenant door (PLAT-6 plan 2.7; identity and tenancy §5): one transaction on the
- * platform pool whose first statement sets `elx.account_id` to the target account, so tenant
- * repositories (`ScopedRepository`, predicate) see that account only. `context.actingCrossTenant`
- * must be true and `context.userId` names the platform staff member. The caller (the
- * `@CrossTenant()` interceptor) has checked the support reason and emits the audit event.
+ * platform pool. `precheck` runs first, as a platform unit of work on that same transaction (the
+ * caller checks the target account exists there, so there is no window between the check and the
+ * work); then `elx.account_id` is set to the target, so tenant repositories (`ScopedRepository`,
+ * predicate) see that account only. `context.actingCrossTenant` must be true and `context.userId`
+ * names the platform staff member. The caller (the `@CrossTenant()` interceptor) has checked the
+ * support reason and emits the audit event.
  */
 export async function withCrossTenantUnitOfWork<T>(
   db: PlatformDatabase,
   context: RequestContext,
   fn: (uow: UnitOfWork) => Promise<T>,
+  precheck?: (uow: PlatformUnitOfWork) => Promise<void>,
 ): Promise<T> {
   const checked = checkContext(context);
   if (!checked.actingCrossTenant || checked.userId === null) {
     throw new Error('The cross-tenant door needs actingCrossTenant and the platform user');
   }
-  return db.transaction((tx) => runTenantTransaction(tx, checked, fn));
+  return db.transaction(async (tx) => {
+    if (precheck !== undefined) {
+      const uow: PlatformUnitOfWork = Object.freeze({ context: null });
+      transactions.set(uow, tx);
+      await precheck(uow);
+    }
+    return runTenantTransaction(tx, checked, fn);
+  });
 }
 
 /** The platform unit of work of the current platform request or system job; throws otherwise. */

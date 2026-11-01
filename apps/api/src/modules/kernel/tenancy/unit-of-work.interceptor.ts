@@ -7,12 +7,12 @@ import type { Request, Response } from 'express';
 import type { Observable } from 'rxjs';
 import { from, lastValueFrom } from 'rxjs';
 import { APP_POOL } from '../../../database/database.module.js';
-import type { AuditSink } from '../audit/audit-sink.js';
+import type { AuditEvent, AuditSink } from '../audit/audit-sink.js';
 import { AUDIT_SINK } from '../audit/audit-sink.js';
 import type { Principal } from '../auth/principal.js';
 import { ApiException } from '../errors/api-exception.js';
 import { requestIdOf } from '../request/request-id.js';
-import { crossTenantTarget } from './cross-tenant.js';
+import { crossTenantTarget, isRefusal } from './cross-tenant.js';
 import type { PlatformFrames } from './frame.js';
 import { CROSS_TENANT, PLATFORM_FRAMES, principalOf } from './frame.js';
 
@@ -104,7 +104,35 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
     if (!call.crossTenant) {
       return platform.runPlatform({ userId: principal.userId, requestId }, handle);
     }
+    return this.crossTenant(call, platform);
+  }
+
+  /**
+   * The door (plan 2.7): every attempt is audited (identity and tenancy §5). A refusal (reason
+   * missing or invalid, account malformed or unknown) is recorded with its outcome before the error
+   * is answered; an admitted call is recorded inside its transaction before the handler runs.
+   */
+  private async crossTenant(call: Call, platform: PlatformFrames): Promise<unknown> {
+    const { principal, requestId, handle } = call;
+    const event = (
+      outcome: AuditEvent['outcome'],
+      accountId: string | null,
+      reason: string | null,
+    ): AuditEvent => ({
+      kind: 'cross_tenant_access',
+      actor: principal.userId,
+      accountId,
+      operation: call.operation,
+      reason,
+      outcome,
+      requestId,
+      at: new Date().toISOString(),
+    });
     const target = crossTenantTarget(call.request);
+    if (isRefusal(target)) {
+      await this.audit.record(event(target.outcome, target.accountId, null));
+      throw target.error;
+    }
     const context: RequestContext = {
       accountId: target.accountId,
       membershipId: null,
@@ -113,17 +141,19 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       actingCrossTenant: true,
       requestId,
     };
-    return platform.runCrossTenant(context, async () => {
-      await this.audit.record({
-        kind: 'cross_tenant_access',
-        actor: principal.userId,
-        accountId: target.accountId,
-        operation: call.operation,
-        reason: target.reason,
-        requestId,
-        at: new Date().toISOString(),
+    let admitted = false;
+    try {
+      return await platform.runCrossTenant(context, async () => {
+        admitted = true;
+        await this.audit.record(event('ok', target.accountId, target.reason));
+        return handle();
       });
-      return handle();
-    });
+    } catch (error) {
+      // The pre-check refused an unknown account: the transaction is gone, the attempt is not.
+      if (!admitted && error instanceof ApiException && error.code === 'not_found') {
+        await this.audit.record(event('not_found', target.accountId, target.reason));
+      }
+      throw error;
+    }
   }
 }

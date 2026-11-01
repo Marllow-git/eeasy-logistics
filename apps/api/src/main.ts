@@ -41,7 +41,7 @@ async function bootstrap(): Promise<void> {
       logger.error(error instanceof Error ? error.message : 'Worker failed to start');
       process.exit(EX_CONFIG);
     }
-    logger.log(`Role: worker. Environment: ${config.app.env}. Idempotency purge scheduled hourly.`);
+    logger.log(`Role: worker. Environment: ${config.app.env}.`);
     return;
   }
 

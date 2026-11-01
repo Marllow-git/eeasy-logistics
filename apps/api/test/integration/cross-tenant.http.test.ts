@@ -140,11 +140,12 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
       accountId: accountA,
       operation: 'CrossTenantProbeController.list',
       reason: 'Ticket 4412',
+      outcome: 'ok',
       requestId: response.headers['x-request-id'],
     });
   });
 
-  it('requires the support reason: missing or blank is reason_required, nothing audited', async () => {
+  it('requires the support reason: missing or blank is reason_required, audited as reason_missing', async () => {
     const missing = await http()
       .get(`/v1/platform/accounts/${accountA}/probe-rows`)
       .set('Cookie', await platform())
@@ -156,21 +157,25 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
       .set('X-Support-Reason', '   ')
       .expect(400);
     expect(codeOf(blank)).toBe('reason_required');
-    expect(sink.events).toHaveLength(0);
+    expect(sink.events.map((event) => [event.outcome, event.accountId, event.reason])).toEqual([
+      ['reason_missing', accountA, null],
+      ['reason_missing', accountA, null],
+    ]);
   });
 
-  it('refuses a reason over 200 characters as validation_failed', async () => {
+  it('refuses a reason over 200 characters as validation_failed, audited as reason_invalid', async () => {
     const response = await http()
       .get(`/v1/platform/accounts/${accountA}/probe-rows`)
       .set('Cookie', await platform())
       .set('X-Support-Reason', 'x'.repeat(201))
       .expect(400);
     expect(codeOf(response)).toBe('validation_failed');
-    expect(sink.events).toHaveLength(0);
+    expect(sink.events).toMatchObject([{ outcome: 'reason_invalid', reason: null }]);
   });
 
-  it('answers not_found for an unknown or malformed account, nothing audited', async () => {
-    for (const target of [uuidv7(), 'not-a-uuid']) {
+  it('answers not_found for an unknown or malformed account, and still audits the attempt', async () => {
+    const unknown = uuidv7();
+    for (const target of [unknown, 'not-a-uuid']) {
       const response = await http()
         .get(`/v1/platform/accounts/${target}/probe-rows`)
         .set('Cookie', await platform())
@@ -178,7 +183,11 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
         .expect(404);
       expect(codeOf(response)).toBe('not_found');
     }
-    expect(sink.events).toHaveLength(0);
+    expect(sink.events.map((event) => [event.outcome, event.accountId, event.reason])).toEqual([
+      ['not_found', unknown, 'Ticket 4413'],
+      ['not_found', null, null],
+    ]);
+    expect(sink.events[0]).toMatchObject({ actor: platformUser, kind: 'cross_tenant_access' });
   });
 
   it('refuses a staff token on the door', async () => {

@@ -7,7 +7,7 @@
 - `pnpm format` / `pnpm format:check`.
 
 ## Per workspace (`--filter @eeasy-logistics/<api|web|driver|config|db|i18n|ui|contracts>`)
-- `pnpm --filter @eeasy-logistics/api run test:unit | test:integration | test:architecture | migrate | seed | dev` (`dev` sets `APP_ENV=local`; API role via `--role api|worker|migrate`; `worker` stays up and purges expired idempotency keys hourly, needs `REDIS_URL` and `DATABASE_URL_PLATFORM`). `migrate` builds then runs the one-shot job as `elx_owner`; `seed` writes two fixture accounts, `seed --template` rebuilds `elx_seed` (needs `DATABASE_URL_ADMIN`).
+- `pnpm --filter @eeasy-logistics/api run test:unit | test:integration | test:architecture | migrate | seed | dev` (`dev` sets `APP_ENV=local`; API role via `--role api|worker|migrate`; `worker` purges expired idempotency keys hourly when `REDIS_URL` and `DATABASE_URL_PLATFORM` are set, else warns and exits 0). `migrate` builds then runs the one-shot job as `elx_owner`; `seed` writes two fixture accounts, `seed --template` rebuilds `elx_seed` (needs `DATABASE_URL_ADMIN`).
 - Integration suite locally: `APP_ENV=local DATABASE_URL_ADMIN=postgres://$(id -un)@127.0.0.1:5432/postgres ELX_RLS=off|on pnpm --filter @eeasy-logistics/api run test:integration` — migrates a scratch `elx_test_<hex>` per run and drops it; without the admin URL it refuses locally (in `ci` it uses the migrated ci database).
 - `pnpm --filter @eeasy-logistics/web run typecheck` (runs `next typegen` first), `test:smoke` (Playwright, both locales; needs API + web built and running).
 - `pnpm --filter @eeasy-logistics/driver run test` (Jest + architecture), `doctor`.
