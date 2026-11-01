@@ -1,0 +1,59 @@
+# Dependency update pull requests (supply-chain hardening, 2026-11-01). Each update is an ordinary
+# PR through the required checks and tools/pr-gate.sh; nothing merges automatically.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: sunday
+      time: '06:00'
+      timezone: Asia/Riyadh
+    # Matches minimumReleaseAge in pnpm-workspace.yaml; majors wait longer for early regressions.
+    cooldown:
+      default-days: 3
+      semver-major-days: 14
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    groups:
+      dev-tooling:
+        dependency-type: development
+        update-types: [minor, patch]
+      runtime-patches:
+        dependency-type: production
+        update-types: [patch]
+    ignore:
+      # Expo SDK pins these for the driver app; they move only in an Expo SDK upgrade PR.
+      - dependency-name: 'expo'
+      - dependency-name: 'expo-*'
+      - dependency-name: 'jest-expo'
+      - dependency-name: 'react-native'
+      - dependency-name: 'react-native-*'
+      - dependency-name: 'react'
+      - dependency-name: 'react-dom'
+      - dependency-name: '@types/react'
+      - dependency-name: '@types/react-dom'
+      # Tracks the Node runtime major (.nvmrc, roadmap A-14), not the newest types.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # Owner decision 2026-11-01: stay on ESLint 9. TypeScript 7 waits for typescript-eslint.
+      - dependency-name: 'eslint'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@eslint/js'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+
+  # Actions are pinned by commit SHA; this keeps the pins and their version comments current.
+  - package-ecosystem: github-actions
+    directories: ['/', '/.github/actions/*']
+    schedule:
+      interval: weekly
+      day: sunday
+      time: '06:00'
+      timezone: Asia/Riyadh
+    cooldown:
+      default-days: 3
+    groups:
+      actions:
+        patterns: ['*']
