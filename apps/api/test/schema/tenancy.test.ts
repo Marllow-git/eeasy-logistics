@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connectAs, integrationConfig } from '../integration/support.js';
 import {
   appendOnlyTables,
+  envelopeImmutableTables,
   globalUniqueIndexes,
   nullableAccountTables,
   piiColumns,
@@ -51,7 +52,10 @@ describe('tenancy schema (data §4.1)', () => {
       expect.arrayContaining([
         'core_accounts',
         'core_audit_log',
+        'core_consumer_dead_letters',
+        'core_consumer_receipts',
         'core_idempotency_keys',
+        'core_outbox',
         'core_schema_meta',
       ]),
     );
@@ -217,6 +221,35 @@ describe('tenancy schema (data §4.1)', () => {
     for (const row of triggered) {
       if (!appendOnlyTables.includes(row.table) && !partitionsOfListed.has(row.table)) {
         problems.push(`${row.table}: has the append-only trigger but is not in appendOnlyTables`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('guards every outbox table with the envelope trigger, and lists every guarded table (K-10)', async () => {
+    const guarded = await owner<{ table: string; type: number }[]>`
+      SELECT c.relname AS table, t.tgtype::int AS type
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND NOT t.tgisinternal AND t.tgenabled <> 'D'
+        AND t.tgfoid = 'core_outbox_envelope_immutable()'::regprocedure`;
+    const problems: string[] = [];
+    // tgtype bits: 1 row, 2 before, 16 update (PostgreSQL pg_trigger.h).
+    const beforeUpdateRow = (type: number) =>
+      (type & 1) !== 0 && (type & 2) !== 0 && (type & 16) !== 0;
+    for (const table of envelopeImmutableTables) {
+      if (!guarded.some((row) => row.table === table && beforeUpdateRow(row.type))) {
+        problems.push(
+          `${table}: no enabled BEFORE UPDATE row trigger core_outbox_envelope_immutable`,
+        );
+      }
+    }
+    for (const row of guarded) {
+      if (!envelopeImmutableTables.includes(row.table)) {
+        problems.push(
+          `${row.table}: has the envelope trigger but is not in envelopeImmutableTables`,
+        );
       }
     }
     expect(problems).toEqual([]);

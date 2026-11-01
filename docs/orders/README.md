@@ -16,20 +16,15 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | 2026-11-01 | `main.yml` no longer re-runs the seven PR checks on push to `main`; it builds, scans and pushes the images only. The gate's green-on-exact-head rule and path-disjoint in-flight orders cover the window. |
 | 2026-11-01 | Mobbin MCP is the design-reference source: every UI order gets `docs/references/design/<ORDER>.md` with Mobbin links before its brief (handbook 04 "Design references"); web, driver executors and the researcher carry the `mcp__mobbin__*` tools. |
 | 2026-11-01 | VROOM, Valkey and the other routing and map infrastructure are set up last (roadmap A-24): no Valkey switch in PLAT-8, INT-5 and INT-6 at the end of their waves, Q-19 and Q-45 ruled last. |
+| 2026-11-01 | While GitHub Actions is blocked by the organisation's billing, the owner allows a merge on a full local gate (typecheck, lint, unit, format, audit, integration in both RLS lanes) recorded in the plan §9; applied to PLAT-8 (PR #63). |
 | 2026-11-01 | Two web applications: `apps/web` (merchant, recipient) and `apps/admin` (platform console) on separate hostnames (ADR-0038, order WEB-19). |
 
 ## In flight
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| PLAT-7 | #58 | `feat/PLAT-7-audit-log` | `.claude/worktrees/agent-a34090733becbfb52` | executor-api (Opus) | review | none | one-way door; adversary required; one leg (A–E), draft PR #61 |
-| PLAT-8 | #59 | `feat/PLAT-8-outbox-relay-queues` | – | – | plan; brief after PLAT-7 closes | none | one-way door; adversary required; three legs |
+| PLAT-8 | #59 | `feat/PLAT-8-outbox-relay-queues` | `.claude/worktrees/agent-ad40d4c687630541a` | executor-api (Opus) | build, leg 1 (A–C) | native, scratch databases, scratch Redis db index | one-way door (migration 0007); adversary required; three legs |
 
 ## Next unblocked (roadmap §1.1)
 
-PLAT-5 (PR #33) and PLAT-15 (PR #36) are merged. WEB-19 closed (PR #45); WEB-1 in flight; WEB-2 follows WEB-1 and PLAT-11 and touches disjoint paths from PLAT-6. OPS-1 (depends on PLAT-3, Q-10, Q-12) waits on the owner's go as a one-way door.
-
-CHORE-1 closed 2026-11-01: Node 24 (#52, A-14), `util.parseEnv` instead of `dotenv` (#53), SWC builder (#54); trust-policy fix #55. PLAT-7 is unblocked from the chores side.
-
-Next: PLAT-7, PLAT-8 and PLAT-10, which follow PLAT-6. PLAT-15 already meets A-17 (strict param, query, header and body schemas with coercion; test-only `mocks` entry points for every surface, the driver included); PLAT-6 item I only adds the `ContractPipe` and the dependency-cruiser rules.
-
+PLAT-10 (roles) follows PLAT-8 on the API side; WEB-2 follows PLAT-11; OPS-1 waits on the owner's go (one-way door; Q-10, Q-12).

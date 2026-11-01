@@ -12,3 +12,6 @@ export {
   type ContractInput,
   type OperationSchemas,
 } from '../contract/contract-pipe.js';
+export { OutboxWriter, type OutboxEntry } from '../outbox/outbox-writer.js';
+export type { DomainEvent, DomainEventType, EventPayload } from '../outbox/domain-event.js';
+export type { OutboxKind } from '../schema/outbox.js';

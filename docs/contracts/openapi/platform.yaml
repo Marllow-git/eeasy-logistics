@@ -473,7 +473,7 @@ paths:
     get:
       operationId: platformGetOutboxRow
       summary: "One outbox row with its envelope and last error"
-      description: '@CrossTenant, audited per call with X-Support-Reason.'
+      description: '@CrossTenant on the row''s account (the door resolves it from outbox_id), audited per call with X-Support-Reason. A platform-only row (no account) is answered without its envelope (amended 2026-11-01, PLAT-8).'
       tags: [outbox]
       x-wave: 0
       x-permission: platform.outbox.read
@@ -488,7 +488,7 @@ paths:
     post:
       operationId: platformReplayOutboxRow
       summary: "Replay a dead outbox row"
-      description: 'dead → pending; envelope columns are immutable, only delivery state changes (K-10). Audited.'
+      description: 'dead → pending; envelope columns are immutable, only delivery state changes (K-10). @CrossTenant on the row''s account with the body''s reason as the support reason; audited (platform.outbox_row.replayed). Refused for rows older than the 35-day consumer-receipt window (data §5.2) (amended 2026-11-01, PLAT-8).'
       tags: [outbox]
       x-wave: 0
       x-permission: platform.outbox.replay
@@ -498,6 +498,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformReasonRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/OutboxRow'}}}}
+        '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: reason_required.'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: replay_not_allowed.'}
         '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
@@ -505,13 +506,13 @@ paths:
     post:
       operationId: platformReplayDeadOutbox
       summary: "Replay dead rows matching a filter"
-      description: 'Rows replay in aggregate sequence order (§6.2). @CrossTenant; audited with X-Support-Reason.'
+      description: 'Rows replay in aggregate sequence order (§6.2). Always one account, through its door (@CrossTenant on the body''s account_id, required; the body''s reason is the support reason). Batches of 500; matched counts the dead rows of the filter, replayed those set pending (rows older than 35 days, colliding with a pending supersede key or with a running job are left dead). One audit row with the counts and the replayed row ids, at most 500 (amended 2026-11-01, PLAT-8; account_id required after the adversary pass, M-1).'
       tags: [outbox]
       x-wave: 0
       x-permission: platform.outbox.replay
       x-cross-tenant: true
       security: [{platformCookie: []}]
-      parameters: [{$ref: './components.yaml#/components/parameters/SupportReason'}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
+      parameters: [{$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayRequest'}}}}
       responses:
         '202': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BulkReplayResult'}}}}
@@ -825,7 +826,7 @@ components:
       properties: {enabled: {type: boolean}, reason: {type: string}}
     BulkReplayRequest:
       type: object
-      required: [reason]
+      required: [account_id, kind, reason]
       properties:
         account_id: {type: string, format: uuid}
         kind: {type: string, enum: [internal_event, webhook, message, push, channel_publish, carrier_call, storage_lifecycle]}

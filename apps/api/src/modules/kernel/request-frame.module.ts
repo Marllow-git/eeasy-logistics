@@ -1,6 +1,8 @@
 import type { Config } from '@eeasy-logistics/config';
-import type { DynamicModule } from '@nestjs/common';
+import type { DynamicModule, OnApplicationShutdown } from '@nestjs/common';
 import { Global, Logger, Module } from '@nestjs/common';
+import { Redis } from 'ioredis';
+import { OUTBOX_QUEUES, OutboxQueues } from './outbox/queues.js';
 import { CURSOR_CODEC, CursorCodec, cursorHmacKey } from './audit/cursor.js';
 import { AccessTokenVerifier } from './auth/access-token.js';
 import { PrincipalResolver } from './auth/principal.js';
@@ -11,6 +13,18 @@ import { RATE_LIMITER, RateLimiter, redisRateLimitStore } from './rate-limit/rat
 import type { WebOrigins } from './request/web-client.guard.js';
 import { WEB_ORIGINS, originOf } from './request/web-client.guard.js';
 import { PRINCIPAL_RESOLVER } from './tenancy/frame.js';
+
+/** The API's outbox queues, owning their connection: closed with the application. */
+class ApiOutboxQueues extends OutboxQueues implements OnApplicationShutdown {
+  constructor(private readonly ownConnection: Redis) {
+    super(ownConnection);
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.close();
+    this.ownConnection.disconnect();
+  }
+}
 
 /**
  * What the request frame needs from the configuration (PLAT-6): the principal resolver with the
@@ -84,8 +98,30 @@ export class RequestFrameModule {
             return new RateLimiter(redisRateLimitStore(url.reveal()));
           },
         },
+        {
+          // The outbox queues for the platform replays and consumer counts (PLAT-8 plan 2.7):
+          // its own connection, closed on shutdown. Without REDIS_URL those operations answer 500.
+          provide: OUTBOX_QUEUES,
+          useFactory: () => {
+            const url = config.redis.url;
+            if (url === undefined) return null;
+            const connection = new Redis(url.reveal(), {
+              maxRetriesPerRequest: 1,
+              enableOfflineQueue: false,
+            });
+            connection.on('error', () => undefined);
+            return new ApiOutboxQueues(connection);
+          },
+        },
       ],
-      exports: [PRINCIPAL_RESOLVER, IDEMPOTENCY_HMAC_KEY, CURSOR_CODEC, RATE_LIMITER, WEB_ORIGINS],
+      exports: [
+        PRINCIPAL_RESOLVER,
+        IDEMPOTENCY_HMAC_KEY,
+        CURSOR_CODEC,
+        RATE_LIMITER,
+        WEB_ORIGINS,
+        OUTBOX_QUEUES,
+      ],
     };
   }
 }
