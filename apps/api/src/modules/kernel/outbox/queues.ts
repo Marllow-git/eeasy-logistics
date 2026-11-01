@@ -1,5 +1,5 @@
-import type { ConnectionOptions } from 'bullmq';
 import { Queue } from 'bullmq';
+import type { Redis } from 'ioredis';
 import type { OutboxKind } from '../schema/outbox.js';
 
 // The BullMQ side of the outbox (ADR-0024, ADR-0036; integrations §4.2, §4.4): one queue per kind,
@@ -13,6 +13,17 @@ export function outboxQueueName(kind: OutboxKind): string {
   return `outbox.${kind}`;
 }
 
+/**
+ * How long finished jobs stay in Redis (lead review round 1, ruling 3; plan 2.5). The leg 2
+ * processor writes the row's outcome before it returns, so a completed job means the row has left
+ * `enqueued`; keeping completed jobs an hour and failed ones a day lets the sweeper tell "finished
+ * recently" from "lost" (a lost job is absent in every state).
+ */
+export const outboxJobRetention = {
+  removeOnComplete: { age: 60 * 60 },
+  removeOnFail: { age: 24 * 60 * 60 },
+} as const;
+
 /** The only job data an outbox queue carries. */
 export interface OutboxJobData {
   readonly outboxId: string;
@@ -22,8 +33,9 @@ export interface OutboxJobData {
 export class OutboxQueues {
   readonly #queues = new Map<OutboxKind, Queue<OutboxJobData>>();
 
+  /** `connection` is shared by the queues and never closed here (the caller owns it). */
   constructor(
-    private readonly connection: ConnectionOptions,
+    private readonly connection: Redis,
     private readonly prefix: string = outboxQueuePrefix,
   ) {}
 
@@ -43,13 +55,37 @@ export class OutboxQueues {
   async add(kind: OutboxKind, outboxIds: readonly string[]): Promise<void> {
     if (outboxIds.length === 0) return;
     await this.#queue(kind).addBulk(
-      outboxIds.map((outboxId) => ({ name: kind, data: { outboxId }, opts: { jobId: outboxId } })),
+      outboxIds.map((outboxId) => ({
+        name: kind,
+        data: { outboxId },
+        opts: { jobId: outboxId, ...outboxJobRetention },
+      })),
     );
   }
 
-  /** Whether the queue of `kind` still holds a job for the row (any state). */
+  /**
+   * The row ids of `outboxIds` whose job still exists in the queue of `kind`, in any state
+   * (waiting, delayed, active, completed, failed: every state keeps the job hash), checked with
+   * one pipelined round trip.
+   */
+  async existingJobs(kind: OutboxKind, outboxIds: readonly string[]): Promise<Set<string>> {
+    if (outboxIds.length === 0) return new Set();
+    const queue = this.#queue(kind);
+    const pipeline = this.connection.pipeline();
+    for (const id of outboxIds) pipeline.exists(queue.toKey(id));
+    const results = (await pipeline.exec()) ?? [];
+    const present = new Set<string>();
+    outboxIds.forEach((id, index) => {
+      const [error, count] = results[index] ?? [new Error('no reply'), 0];
+      if (error !== null) throw error;
+      if (count === 1) present.add(id);
+    });
+    return present;
+  }
+
+  /** Whether the queue of `kind` still holds a job for the row, in any state. */
   async hasJob(kind: OutboxKind, outboxId: string): Promise<boolean> {
-    return (await this.#queue(kind).getJob(outboxId)) !== undefined;
+    return (await this.existingJobs(kind, [outboxId])).has(outboxId);
   }
 
   async close(): Promise<void> {

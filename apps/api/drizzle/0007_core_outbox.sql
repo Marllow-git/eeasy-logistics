@@ -17,6 +17,9 @@
 -- receipts (35 days) and dead letters (30 days); their account mirrors the event's, so both are
 -- nullable-account tables too. Neither references core_outbox: outbox rows are pruned after 7 days.
 --
+-- core_outbox_pending_id_idx serves the relay's batch, ORDER BY id over pending rows (data §5.2;
+-- PLAT-8 lead review round 1); core_outbox_pending_due_idx serves the oldest-due-row alert query.
+--
 -- Global unique keys without account_id (data §4.1): the pending supersede_key (keys embed the
 -- aggregate's UUID, integrations §4.1) and (consumer, event_id) (event ids are UUIDv7).
 CREATE TABLE "core_consumer_dead_letters" (
@@ -74,6 +77,7 @@ ALTER TABLE "core_outbox" ADD CONSTRAINT "core_outbox_account_id_core_accounts_i
 CREATE INDEX "core_consumer_dead_letters_account_idx" ON "core_consumer_dead_letters" USING btree ("account_id","created_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "core_consumer_receipts_account_idx" ON "core_consumer_receipts" USING btree ("account_id","processed_at");--> statement-breakpoint
 CREATE INDEX "core_outbox_pending_due_idx" ON "core_outbox" USING btree ("next_attempt_at") WHERE "core_outbox"."status" = 'pending';--> statement-breakpoint
+CREATE INDEX "core_outbox_pending_id_idx" ON "core_outbox" USING btree ("id") WHERE "core_outbox"."status" = 'pending';--> statement-breakpoint
 CREATE INDEX "core_outbox_enqueued_idx" ON "core_outbox" USING btree ("enqueued_at") WHERE "core_outbox"."status" = 'enqueued';--> statement-breakpoint
 CREATE INDEX "core_outbox_account_idx" ON "core_outbox" USING btree ("account_id","status","created_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "core_outbox_aggregate_idx" ON "core_outbox" USING btree ("aggregate_id","sequence");--> statement-breakpoint

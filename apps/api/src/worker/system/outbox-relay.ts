@@ -41,7 +41,7 @@ export const sweepBatchSize = 500;
 /** The metric the sweeper reports: due rows of a kind with no handler in this build. */
 export const rowsWithoutHandlerMetric = 'outbox_rows_without_handler';
 
-export type RelayQueues = Pick<OutboxQueues, 'add' | 'hasJob'>;
+export type RelayQueues = Pick<OutboxQueues, 'add' | 'existingJobs'>;
 
 interface RowRecord extends Record<string, unknown> {
   id: string;
@@ -167,33 +167,37 @@ export async function relayBatch(
 }
 
 /**
- * The sweeper (integrations §4.4): rows `enqueued` for longer than `stuckAfterMs` whose job is no
- * longer in their queue (Redis lost it) return to `pending`, so the relay enqueues them again.
- * Returns how many rows it returned.
+ * The sweeper (integrations §4.4): rows `enqueued` for longer than `stuckAfterMs` whose job is
+ * absent from their queue in every state (Redis lost it) return to `pending`, so the relay
+ * enqueues them again. Three steps, so no row lock is held across Redis (lead review round 1):
+ * a plain read of up to 500 stuck rows, one pipelined existence check per kind outside any
+ * transaction, then one UPDATE that touches only rows still `enqueued` and still stuck (a row the
+ * worker finished or the relay re-enqueued meanwhile is left alone). Returns how many it returned.
  */
 export async function sweepStuckRows(
   db: PlatformDatabase,
   queues: RelayQueues,
   stuckAfterMs: number = relayTimings.stuckAfterMs,
 ): Promise<number> {
-  return db.transaction(async (tx) => {
-    const rows = await tx.execute<{ id: string; kind: OutboxKind }>(sql`
-      SELECT id, kind FROM core_outbox
-      WHERE status = 'enqueued'
-        AND enqueued_at < now() - make_interval(secs => ${stuckAfterMs / 1000})
-      ORDER BY enqueued_at
-      LIMIT ${sweepBatchSize}
-      FOR UPDATE SKIP LOCKED`);
-    const lost: string[] = [];
-    for (const row of rows) {
-      if (!(await queues.hasJob(row.kind, row.id))) lost.push(row.id);
-    }
-    if (lost.length === 0) return 0;
-    await tx.execute(sql`
-      UPDATE core_outbox SET status = 'pending', enqueued_at = NULL
-      WHERE id IN (${list(lost)}) AND status = 'enqueued'`);
-    return lost.length;
-  });
+  const stuck = sql`enqueued_at < now() - make_interval(secs => ${stuckAfterMs / 1000})`;
+  const rows = await db.execute<{ id: string; kind: OutboxKind }>(sql`
+    SELECT id, kind FROM core_outbox
+    WHERE status = 'enqueued' AND ${stuck}
+    ORDER BY enqueued_at
+    LIMIT ${sweepBatchSize}`);
+  const byKind = new Map<OutboxKind, string[]>();
+  for (const row of rows) byKind.set(row.kind, [...(byKind.get(row.kind) ?? []), row.id]);
+  const lost: string[] = [];
+  for (const [kind, ids] of byKind) {
+    const present = await queues.existingJobs(kind, ids);
+    lost.push(...ids.filter((id) => !present.has(id)));
+  }
+  if (lost.length === 0) return 0;
+  const returned = await db.execute<{ id: string }>(sql`
+    UPDATE core_outbox SET status = 'pending', enqueued_at = NULL
+    WHERE id IN (${list(lost)}) AND status = 'enqueued' AND ${stuck}
+    RETURNING id`);
+  return returned.length;
 }
 
 /** Due rows whose kind has no handler in this build (the `outbox_rows_without_handler` gauge). */
@@ -374,7 +378,7 @@ export class OutboxRelay {
           return;
         }
         this.#deps.logger.warn('Outbox relay lock lost: relaying stopped');
-        await this.#resign(false);
+        await this.#resign(true); // a no-op unless the lock still carries our token
         return;
       }
       if (!(await this.#lease.acquire())) return;
@@ -394,7 +398,9 @@ export class OutboxRelay {
         this.#deps.logger.warn(
           `Outbox relay lock check failed (${errorName(error)}): relaying stopped`,
         );
-        await this.#resign(false);
+        // Any failure after the lock was taken (LISTEN, a renewal error) gives it back at once,
+        // so another worker can lead without waiting for the TTL (lead review round 1).
+        await this.#resign(true);
       }
     }
   }

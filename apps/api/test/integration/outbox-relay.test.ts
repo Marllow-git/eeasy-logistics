@@ -3,14 +3,18 @@ import type { Pool } from '@eeasy-logistics/db';
 import { uuidv7 } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { createPlatformPool, listenOnPlatformPool } from '@eeasy-logistics/db/platform';
-import { Queue } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import type postgres from 'postgres';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { KindHandler } from '../../src/modules/kernel/outbox/kind-handlers.js';
 import { KindHandlerRegistry } from '../../src/modules/kernel/outbox/kind-handlers.js';
 import { nextOutboxId } from '../../src/modules/kernel/outbox/outbox-id.js';
-import { OutboxQueues, outboxQueueName } from '../../src/modules/kernel/outbox/queues.js';
+import {
+  OutboxQueues,
+  outboxJobRetention,
+  outboxQueueName,
+} from '../../src/modules/kernel/outbox/queues.js';
 import type { OutboxKind } from '../../src/modules/kernel/schema/outbox.js';
 import type { RelayDependencies } from '../../src/worker/system/outbox-relay.js';
 import {
@@ -218,7 +222,7 @@ describe('outbox relay (plan 2.3)', () => {
     const id = await insert(uuidv7(), 1);
     const failing = {
       add: () => Promise.reject(new Error('redis down')),
-      hasJob: () => Promise.resolve(false),
+      existingJobs: () => Promise.resolve(new Set<string>()),
     };
     await expect(relayBatch(pool.db, failing, registry, 500)).rejects.toThrow('redis down');
     expect(await statuses([id])).toEqual(['pending']);
@@ -234,6 +238,78 @@ describe('outbox relay (plan 2.3)', () => {
     const [row] = await owner<{ enqueued_at: Date | null }[]>`
       SELECT enqueued_at FROM core_outbox WHERE id = ${lost}`;
     expect(row?.enqueued_at).toBeNull();
+  });
+
+  it('sweeps a batch across kinds in one pass, re-checking each row before returning it', async () => {
+    const lost = [
+      await insert(uuidv7(), 1, { status: 'enqueued', enqueuedAgo: '10 minutes' }),
+      await insert(uuidv7(), 1, { status: 'enqueued', enqueuedAgo: '9 minutes', kind: 'push' }),
+    ];
+    const live = await insert(uuidv7(), 1, { status: 'enqueued', enqueuedAgo: '8 minutes' });
+    // Finished by the worker while the sweeper was checking Redis: must not come back.
+    const finished = await insert(uuidv7(), 1, { status: 'enqueued', enqueuedAgo: '7 minutes' });
+    const calls: { kind: OutboxKind; ids: string[] }[] = [];
+    const racing = {
+      add: () => Promise.resolve(),
+      existingJobs: async (k: OutboxKind, ids: readonly string[]) => {
+        calls.push({ kind: k, ids: [...ids] });
+        await markDone(finished);
+        return new Set(ids.filter((id) => id === live));
+      },
+    };
+    const returned = await sweepStuckRows(pool.db, racing);
+    expect(await statuses([...lost, live, finished])).toEqual([
+      'pending',
+      'pending',
+      'enqueued',
+      'done',
+    ]);
+    expect(returned).toBeGreaterThanOrEqual(2);
+    // One existence check per kind, never one per row.
+    expect(new Set(calls.map((call) => call.kind)).size).toBe(calls.length);
+    expect(calls.find((call) => call.kind === kind)?.ids).toEqual(
+      expect.arrayContaining([lost[0], live, finished]),
+    );
+    await owner`UPDATE core_outbox SET status = 'done' WHERE id = ${lost[1] ?? ''}`;
+  });
+
+  it('keeps a row whose job completed and is still retained (no duplicate delivery)', async () => {
+    const id = await insert(uuidv7(), 1);
+    await relayBatch(pool.db, queues, registry, 500);
+    const url = config.redis.url?.reveal() ?? '';
+    const workerConnection = new Redis(url, { maxRetriesPerRequest: null });
+    const worker = new Worker(outboxQueueName(kind), () => Promise.resolve(), {
+      connection: workerConnection,
+      prefix,
+    });
+    try {
+      await expect
+        .poll(async () => (await inspect.getJob(id))?.finishedOn !== undefined, { timeout: 5_000 })
+        .toBe(true);
+    } finally {
+      await worker.close();
+      workerConnection.disconnect();
+    }
+    const job = await inspect.getJob(id);
+    expect(await job?.isCompleted()).toBe(true);
+    expect(job?.opts.removeOnComplete).toEqual(outboxJobRetention.removeOnComplete);
+    expect(job?.opts.removeOnFail).toEqual(outboxJobRetention.removeOnFail);
+    // As if the outcome write had not landed: still enqueued, long ago.
+    await owner`UPDATE core_outbox SET enqueued_at = now() - interval '10 minutes' WHERE id = ${id}`;
+    expect(await queues.hasJob(kind, id)).toBe(true);
+    await sweepStuckRows(pool.db, queues);
+    expect(await statuses([id])).toEqual(['enqueued']);
+  });
+
+  it('gives the lock back when LISTEN fails right after taking it', async () => {
+    const failing = relay({ listen: () => Promise.reject(new Error('listen refused')) });
+    await failing.start();
+    expect(failing.leading).toBe(false);
+    expect(await redis.get(lockKey)).toBeNull();
+    await failing.stop(); // its timer would otherwise keep retaking the lock
+    const next = relay();
+    await next.start();
+    expect(next.leading).toBe(true);
   });
 
   it('runs one leader among two relays; the second never enqueues until the first stops', async () => {
