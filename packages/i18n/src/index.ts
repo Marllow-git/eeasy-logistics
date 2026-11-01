@@ -1,35 +1,32 @@
-import arCommon from '../ar/common.json';
-import enCommon from '../en/common.json';
+import type { Locale } from './locale';
+import { messages, type Messages } from './messages';
 
-export const locales = ['ar', 'en'] as const;
-export type Locale = (typeof locales)[number];
-
-/** Arabic is the primary language and the fallback everywhere (ADR-0016). */
-export const defaultLocale: Locale = 'ar';
-
-export function isLocale(value: unknown): value is Locale {
-  return typeof value === 'string' && (locales as readonly string[]).includes(value);
-}
-
-/** Text direction for the `dir` attribute or style of a locale. */
-export function dir(locale: Locale): 'rtl' | 'ltr' {
-  return locale === 'ar' ? 'rtl' : 'ltr';
-}
-
-// The Arabic catalogue is the reference shape: an English catalogue missing a key fails typecheck,
-// and test/parity.test.ts fails on a key present in one locale only, in either direction.
-type CommonCatalogue = typeof arCommon;
-const common: Record<Locale, CommonCatalogue> = { ar: arCommon, en: enCommon };
+export { defaultLocale, dir, isLocale, locales, type Locale } from './locale';
+export { messages, pickMessages, type Messages, type Namespace } from './messages';
+export {
+  formatDate,
+  formatDateTime,
+  formatMoney,
+  formatMoneyAmount,
+  formatNumber,
+  formatPhone,
+  intlLocale,
+  timeZone,
+} from './format';
 
 type KeyPaths<T> = {
   [K in keyof T & string]: T[K] extends string ? K : `${K}.${KeyPaths<T[K]>}`;
 }[keyof T & string];
 
-export type CommonKey = KeyPaths<CommonCatalogue>;
+export type CommonKey = KeyPaths<Messages['common']>;
 
-/** Looks up a `common` message, e.g. `t('ar', 'placeholder.merchant')`. */
+/**
+ * Looks up a plain `common` message, e.g. `t('ar', 'placeholder.merchant')`, for the driver app and
+ * server code outside a next-intl request (metadata). It reads the same catalogues as next-intl
+ * and does not interpret ICU arguments; components use next-intl's `useTranslations`.
+ */
 export function t(locale: Locale, key: CommonKey): string {
-  let node: unknown = common[locale];
+  let node: unknown = messages[locale].common;
   for (const part of key.split('.')) {
     node =
       typeof node === 'object' && node !== null

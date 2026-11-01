@@ -2,7 +2,7 @@
   "name": "@eeasy-logistics/i18n",
   "version": "0.0.0",
   "private": true,
-  "description": "Arabic and English catalogues (<locale>/<namespace>.json) and the typed t() helper.",
+  "description": "Arabic and English catalogues (<locale>/<namespace>.json), the Messages type next-intl is typed with, the typed t() helper and the one formatting module for dates, numbers and money (web §5).",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -16,10 +16,12 @@
   "devDependencies": {
     "@eeasy-logistics/config-eslint": "workspace:*",
     "@eeasy-logistics/config-ts": "workspace:*",
+    "@eeasy-logistics/contracts": "workspace:*",
     "@types/node": "22.20.5",
     "dependency-cruiser": "18.7.0",
     "eslint": "9.39.5",
     "typescript": "6.0.3",
+    "use-intl": "4.14.9",
     "vitest": "5.0.5"
   }
 }

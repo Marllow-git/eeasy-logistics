@@ -83,6 +83,7 @@ Sessions, sign-in forms, CSP and `proxy.ts` (WEB-2); `DataTable`, `Board`, `Form
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A | (this commit) | `packages/i18n` Vitest 5 files, 48/48 green; `tsc` clean; ESLint clean; architecture 27 modules clean; `turbo run typecheck test` for `driver` and `i18n` 7/7 tasks green. Red then green: `en/nav.json` without `home` → parity test red (2 failures) and `tsc` red (`messages.ts` TS2741); `ar/errors.json` without `slot_full` → `ErrorCode` set test red for `ar` plus parity red; restored → 48/48. Formatting tests in both locales: calendar `gregory` and digits `latn` resolved, no Arabic-Indic digit, 21:30Z shown as 12:30 on the next day (Riyadh), business date `2026-03-01` stays on day 1, `SAR 150.00` from 15000 halalas (exact in `en`; `ar` contains `SAR` and `150.00`) | Namespaces `common`, `nav`, `auth`, `errors` (70 codes, equal to the generated `ErrorCode` union), `recipient`, `platform`; `Messages` typed from the `ar` catalogue; the next-intl `AppConfig` augmentation lives in `packages/ui` (item D) so `packages/i18n` and the driver app need no next-intl (8.2 #1); ICU plurals take a pre-formatted `{value}`, not `#` (8.2 #2); `formatMoneyAmount` added for `<Money>` (8.2 #3) |
 
 ### 8.1 Skills, documents and versions consulted
 

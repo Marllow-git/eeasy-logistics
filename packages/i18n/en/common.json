@@ -9,5 +9,62 @@
     "merchant": "The merchant dashboard is under construction.",
     "recipient": "The order tracking page is under construction.",
     "driver": "The driver app is under construction."
+  },
+  "locale": {
+    "label": "Language",
+    "ar": "العربية",
+    "en": "English"
+  },
+  "shell": {
+    "skip_to_content": "Skip to content",
+    "open_navigation": "Open navigation",
+    "close_navigation": "Close navigation",
+    "account": "Account"
+  },
+  "actions": {
+    "close": "Close"
+  },
+  "currency": {
+    "sar": "Saudi riyal"
+  },
+  "updated_ago": {
+    "just_now": "Updated just now",
+    "seconds": "Updated {count, plural, one {{value} second} other {{value} seconds}} ago",
+    "minutes": "Updated {count, plural, one {{value} minute} other {{value} minutes}} ago",
+    "hours": "Updated {count, plural, one {{value} hour} other {{value} hours}} ago"
+  },
+  "status": {
+    "order": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "offered": "Offered",
+      "assigned": "Assigned",
+      "picked_up": "Picked up",
+      "out_for_delivery": "Out for delivery",
+      "attempted": "Attempted",
+      "delivered": "Delivered",
+      "failed": "Failed",
+      "returned": "Returned",
+      "cancelled": "Cancelled"
+    },
+    "offer": {
+      "sent": "Sent",
+      "accepted": "Accepted",
+      "declined": "Declined",
+      "expired": "Expired",
+      "withdrawn": "Withdrawn"
+    },
+    "attempt": {
+      "open": "Open",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "voided": "Voided"
+    },
+    "custody": {
+      "collected": "With driver",
+      "with_cashier": "With cashier",
+      "with_bank": "Deposited",
+      "not_held": "Not cash"
+    }
   }
 }
