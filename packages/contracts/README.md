@@ -20,6 +20,7 @@ Turborepo runs `build` before this package's own `typecheck`, `lint` and `test`,
 - Every `$ref` resolves; `operationId` unique; `x-wave` an integer 0 to 4; `x-permission` present, shaped `<module>.<resource>.<action>` and listed in `docs/contracts/permissions.yaml` (kept equal to README §11 by a test).
 - Every `post`, `put`, `patch` and `delete` declares `Idempotency-Key`, unless its `operationId` is in the `exempt` list of `eeasy/idempotency-key` (README §3: session doors under `/auth/`, driver locations, the cash PIN check, read-only computations sent as `POST`). Outbound `webhooks:` are not checked.
 - `x-cross-tenant` only on the platform surface. A `text/event-stream` operation lists its event names in `x-sse-events`.
+- `docs/contracts/roles.yaml` (rule `eeasy/role-permissions-in-catalogue`, run on the `components` api): every bundle permission is in the catalogue, no bundle lists a door (`core.auth.*`, `platform.auth.self`) or a permission twice, each bundle names `scope`, `surface` and `site_scoped` (PLAT-10).
 
 ## Entry points
 
@@ -29,10 +30,10 @@ Turborepo runs `build` before this package's own `typecheck`, `lint` and `test`,
 | `@eeasy-logistics/contracts/recipient` | model types; `client`, `schemas`; `operationSchemas` | `apps/web` |
 | `@eeasy-logistics/contracts/platform`, `/public` | as staff | never `apps/web` (the admin app, ADR-0038); `/public` for integrators |
 | `@eeasy-logistics/contracts/driver` | model types; `client`, `schemas`; `operationSchemas`; no hooks | `apps/driver` |
-| `@eeasy-logistics/contracts/<surface>/schemas` (all five) | server-safe: model types and enum constants, `schemas` (Zod), `operationSchemas`; no client, hooks or MSW (architecture rule `server-safe-schemas-entries`) | `apps/api` controllers and presenters (PLAT-6, A-17) |
+| `@eeasy-logistics/contracts/<surface>/schemas` (all five) | server-safe: model types and enum constants, `schemas` (Zod), `operationSchemas`, `operationPermissions`, `crossTenantOperations`; no client, hooks or MSW (architecture rule `server-safe-schemas-entries`) | `apps/api` controllers and presenters (PLAT-6, A-17) |
 | `@eeasy-logistics/contracts/<surface>/mocks` (all five) | MSW handlers and mock factories, faker seeded on import (`seedMocks(n)` reseeds); tests only | test code (architecture rules forbid it in app code) |
 | `@eeasy-logistics/contracts/http` | `createFetcher`, `apiFetch` (the Orval mutator), `ApiError` | every client |
-| `@eeasy-logistics/contracts/unions` | `Permission`, `StreamEventName`, `ErrorCode`, their runtime lists and `isStreamEventName` (SSE families such as `delivery.order.*` expanded from domain-model §6.3) | every client |
+| `@eeasy-logistics/contracts/unions` | `Permission`, `StreamEventName`, `ErrorCode`, their runtime lists and `isStreamEventName` (SSE families such as `delivery.order.*` expanded from domain-model §6.3); `roleKeys`, `RoleKey`, `roleBundles` from `docs/contracts/roles.yaml` (PLAT-10) | every client |
 
 The architecture tests of `apps/web` and `apps/driver` enforce the "Used by" column.
 
@@ -76,4 +77,5 @@ const { data } = await client.listSites({ limit: 50 }, { fetcher });
 - `schemas` holds Orval's Zod schemas per operation: `<OperationId>Params` (path), `<OperationId>QueryParams`, `<OperationId>Header`, `<OperationId>Body`, and one `<OperationId><status>Response` per documented status. Request schemas are strict (an undeclared field such as `account_id` is refused, K-3); path and query values are coerced from strings to numbers, and query booleans read `true`/`false` (`zod.stringbool`); bodies are not coerced; responses are not strict (the contract tests catch undocumented fields).
 - `operationSchemas` keys the same schemas by operationId: `operationSchemas.platformListAccounts.query.parse({ limit: '50' })` gives `{ limit: 50 }`. It holds every operation of the bundle, so `apps/api`'s `ContractPipe` (PLAT-6) looks its operation up by id.
 - Response TypeScript types per operation and status are in the `client` namespace (`platformListAccountsResponse200`, ...).
+- Each `operationSchemas` entry is frozen and also carries `operationId`, `surface`, `permission` (its `x-permission`) and `crossTenant` (PLAT-10): `apps/api`'s permission guard reads the permission from the entry a handler binds, so no handler names one. `operationPermissions` (operationId → permission) and `crossTenantOperations` sit beside it; `scripts/operations.ts` refuses a bundle operation without a well-formed `x-permission`.
 

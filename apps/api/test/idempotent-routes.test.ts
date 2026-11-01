@@ -2,17 +2,19 @@ import { Controller, HttpCode, Post } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
-import { Idempotent } from '../src/modules/kernel/public/index.js';
+import { Idempotent, Operation } from '../src/modules/kernel/public/index.js';
+import { probeOperations } from './support/probe-operations.js';
 
 // PLAT-6 review round 2, finding 4: the stored replay status is `response.statusCode` when the
 // handler returns, so every `@Idempotent()` handler must declare `@HttpCode()`; the application
-// refuses to start otherwise.
+// refuses to start otherwise. Each probe binds a staff operation (PLAT-10 OperationRoutesCheck).
 
 @Controller('v1/staff/declared')
 class Declared {
   @Post()
   @HttpCode(201)
   @Idempotent()
+  @Operation(probeOperations.staffWrite)
   create(): { ok: true } {
     return { ok: true };
   }
@@ -22,6 +24,7 @@ class Declared {
 class Undeclared {
   @Post()
   @Idempotent()
+  @Operation(probeOperations.staffWrite)
   create(): { ok: true } {
     return { ok: true };
   }
@@ -31,6 +34,7 @@ class Undeclared {
 class UndeclaredBase {
   @Post()
   @Idempotent()
+  @Operation(probeOperations.staffWrite)
   create(): { ok: true } {
     return { ok: true };
   }
@@ -43,6 +47,7 @@ class DeclaredBase {
   @Post()
   @HttpCode(201)
   @Idempotent()
+  @Operation(probeOperations.staffWrite)
   create(): { ok: true } {
     return { ok: true };
   }

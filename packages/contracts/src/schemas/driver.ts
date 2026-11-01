@@ -4,4 +4,9 @@
 // generated/driver/ by `pnpm --filter contracts build`; never edited.
 export * from '../../generated/driver/model/index.ts';
 export * as schemas from '../../generated/driver/schemas.ts';
-export { operationSchemas, type OperationId } from '../../generated/driver/operations.ts';
+export {
+  operationSchemas,
+  operationPermissions,
+  crossTenantOperations,
+  type OperationId,
+} from '../../generated/driver/operations.ts';

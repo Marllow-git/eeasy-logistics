@@ -36,7 +36,9 @@ export function defaultClaims(surface: TokenSurface): Record<string, unknown> {
     iss: 'eeasy-logistics',
     sub: uuidv7(),
     ...tenant,
-    roles: surface === 'driver' ? ['driver'] : ['owner'],
+    // The broadest bundle of each surface (PLAT-10): owner, driver, and the platform staff role
+    // `super_admin` (bundle `platform_super_admin`).
+    roles: surface === 'driver' ? ['driver'] : surface === 'platform' ? ['super_admin'] : ['owner'],
     scopes: 'scopes-hash',
     sites: [],
     ver: 1,

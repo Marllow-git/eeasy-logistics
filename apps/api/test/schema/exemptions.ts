@@ -14,6 +14,10 @@ export const tenancyExemptions: Readonly<Record<string, { class: string; reason:
     class: 'platform table',
     reason: 'the migration version for /ready; written only by the migration job (PLAT-5)',
   },
+  core_roles: {
+    class: 'platform table',
+    reason: 'the system role bundles (data §2.4), seeded by migration 0008; runtime SELECT only',
+  },
 };
 
 /**

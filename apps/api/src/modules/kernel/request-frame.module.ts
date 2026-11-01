@@ -8,7 +8,9 @@ import { AccessTokenVerifier } from './auth/access-token.js';
 import { PrincipalResolver } from './auth/principal.js';
 import { IDEMPOTENCY_HMAC_KEY } from './idempotency/idempotency.interceptor.js';
 import { idempotencyHmacKey } from './idempotency/request-hash.js';
-import { PlatformModule } from './platform/platform.module.js';
+import { PERMISSION_RESOLVER } from './authz/permission-resolver.js';
+import { PLATFORM_POOL, PlatformModule } from './platform/platform.module.js';
+import { loadPermissionResolver } from './platform/roles.repository.js';
 import { RATE_LIMITER, RateLimiter, redisRateLimitStore } from './rate-limit/rate-limiter.js';
 import type { WebOrigins } from './request/web-client.guard.js';
 import { WEB_ORIGINS, originOf } from './request/web-client.guard.js';
@@ -50,6 +52,21 @@ export class RequestFrameModule {
               );
             }
             return new PrincipalResolver(verifier);
+          },
+        },
+        {
+          // The role bundles of core_roles, read once at boot on the platform pool (PLAT-10 plan
+          // 2.4). Without the pool there is no resolver: role-checked operations answer 500.
+          provide: PERMISSION_RESOLVER,
+          inject: [PLATFORM_POOL],
+          useFactory: async (pool: Parameters<typeof loadPermissionResolver>[0]) => {
+            const resolver = await loadPermissionResolver(pool);
+            if (resolver === undefined) {
+              new Logger('Permissions').warn(
+                'DATABASE_URL_PLATFORM is not set: every role-checked operation answers 500',
+              );
+            }
+            return resolver;
           },
         },
         {
@@ -116,6 +133,7 @@ export class RequestFrameModule {
       ],
       exports: [
         PRINCIPAL_RESOLVER,
+        PERMISSION_RESOLVER,
         IDEMPOTENCY_HMAC_KEY,
         CURSOR_CODEC,
         RATE_LIMITER,

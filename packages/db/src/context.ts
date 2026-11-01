@@ -15,6 +15,12 @@ export interface RequestContext {
   readonly actingCrossTenant: boolean;
   /** The request id (PLAT-6 plan 2.1), for audit events and log lines; absent in jobs. */
   readonly requestId?: string;
+  /**
+   * The sites a site-scoped principal is restricted to for this request (PLAT-10 plan 2.6;
+   * lowercase UUIDs, possibly none); absent when the request is not site-scoped. Repositories add
+   * the kernel's `siteFilter` over it.
+   */
+  readonly siteIds?: readonly string[];
 }
 
 /** Platform staff on the platform surface: no account (identity and tenancy §5; PLAT-6 2.5). */
@@ -73,12 +79,25 @@ export function runWithContext<T>(context: RequestContext, fn: () => T): T {
   return runInFrame({ context: checkContext(context) }, fn);
 }
 
-/** Validates and freezes a context, so a unit of work never sets a malformed account id. */
+/**
+ * Validates and freezes a context, so a unit of work never sets a malformed account id; its
+ * `siteIds`, when present, must be lowercase UUIDs and are carried as a frozen copy.
+ */
 export function checkContext(context: RequestContext): RequestContext {
   if (!isUuid(context.accountId)) {
     throw new Error('The request context has no valid account id');
   }
-  return Object.isFrozen(context) ? context : Object.freeze({ ...context });
+  const { siteIds } = context;
+  if (siteIds !== undefined && !siteIds.every((site) => isUuid(site))) {
+    throw new Error('The request context has a site id that is not a lowercase UUID');
+  }
+  if (Object.isFrozen(context) && (siteIds === undefined || Object.isFrozen(siteIds))) {
+    return context;
+  }
+  return Object.freeze({
+    ...context,
+    ...(siteIds === undefined ? {} : { siteIds: Object.freeze([...siteIds]) }),
+  });
 }
 
 /** Validates and freezes a platform context. */

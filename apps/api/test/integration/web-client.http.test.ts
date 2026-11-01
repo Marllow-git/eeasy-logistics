@@ -9,7 +9,8 @@ import type { App } from 'supertest/types.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { platformCookie, staffCookie } from '../../src/modules/kernel/auth/principal.js';
-import { Idempotent, Public } from '../../src/modules/kernel/public/index.js';
+import { Idempotent, Operation, Public } from '../../src/modules/kernel/public/index.js';
+import { probeOperations } from '../support/probe-operations.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import { connectAs, integrationConfig } from './support.js';
 
@@ -26,11 +27,13 @@ let handled = 0;
 @Controller('v1/staff/marker-probe')
 class StaffMarkerProbe {
   @Get()
+  @Operation(probeOperations.staffRead)
   read(): { ok: true } {
     return { ok: true };
   }
 
   @Post()
+  @Operation(probeOperations.staffWrite)
   @HttpCode(201)
   @Idempotent()
   create(): { ok: true } {
@@ -39,12 +42,14 @@ class StaffMarkerProbe {
   }
 
   @Patch()
+  @Operation(probeOperations.staffWrite)
   change(): { ok: true } {
     handled += 1;
     return { ok: true };
   }
 
   @Delete()
+  @Operation(probeOperations.staffWrite)
   @HttpCode(204)
   remove(): void {
     handled += 1;
@@ -54,6 +59,7 @@ class StaffMarkerProbe {
   @Post('door')
   @Public()
   @HttpCode(200)
+  @Operation(probeOperations.staffDoor)
   door(): { ok: true } {
     handled += 1;
     return { ok: true };
@@ -63,6 +69,7 @@ class StaffMarkerProbe {
 @Controller('v1/platform/marker-probe')
 class PlatformMarkerProbe {
   @Post()
+  @Operation(probeOperations.platformWrite)
   @HttpCode(201)
   @Idempotent()
   create(): { ok: true } {
@@ -74,6 +81,7 @@ class PlatformMarkerProbe {
 @Controller('v1/driver/marker-probe')
 class DriverMarkerProbe {
   @Post()
+  @Operation(probeOperations.driverWork)
   @HttpCode(201)
   create(): { ok: true } {
     return { ok: true };

@@ -4,6 +4,9 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, DiscoveryModule } fro
 import { AUDIT_SINK } from './audit/audit-sink.js';
 import { AuditLogController } from './audit/audit-log.controller.js';
 import { AuditWriter } from './audit/audit-writer.js';
+import { DenialAuditThrottle } from './authz/denial-throttle.js';
+import { OperationRoutesCheck } from './authz/operation-routes.check.js';
+import { PermissionGuard } from './authz/permission.guard.js';
 import { PlatformAuditLogController } from './audit/platform-audit-log.controller.js';
 import { ContractPipe } from './contract/contract-pipe.js';
 import { IdempotentRoutesCheck } from './idempotency/idempotency.interceptor.js';
@@ -31,13 +34,19 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
   controllers: [AuditLogController, PlatformAuditLogController, PlatformOutboxController],
   providers: [
     IdempotentRoutesCheck,
+    // PLAT-10: every non-public route binds a generated operation of its surface, or no boot.
+    OperationRoutesCheck,
+    { provide: DenialAuditThrottle, useFactory: () => new DenialAuditThrottle() },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
-    // Guards run in this order: the principal (and its rate-limit charge), then the web client
-    // marker on staff and platform writes, both before any interceptor opens a transaction.
+    // Guards run in this order: the principal (and its rate-limit charge), the web client marker on
+    // staff and platform writes, JSON bodies only, then the operation's permission (PLAT-10;
+    // adversary A-5: a cross-site or form write is refused before any denial audit row), all
+    // before any interceptor opens a transaction.
     { provide: APP_GUARD, useClass: TenancyGuard },
     { provide: APP_GUARD, useClass: WebClientGuard },
     // JSON bodies only (adversary H-1): a form post is refused before any interceptor.
     { provide: APP_GUARD, useClass: ContentTypeGuard },
+    { provide: APP_GUARD, useClass: PermissionGuard },
     { provide: APP_INTERCEPTOR, useClass: UnitOfWorkInterceptor },
     // Every `@Input()` parsed with its operation's generated strict schemas (A-17).
     { provide: APP_PIPE, useClass: ContractPipe },
