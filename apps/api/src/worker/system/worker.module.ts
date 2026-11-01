@@ -1,6 +1,7 @@
 import type { Config } from '@eeasy-logistics/config';
 import type { DynamicModule, OnApplicationShutdown } from '@nestjs/common';
 import { Inject, Module } from '@nestjs/common';
+import { TelemetryShutdown } from '../../modules/kernel/telemetry/telemetry-shutdown.js';
 import type { RunningWorker } from './worker.js';
 import { startWorker } from './worker.js';
 
@@ -14,7 +15,11 @@ export class WorkerModule implements OnApplicationShutdown {
   static forRoot(config: Config): DynamicModule {
     return {
       module: WorkerModule,
-      providers: [{ provide: RUNNING_WORKER, useFactory: () => startWorker(config) }],
+      providers: [
+        { provide: RUNNING_WORKER, useFactory: () => startWorker(config) },
+        // PLAT-14: flushes the telemetry main.ts started.
+        TelemetryShutdown,
+      ],
     };
   }
 

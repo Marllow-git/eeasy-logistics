@@ -203,6 +203,50 @@ describe('defineConfig: missing and malformed input', () => {
     expect(defineConfig(dsnOnly).observability.sentryDsn).toBe(env.SENTRY_DSN);
   });
 
+  it('defaults the observability settings by environment (PLAT-14)', () => {
+    expect(defineConfig({ APP_ENV: 'local' }).observability).toMatchObject({
+      release: 'dev',
+      logLevel: 'debug',
+      traceSampleRatio: 1,
+    });
+    expect(defineConfig({ APP_ENV: 'ci' }).observability).toMatchObject({
+      logLevel: 'info',
+      traceSampleRatio: 1,
+    });
+    expect(defineConfig(productionEnv).observability).toMatchObject({
+      logLevel: 'info',
+      traceSampleRatio: 0.1,
+    });
+    const set = defineConfig({
+      APP_ENV: 'production' as const,
+      ...productionEnv,
+      ELX_RELEASE: 'sha-0123456789abcdef0123456789abcdef01234567',
+      LOG_LEVEL: 'warn',
+      OTEL_TRACES_SAMPLER_ARG: '0.25',
+    }).observability;
+    expect(set).toMatchObject({
+      release: 'sha-0123456789abcdef0123456789abcdef01234567',
+      logLevel: 'warn',
+      traceSampleRatio: 0.25,
+    });
+  });
+
+  it('refuses a malformed release, log level or sampling ratio (PLAT-14)', () => {
+    const error = configError(() =>
+      defineConfig({
+        APP_ENV: 'local',
+        ELX_RELEASE: 'sha 1; rm',
+        LOG_LEVEL: 'verbose',
+        OTEL_TRACES_SAMPLER_ARG: '1.5',
+      }),
+    );
+    expect(error.issues.map((issue) => issue.variable).sort()).toEqual([
+      'ELX_RELEASE',
+      'LOG_LEVEL',
+      'OTEL_TRACES_SAMPLER_ARG',
+    ]);
+  });
+
   it('refuses a signing key with fewer than 16 distinct characters', () => {
     const weak = 'ab'.repeat(20);
     const error = configError(() =>
