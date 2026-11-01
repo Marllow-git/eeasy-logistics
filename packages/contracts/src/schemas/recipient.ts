@@ -4,4 +4,9 @@
 // generated/recipient/ by `pnpm --filter contracts build`; never edited.
 export * from '../../generated/recipient/model/index.ts';
 export * as schemas from '../../generated/recipient/schemas.ts';
-export { operationSchemas, type OperationId } from '../../generated/recipient/operations.ts';
+export {
+  operationSchemas,
+  operationPermissions,
+  crossTenantOperations,
+  type OperationId,
+} from '../../generated/recipient/operations.ts';

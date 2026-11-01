@@ -80,6 +80,70 @@ function PermissionInCatalogue({ catalogue = '../../docs/contracts/permissions.y
   };
 }
 
+/** The doors of README §1: opened by the permission guard to any principal of the surface. */
+export const doorPermissions = ['core.auth.anonymous', 'core.auth.self', 'platform.auth.self'];
+
+/** The problems of a role file (`roles: { <key>: { scope, surface, site_scoped, permissions } }`). */
+export function roleFileProblems(rolesFile, catalogueFile) {
+  const known = readCatalogue(catalogueFile);
+  const doc = parse(readFileSync(rolesFile, 'utf8'));
+  const problems = [];
+  const roles = doc?.roles;
+  if (roles === null || typeof roles !== 'object' || Object.keys(roles).length === 0) {
+    return ['roles.yaml has no `roles` map.'];
+  }
+  for (const [key, role] of Object.entries(roles)) {
+    if (!/^[a-z][a-z_]*$/.test(key)) problems.push(`role key "${key}" is not snake_case.`);
+    if (!['account', 'platform'].includes(role?.scope)) {
+      problems.push(`role ${key}: scope must be account or platform.`);
+    }
+    if (!['staff', 'driver', 'platform'].includes(role?.surface)) {
+      problems.push(`role ${key}: surface must be staff, driver or platform.`);
+    }
+    if (typeof role?.site_scoped !== 'boolean') {
+      problems.push(`role ${key}: site_scoped must be true or false.`);
+    }
+    const permissions = role?.permissions;
+    if (!Array.isArray(permissions) || permissions.length === 0) {
+      problems.push(`role ${key}: permissions must be a non-empty list.`);
+      continue;
+    }
+    const seen = new Set();
+    for (const permission of permissions) {
+      if (seen.has(permission)) problems.push(`role ${key}: "${permission}" is listed twice.`);
+      seen.add(permission);
+      if (doorPermissions.includes(permission)) {
+        problems.push(`role ${key}: "${permission}" is a door, not a role permission.`);
+      } else if (!known.has(permission)) {
+        problems.push(`role ${key}: "${String(permission)}" is not in permissions.yaml.`);
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * Every permission of every bundle in docs/contracts/roles.yaml is in the catalogue, no bundle
+ * lists a door or a permission twice, and each bundle names its scope, surface and site scoping
+ * (PLAT-10 plan 2.1). Not an OpenAPI rule: it runs once, on the root of the api it is enabled for
+ * (`components` in redocly.yaml).
+ */
+function RolePermissionsInCatalogue({
+  roles = '../../docs/contracts/roles.yaml',
+  catalogue = '../../docs/contracts/permissions.yaml',
+}) {
+  const at = (file) => (isAbsolute(file) ? file : resolve(packageRoot, file));
+  return {
+    Root: {
+      enter(_root, ctx) {
+        for (const message of roleFileProblems(at(roles), at(catalogue))) {
+          ctx.report({ message, location: ctx.location });
+        }
+      },
+    },
+  };
+}
+
 /** `x-wave` is an integer from 0 to 4 (README §9, §10); presence is the configurable rule's job. */
 function WaveRange() {
   return {
@@ -137,6 +201,7 @@ export default function eeasyContractsPlugin() {
         'x-wave-range': WaveRange,
         'sse-events': SseEvents,
         'permission-in-catalogue': PermissionInCatalogue,
+        'role-permissions-in-catalogue': RolePermissionsInCatalogue,
       },
     },
   };
