@@ -17,6 +17,7 @@ Standalone last-mile delivery + WMS for merchants with own drivers and stock. pn
 - External side effects only via outbox (ADR-0024); driver location pings exempt (ADR-0028).
 - No `process.env` outside `packages/config` — enforced by shared ESLint `no-restricted-*` rules and dependency-cruiser `environmentRules()` in every workspace's `test:architecture`.
 - Bounded contexts `kernel`, `delivery`, `wms`: kernel imports no context; a context imports another only via `modules/<ctx>/public/` — dependency-cruiser in `apps/api`.
+- API types come only from `@eeasy-logistics/contracts` (doc 3 §9, roadmap A-17): no hand-written DTOs, no `class-validator`/`class-transformer`/`nestjs-zod`/`@nestjs/swagger`; strict generated Zod schemas parse every controller input through the kernel `ContractPipe` (PLAT-6); contract types only in `*.controller.ts` and `*.presenter.ts`; services, repositories and Drizzle keep their own types. Dependency-cruiser enforces it once PLAT-6 lands.
 - Every string in `ar` and `en`; Arabic default and RTL (ADR-0016). Gregorian dates, Western digits.
 - New modules behind rollout mode, default allowlist (ADR-0006).
 - Never commit to `main`; one order → one PR; plan file first commit on `feat/<ID>-<slug>`.
