@@ -82,7 +82,7 @@ x-minio: &minio
     retries: 30
 
 x-whatsapp-stub: &whatsapp-stub
-  image: node:22.23.4-alpine
+  image: node:24.22.2-alpine
   init: true
   user: node
   working_dir: /stub
