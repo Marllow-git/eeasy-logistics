@@ -1,5 +1,6 @@
 import { createHash, createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { ApiException } from '../errors/api-exception.js';
 import type { IdempotencyClaim, IdempotencyStore, StoredKey } from './idempotency.js';
 import { reserve } from './idempotency.js';
 import {
@@ -74,6 +75,22 @@ describe('request hash (plan 2.8)', () => {
       ['/user/password', 'hunter2'],
     ]);
     expect(canonicalJson(stripped.value)).not.toContain('hunter2');
+  });
+
+  it('refuses a __proto__ key and builds no prototype (adversary L-8)', () => {
+    const body: unknown = JSON.parse('{"a":{"__proto__":{"polluted":true}}}');
+    let thrown: unknown;
+    try {
+      requestHash({ method: 'POST', path: '/p', body, hmacKey });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ApiException);
+    expect((thrown as ApiException).options.fields).toEqual([
+      { pointer: '/body/a/__proto__', code: 'invalid' },
+    ]);
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+    expect(canonicalJson({ constructor: 1, toString: 2 })).toBe('{"constructor":1,"toString":2}');
   });
 
   it('derives a stable 32-byte key distinct from the signing key', () => {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiException } from '../errors/api-exception.js';
 import { budgetFor, defaultBudgets } from './budgets.js';
 import type { RateLimitStore } from './rate-limiter.js';
-import { RateLimiter, rateLimitIdentity } from './rate-limiter.js';
+import { RateLimiter, addressKey, rateLimitIdentity } from './rate-limiter.js';
 
 // PLAT-6 item F, the limiter without Redis: budgets per surface and route, headers, the 429 body,
 // identities, and fail-open with one warning a minute.
@@ -85,6 +85,24 @@ describe('rateLimitIdentity', () => {
       ),
     ).toBe('device:d-1');
     expect(rateLimitIdentity(undefined, request)).toBe('ip:198.51.100.7');
+  });
+});
+
+describe('addressKey (adversary L-7)', () => {
+  it('keeps IPv4, unwraps IPv4-mapped IPv6 and keys IPv6 by its /64', () => {
+    expect(addressKey('203.0.113.9')).toBe('203.0.113.9');
+    expect(addressKey('::ffff:203.0.113.9')).toBe('203.0.113.9');
+    expect(addressKey('2001:db8:aa:bb:1:2:3:4')).toBe('2001:db8:aa:bb::/64');
+    expect(addressKey('2001:DB8:AA:BB::99')).toBe('2001:db8:aa:bb::/64');
+    expect(addressKey('2001:db8::1')).toBe('2001:db8:0:0::/64');
+    expect(addressKey('::1')).toBe('0:0:0:0::/64');
+    expect(addressKey(undefined)).toBe('unknown');
+  });
+
+  it('puts two addresses of one /64 in one budget', () => {
+    const a = rateLimitIdentity(undefined, { ip: '2001:db8:1:2::a' } as Request);
+    const b = rateLimitIdentity(undefined, { ip: '2001:db8:1:2:ffff::b' } as Request);
+    expect(a).toBe(b);
   });
 });
 

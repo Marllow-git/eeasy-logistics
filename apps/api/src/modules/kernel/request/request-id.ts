@@ -10,7 +10,7 @@ import type { NextFunction, Request, Response } from 'express';
 
 export const requestIdHeader = 'X-Request-Id';
 
-const ids = new WeakMap<Request, string>();
+const serverIds = new WeakMap<Request, string>();
 const scope = new AsyncLocalStorage<string>();
 
 /** An incoming id is kept only when it is one UUID (any version); case is normalised. */
@@ -20,14 +20,30 @@ export function acceptRequestId(value: unknown): string | undefined {
   return isUuid(lower) ? lower : undefined;
 }
 
-/** The id of `request`, minting and recording one when the middleware did not run (a 404). */
-export function requestIdOf(request: Request): string {
-  let id = ids.get(request);
+/**
+ * The id this server minted for `request` (adversary L-4): always a fresh UUIDv7, whatever the
+ * client sent, so log lines, the request context and audit events carry an id no caller chose.
+ */
+export function serverRequestIdOf(request: Request): string {
+  let id = serverIds.get(request);
   if (id === undefined) {
-    id = acceptRequestId(request.headers['x-request-id']) ?? uuidv7();
-    ids.set(request, id);
+    id = uuidv7();
+    serverIds.set(request, id);
   }
   return id;
+}
+
+/** The client's own `X-Request-Id` when it is a UUID, else null; carried, never trusted. */
+export function clientRequestIdOf(request: Request): string | null {
+  return acceptRequestId(request.headers['x-request-id']) ?? null;
+}
+
+/**
+ * The id the response names (`X-Request-Id`, the `Error` body's `request_id`): the client's UUID
+ * echoed for its own correlation, else the server's id.
+ */
+export function requestIdOf(request: Request): string {
+  return clientRequestIdOf(request) ?? serverRequestIdOf(request);
 }
 
 /** The id of the request the current code serves, for log lines; undefined outside one. */
@@ -38,9 +54,11 @@ export function currentRequestId(): string | undefined {
 @Injectable()
 export class RequestIdMiddleware implements NestMiddleware {
   use(request: Request, response: Response, next: NextFunction): void {
-    const id = requestIdOf(request);
-    response.setHeader(requestIdHeader, id);
-    scope.run(id, next);
+    response.setHeader(requestIdHeader, requestIdOf(request));
+    const server = serverRequestIdOf(request);
+    const client = clientRequestIdOf(request);
+    // Log lines name the server's id, and the client's next to it when it sent one.
+    scope.run(client === null || client === server ? server : `${server} client ${client}`, next);
   }
 }
 

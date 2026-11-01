@@ -142,7 +142,24 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
       reason: 'Ticket 4412',
       outcome: 'ok',
       requestId: response.headers['x-request-id'],
+      clientRequestId: null,
     });
+  });
+
+  it('audits the server-minted request id and carries a client id beside it (adversary L-4)', async () => {
+    const client = '01927f6e-7a2b-7c3d-8e4f-5a6b7c8d9e0f';
+    const response = await http()
+      .get(`/v1/platform/accounts/${accountA}/probe-rows`)
+      .set('Cookie', await platform())
+      .set('X-Support-Reason', 'Ticket 4413')
+      .set('X-Request-Id', client)
+      .expect(200);
+    expect(response.headers['x-request-id']).toBe(client);
+    expect(sink.events).toHaveLength(1);
+    const [event] = sink.events;
+    expect(event?.clientRequestId).toBe(client);
+    expect(event?.requestId).not.toBe(client);
+    expect(event?.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/);
   });
 
   it('requires the support reason: missing or blank is reason_required, audited as reason_missing', async () => {

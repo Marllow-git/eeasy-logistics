@@ -11,7 +11,7 @@ import type { AuditEvent, AuditSink } from '../audit/audit-sink.js';
 import { AUDIT_SINK } from '../audit/audit-sink.js';
 import type { Principal } from '../auth/principal.js';
 import { ApiException } from '../errors/api-exception.js';
-import { requestIdOf } from '../request/request-id.js';
+import { clientRequestIdOf, serverRequestIdOf } from '../request/request-id.js';
 import { crossTenantTarget, isRefusal } from './cross-tenant.js';
 import type { PlatformFrames } from './frame.js';
 import { CROSS_TENANT, PLATFORM_FRAMES, principalOf } from './frame.js';
@@ -78,7 +78,7 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       return value;
     };
     const operation = `${context.getClass().name}.${context.getHandler().name}`;
-    const requestId = requestIdOf(request);
+    const requestId = serverRequestIdOf(request);
     return from(this.run({ principal, request, requestId, crossTenant, operation, handle }));
   }
 
@@ -126,6 +126,7 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       reason,
       outcome,
       requestId,
+      clientRequestId: clientRequestIdOf(call.request),
       at: new Date().toISOString(),
     });
     const target = crossTenantTarget(call.request);

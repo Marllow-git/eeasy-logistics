@@ -40,17 +40,25 @@ export interface PlatformPrincipal extends TokenFacts {
 
 export type Principal = StaffPrincipal | DriverPrincipal | PlatformPrincipal;
 
-/** The value of cookie `name` in a `Cookie` header (RFC 6265 §5.4), first occurrence. */
+/**
+ * The value of cookie `name` in a `Cookie` header (RFC 6265 §5.4). A name sent more than once is
+ * no credential at all (adversary L-2): a sibling subdomain can plant a second cookie of the same
+ * name, and the browser's order between the two is not a trust decision. The `__Host-` prefix that
+ * stops the planting is a contract change ruled for PLAT-11.
+ */
 export function cookieValue(header: string | undefined, name: string): string | undefined {
   if (header === undefined || header.length > 16_384) return undefined;
+  let found: string | undefined;
+  let seen = 0;
   for (const pair of header.split(';')) {
     const separator = pair.indexOf('=');
     if (separator < 0) continue;
     if (pair.slice(0, separator).trim() !== name) continue;
-    const value = pair.slice(separator + 1).trim();
-    return value === '' ? undefined : value;
+    seen += 1;
+    found = pair.slice(separator + 1).trim();
   }
-  return undefined;
+  if (seen !== 1 || found === '') return undefined;
+  return found;
 }
 
 /** The token of an `Authorization: Bearer <token>` header. */

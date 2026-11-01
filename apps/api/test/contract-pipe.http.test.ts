@@ -148,6 +148,23 @@ describe('ContractPipe (PLAT-6 item I, A-17)', () => {
     ]);
   });
 
+  it('caps details.fields[] at 50 and marks the answer truncated (adversary L-6)', async () => {
+    const body: Record<string, number> = { reason: 1 };
+    for (let index = 0; index < 80; index += 1) body[`extra_${index}`] = index;
+    const response = await http()
+      .post(`/probe/contract/accounts/${accountId}/suspend`)
+      .set('Idempotency-Key', key)
+      .set('X-EL-Client', 'web')
+      .send(body)
+      .expect(400);
+    const details = (response.body as { details: { truncated?: boolean; fields: unknown[] } })
+      .details;
+    expect(details.fields).toHaveLength(50);
+    expect(details.truncated).toBe(true);
+    const few = await http().get('/probe/contract/accounts?limit=0').expect(400);
+    expect((few.body as { details: { truncated?: boolean } }).details.truncated).toBeUndefined();
+  });
+
   it('refuses a body that is not an object', async () => {
     const response = await http()
       .post(`/probe/contract/accounts/${accountId}/suspend`)

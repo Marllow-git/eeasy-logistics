@@ -1,4 +1,5 @@
 import { createHmac, hkdfSync } from 'node:crypto';
+import { ApiException } from '../errors/api-exception.js';
 
 // The idempotency request hash (PLAT-6 plan 2.8; contracts README §3 Idempotency; adversary M-2):
 // HMAC-SHA256 under a key derived from the signing key, over the method, the concrete path and the
@@ -15,18 +16,29 @@ export function idempotencyHmacKey(signingKey: string): Buffer {
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
-/** JSON with object keys sorted at every level, so key order never changes the hash. */
+/**
+ * JSON with object keys sorted at every level, so key order never changes the hash. Objects are
+ * rebuilt without a prototype, and a `__proto__` key (which `JSON.parse` keeps as an own property)
+ * is refused as `400 validation_failed` (adversary L-8).
+ */
 export function canonicalJson(value: unknown): string {
-  return JSON.stringify(sortKeys(value));
+  return JSON.stringify(sortKeys(value, ''));
 }
 
-function sortKeys(value: unknown): Json {
-  if (Array.isArray(value)) return value.map(sortKeys);
+function sortKeys(value: unknown, pointer: string): Json {
+  if (Array.isArray(value))
+    return value.map((item, index) => sortKeys(item, `${pointer}/${index}`));
   if (value !== null && typeof value === 'object') {
-    const sorted: Record<string, Json> = {};
+    const sorted = Object.create(null) as Record<string, Json>;
     for (const key of Object.keys(value).sort()) {
+      const path = `${pointer}/${key.replaceAll('~', '~0').replaceAll('/', '~1')}`;
+      if (key === '__proto__') {
+        throw new ApiException('validation_failed', {
+          fields: [{ pointer: path, code: 'invalid' }],
+        });
+      }
       const entry = (value as Record<string, unknown>)[key];
-      if (entry !== undefined) sorted[key] = sortKeys(entry);
+      if (entry !== undefined) sorted[key] = sortKeys(entry, path);
     }
     return sorted;
   }
@@ -47,13 +59,15 @@ export function stripSecrets(value: unknown, fields: readonly string[]): Strippe
   const walk = (node: unknown, pointer: string): unknown => {
     if (Array.isArray(node)) return node.map((item, index) => walk(item, `${pointer}/${index}`));
     if (node !== null && typeof node === 'object') {
-      const copy: Record<string, unknown> = {};
+      // `Object.fromEntries` defines own properties (a `__proto__` key never sets a prototype)
+      // and keeps a plain object, which the JSON column serialiser expects.
+      const kept: [string, unknown][] = [];
       for (const [key, entry] of Object.entries(node)) {
         const path = `${pointer}/${key.replaceAll('~', '~0').replaceAll('/', '~1')}`;
         if (fields.includes(key)) secrets.push([path, entry]);
-        else copy[key] = walk(entry, path);
+        else kept.push([key, walk(entry, path)]);
       }
-      return copy;
+      return Object.fromEntries(kept);
     }
     return node;
   };

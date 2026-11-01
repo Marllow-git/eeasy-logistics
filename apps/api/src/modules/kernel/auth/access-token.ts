@@ -13,6 +13,10 @@ import type { TokenSurface } from './surfaces.js';
 /** The `iss` of every access token this API issues and accepts. */
 export const accessTokenIssuer = 'eeasy-logistics';
 export const accessTokenAlgorithm = 'HS256';
+/** The JWT `typ` header of an access token (RFC 9068); any other `typ` is refused (adversary L-1). */
+export const accessTokenType = 'at+jwt';
+/** Clock skew allowed between the issuing and the verifying instance, in seconds. */
+export const clockSkewSeconds = 60;
 
 const uuid = z.string().refine(isUuid, 'not a UUID');
 const common = {
@@ -54,6 +58,8 @@ export type AccessClaims<S extends TokenSurface> = z.infer<(typeof claimSchemas)
 export interface SigningSettings {
   readonly signingKeyId: string | undefined;
   readonly signingKey: Secret | undefined;
+  /** The access-token lifetime (`AUTH_ACCESS_TOKEN_TTL_SECONDS`); bounds `iat` (default 900). */
+  readonly accessTokenTtlSeconds?: number;
 }
 
 const unauthenticated = () => new ApiException('unauthenticated');
@@ -67,9 +73,11 @@ const unauthenticated = () => new ApiException('unauthenticated');
 export class AccessTokenVerifier {
   readonly #keyId: string | undefined;
   readonly #key: Uint8Array | undefined;
+  readonly #maxAgeSeconds: number;
 
   constructor(settings: SigningSettings) {
     this.#keyId = settings.signingKeyId;
+    this.#maxAgeSeconds = settings.accessTokenTtlSeconds ?? 900;
     this.#key =
       settings.signingKey === undefined
         ? undefined
@@ -93,7 +101,12 @@ export class AccessTokenVerifier {
           if (header.kid !== keyId) throw new errors.JWSInvalid('unknown key id');
           return key;
         },
-        { algorithms: [accessTokenAlgorithm], issuer: accessTokenIssuer, audience: surface },
+        {
+          algorithms: [accessTokenAlgorithm],
+          issuer: accessTokenIssuer,
+          audience: surface,
+          typ: accessTokenType,
+        },
       ));
     } catch (error) {
       // jose checks the signature before any claim, so an expired token here is genuine.
@@ -104,6 +117,13 @@ export class AccessTokenVerifier {
     }
     const claims = claimSchemas[surface].safeParse(payload);
     if (!claims.success) throw unauthenticated();
+    // `iat` bounds (adversary L-1): never issued in the future beyond the skew, and never older
+    // than one lifetime, whatever `exp` says (a token minted with a long `exp` is still refused).
+    const now = Math.floor(Date.now() / 1000);
+    if (claims.data.iat > now + clockSkewSeconds) throw unauthenticated();
+    if (now - claims.data.iat > this.#maxAgeSeconds + clockSkewSeconds) {
+      throw new ApiException('token_expired');
+    }
     return claims.data as AccessClaims<S>;
   }
 }

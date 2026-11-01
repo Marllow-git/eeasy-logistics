@@ -52,6 +52,33 @@ describe('AccessTokenVerifier', () => {
     );
   });
 
+  it('requires typ at+jwt in the header (adversary L-1)', async () => {
+    const without = await signAccessToken(signing, 'staff', { typ: null });
+    const other = await signAccessToken(signing, 'staff', { typ: 'JWT' });
+    expect(await codeOf(verifier.verify(without, 'staff'))).toBe('unauthenticated');
+    expect(await codeOf(verifier.verify(other, 'staff'))).toBe('unauthenticated');
+  });
+
+  it('bounds iat (adversary L-1): future beyond 60 s refused, older than the lifetime expired', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const future = await signAccessToken(signing, 'staff', { claims: { iat: now + 120 } });
+    const skewed = await signAccessToken(signing, 'staff', { claims: { iat: now + 30 } });
+    const ancient = await signAccessToken(signing, 'staff', {
+      claims: { iat: now - 900 - 61 },
+      expiresIn: 3600,
+    });
+    expect(await codeOf(verifier.verify(future, 'staff'))).toBe('unauthenticated');
+    expect(await codeOf(verifier.verify(skewed, 'staff'))).toBe('resolved');
+    expect(await codeOf(verifier.verify(ancient, 'staff'))).toBe('token_expired');
+    const short = new AccessTokenVerifier({
+      signingKeyId: signing.keyId,
+      signingKey: new Secret(signing.key),
+      accessTokenTtlSeconds: 60,
+    });
+    const minutes = await signAccessToken(signing, 'staff', { claims: { iat: now - 200 } });
+    expect(await codeOf(short.verify(minutes, 'staff'))).toBe('token_expired');
+  });
+
   it('answers token_expired for a genuine expired token of the surface', async () => {
     const expired = await signAccessToken(signing, 'staff', { expiresIn: -5 });
     expect(await codeOf(verifier.verify(expired, 'staff'))).toBe('token_expired');
@@ -186,11 +213,31 @@ describe('PrincipalResolver (credential per surface)', () => {
   });
 });
 
+describe('duplicated credential cookies (adversary L-2)', () => {
+  it.each(['staff', 'platform'] as const)(
+    'answers 401 on %s with the cookie twice',
+    async (surface) => {
+      const token = await signAccessToken(signing, surface);
+      const name = surface === 'staff' ? staffCookie : platformCookie;
+      const header = `${name}=${token}; other=1; ${name}=${token}`;
+      expect(await codeOf(resolver.resolve(surface, { cookie: header }))).toBe('unauthenticated');
+      expect(await codeOf(resolver.resolve(surface, { cookie: `${name}=${token}` }))).toBe(
+        'resolved',
+      );
+    },
+  );
+});
+
 describe('credential parsing', () => {
   it('parses cookies and bearer headers strictly', () => {
     expect(cookieValue('a=1; el_staff_at=x.y.z', 'el_staff_at')).toBe('x.y.z');
     expect(cookieValue('xel_staff_at=x.y.z', 'el_staff_at')).toBeUndefined();
     expect(cookieValue('el_staff_at=', 'el_staff_at')).toBeUndefined();
+    // Adversary L-2: a duplicated credential cookie is no credential, whichever comes first.
+    expect(cookieValue('el_staff_at=a.b.c; el_staff_at=x.y.z', 'el_staff_at')).toBeUndefined();
+    expect(
+      cookieValue('el_platform_at=a; x=1; el_platform_at=a', 'el_platform_at'),
+    ).toBeUndefined();
     expect(bearerToken('Bearer a.b.c')).toBe('a.b.c');
     expect(bearerToken('bearer a.b.c')).toBeUndefined();
     expect(bearerToken('Bearer a.b c')).toBeUndefined();

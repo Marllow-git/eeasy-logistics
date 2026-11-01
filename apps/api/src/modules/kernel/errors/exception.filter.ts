@@ -27,6 +27,9 @@ interface Resolved {
 
 const internal: Resolved = { code: 'internal_error', status: errorStatus.internal_error };
 
+/** At most this many `details.fields[]` entries; more sets `details.truncated` (adversary L-6). */
+export const maxFieldProblems = 50;
+
 /** The code a framework exception of `status` becomes (PLAT-6 plan 2.2). */
 export function codeForStatus(status: number): ErrorCode {
   if (status === 401) return 'unauthenticated';
@@ -94,12 +97,14 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     const requestId = requestIdOf(request);
     const locale = resolveLocale(request.headers['accept-language']);
+    const truncated = (resolved.fields?.length ?? 0) > maxFieldProblems;
     const details =
       resolved.fields === undefined
         ? resolved.details
         : {
             ...resolved.details,
-            fields: resolved.fields.map((field) => ({
+            ...(truncated ? { truncated: true } : {}),
+            fields: resolved.fields.slice(0, maxFieldProblems).map((field) => ({
               pointer: field.pointer,
               code: field.code,
               message: fieldMessage(locale, field.code),
