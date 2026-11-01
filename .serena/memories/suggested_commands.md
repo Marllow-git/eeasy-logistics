@@ -18,6 +18,9 @@
 - Contract change: edit YAML under `docs/contracts/openapi/`; a new permission goes in README §11 and `docs/contracts/permissions.yaml` together; a new write needs `Idempotency-Key` or an entry in the `exempt` list in `docs/contracts/redocly.yaml`; a stream needs `x-sse-events`. Implementing an operation: add its scenario `packages/contracts/test/scenarios/<surface>/<operationId>.ts` (`defineScenario({ expectedStatus, run: ({ fetcher }) => client.<op>(…, { fetcher }) })`).
 - Quiet test output for agents: `vitest run --reporter=dot`; re-run a failing file verbosely only.
 
+- Breached-password list (PLAT-11): download SecLists' `100k-most-used-passwords-NCSC.txt` into a directory of its own, then `node apps/api/resources/build-breached-list.mjs <path>` (prints count, bytes, sha256; README there records the source commit and hashes).
+- Booting the built API for a manual check (PLAT-11): put the variables in a file outside the repo (`APP_ENV=local`, `PORT`, scratch `DATABASE_URL_APP`/`_PLATFORM`, `REDIS_URL=redis://127.0.0.1:6379/13`, signing and credentials keys, `PUBLIC_WEB_URL`/`PUBLIC_ADMIN_URL`) and run `node --env-file=<file> dist/main.js --role api` from `apps/api`; delete db 13's `elx:*` keys and the scratch db after.
+
 ## Local stack (no Docker on the owner's machine)
 - `tools/native-stack.sh migrate` runs the migration job against the `.env` database (process env wins, so `DATABASE_URL_OWNER=… tools/native-stack.sh migrate` targets a scratch db).
 - `tools/native-stack.sh up | status | down | reset` — Homebrew postgresql@17 + postgis, redis, minio, mailpit, whatsapp-stub on the Compose `dev` ports; roles `elx_owner/app/platform/maintenance`, db `elx`. Data under `.local/native-stack`. Mode (dedicated cluster vs existing 5432) fixed at first `up`.
