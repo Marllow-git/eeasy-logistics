@@ -21,7 +21,29 @@ const unitOfWorkTxRestrictions = [
   { selector: "ObjectPattern > Property[key.value='tx']", message: txMessage },
 ];
 
+/**
+ * Adversary M-6 (A-17, doc 3 §9 "API input"): a controller takes its input only through
+ * `@Input()`, which the kernel ContractPipe parses with the operation's generated strict schema.
+ * Nest's raw parameter decorators would hand it unparsed input.
+ */
+const rawInputMessage =
+  'Controllers take input only through @Input() with @Operation(operationSchemas.<id>) ' +
+  '(ContractPipe, A-17); raw @Body/@Query/@Param/@Headers/@Req/@Request bypass the contract.';
+export const rawInputRestrictions = [
+  {
+    selector: 'Decorator > CallExpression[callee.name=/^(Body|Query|Param|Headers|Req|Request)$/]',
+    message: rawInputMessage,
+  },
+];
+
+/** Where the raw-input rule applies; the violation fixture is linted only by its own test. */
+const controllerFiles = [
+  'src/**/*.controller.ts',
+  'test/architecture/violations/lint/**/*.controller.ts',
+];
+
 export default defineConfig(
+  { ignores: ['test/architecture/violations/lint/**'] },
   base,
   {
     files: ['src/**/*.ts'],
@@ -32,6 +54,20 @@ export default defineConfig(
         ...processRestrictions,
         ...tenancySettingRestrictions,
         ...unitOfWorkTxRestrictions,
+      ],
+    },
+  },
+  {
+    // The kernel's own controllers (none yet) may use the raw decorators for frame probes.
+    files: controllerFiles,
+    ignores: ['src/modules/kernel/**', 'src/**/*.repository.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...processRestrictions,
+        ...tenancySettingRestrictions,
+        ...unitOfWorkTxRestrictions,
+        ...rawInputRestrictions,
       ],
     },
   },

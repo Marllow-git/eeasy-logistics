@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 // PLAT-6 item I (handbook 03, doc 3 §9 "Enforcement"): the A-17 dependency-cruiser rules ship with
@@ -50,5 +51,20 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
 
   it('refuses a barrel surface entry from a controller (contracts-server-entries-only)', () => {
     expect(rulesOf('kernel-barrel.controller.ts')).toEqual(['contracts-server-entries-only']);
+  });
+});
+
+describe('A-17 ESLint rule fails on its violation fixture (adversary M-6)', () => {
+  it('reports each raw parameter decorator in a controller', async () => {
+    // `ignore: false` lints the fixture, which `eslint .` skips; the config is the app's own.
+    const eslint = new ESLint({ ignore: false });
+    const [result] = await eslint.lintFiles([
+      'test/architecture/violations/lint/raw-input.controller.ts',
+    ]);
+    const raw = (result?.messages ?? []).filter(
+      (message) =>
+        message.ruleId === 'no-restricted-syntax' && message.message.includes('@Input()'),
+    );
+    expect(raw).toHaveLength(6);
   });
 });
