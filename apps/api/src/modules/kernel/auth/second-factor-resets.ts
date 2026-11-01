@@ -4,6 +4,7 @@ import type { AuditSink } from '../audit/audit-sink.js';
 import { ApiException } from '../errors/api-exception.js';
 import type { OutboxWriter } from '../outbox/outbox-writer.js';
 import type { IdentityStore } from '../platform/identity.repository.js';
+import { countRevocations } from './auth-metrics.js';
 import { enqueueMail, mailLink } from './mail-links.js';
 import { enrolmentLinkTtlSeconds } from './second-factor.js';
 import { compoundToken, opaqueToken, tokenHash } from './tokens.js';
@@ -66,6 +67,7 @@ export class SecondFactorResets {
       }
       await tx.users.resetSecondFactor(user.id);
       const families = await tx.refreshTokens.revokeAll(user.id, 'revoked');
+      countRevocations('revoked', families.length);
       await tx.challenges.consumeOpen(user.id, 'enrolment_link');
       const expiresAt = await tx.challenges.insert({
         id,

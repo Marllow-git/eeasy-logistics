@@ -62,6 +62,23 @@ describe('database credentials per role (review H-2, data §4.4, ADR-0031)', () 
     ).toEqual({});
   });
 
+  it('bootstrap needs the platform URL and the console URL, never the owner URL (PLAT-11 2.12)', () => {
+    expect(requiredInProduction('bootstrap')).toEqual(['DATABASE_URL_PLATFORM', 'PUBLIC_ADMIN_URL']);
+    expect(problems({ APP_ENV: 'production' }, 'bootstrap')).toEqual({
+      DATABASE_URL_PLATFORM: 'is required when APP_ENV=production',
+      PUBLIC_ADMIN_URL: 'is required when APP_ENV=production',
+    });
+    const { DATABASE_URL_PLATFORM, PUBLIC_ADMIN_URL } = productionEnv;
+    const minimal = { APP_ENV: 'production', DATABASE_URL_PLATFORM, PUBLIC_ADMIN_URL } as Record<
+      string,
+      string
+    >;
+    expect(problems(minimal, 'bootstrap')).toEqual({});
+    expect(
+      problems({ ...minimal, DATABASE_URL_OWNER: productionOwnerUrl }, 'bootstrap'),
+    ).toHaveProperty('DATABASE_URL_OWNER');
+  });
+
   it('migrate may not hold the admin URL in staging or production', () => {
     const found = problems(
       {

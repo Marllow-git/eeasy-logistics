@@ -8,4 +8,6 @@ export const migratorFiles: readonly string[] = [
   // Calls the partition functions only as roles or with a cutoff they refuse (no DDL runs); listed
   // because the guard matches the function names, not the outcome.
   'test/integration/audit-log-table.test.ts',
+  // PLAT-11 item H: migrates a database of its own (the bootstrap refuses once staff exist).
+  'test/integration/bootstrap.test.ts',
 ];

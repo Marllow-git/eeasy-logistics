@@ -34,7 +34,8 @@ import {
 import { productionRefusals } from './refusals.ts';
 import { Secret } from './secret.ts';
 
-export const appRoles = ['api', 'worker', 'migrate'] as const;
+// `bootstrap` (PLAT-11 plan 2.12): the one-shot command that invites the first super admin.
+export const appRoles = ['api', 'worker', 'migrate', 'bootstrap'] as const;
 export type AppRole = (typeof appRoles)[number];
 
 /**

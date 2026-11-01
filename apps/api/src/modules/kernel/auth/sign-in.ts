@@ -14,6 +14,7 @@ import { signInAccountStatuses } from '../platform/identity.repository.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { addressKey } from '../rate-limit/rate-limiter.js';
 import type { AuthenticationMethod } from './access-token.js';
+import { countedLogin, countRevocations } from './auth-metrics.js';
 import { authenticationMethods } from './access-token.js';
 import type { IssuedSession } from './cookies.js';
 import type { StaffMeView } from './me.js';
@@ -119,6 +120,18 @@ export class StaffSignIn {
    * `401 invalid_credentials` after the same one verification.
    */
   async login(
+    input: { email: string; password: string },
+    facts: RequestFacts,
+  ): Promise<SignInStep> {
+    return countedLogin(
+      'staff',
+      () => this.#login(input, facts),
+      (step) =>
+        step.kind === 'second_factor' || step.kind === 'enrolment' ? 'second_factor' : 'ok',
+    );
+  }
+
+  async #login(
     input: { email: string; password: string },
     facts: RequestFacts,
   ): Promise<SignInStep> {
@@ -262,7 +275,8 @@ export class StaffSignIn {
         locale: input.locale,
         endSessions: hadPassword,
       });
-      if (hadPassword) await tx.refreshTokens.revokeAll(user.id, 'revoked');
+      if (hadPassword)
+        countRevocations('revoked', (await tx.refreshTokens.revokeAll(user.id, 'revoked')).length);
       await tx.memberships.activate(pending.id);
       await tx.invitations.accept(invitation.id);
       await this.#deps.audit.record({

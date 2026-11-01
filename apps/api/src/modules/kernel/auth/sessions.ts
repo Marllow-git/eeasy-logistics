@@ -14,6 +14,7 @@ import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { addressKey } from '../rate-limit/rate-limiter.js';
 import type { PlatformStaffRole } from '../schema/identity.js';
 import type { AccessTokenIssuer, AuthenticationMethod, SessionClaims } from './access-token.js';
+import { countRefresh, countRevocations } from './auth-metrics.js';
 import type { CookieSurface, IssuedSession } from './cookies.js';
 import { sessionCookieNames } from './cookies.js';
 import { cookieValue } from './principal.js';
@@ -221,12 +222,25 @@ export class SessionService {
     );
     const presented = cookieValue(facts.cookieHeader, sessionCookieNames[surface].refresh);
     if (presented === undefined || !isOpaqueToken(presented)) {
+      countRefresh(surface, 'invalid');
       return { ok: false, code: 'token_invalid' };
     }
     const agent = userAgentHash(facts.userAgent);
+    const outcome = await this.#refreshRow(surface, presented, agent, facts);
+    countRefresh(surface, outcome.metric);
+    return outcome.result;
+  }
+
+  async #refreshRow(
+    surface: CookieSurface,
+    presented: string,
+    agent: Buffer | null,
+    facts: RequestFacts,
+  ): Promise<{ result: RefreshOutcome; metric: 'ok' | 'grace' | 'reuse_revoked' | 'invalid' }> {
+    const invalid = (result: RefreshOutcome) => ({ result, metric: 'invalid' as const });
     return this.store.run(async (tx) => {
       const row = await tx.refreshTokens.lockByHash(tokenHash(presented));
-      if (row === undefined) return { ok: false, code: 'token_invalid' } as const;
+      if (row === undefined) return invalid({ ok: false, code: 'token_invalid' });
       const verdict = refreshVerdict(
         row,
         { surface, userAgentHash: agent },
@@ -234,14 +248,19 @@ export class SessionService {
       );
       switch (verdict.kind) {
         case 'refuse':
-          return { ok: false, code: verdict.code } as const;
+          return invalid({ ok: false, code: verdict.code });
         case 'reuse':
           await this.#revokeFamily(tx, row, facts);
-          return { ok: false, code: 'token_invalid' } as const;
-        case 'grace':
-          return this.#grace(tx, row);
+          return { result: { ok: false, code: 'token_invalid' }, metric: 'reuse_revoked' };
+        case 'grace': {
+          const result = await this.#grace(tx, row);
+          return result.ok ? { result, metric: 'grace' } : invalid(result);
+        }
         case 'rotate':
-          return { ok: true, session: await this.#rotate(tx, row, agent) } as const;
+          return {
+            result: { ok: true, session: await this.#rotate(tx, row, agent) },
+            metric: 'ok',
+          };
       }
     });
   }
@@ -298,6 +317,7 @@ export class SessionService {
       });
     }
     if (families.length === 0) return;
+    countRevocations(reason, families.length);
     await this.#deps.audit.record({
       actorType: surface === 'platform' ? 'platform_user' : 'user',
       actorId: principal.userId,
@@ -376,6 +396,7 @@ export class SessionService {
     facts: RequestFacts,
   ): Promise<void> {
     await tx.refreshTokens.revokeFamily(row.familyId, 'reuse');
+    countRevocations('reuse', 1);
     await this.#deps.audit.record({
       actorType: row.surface === 'platform' ? 'platform_user' : 'user',
       actorId: row.userId,
