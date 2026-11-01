@@ -2,11 +2,14 @@
 // 1. replaces `zod.coerce.boolean()` with `zod.stringbool()` in generated/<surface>/schemas.ts:
 //    `coerce.boolean` is `Boolean(value)`, so the query string `false` would become `true`;
 //    `stringbool` reads `true`/`false` (and `1`/`0`, `yes`/`no`, `on`/`off`) and refuses the rest;
-// 2. writes generated/<surface>/operations.ts: `operationSchemas`, every operation of the bundle
+// 2. points Orval's directory imports (`from './model'`) at `./model/index.ts` in the client,
+//    hooks and MSW files: Node ESM and TypeScript `NodeNext` (apps/api, PLAT-6 item I) resolve
+//    no directory imports, bundlers resolve both;
+// 3. writes generated/<surface>/operations.ts: `operationSchemas`, every operation of the bundle
 //    keyed by operationId, with its `params`, `query`, `header`, `body` and per-status `responses`
 //    schemas, so apps/api's ContractPipe (PLAT-6) finds an operation's schema by its id.
 // Run: pnpm --filter contracts build (after build:client)
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatedDir, surfaces } from './paths.ts';
@@ -114,6 +117,12 @@ export function processSurface(surface: SurfaceName): Record<string, OperationSc
   const file = join(generatedDir, surface, 'schemas.ts');
   const source = readFileSync(file, 'utf8').replaceAll('zod.coerce.boolean()', 'zod.stringbool()');
   writeFileSync(file, source);
+  for (const name of ['client.ts', 'hooks.ts', 'hooks.msw.ts']) {
+    const path = join(generatedDir, surface, name);
+    if (!existsSync(path)) continue;
+    const text = readFileSync(path, 'utf8');
+    writeFileSync(path, text.replaceAll("from './model';", "from './model/index.ts';"));
+  }
   const map = mapOperationSchemas(bundleOperationIds(surface), exportNames(source));
   writeFileSync(join(generatedDir, surface, 'operations.ts'), renderOperations(map));
   return map;

@@ -81,6 +81,9 @@ importers:
       '@eeasy-logistics/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@eeasy-logistics/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@eeasy-logistics/db':
         specifier: workspace:*
         version: link:../../packages/db
