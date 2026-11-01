@@ -6,6 +6,7 @@ import type { Redis } from 'ioredis';
 import type { KindHandlerRegistry, RelayRow } from '../../modules/kernel/outbox/kind-handlers.js';
 import type { OutboxQueues } from '../../modules/kernel/outbox/queues.js';
 import type { OutboxKind } from '../../modules/kernel/schema/outbox.js';
+import { getMetrics } from '../../modules/kernel/telemetry/metrics.js';
 import { recordSpan } from '../../modules/kernel/telemetry/spans.js';
 
 // The outbox relay (PLAT-8 plan 2.3; ADR-0024, ADR-0036; integrations §4.4; data §5.2): a system
@@ -445,6 +446,8 @@ export class OutboxRelay {
       if (swept > 0) this.#deps.logger.warn(`Outbox sweeper returned ${swept} rows without a job`);
       const waiting = await countRowsWithoutHandler(this.#deps.db, this.#deps.registry);
       this.stats.rowsWithoutHandler = waiting;
+      // The metric the PLAT-8 sweeper left as a log line (PLAT-14 plan 2.3).
+      getMetrics().set(rowsWithoutHandlerMetric, waiting, {});
       if (waiting > 0) {
         this.#deps.logger.warn(
           `${rowsWithoutHandlerMetric}=${waiting}: due rows of kinds with no handler`,

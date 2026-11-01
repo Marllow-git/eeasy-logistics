@@ -26,7 +26,9 @@ function doubles(verify: () => Promise<void> = () => Promise.resolve()) {
   const outboxWorkers = vi.fn(() => Promise.resolve({ stop: queuesStopped }));
   const counts = { finished: 3, dead: 1, receipts: 2, deadLetters: 0 };
   const outboxPrune = vi.fn(() => Promise.resolve({ ran: true as const, counts }));
+  const outboxGauges = vi.fn(() => Promise.resolve());
   const deps: Partial<WorkerDependencies> = {
+    outboxGauges,
     platformPool: () => ({ db: { execute } as unknown as PlatformDatabase, close: closed }),
     redis: () =>
       ({
@@ -44,6 +46,7 @@ function doubles(verify: () => Promise<void> = () => Promise.resolve()) {
   };
   return {
     outboxPrune,
+    outboxGauges,
     deps,
     closed,
     execute,
@@ -97,8 +100,17 @@ describe('worker startup', () => {
 
   it('with Redis and the platform pool: purges at once and every hour under the lock', async () => {
     vi.useFakeTimers();
-    const { deps, set, execute, warn, outboxRelay, relayStopped, outboxWorkers, queuesStopped } =
-      doubles();
+    const {
+      deps,
+      set,
+      execute,
+      warn,
+      outboxRelay,
+      relayStopped,
+      outboxWorkers,
+      queuesStopped,
+      outboxGauges,
+    } = doubles();
     const worker = await startWorker(
       config({ DATABASE_URL_PLATFORM: platformUrl, REDIS_URL: redisUrl }),
       deps,
@@ -108,7 +120,12 @@ describe('worker startup', () => {
       'outbox-prune',
       'outbox-relay',
       'outbox-queues',
+      'outbox-gauges',
     ]);
+    // PLAT-14 plan 2.3: the outbox gauges at once and every 30 s, until stopped.
+    expect(outboxGauges).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(outboxGauges).toHaveBeenCalledTimes(2);
     expect(outboxRelay).toHaveBeenCalledTimes(1);
     expect(outboxWorkers).toHaveBeenCalledTimes(1);
     expect(warn).not.toHaveBeenCalled();
@@ -134,7 +151,12 @@ describe('worker startup', () => {
       config({ DATABASE_URL_PLATFORM: platformUrl, REDIS_URL: redisUrl, OUTBOX_RELAY: 'off' }),
       deps,
     );
-    expect(worker.jobs).toEqual(['idempotency-purge', 'outbox-prune', 'outbox-queues']);
+    expect(worker.jobs).toEqual([
+      'idempotency-purge',
+      'outbox-prune',
+      'outbox-queues',
+      'outbox-gauges',
+    ]);
     expect(outboxRelay).not.toHaveBeenCalled();
     expect(outboxWorkers).toHaveBeenCalledTimes(1);
     await worker.stop();
@@ -188,7 +210,12 @@ describe('worker startup', () => {
       deps,
     );
     expect(outboxPrune).not.toHaveBeenCalled();
-    expect(worker.jobs).toEqual(['idempotency-purge', 'outbox-relay', 'outbox-queues']);
+    expect(worker.jobs).toEqual([
+      'idempotency-purge',
+      'outbox-relay',
+      'outbox-queues',
+      'outbox-gauges',
+    ]);
     await worker.stop();
   });
 });
