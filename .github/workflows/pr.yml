@@ -347,27 +347,6 @@ jobs:
       - name: expo-doctor
         run: pnpm --filter @eeasy-logistics/driver run doctor
 
-  # Advisory, not a required check (decision 2.10): prepares the move to Node 24 (amendment A-14).
-  # continue-on-error keeps a failure here from failing the workflow, so main.yml still builds
-  # the images; the job itself still shows red.
-  node-24:
-    name: node-24
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-        with:
-          node-version: '24'
-          cache-scope: node-24
-      - name: Typecheck, lint and test on Node 24
-        run: |
-          node --version
-          pnpm turbo run typecheck lint test
-
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest

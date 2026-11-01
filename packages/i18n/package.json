@@ -18,7 +18,7 @@
     "@eeasy-logistics/config-eslint": "workspace:*",
     "@eeasy-logistics/config-ts": "workspace:*",
     "@eeasy-logistics/contracts": "workspace:*",
-    "@types/node": "22.20.5",
+    "@types/node": "24.19.2",
     "dependency-cruiser": "18.7.0",
     "eslint": "9.39.5",
     "typescript": "6.0.3",
