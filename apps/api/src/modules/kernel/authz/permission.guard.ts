@@ -18,7 +18,12 @@ import { boundOperation } from './operation-routes.check.js';
 import type { PermissionResolver } from './permission-resolver.js';
 import { PERMISSION_RESOLVER } from './permission-resolver.js';
 import type { SiteScopedSource } from './site-scope.js';
-import { SITE_SCOPED, assertSiteInScope, setRequestSiteScope } from './site-scope.js';
+import {
+  SITE_SCOPED,
+  assertSiteInScope,
+  normaliseSiteIds,
+  setRequestSiteScope,
+} from './site-scope.js';
 
 /**
  * The doors of contracts README §1: no role check, open to any principal of the operation's surface
@@ -104,8 +109,9 @@ export class PermissionGuard implements CanActivate {
         SITE_SCOPED,
         context.getHandler(),
       );
-      assertSiteInScope(request, source, principal.sites);
-      setRequestSiteScope(request, principal.sites);
+      const sites = normaliseSiteIds(principal.sites);
+      assertSiteInScope(request, source, sites);
+      setRequestSiteScope(request, sites);
     }
     return true;
   }

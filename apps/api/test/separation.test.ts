@@ -23,8 +23,8 @@ function codeOf(fn: () => void): string | undefined {
 }
 
 describe('assertRoleCombination', () => {
-  it('refuses driver with every role that holds a delivery.cash permission', () => {
-    for (const role of ['owner', 'admin', 'dispatcher', 'cashier', 'viewer']) {
+  it('refuses driver with every role that handles cash (receive, deposit, close, liability)', () => {
+    for (const role of ['owner', 'admin', 'cashier']) {
       expect(
         codeOf(() => assertRoleCombination(['driver', role], bundles)),
         role,
@@ -36,8 +36,32 @@ describe('assertRoleCombination', () => {
     }
   });
 
-  it('allows driver alone, with roles without cash, and any list without driver', () => {
+  it('counts each cash-handling permission on its own, and not delivery.cash.read', () => {
+    for (const permission of [
+      'delivery.cash.receive',
+      'delivery.cash.deposit',
+      'delivery.cash.close_report',
+      'delivery.liability.record',
+    ]) {
+      const one = new Map([['clerk', { permissions: new Set([permission]) }]]);
+      expect(
+        codeOf(() => assertRoleCombination(['driver', 'clerk'], one)),
+        permission,
+      ).toBe('role_combination_forbidden');
+    }
+    const reader = new Map([['reader', { permissions: new Set(['delivery.cash.read']) }]]);
+    expect(codeOf(() => assertRoleCombination(['driver', 'reader'], reader))).toBeUndefined();
+  });
+
+  it('allows driver alone, with roles that only read cash or hold none, and lists without driver', () => {
     expect(codeOf(() => assertRoleCombination(['driver'], bundles))).toBeUndefined();
+    // Lead ruling on PR #70: reading cash handles none (viewer and dispatcher hold delivery.cash.read).
+    for (const role of ['viewer', 'dispatcher']) {
+      expect(
+        codeOf(() => assertRoleCombination(['driver', role], bundles)),
+        role,
+      ).toBeUndefined();
+    }
     expect(
       codeOf(() => assertRoleCombination(['driver', 'site_staff', 'warehouse_staff'], bundles)),
     ).toBeUndefined();

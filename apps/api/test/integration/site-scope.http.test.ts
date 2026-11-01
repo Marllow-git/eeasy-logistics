@@ -155,6 +155,14 @@ describe('site scoping (PLAT-10 item D)', () => {
     await receive(cookie, {}).expect(404);
   });
 
+  it('refuses a token whose sites claim is not lowercase UUIDs (lead review round 1)', async () => {
+    // The claim schema accepts lowercase UUIDs only, so a mixed-case claim never reaches the
+    // scope check; normaliseSiteIds would lowercase it for both checks if it did (unit test).
+    const cookie = await staff(['cashier'], [siteA.toUpperCase(), siteB]);
+    const refused = await http().get('/v1/staff/site-probe/rows').set('Cookie', cookie).expect(401);
+    expect((refused.body as { code: string }).code).toBe('unauthenticated');
+  });
+
   it('fails closed on an empty site list: nothing at all', async () => {
     const cookie = await staff(['site_staff'], []);
     await http().get(`/v1/staff/site-probe/sites/${siteA}`).set('Cookie', cookie).expect(404);

@@ -3,7 +3,13 @@ import { PgDialect, pgTable, uuid } from 'drizzle-orm/pg-core';
 import type { Request } from 'express';
 import { describe, expect, it } from 'vitest';
 import { ApiException } from '../errors/api-exception.js';
-import { assertSiteInScope, bindContextSiteScope, siteFilter, siteIdsOf } from './site-scope.js';
+import {
+  assertSiteInScope,
+  bindContextSiteScope,
+  normaliseSiteIds,
+  siteFilter,
+  siteIdsOf,
+} from './site-scope.js';
 
 // PLAT-10 plan 2.6: the declared site against the token's sites (404 outside, 404 with none), and
 // the repository predicate.
@@ -97,5 +103,35 @@ describe('siteFilter', () => {
 
   it('binds only to a frozen context', () => {
     expect(() => bindContextSiteScope({ ...context() }, [siteA])).toThrow('frozen');
+  });
+});
+
+describe('normaliseSiteIds (lead review round 1)', () => {
+  const mixed = [siteA.toUpperCase(), siteB, siteA, 'not-a-site'];
+
+  it('lowercases, keeps UUIDs only and drops repeats', () => {
+    const sites = normaliseSiteIds(mixed);
+    expect(sites).toEqual([siteA, siteB]);
+    expect(Object.isFrozen(sites)).toBe(true);
+  });
+
+  it('gives the scope check and the list filter the same list for a mixed-case claim', () => {
+    const sites = normaliseSiteIds([siteA.toUpperCase()]);
+    const path = { from: 'path', name: 'site_id' } as const;
+    for (const named of [siteA, siteA.toUpperCase()]) {
+      expect(
+        codeOf(() => assertSiteInScope(requestWith({ params: { site_id: named } }), path, sites)),
+      ).toBeUndefined();
+    }
+    const scoped = context();
+    bindContextSiteScope(scoped, sites);
+    const filter = siteFilter(scoped, rows.siteId);
+    expect(filter && dialect.sqlToQuery(filter).params).toEqual([siteA]);
+  });
+
+  it('leaves nothing for a claim of no UUID: the request sees nothing', () => {
+    const sites = normaliseSiteIds(['not-a-site']);
+    expect(sites).toEqual([]);
+    expect(codeOf(() => assertSiteInScope(requestWith({}), undefined, sites))).toBe('not_found');
   });
 });
