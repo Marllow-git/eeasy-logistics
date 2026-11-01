@@ -2,13 +2,14 @@
   "name": "@eeasy-logistics/config-eslint",
   "version": "0.0.0",
   "private": true,
-  "description": "Shared ESLint flat configuration for every workspace.",
+  "description": "Shared ESLint flat configuration for every workspace, and the eeasy plugin rules (rules/).",
   "type": "module",
   "exports": {
     ".": "./index.js"
   },
   "scripts": {
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --test --test-reporter=dot \"test/*.test.js\""
   },
   "dependencies": {
     "@eslint/js": "9.39.5",
