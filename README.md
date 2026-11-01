@@ -116,7 +116,7 @@ Images, checked on 2026-10-31 against Docker Hub and GHCR:
 | `pgsty/silo` | `RELEASE.2026-10-26T00-00-00Z` | MinIO server. Upstream MinIO now ships source only: `minio/minio` is gone from Docker Hub and the GitHub repository is archived. Silo is the maintained community fork, compatible with MinIO (`MINIO_*` settings, S3 API, `mc`) |
 | `pgsty/mc` | `RELEASE.2026-10-26T00-00-00Z` | the `mc` client for the bucket bootstrap, from the same fork |
 | `axllent/mailpit` | `v1.33.0` | latest release |
-| `node` | `22.23.4-alpine` | runs the WhatsApp stub; same major as `.nvmrc` |
+| `node` | `24.22.2-alpine` | runs the WhatsApp stub; same major as `.nvmrc` |
 
 ## Database
 
