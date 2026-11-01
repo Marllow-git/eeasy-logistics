@@ -1,0 +1,8 @@
+# Keep local secrets and machine state out of every image build context (PLAT-4 review; the images
+# themselves arrive with PLAT-3). `.env*` covers `.env`, `.env.local` and `.env.example`.
+.env*
+**/.env*
+.local/
+node_modules/
+**/node_modules/
+.git/
