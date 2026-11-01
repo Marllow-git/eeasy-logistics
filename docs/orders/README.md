@@ -18,7 +18,8 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
 | PLAT-5 | #27 | `feat/PLAT-5-database-roles-migrations` | `.claude/worktrees/agent-a3cd22022c9f22ac5` | executor-api (general-purpose Opus run, pre-redesign) | review | native, default db | one-way door; adversary required |
+| PLAT-15 | #32 | `feat/PLAT-15-contracts-generation` | – | executor-api | plan | none (leg 1) | two-way door; adversary no; leg 2 (.github) after PLAT-5 merges |
 
 ## Next unblocked (roadmap §1.1)
 
-PLAT-6 after PLAT-5. PLAT-15 and OPS-1 are unblocked now (depend on PLAT-1 and PLAT-3 only) and touch disjoint paths from PLAT-5; either may run as the second in-flight order.
+PLAT-6 after PLAT-5. OPS-1 is unblocked (depends on PLAT-3, Q-10, Q-12) and waits on the owner's go as a one-way door; it is the next candidate once PLAT-5 or PLAT-15 closes.
