@@ -131,6 +131,7 @@ describe('MessageKindHandler (plan 2.5, 2A.1)', () => {
     ['an unknown template', { template_key: 'marketing_blast' }],
     ['a wrong channel', { channel: 'mail' }],
     ['a bad locale', { locale: 'fr' }],
+    ['a WhatsApp recipient that is not a phone number', { to: 'not-a-phone' }],
   ])('makes a row with %s dead without sending', async (_name, change) => {
     const { handler, send } = handlerWith();
     const row = otpRow();

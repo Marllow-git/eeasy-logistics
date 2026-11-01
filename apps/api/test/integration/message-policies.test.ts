@@ -14,7 +14,10 @@ import type {
   SendTemplateInput,
 } from '../../src/modules/kernel/messaging/message-sender.js';
 import { MessageSenders } from '../../src/modules/kernel/messaging/message-sender.js';
-import { redisCapCounter } from '../../src/modules/kernel/messaging/message-policies.js';
+import {
+  recipientLedger,
+  redisCapCounter,
+} from '../../src/modules/kernel/messaging/message-policies.js';
 import type { MessagePolicies } from '../../src/modules/kernel/messaging/message.handler.js';
 import { MessageKindHandler } from '../../src/modules/kernel/messaging/message.handler.js';
 import type * as Templates from '../../src/modules/kernel/messaging/templates.js';
@@ -110,13 +113,8 @@ describe('message policies on the database and Redis (PLAT-9 item H)', () => {
       cipher,
       resolver: accountSenderResolver(store, platformRoute),
       policies: {
-        optOuts: new OptOutList(store),
+        ledger: recipientLedger(store, () => Promise.resolve(limit)),
         caps: { counter: redisCapCounter(redis, prefix), pseudonymKey: Buffer.alloc(32, 5) },
-        budget: {
-          sentThisMonth: (id) => store.run((repo) => repo.sentThisMonth(id)),
-          countSent: (id) => store.run((repo) => repo.countSent(id)),
-          limitOf: () => Promise.resolve(limit),
-        },
         ...policies,
       },
       logger: quiet,
@@ -265,6 +263,25 @@ describe('message policies on the database and Redis (PLAT-9 item H)', () => {
     const otp = await otpRow(to, account);
     await run(handler, otp);
     expect((await stored(otp))?.last_error).toBeNull();
+  });
+
+  it('counts two spellings of one Saudi number against one daily cap (review round 2, finding 1)', async () => {
+    const to = phone();
+    const national = `0${to.slice(4)}`;
+    const handler = handlerWith();
+    for (let index = 0; index < 10; index += 1) {
+      const id = await recipientRow(index % 2 === 0 ? to : national);
+      expect(await run(handler, id)).toBe('done');
+    }
+    const eleventh = await recipientRow(national);
+    await run(handler, eleventh);
+    expect((await stored(eleventh))?.last_error).toBe('skipped: cap_phone');
+    // Every send went to the normalised number, and an opt-out under one spelling covers the other.
+    expect(sentTo(to)).toHaveLength(10);
+    await new OptOutList(messagingStore(pool.db)).add(account, national, 'reply');
+    const row = await recipientRow(to);
+    await run(handlerWith({ caps: undefined }), row);
+    expect((await stored(row))?.last_error).toBe('skipped: opted_out');
   });
 
   it('skips recipient messages at the monthly budget, never an OTP', async () => {

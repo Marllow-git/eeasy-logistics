@@ -9,9 +9,9 @@ import { BreakerOpen } from './breaker.js';
 import { engineUnavailable } from './engine/engine-message-sender.js';
 import type { EngineRoute, MessageSenders, SentMessage } from './message-sender.js';
 import { MessagingNotConfigured } from './message-sender.js';
-import type { CapCounter, MessagingBudget } from './message-policies.js';
+import type { CapCounter, RecipientLedger } from './message-policies.js';
 import { capKeys, isStaleOtp, messageCaps, quietHoursWaitS } from './message-policies.js';
-import { phoneTail } from './phone.js';
+import { normalisePhone, phoneTail } from './phone.js';
 import type { TemplateDefinition, TemplateKey } from './templates.js';
 import { isTemplateKey, messageTemplates } from './templates.js';
 
@@ -99,12 +99,10 @@ export interface MessagePolicies {
   /** `MESSAGING_DISABLED=true`: every row is superseded with reason `disabled`. */
   readonly disabled?: boolean;
   readonly now?: () => Date;
-  /** The opt-out list (integrations §5.5); recipient messages only. */
-  readonly optOuts?: { has(accountId: string, phone: string): Promise<boolean> };
+  /** The opt-out list and the monthly usage and limit (integrations §5.5, §5.6). */
+  readonly ledger?: RecipientLedger;
   /** The caps' counters and the key that pseudonymises phones in them (integrations §5.4). */
   readonly caps?: { readonly counter: CapCounter; readonly pseudonymKey: Buffer };
-  /** Usage and the monthly limit (integrations §5.6). */
-  readonly budget?: MessagingBudget;
 }
 
 export class MessageKindHandler implements KindHandler {
@@ -136,7 +134,14 @@ export class MessageKindHandler implements KindHandler {
   async execute(row: OutboxRow): Promise<KindOutcome> {
     const parsed = messagePayload.safeParse(row.payload);
     if (!parsed.success) return deadRow('payload', 'message payload is invalid');
-    const payload = parsed.data as MessagePayload;
+    let payload = parsed.data as MessagePayload;
+    // A WhatsApp recipient is E.164 from here on: the cap key, the opt-out lookup and the send all
+    // use the one normalised number (lead review round 2, finding 1).
+    if (payload.channel === 'whatsapp') {
+      const to = normalisePhone(payload.to);
+      if (to === undefined) return deadRow('payload', 'recipient is not a phone number');
+      payload = { ...payload, to };
+    }
     const template = payload.template_key;
     const definition: TemplateDefinition = messageTemplates[template];
     if (definition.channel !== payload.channel) {
@@ -242,7 +247,8 @@ export class MessageKindHandler implements KindHandler {
   /**
    * The reason a recipient message is skipped, if any: the pair opted out (`opted_out`), the phone's
    * daily cap or the order's cap reached (`cap_phone`, `cap_order`), the month's budget spent
-   * (`budget`). A failing Redis leaves the caps open, like every PLAT-6 budget.
+   * (`budget`). The database state is one read (one transaction); a failing Redis leaves the caps
+   * open, like every PLAT-6 budget.
    */
   async #recipientPolicies(
     accountId: string,
@@ -250,9 +256,8 @@ export class MessageKindHandler implements KindHandler {
     payload: MessagePayload,
   ): Promise<string | undefined> {
     const policies = this.#deps.policies ?? {};
-    if (policies.optOuts !== undefined && (await policies.optOuts.has(accountId, payload.to))) {
-      return 'opted_out';
-    }
+    const state = await policies.ledger?.read(accountId, payload.to);
+    if (state?.optedOut === true) return 'opted_out';
     if (policies.caps !== undefined && keys.length > 0) {
       const counts = await policies.caps.counter.counts(keys).catch(() => {
         this.#logger.warn('message caps unreadable: not applied');
@@ -261,21 +266,15 @@ export class MessageKindHandler implements KindHandler {
       if ((counts[0] ?? 0) >= messageCaps.perPhonePerDay) return 'cap_phone';
       if ((counts[1] ?? 0) >= messageCaps.perOrder) return 'cap_order';
     }
-    if (policies.budget !== undefined) {
-      const limit = await policies.budget.limitOf(accountId);
-      if (limit !== undefined && (await policies.budget.sentThisMonth(accountId)) >= limit) {
-        return 'budget';
-      }
-    }
+    if (state?.limit !== undefined && state.sentThisMonth >= state.limit) return 'budget';
     return undefined;
   }
 
   /** After a recipient message is sent: the month's usage and the caps' counters. */
   async #countSent(accountId: string, keys: readonly string[]): Promise<void> {
     const policies = this.#deps.policies ?? {};
-    if (policies.budget !== undefined) {
-      const sent = await policies.budget.countSent(accountId);
-      const limit = await policies.budget.limitOf(accountId);
+    if (policies.ledger !== undefined) {
+      const { sent, limit } = await policies.ledger.countSent(accountId);
       if (limit !== undefined && limit > 0) {
         getMetrics().set('message_budget_used_ratio', sent / limit, { account: accountId });
       }
