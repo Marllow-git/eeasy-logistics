@@ -95,6 +95,9 @@ describe.each(directions)('overlays in $locale ($dir)', ({ locale, dir }) => {
     const toast = screen.getByText('Saved').closest('[data-swipe-direction]');
     expect(toast?.getAttribute('data-swipe-direction')).toBe(dir === 'rtl' ? 'left' : 'right');
     expect(screen.getByRole('button', { name: close })).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: messages[locale].common.shell.notifications }),
+    ).toBeTruthy();
   });
 
   it('Select lists its options in the reading direction', () => {

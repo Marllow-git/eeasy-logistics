@@ -15,8 +15,13 @@ export function ToastProvider(
   props: Omit<ComponentProps<typeof ToastPrimitive.Provider>, 'swipeDirection'>,
 ) {
   const direction = Direction.useDirection();
+  const t = useTranslations('common.shell');
   return (
-    <ToastPrimitive.Provider swipeDirection={direction === 'rtl' ? 'left' : 'right'} {...props} />
+    <ToastPrimitive.Provider
+      label={t('notifications')}
+      swipeDirection={direction === 'rtl' ? 'left' : 'right'}
+      {...props}
+    />
   );
 }
 
@@ -24,8 +29,11 @@ export function ToastViewport({
   className,
   ...props
 }: ComponentProps<typeof ToastPrimitive.Viewport>) {
+  // Radix's default region label is English ("Notifications ({hotkey})").
+  const t = useTranslations('common.shell');
   return (
     <ToastPrimitive.Viewport
+      label={t('notifications')}
       className={cn(
         'fixed end-0 bottom-0 z-50 m-0 flex max-h-dvh w-full list-none flex-col gap-2 p-4 outline-none sm:max-w-sm',
         className,

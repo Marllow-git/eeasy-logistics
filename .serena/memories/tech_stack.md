@@ -4,7 +4,7 @@
 - TypeScript 6.0, `tsconfig.base.json` in `packages/config-ts`: strict, `noUncheckedIndexedAccess`, `moduleResolution: Bundler`, `rewriteRelativeImportExtensions` (packages ship `.ts` source with `.ts` relative imports; API runs them via Node type stripping, `erasableSyntaxOnly`).
 - ESLint 9 flat config from `packages/config-eslint` (`base`, `react`); Prettier 3 at root.
 - API: NestJS 12, `type: module`, Vitest 5 (`vitest.config` unit, `vitest.integration.config.ts` integration), supertest, dependency-cruiser 18.
-- Web: Next.js 16.4 App Router, React 19.3, next-intl (`ar` default), Playwright smoke (`tests/`).
+- Web: Next.js 16.4 App Router, React 19.3, next-intl 4.14.9 (`ar` default, non-routing), Tailwind CSS 4.3.3 (`@tailwindcss/postcss`), `radix-ui` 1.8.1, class-variance-authority 0.7.1, tailwind-merge 3.7.0, clsx 2.1.1, lucide-react 1.64.0; Playwright 1.64 census + @axe-core/playwright 4.14.0 (`apps/web/tests`); component tests Vitest 5 + Testing Library 16.3 + jsdom 26.1 (`packages/ui`).
 - Driver: Expo SDK 58, Expo Router, Jest.
 - Config: Zod 4, dotenv (only when `APP_ENV=local`).
 - Contracts: @redocly/cli 2.72, Orval 8.46 (`mock: { generators: [{ type: 'msw' }] }` — the docs' `mocks` key is ignored; zod client `override.zod` strict/coerce/`generateEachHttpStatus`; its `coerce.boolean` is `Boolean(v)` so `build:operations` swaps in `zod.stringbool()`), TanStack Query 5.105, MSW 3.0, faker 10.6, Zod 4.6 (Orval zod client), ajv 8.20 (`ajv/dist/2020.js`, `strict: false` for OpenAPI keywords) + ajv-formats 3.0 for the contract harness. Generation scripts run as `.ts` via Node type stripping (Node ≥22.18).
