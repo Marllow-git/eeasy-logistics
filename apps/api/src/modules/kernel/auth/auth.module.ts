@@ -179,6 +179,8 @@ export class AuthModule {
               outbox,
               audit,
               publicWebUrl: config.app.publicWebUrl,
+              cipher:
+                config.credentials === null ? null : createCredentialsCipher(config.credentials),
             }),
         },
         {
@@ -196,6 +198,8 @@ export class AuthModule {
               resolver,
               publicWebUrl: config.app.publicWebUrl,
               publicAdminUrl: config.app.publicAdminUrl,
+              cipher:
+                config.credentials === null ? null : createCredentialsCipher(config.credentials),
             }),
         },
         {
@@ -227,6 +231,8 @@ export class AuthModule {
               limiter,
               emailRef: (email) => signIn.emailRef(email),
               publicWebUrl: config.app.publicWebUrl,
+              cipher:
+                config.credentials === null ? null : createCredentialsCipher(config.credentials),
             }),
         },
       ],

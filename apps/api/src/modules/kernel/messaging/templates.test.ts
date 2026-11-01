@@ -53,6 +53,14 @@ describe('message template registry', () => {
     });
   });
 
+  it('keeps every mail link secret, with the table of its decryption context (PLAT-11 item J)', () => {
+    for (const definition of Object.values(messageTemplates) as TemplateDefinition[]) {
+      if (definition.linkParam === undefined) continue;
+      expect(definition.secretParams).toContain(definition.linkParam);
+      expect(definition.secretContext).toMatch(/^core_[a-z_]+$/);
+    }
+  });
+
   it('gives every WhatsApp template, and only those, an engine message type (ADR-0041)', () => {
     for (const definition of Object.values(messageTemplates) as TemplateDefinition[]) {
       expect(definition.engineMessageType !== undefined).toBe(definition.channel === 'whatsapp');

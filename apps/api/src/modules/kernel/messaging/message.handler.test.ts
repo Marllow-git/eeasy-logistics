@@ -102,22 +102,43 @@ describe('MessageKindHandler (plan 2.5, 2A.1)', () => {
     expect(send.mock.calls.map(([input]) => input.checkFirst)).toEqual([true, true]);
   });
 
-  it('sends a mail row through the mail adapter with no engine route', async () => {
-    const { handler, mailSend } = handlerWith();
-    const row = otpRow({
+  const resetId = '019a3f00-0000-7000-8000-0000000000e1';
+  const mailRow = (link: string | { encrypted: string }, aggregateId = resetId) =>
+    otpRow({
       accountId: '019a3f00-0000-7000-8000-0000000000a1',
+      aggregateId,
       payload: {
         channel: 'mail',
         template_key: 'password_reset',
         to: 'someone@example.test',
         locale: 'en',
-        params: { link: 'https://app.example.test/reset/x' },
+        params: { link },
       },
     });
+  const sealedLink = (link: string, context = `core_password_resets:${resetId}`) => ({
+    encrypted: cipher.encrypt(link, context).blob.toString('base64'),
+  });
+
+  it('decrypts a mail row link under its row context and sends it with no engine route (item J)', async () => {
+    const { handler, mailSend } = handlerWith();
+    const row = mailRow(sealedLink('https://app.example.test/reset/x'));
     expect(await handler.execute(row)).toEqual({ outcome: 'done' });
     const input = mailSend.mock.calls[0]?.[0] as SendTemplateInput;
     expect(input.route).toBeUndefined();
     expect(input.params).toEqual({ link: 'https://app.example.test/reset/x' });
+  });
+
+  it('refuses a mail link stored in clear or sealed for another row (item J)', async () => {
+    const { handler, mailSend } = handlerWith();
+    expect(await handler.execute(mailRow('https://app.example.test/reset/x'))).toMatchObject({
+      outcome: 'dead',
+      error: { message: 'parameter link must be encrypted' },
+    });
+    const other = '019a3f00-0000-7000-8000-0000000000e2';
+    expect(
+      await handler.execute(mailRow(sealedLink('https://app.example.test/reset/x'), other)),
+    ).toMatchObject({ outcome: 'dead', error: { message: 'parameter link cannot be decrypted' } });
+    expect(mailSend).not.toHaveBeenCalled();
   });
 
   it('skips an account message with no linked sender as done, reason no_sender (plan 2A.4)', async () => {

@@ -1,3 +1,4 @@
+import type { CredentialsCipher } from '@eeasy-logistics/config';
 import type { Locale } from '@eeasy-logistics/i18n/templates';
 import { uuidv7 } from '@eeasy-logistics/db';
 import { Logger } from '@nestjs/common';
@@ -53,6 +54,8 @@ export interface InvitationsDependencies {
   readonly resolver: Pick<PermissionResolver, 'bundles'> | undefined;
   readonly publicWebUrl: string | undefined;
   readonly publicAdminUrl: string | undefined;
+  /** Encrypts the link on the mail's outbox row (item J); null without credentials keys. */
+  readonly cipher: CredentialsCipher | null;
 }
 
 export class Invitations {
@@ -117,15 +120,20 @@ export class Invitations {
         ttlSeconds: invitationTtlSeconds,
         invitedBy: input.invitedBy,
       });
-      await enqueueMail(this.#deps.outbox, tx, {
-        type: 'core.invitation.created',
-        aggregate: { type: 'invitation', id: invitationId },
-        template: 'invitation',
-        to: email,
-        locale: input.locale,
-        params: { account_name: account.name, link },
-        supersedeKey: `invitation:${membershipId}`,
-      });
+      await enqueueMail(
+        this.#deps.outbox,
+        tx,
+        {
+          type: 'core.invitation.created',
+          aggregate: { type: 'invitation', id: invitationId },
+          template: 'invitation',
+          to: email,
+          locale: input.locale,
+          params: { account_name: account.name, link },
+          supersedeKey: `invitation:${membershipId}`,
+        },
+        this.#deps.cipher,
+      );
       return { invitationId, userId, membershipId, link };
     });
     this.#logger.log(`staff invitation created membership_id=${created.membershipId ?? ''}`);
@@ -208,15 +216,20 @@ export class Invitations {
       invitedBy: input.invitedBy,
     });
     if (mail) {
-      await enqueueMail(this.#deps.outbox, tx, {
-        type: 'core.invitation.created',
-        aggregate: { type: 'invitation', id: invitationId },
-        template: 'platform_invitation',
-        to: email,
-        locale: input.locale,
-        params: { link },
-        supersedeKey: `platform_invitation:${userId}`,
-      });
+      await enqueueMail(
+        this.#deps.outbox,
+        tx,
+        {
+          type: 'core.invitation.created',
+          aggregate: { type: 'invitation', id: invitationId },
+          template: 'platform_invitation',
+          to: email,
+          locale: input.locale,
+          params: { link },
+          supersedeKey: `platform_invitation:${userId}`,
+        },
+        this.#deps.cipher,
+      );
     }
     return { invitationId, userId, membershipId: null, link };
   }
