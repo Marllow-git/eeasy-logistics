@@ -121,13 +121,15 @@ describe('core_audit_log is append-only through the parent and every partition',
     expect(await sqlState(app`SELECT core_ensure_audit_partitions(3)`)).toBe('42501');
     expect(await sqlState(platform`SELECT core_ensure_audit_partitions(3)`)).toBe('42501');
     expect(
-      await sqlState(platform`SELECT * FROM core_drop_audit_partitions_before('2000-01-01')`),
+      await sqlState(
+        platform`SELECT * FROM core_drop_audit_partitions_before('2000-01-01', 'run')`,
+      ),
     ).toBe('42501');
   });
 
   it('refuses a cutoff inside the 24-month retention, even for the owner', async () => {
     expect(
-      await sqlState(owner`SELECT * FROM core_drop_audit_partitions_before(current_date)`),
+      await sqlState(owner`SELECT * FROM core_drop_audit_partitions_before(current_date, 'run')`),
     ).toBe('22023');
   });
 });

@@ -64,16 +64,22 @@ describe('audit log reads (PLAT-7 item C)', () => {
       account: string | null,
       seconds: string,
       action: string,
-      extra: { actorType?: string; ip?: string; userAgent?: string } = {},
+      extra: {
+        actorType?: string;
+        ip?: string;
+        userAgent?: string;
+        reason?: string;
+        after?: Record<string, string>;
+      } = {},
     ) => {
       const id = uuidv7();
       await owner`
         INSERT INTO core_audit_log (id, occurred_at, actor_type, actor_id, account_id, target_type,
-                                    target_id, action, after, request_id, ip, user_agent)
+                                    target_id, action, after, request_id, ip, user_agent, reason)
         VALUES (${id}, (${monthStart}::text::timestamp + ${seconds}::interval) AT TIME ZONE 'UTC',
                 ${extra.actorType ?? 'user'}, ${uuidv7()}, ${account}, 'site', ${`site-${seconds}`},
-                ${action}, ${owner.json({ n: seconds })}, ${uuidv7()}, ${extra.ip ?? null},
-                ${extra.userAgent ?? null})`;
+                ${action}, ${owner.json(extra.after ?? { n: seconds })}, ${uuidv7()},
+                ${extra.ip ?? null}, ${extra.userAgent ?? null}, ${extra.reason ?? null})`;
       return id;
     };
     // Account A: five rows; two share 2 days 00:00:10.123456.
@@ -85,6 +91,12 @@ describe('audit log reads (PLAT-7 item C)', () => {
       actorType: 'platform_user',
       ip: '203.0.113.7',
       userAgent: 'support-console',
+      reason: 'Ticket 1: driver run missing',
+      after: {
+        operation: 'PlatformAuditLogController.listAccount',
+        outcome: 'ok',
+        client_request_id: '01927f6e-7a2b-7c3d-8e4f-5a6b7c8d9e0f',
+      },
     });
     const tied = [a3, a4].sort().reverse();
     rowsA = [a5, ...tied, a2, a1];
@@ -125,7 +137,7 @@ describe('audit log reads (PLAT-7 item C)', () => {
     expect(idsOf(ofB.body)).not.toEqual(expect.arrayContaining([rowsA[0]]));
   });
 
-  it('keeps microseconds in occurred_at and hides platform staff network data from merchants', async () => {
+  it('keeps microseconds in occurred_at and hides platform staff detail from merchants (L-3)', async () => {
     const response = await listStaff(accountA, '');
     const entries = staffList.responses['200'].parse(response.body).data as AuditLogEntry[];
     const tied = entries.find((entry) => entry.id === rowsA[1]);
@@ -134,6 +146,20 @@ describe('audit log reads (PLAT-7 item C)', () => {
     expect(platformRow).toMatchObject({ actor_type: 'platform_user', account_id: accountA });
     expect(platformRow).not.toHaveProperty('ip');
     expect(platformRow).not.toHaveProperty('user_agent');
+    // Ruling L-3: merchants never see support reasons nor the platform's internals.
+    expect(platformRow?.reason).toBeNull();
+    expect(platformRow?.after).toEqual({ outcome: 'ok' });
+    expect(platformRow?.actor_id).toEqual(expect.any(String));
+  });
+
+  it('refuses a cursor replayed by another account (adversary I-1)', async () => {
+    const first = await listStaff(accountA, '?limit=1');
+    const cursor = staffList.responses['200'].parse(first.body).next_cursor ?? '';
+    expect(cursor).not.toBe('');
+    const replay = await listStaff(accountB, `?limit=1&cursor=${cursor}`, 400);
+    expect(staffList.responses['4XX'].parse(replay.body).details?.fields).toEqual([
+      expect.objectContaining({ pointer: '/query/cursor', code: 'invalid' }),
+    ]);
   });
 
   it('pages through the rows with stable cursors in both directions', async () => {
@@ -181,6 +207,7 @@ describe('audit log reads (PLAT-7 item C)', () => {
       { occurredAt: '2026-11-03 00:00:05+00', id: rowsA[2] ?? '' },
       {
         operation: 'listAuditLog',
+        principal: `account:${accountA}`,
         filters: { target_type: 'site' },
         sort: '-occurred_at',
       },
@@ -237,7 +264,13 @@ describe('audit log reads (PLAT-7 item C)', () => {
       .set('X-Support-Reason', 'Ticket 9002')
       .expect(200);
     const [entry] = accountList.responses['200'].parse(response.body).data as AuditLogEntry[];
-    expect(entry).toMatchObject({ id: rowsA[0], ip: '203.0.113.7', user_agent: 'support-console' });
+    expect(entry).toMatchObject({
+      id: rowsA[0],
+      ip: '203.0.113.7',
+      user_agent: 'support-console',
+      reason: 'Ticket 1: driver run missing',
+      after: { operation: 'PlatformAuditLogController.listAccount' },
+    });
   });
 
   it('platformListAudit without account_id returns platform rows only, with no door row', async () => {

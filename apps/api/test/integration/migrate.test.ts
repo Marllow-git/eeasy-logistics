@@ -1,13 +1,11 @@
-import { expectedSchemaVersion, runMigrations } from '@eeasy-logistics/db/migrate';
-import { describe, expect, it } from 'vitest';
-import { migrationsFolder } from '../../src/migrate/run.js';
-import { createPlatformPool } from '@eeasy-logistics/db/platform';
-import { AuditWriter } from '../../src/modules/kernel/audit/audit-writer.js';
+import { uuidv7 } from '@eeasy-logistics/db';
 import {
-  ownerPartitionMaintenance,
-  retentionCutoff,
-  runAuditPartitionJob,
-} from '../../src/worker/system/audit-partitions.js';
+  expectedSchemaVersion,
+  maintainAuditPartitions,
+  runMigrations,
+} from '@eeasy-logistics/db/migrate';
+import { describe, expect, it } from 'vitest';
+import { maintainAuditLog, migrationsFolder, retentionCutoff } from '../../src/migrate/run.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // The migration runner on this run's database, already migrated by global-setup.ts (PLAT-5 item B).
@@ -68,14 +66,14 @@ describe('runMigrations', () => {
   });
 });
 
-// The worker's audit partition job on the real database (PLAT-7 item D), in this file so it never
-// races the partition re-creation case above (vitest runs one file's tests in order).
-describe('the audit partition job', () => {
+// The migration job's audit partition maintenance on the real database (PLAT-7, adversary M-1 and
+// M-3), in this file so it never races the partition re-creation case above (vitest runs one
+// file's tests in order).
+describe('audit partition maintenance in the migration job', () => {
   const config = integrationConfig();
 
-  it('keeps partitions ahead, drops a planted 25-month-old one and audits the drop', async () => {
+  it('keeps partitions ahead, drops a planted 25-month-old one and audits the drop in its transaction', async () => {
     const owner = connectAs('owner', config);
-    const platform = createPlatformPool(config.db, 'elx-test-partitions');
     try {
       const [old] = await owner<{ name: string; lower: string; upper: string }[]>`
         SELECT 'core_audit_log_' || to_char(m, 'YYYYMM') AS name,
@@ -98,51 +96,63 @@ describe('the audit partition job', () => {
         VALUES (${old?.lower ?? ''}::timestamptz + interval '1 day', 'system', 'test', 'old',
                 'platform.test.planted', 'planted')`;
 
-      const set = () => Promise.resolve('OK' as const);
-      const run = await runAuditPartitionJob(
-        ownerPartitionMaintenance(config),
-        new AuditWriter(platform),
-        { set },
-        config.audit.retentionMonths,
+      const logs: string[] = [];
+      const run = await maintainAuditLog(
+        config,
+        (line) => logs.push(line),
+        (line) => logs.push(line),
       );
-      expect(run).toMatchObject({ ran: true, dropped: 1 });
+      expect(run).toMatchObject({ ran: true, dropped: [{ partition: name }] });
+      expect(logs[0]).toContain(`1 dropped past ${config.audit.retentionMonths} months (${name})`);
 
       const [gone] = await owner<{ exists: boolean }[]>`
         SELECT to_regclass(${name}) IS NOT NULL AS exists`;
       expect(gone?.exists).toBe(false);
-      const rows = await owner<{ actorType: string; accountId: string | null; after: unknown }[]>`
-        SELECT actor_type AS "actorType", account_id AS "accountId", after FROM core_audit_log
+      const rows = await owner<
+        { actorType: string; actorId: string | null; accountId: string | null; after: unknown }[]
+      >`
+        SELECT actor_type AS "actorType", actor_id AS "actorId", account_id AS "accountId", after
+        FROM core_audit_log
         WHERE action = 'platform.audit_partition.dropped' AND target_id = ${name}`;
       expect(rows).toEqual([
         {
           actorType: 'system',
+          actorId: null,
           accountId: null,
-          after: {
-            partition: name,
-            upper_bound: `${(old?.upper ?? '').slice(0, 10)}T00:00:00Z`,
-          },
+          after: { partition: name, upper_bound: `${(old?.upper ?? '').slice(0, 10)}T00:00:00Z` },
         },
       ]);
-      // Three months ahead still exist after the job.
+      // Three months ahead still exist afterwards.
       const [ahead] = await owner<{ n: number }[]>`
         SELECT count(*)::int AS n FROM generate_series(0, 3) step
         WHERE to_regclass('core_audit_log_' || to_char(date_trunc('month', now() AT TIME ZONE 'UTC')
                 + make_interval(months => step), 'YYYYMM')) IS NOT NULL`;
       expect(ahead?.n).toBe(4);
     } finally {
-      await Promise.all([owner.end(), platform.close()]);
+      await owner.end();
     }
   });
 
-  it('keeps a partition still inside the retention', () => {
-    // The cutoff is the first day of the month 24 months back: that month's partition (upper
-    // bound one month later) stays.
-    expect(retentionCutoff(new Date('2026-11-01T00:00:00Z'), 24)).toBe('2024-11-01');
+  it('keeps the partition of the month the retention reaches back to', () => {
+    // The cutoff is that month's first day: its partition (upper bound one month later) stays.
+    expect(retentionCutoff(new Date('2026-11-01T00:30:00Z'), 24)).toBe('2024-11-01');
+    expect(retentionCutoff(new Date('2026-01-31T23:59:59Z'), 24)).toBe('2024-01-01');
+    expect(retentionCutoff(new Date('2026-03-10T12:00:00Z'), 36)).toBe('2023-03-01');
   });
 
-  it('refuses a cutoff inside 24 months even if the job were misconfigured', async () => {
-    await expect(ownerPartitionMaintenance(config)('2025-06-01')).rejects.toMatchObject({
-      code: '22023',
-    });
+  it('refuses a cutoff inside 24 months even if the configuration were wrong', async () => {
+    await expect(
+      maintainAuditPartitions({ url: config.db.urls.owner, cutoff: '2025-06-01', runId: uuidv7() }),
+    ).rejects.toMatchObject({ code: '22023' });
+  });
+
+  it('refuses to run on any login but the plain elx_owner (adversary L-1)', async () => {
+    await expect(
+      maintainAuditPartitions({
+        url: config.db.urls.platform,
+        cutoff: '2020-01-01',
+        runId: uuidv7(),
+      }),
+    ).rejects.toThrow('Audit partition maintenance runs only as the plain elx_owner login');
   });
 });

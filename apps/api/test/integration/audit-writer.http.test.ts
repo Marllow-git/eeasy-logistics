@@ -6,7 +6,9 @@ import type postgres from 'postgres';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from '../../src/app.module.js';
+import { configureHttp, createHttpAdapter } from '../../src/http-app.js';
 import { AuditWriter } from '../../src/modules/kernel/audit/audit-writer.js';
 import { KernelModule } from '../../src/modules/kernel/kernel.module.js';
 import { PLATFORM_POOL } from '../../src/modules/kernel/platform/tokens.js';
@@ -241,7 +243,10 @@ describe('AuditWriter on core_audit_log (PLAT-7 item B)', () => {
       .set('X-Support-Reason', 'Ticket 7002')
       .expect(200);
     const rows = await rowsOf(response);
-    expect(rows.map((row) => [row.action, (row.after as { outcome?: string }).outcome])).toEqual([
+    // Both rows share the transaction's now(); ids of one millisecond do not order them, so sort.
+    expect(
+      rows.map((row) => [row.action, (row.after as { outcome?: string }).outcome]).sort(),
+    ).toEqual([
       ['core.site.updated', undefined],
       ['platform.cross_tenant.accessed', 'ok'],
     ]);
@@ -263,5 +268,51 @@ describe('AuditWriter on core_audit_log (PLAT-7 item B)', () => {
     } finally {
       failAccessRow = false;
     }
+  });
+});
+
+describe('an unusable forwarded address behind the trusted proxy (adversary L-2)', () => {
+  const signing = testSigningKey();
+  const config = integrationConfig({
+    AUTH_SIGNING_KEY_ID: signing.keyId,
+    AUTH_SIGNING_KEY: signing.key,
+    TRUST_PROXY_HOPS: '1',
+  });
+  const account = uuidv7();
+  let owner: postgres.Sql;
+  let app: NestExpressApplication;
+
+  beforeAll(async () => {
+    owner = connectAs('owner', config);
+    await owner`INSERT INTO core_accounts (id, name) VALUES (${account}, 'Forwarded garbage')`;
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule.forRoot(config), KernelModule],
+      controllers: [PlatformAuditProbe],
+    }).compile();
+    app = moduleRef.createNestApplication<NestExpressApplication>(createHttpAdapter(config), {
+      logger: false,
+    });
+    configureHttp(app);
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+    await owner?.end();
+  });
+
+  it('answers the door call and stores no ip', async () => {
+    const cookie = `${platformCookie}=${await signAccessToken(signing, 'platform')}`;
+    const response = await request(app.getHttpServer())
+      .get(`/v1/platform/accounts/${account}/audit-effect`)
+      .set('Cookie', cookie)
+      .set('X-Support-Reason', 'Ticket 7004')
+      .set('X-Forwarded-For', 'not-an-ip')
+      .expect(200);
+    const rows = await auditRowsOf(owner, response.headers['x-request-id'] ?? '');
+    expect(rows.map((row) => [row.action, row.ip]).sort()).toEqual([
+      ['core.site.updated', null],
+      ['platform.cross_tenant.accessed', null],
+    ]);
   });
 });

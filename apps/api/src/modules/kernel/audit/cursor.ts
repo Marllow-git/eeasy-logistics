@@ -18,9 +18,14 @@ export function cursorHmacKey(signingKey: string): Buffer {
   return Buffer.from(hkdfSync('sha256', signingKey, Buffer.alloc(0), 'elx-cursor', 32));
 }
 
-/** What a cursor is bound to: the operation, its filters and its sort (never the limit). */
+/**
+ * What a cursor is bound to: the operation, who reads (adversary I-1: `account:<id>` on the staff
+ * surface, `platform:<user id>` on the platform surface, whose filters carry `account_id`), its
+ * filters and its sort (never the limit).
+ */
 export interface CursorBinding {
   readonly operation: string;
+  readonly principal: string;
   readonly filters: Readonly<Record<string, string | undefined>>;
   readonly sort: string;
 }
@@ -30,7 +35,14 @@ function bindingHash(binding: CursorBinding): string {
     Object.entries(binding.filters).filter(([, value]) => value !== undefined),
   );
   return createHash('sha256')
-    .update(canonicalJson({ operation: binding.operation, filters, sort: binding.sort }))
+    .update(
+      canonicalJson({
+        operation: binding.operation,
+        principal: binding.principal,
+        filters,
+        sort: binding.sort,
+      }),
+    )
     .digest('base64url');
 }
 

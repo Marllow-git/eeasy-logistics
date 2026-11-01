@@ -5,6 +5,7 @@ import {
   appendOnlyTables,
   globalUniqueIndexes,
   nullableAccountTables,
+  piiColumns,
   tenancyExemptions,
 } from './exemptions.js';
 import { partitionGrantProblems, partitionsOf } from './partitions.js';
@@ -216,6 +217,23 @@ describe('tenancy schema (data §4.1)', () => {
     for (const row of triggered) {
       if (!appendOnlyTables.includes(row.table) && !partitionsOfListed.has(row.table)) {
         problems.push(`${row.table}: has the append-only trigger but is not in appendOnlyTables`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('tags every listed personal-data column with a pii: comment (data §10; PLAT-7 L-3)', async () => {
+    const problems: string[] = [];
+    for (const [table, columns] of Object.entries(piiColumns)) {
+      for (const column of columns) {
+        const [row] = await owner<{ comment: string | null }[]>`
+          SELECT col_description(a.attrelid, a.attnum) AS comment
+          FROM pg_attribute a
+          WHERE a.attrelid = ${table}::regclass AND a.attname = ${column} AND NOT a.attisdropped`;
+        if (row === undefined) problems.push(`${table}.${column}: no such column`);
+        else if (!/^pii:[a-z_]+$/.test(row.comment ?? '')) {
+          problems.push(`${table}.${column}: no pii: comment`);
+        }
       }
     }
     expect(problems).toEqual([]);

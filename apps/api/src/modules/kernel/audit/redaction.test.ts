@@ -72,6 +72,49 @@ describe('redactForAudit', () => {
     expect(keyTokens('signing-key.id_v2')).toEqual(['signing', 'key', 'id', 'v', '2']);
   });
 
+  it.each([
+    'apiKey',
+    'keyId',
+    'x-api-key',
+    'apikey',
+    'privateKey',
+    'passcode',
+    'session_id',
+    'jwt',
+    'webhook_signature',
+    'password_salt',
+    'card_cvv',
+    'iban',
+  ])('redacts %s (adversary M-2 words, separators removed)', (key) => {
+    expect(redactForAudit({ [key]: 'value' })).toEqual({ [key]: '[redacted]' });
+  });
+
+  it.each(['shipping_fee', 'footprint', 'sessionless_count'])('keeps %s (adversary M-2)', (key) => {
+    expect(redactForAudit({ [key]: 'value' })).toEqual({ [key]: 'value' });
+  });
+
+  it('redacts a JWT or a Bearer credential whatever its key, also in an array of pairs', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6ImF0K2p3dCJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJlLWJ5dGVz';
+    expect(
+      redactForAudit({
+        note: jwt,
+        headers: [
+          ['accept', 'application/json'],
+          ['x-forwarded', 'Bearer abc.def'],
+        ],
+        version: '1.2.3',
+      }),
+    ).toEqual({
+      note: '[redacted]',
+      headers: [
+        ['accept', 'application/json'],
+        ['x-forwarded', '[redacted]'],
+      ],
+      version: '1.2.3',
+    });
+    expect(redactText(`Bearer ${jwt}`)).toBe('[redacted]');
+  });
+
   it('keeps keys that name no secret', () => {
     const value = { name: 'Main site', status: 'active', count: 3, ok: true, none: null };
     expect(redactForAudit(value)).toEqual(value);

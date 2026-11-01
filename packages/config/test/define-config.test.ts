@@ -247,17 +247,16 @@ describe('PUBLIC_ADMIN_URL (WEB-19 decision 2.5, ADR-0038)', () => {
 });
 
 describe('audit log settings (PLAT-7 plan 2.8)', () => {
-  it('defaults to 24 months and the partition job on', () => {
-    expect(defineConfig(minimalEnv).audit).toEqual({ retentionMonths: 24, partitionJob: true });
+  it('defaults to 24 months', () => {
+    expect(defineConfig(minimalEnv).audit).toEqual({ retentionMonths: 24 });
   });
 
-  it('accepts a longer retention and the job off', () => {
-    const config = defineConfig({
-      ...minimalEnv,
-      AUDIT_RETENTION_MONTHS: '36',
-      AUDIT_PARTITION_JOB: 'off',
-    });
-    expect(config.audit).toEqual({ retentionMonths: 36, partitionJob: false });
+  it('accepts a longer retention, also for the migrate role', () => {
+    const config = defineConfig(
+      { ...minimalEnv, AUDIT_RETENTION_MONTHS: '36' },
+      { role: 'migrate' },
+    );
+    expect(config.audit).toEqual({ retentionMonths: 36 });
   });
 
   it.each(['23', '0', '121', '024', 'two', '-24'])(
@@ -269,11 +268,6 @@ describe('audit log settings (PLAT-7 plan 2.8)', () => {
       expect(error.issues.map((issue) => issue.variable)).toEqual(['AUDIT_RETENTION_MONTHS']);
     },
   );
-
-  it('refuses an AUDIT_PARTITION_JOB other than on or off', () => {
-    const error = configError(() => defineConfig({ ...minimalEnv, AUDIT_PARTITION_JOB: 'yes' }));
-    expect(error.issues.map((issue) => issue.variable)).toEqual(['AUDIT_PARTITION_JOB']);
-  });
 });
 
 describe('TRUST_PROXY_HOPS (PLAT-6 review round 2, platform §8)', () => {

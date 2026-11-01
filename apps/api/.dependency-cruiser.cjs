@@ -70,19 +70,18 @@ module.exports = {
     {
       name: 'db-migrate-only-in-owner-jobs',
       comment:
-        'ADR-0031, PLAT-7 plan 2.8: @eeasy-logistics/db/migrate opens elx_owner connections; ' +
-        'only the migration job (src/migrate/), the audit partition job ' +
-        '(src/worker/system/audit-partitions.ts), the seed tool (local and ci), /ready for the ' +
-        'expected version, and the database test harness import it.',
+        'ADR-0031, PLAT-7 adversary M-3 and L-1: @eeasy-logistics/db/migrate opens elx_owner ' +
+        'connections; only the migration job (src/migrate/, with the audit partitions), the seed ' +
+        'tool (local and ci), /ready for the expected version, the database test harness and ' +
+        'packages/db itself import it.',
       severity: 'error',
       from: {
         pathNot: [
           '(?:^|/)src/migrate/',
-          '(?:^|/)src/worker/system/audit-partitions\\.ts$',
           '^src/seed/',
           '^src/health/readiness\\.module\\.ts$',
           '^test/(?:integration|schema)/',
-          '(?:^|/)packages/',
+          '(?:^|/)packages/db/',
         ],
       },
       to: { path: '(?:^|/)packages/db/src/migrate\\.ts$' },
