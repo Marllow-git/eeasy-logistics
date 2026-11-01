@@ -57,6 +57,11 @@ vi.mock('../../src/modules/kernel/messaging/templates.js', async (importOriginal
     messageTemplates,
     isTemplateKey: (value: unknown) =>
       typeof value === 'string' && Object.hasOwn(messageTemplates, value),
+    // The test templates take one plain parameter; the real ones keep the real check.
+    templateParamsProblem: (key: string, params: Readonly<Record<string, string>>) =>
+      key.startsWith('test_')
+        ? undefined
+        : original.templateParamsProblem(key as keyof typeof original.messageTemplates, params),
   };
 });
 

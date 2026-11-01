@@ -37,6 +37,8 @@ export interface TemplateDefinition {
   readonly secretParams: readonly string[];
   /** Waits out quiet hours (integrations §5.4); none in wave 0, and never OTP. */
   readonly deferrable: boolean;
+  /** Mail templates: the one parameter that may carry a URL (the one-time link, PLAT-11). */
+  readonly linkParam?: string;
   /** WhatsApp templates only: the engine `message_type` it is sent as (ADR-0041). */
   readonly engineMessageType?: EngineMessageType;
 }
@@ -52,6 +54,7 @@ export const messageTemplates = {
   },
   invitation: {
     channel: 'mail',
+    linkParam: 'link',
     category: 'transactional',
     params: ['account_name', 'link'],
     secretParams: [],
@@ -59,6 +62,7 @@ export const messageTemplates = {
   },
   password_reset: {
     channel: 'mail',
+    linkParam: 'link',
     category: 'transactional',
     params: ['link'],
     secretParams: [],
@@ -66,6 +70,7 @@ export const messageTemplates = {
   },
   platform_invitation: {
     channel: 'mail',
+    linkParam: 'link',
     category: 'transactional',
     params: ['link'],
     secretParams: [],
@@ -96,6 +101,41 @@ export class TemplateParamsError extends Error {
   }
 }
 
+/** Parameters with a length cap (adversary L-7; bounding the name at creation is PLAT-12's). */
+export const paramMaxLength: Readonly<Record<string, number>> = { account_name: 80 };
+
+/**
+ * Why `params` cannot fill the template, or undefined: an unknown, missing or empty parameter; in a
+ * mail, a line break anywhere, or `://` outside the template's link parameter (adversary L-7: a
+ * value from domain data, an account name, cannot smuggle a header line or a second link into an
+ * invitation); a value over its cap. Producers check at enqueue; the `message` handler checks again
+ * at send time and makes a row that fails `dead`.
+ */
+export function templateParamsProblem(
+  key: TemplateKey,
+  params: Readonly<Record<string, string>>,
+): string | undefined {
+  const definition: TemplateDefinition = messageTemplates[key];
+  for (const name of Object.keys(params)) {
+    if (!definition.params.includes(name)) return `unknown parameter ${name}`;
+  }
+  for (const name of definition.params) {
+    const value = Object.hasOwn(params, name) ? params[name] : undefined;
+    if (typeof value !== 'string' || value === '') return `parameter ${name} is missing`;
+    const cap = Object.hasOwn(paramMaxLength, name) ? paramMaxLength[name] : undefined;
+    if (cap !== undefined && Array.from(value).length > cap) {
+      return `parameter ${name} is longer than ${cap} characters`;
+    }
+    if (definition.channel === 'mail') {
+      if (/[\r\n]/.test(value)) return `parameter ${name} carries a line break`;
+      if (name !== definition.linkParam && value.includes('://')) {
+        return `parameter ${name} carries a link`;
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * Fills a template's texts in a locale. Every registry parameter must be given, as a non-empty
  * string, and nothing else: a free-text field cannot slip into a message (ADR-0037). Mail bodies are
@@ -106,18 +146,8 @@ export function renderTemplate(
   locale: Locale,
   params: Readonly<Record<string, string>>,
 ): RenderedTemplate {
-  const definition: TemplateDefinition = messageTemplates[key];
-  const given = Object.keys(params);
-  for (const name of given) {
-    if (!definition.params.includes(name))
-      throw new TemplateParamsError(key, `unknown parameter ${name}`);
-  }
-  for (const name of definition.params) {
-    const value = Object.hasOwn(params, name) ? params[name] : undefined;
-    if (typeof value !== 'string' || value === '') {
-      throw new TemplateParamsError(key, `parameter ${name} is missing`);
-    }
-  }
+  const problem = templateParamsProblem(key, params);
+  if (problem !== undefined) throw new TemplateParamsError(key, problem);
   const texts = messageTemplateTexts[locale][key] as Readonly<Record<string, string>>;
   const rendered: Record<string, string> = {};
   for (const [part, text] of Object.entries(texts)) {

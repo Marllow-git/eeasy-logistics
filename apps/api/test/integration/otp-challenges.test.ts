@@ -248,7 +248,7 @@ describe('OtpService on the database (PLAT-9 item C)', () => {
     expect(await outboxRows(phone)).toHaveLength(1);
   });
 
-  it('after the cooldown, a resend supersedes the unsent row and only the new code verifies', async () => {
+  it('after the cooldown, a resend supersedes the unsent row, and the first code still verifies (adversary M-2)', async () => {
     const phone = fresh();
     await request(phone);
     const first = (await outboxRows(phone))[0] as OutboxRow;
@@ -258,10 +258,39 @@ describe('OtpService on the database (PLAT-9 item C)', () => {
     expect(rows.map((row) => row.status)).toEqual(['superseded', 'pending']);
     const firstCode = codeOf(first);
     const secondCode = codeOf(rows[1] as OutboxRow);
-    if (firstCode !== secondCode) {
-      expect(await failure(verify(phone, firstCode))).toBe('otp_invalid');
-    }
-    await expect(verify(phone, secondCode)).resolves.toEqual({ phone });
+    // The first code may already have reached the phone: it verifies within its five minutes.
+    await expect(verify(phone, firstCode)).resolves.toEqual({ phone });
+    // A success consumes every live challenge of the phone and purpose.
+    expect(await failure(verify(phone, secondCode))).toBe('otp_invalid');
+    expect((await challenges(phone)).every((row) => row.consumed_at instanceof Date)).toBe(true);
+  });
+
+  it('lets one of two concurrent verifications with two live codes succeed (adversary M-2)', async () => {
+    const phone = fresh();
+    await request(phone);
+    const first = codeOf((await outboxRows(phone))[0] as OutboxRow);
+    await pastCooldown(phone);
+    await request(phone);
+    const second = codeOf((await outboxRows(phone))[1] as OutboxRow);
+    let pending: Promise<string>[] = [];
+    await owner.begin(async (tx) => {
+      await tx`SELECT id FROM core_otp_challenges WHERE phone = ${phone} FOR UPDATE`;
+      pending = [failure(verify(phone, first)), failure(verify(phone, second))];
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    const outcomes = await Promise.all(pending);
+    expect(outcomes.sort()).toEqual(['otp_invalid', 'resolved']);
+  });
+
+  it('counts a wrong code against every live challenge', async () => {
+    const phone = fresh();
+    await request(phone);
+    await pastCooldown(phone);
+    await request(phone);
+    const codes = (await outboxRows(phone)).map((row) => codeOf(row));
+    const wrong = ['000000', '111111', '222222'].find((code) => !codes.includes(code)) ?? '333333';
+    expect(await failure(verify(phone, wrong))).toBe('otp_invalid');
+    expect((await challenges(phone)).map((row) => row.attempts)).toEqual([1, 1]);
   });
 
   it('allows 5 requests per phone an hour, whatever the spelling (budget keyed by E.164)', async () => {

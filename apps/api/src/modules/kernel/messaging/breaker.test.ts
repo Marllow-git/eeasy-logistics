@@ -75,7 +75,13 @@ describe('BreakerSender', () => {
     expect(await store.isOpen('stub')).toBe(true);
   });
 
-  it.each(['rate_limited', 'unauthorised', 'permanent'] as const)(
+  it('counts refused credentials as an outage (adversary M-3)', async () => {
+    const { breaker } = setup(() => Promise.reject(new ProviderFailure('unauthorised', 'no')));
+    for (let index = 0; index < 5; index += 1) await breaker.sendTemplate(input).catch(() => 0);
+    expect(breaker.state).toBe('open');
+  });
+
+  it.each(['rate_limited', 'permanent'] as const)(
     'does not count a %s answer as an outage',
     async (reason) => {
       const { breaker } = setup(() => Promise.reject(new ProviderFailure(reason, 'no')));

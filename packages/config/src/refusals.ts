@@ -83,9 +83,34 @@ export const localAndCiOnly: readonly ServerVariable[] = [
   'MESSAGING_STUB_URL',
 ];
 
+/**
+ * The engine credentials that must not keep a local value in staging or production (PLAT-9
+ * adversary L-5): `.env.example`'s placeholders, or anything marked `not-for-production`.
+ */
+export const engineCredentialVariables: readonly ServerVariable[] = [
+  'WHATSAPP_ENGINE_KEY_ID',
+  'WHATSAPP_ENGINE_COMMAND_SECRET',
+  'WHATSAPP_ENGINE_CALLBACK_KEY_ID',
+  'WHATSAPP_ENGINE_CALLBACK_SECRET',
+];
+const localPlaceholders: ReadonlySet<string> = new Set(['local-command', 'local-callback']);
+
 export function productionRefusals(input: RefusalInput): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
   if (input.appEnv === 'staging' || input.appEnv === 'production') {
+    for (const variable of engineCredentialVariables) {
+      const value = input.raw(variable);
+      // Only the verdict is reported, never the value.
+      if (
+        value !== undefined &&
+        (localPlaceholders.has(value) || value.includes('not-for-production'))
+      ) {
+        issues.push({
+          variable,
+          problem: `holds the local placeholder of .env.example; ${input.appEnv} refuses it`,
+        });
+      }
+    }
     for (const variable of refusedInDeployedEnvironments(input.role)) {
       if (input.present(variable)) {
         const problem = localAndCiOnly.includes(variable)

@@ -6,7 +6,9 @@ import { ApiException } from '../errors/api-exception.js';
 import type { OutboxWriter } from '../outbox/outbox-writer.js';
 import type { OtpStore } from '../platform/otp-challenges.repository.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
+import type { NamedBudgetName } from '../rate-limit/budgets.js';
 import { addressKey } from '../rate-limit/rate-limiter.js';
+import { getMetrics } from '../telemetry/metrics.js';
 import type { OtpPurpose } from '../schema/otp-challenges.js';
 import type { BreakerStateStore } from './breaker.js';
 import type { MessageSenders } from './message-sender.js';
@@ -26,6 +28,8 @@ export const otpRules = {
   ttlSeconds: 300,
   cooldownSeconds: 60,
   maxAttempts: 5,
+  /** Live challenges a verification compares against (adversary M-2). */
+  liveChallenges: 5,
 } as const;
 
 /** Whether an OTP can be sent now (integrations §2.4 "Breaker and degraded"). */
@@ -97,8 +101,27 @@ export interface OtpServiceDependencies {
 }
 
 const codePattern = /^[0-9]{6}$/;
+
+/** A refused OTP request, by reason (`otp_requests_refused_total`; adversary M-1). */
+function refused(reason: string): void {
+  getMetrics().add('otp_requests_refused_total', 1, { reason });
+}
+
+/** Charges one named budget, counting a refusal under the budget's name. */
+async function charged(
+  limiter: Pick<RateLimiter, 'charge'> | undefined,
+  name: NamedBudgetName,
+  identity: string,
+): Promise<void> {
+  try {
+    await limiter?.charge(name, identity);
+  } catch (error) {
+    if (error instanceof ApiException && error.code === 'rate_limited') refused(name);
+    throw error;
+  }
+}
 /** Compared when there is no challenge, so a miss costs the same HMACs as a wrong code. */
-const absentChallenge = { id: '00000000-0000-7000-8000-000000000000', hash: Buffer.alloc(32) };
+const absentChallenge = { id: '00000000-0000-7000-8000-000000000000', codeHash: Buffer.alloc(32) };
 
 export class OtpService {
   readonly #deps: OtpServiceDependencies;
@@ -126,7 +149,10 @@ export class OtpService {
     }
     const { store, cipher, hasher } = this.#ready();
     const { limiter, availability, outbox } = this.#deps;
-    if (!(await availability.whatsappAvailable())) throw new ApiException('messaging_unavailable');
+    if (!(await availability.whatsappAvailable())) {
+      refused('unavailable');
+      throw new ApiException('messaging_unavailable');
+    }
 
     const code = generateOtpCode();
     const id = uuidv7();
@@ -134,6 +160,7 @@ export class OtpService {
       await challenges.lockPhone(phone, input.purpose);
       const wait = await challenges.cooldownLeft(phone, input.purpose, otpRules.cooldownSeconds);
       if (wait > 0) {
+        refused('cooldown');
         throw new ApiException('rate_limited', {
           details: { retry_after_s: wait },
           headers: { 'Retry-After': String(wait) },
@@ -142,8 +169,13 @@ export class OtpService {
       // The phone first: a phone out of budget never charges the address (review round 2,
       // finding 2). The Redis counters are not transactional with the insert below; a rolled-back
       // request keeps its charges (both budgets are protective and answer 429 either way).
-      await limiter?.charge('otp_request_phone', `phone:${hasher.phoneRef(phone)}`);
-      await limiter?.charge('otp_request_ip', `ip:${addressKey(input.ip)}`);
+      // Then the phone's day, the address, and the platform's hour (adversary M-1), each charged only
+      // when every narrower one passed.
+      const phoneRef = `phone:${hasher.phoneRef(phone)}`;
+      await charged(limiter, 'otp_request_phone', phoneRef);
+      await charged(limiter, 'otp_request_phone_day', phoneRef);
+      await charged(limiter, 'otp_request_ip', `ip:${addressKey(input.ip)}`);
+      await charged(limiter, 'otp_request_global', 'all');
       await challenges.insert({
         id,
         phone,
@@ -173,11 +205,13 @@ export class OtpService {
   }
 
   /**
-   * Checks a code against the newest challenge of the phone and purpose, under a row lock: right,
-   * unexpired, unconsumed and under five wrong attempts consumes it; a wrong code counts an
-   * attempt. Every failure, including an unparseable phone or no challenge at all, throws
-   * `401 otp_invalid` and nothing else. An unparseable phone is refused before any transaction
-   * (review round 1, finding 3): its format is structural, not a secret to time.
+   * Checks a code against every live challenge of the phone and purpose (adversary M-2: a code stays
+   * valid for its five minutes after a resend), at most five, newest first, under row locks. The
+   * HMAC runs on five slots whatever the count (absent ones on a dummy), so the time does not tell
+   * how many codes are live. A match consumes every live challenge; a wrong code adds one attempt to
+   * each (five invalidate a challenge). Every failure, including an unparseable phone or no live
+   * challenge, throws `401 otp_invalid` and nothing else. An unparseable phone is refused before any
+   * transaction (review round 1, finding 3): its format is structural, not a secret to time.
    */
   async verify(input: OtpVerification): Promise<VerifiedPhone> {
     const { store, hasher } = this.#ready();
@@ -185,20 +219,24 @@ export class OtpService {
     if (phone === undefined) throw new ApiException('otp_invalid');
     const wellFormed = codePattern.test(input.code);
     const verified = await store.run(async ({ challenges }) => {
-      const challenge = await challenges.lockNewest(phone, input.purpose);
-      if (challenge === undefined) {
-        hasher.matches(absentChallenge.id, input.code, absentChallenge.hash);
-        return false;
+      const live = await challenges.lockLive(
+        phone,
+        input.purpose,
+        otpRules.maxAttempts,
+        otpRules.liveChallenges,
+      );
+      let matched = false;
+      for (let slot = 0; slot < otpRules.liveChallenges; slot += 1) {
+        const challenge = live[slot] ?? absentChallenge;
+        const matches = hasher.matches(challenge.id, input.code, challenge.codeHash);
+        if (matches && slot < live.length) matched = true;
       }
-      const matches = hasher.matches(challenge.id, input.code, challenge.codeHash) && wellFormed;
-      const usable =
-        !challenge.consumed && !challenge.expired && challenge.attempts < otpRules.maxAttempts;
-      if (!usable) return false;
-      if (matches) {
-        await challenges.consume(challenge.id);
+      const ids = live.map((challenge) => challenge.id);
+      if (matched && wellFormed) {
+        await challenges.consumeAll(ids);
         return true;
       }
-      await challenges.recordFailure(challenge.id);
+      await challenges.recordFailures(ids);
       return false;
     });
     if (!verified) throw new ApiException('otp_invalid');
