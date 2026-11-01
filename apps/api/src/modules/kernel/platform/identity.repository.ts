@@ -561,6 +561,82 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
       .where(eq(corePlatformStaff.userId, userId));
     return row;
   }
+
+  /** The staff row with its TOTP secret and replay guard, locked `FOR UPDATE` (plan 2.9). */
+  async lockTotp(userId: string): Promise<PlatformStaffTotp | undefined> {
+    const [row] = await this.unscoped()
+      .select({
+        userId: corePlatformStaff.userId,
+        role: corePlatformStaff.role,
+        totpEnrolled: sql<boolean>`${corePlatformStaff.totpSecretCiphertext} IS NOT NULL`,
+        revoked: sql<boolean>`${corePlatformStaff.revokedAt} IS NOT NULL`,
+        secretCiphertext: corePlatformStaff.totpSecretCiphertext,
+        lastStep: corePlatformStaff.totpLastStep,
+      })
+      .from(corePlatformStaff)
+      .where(eq(corePlatformStaff.userId, userId))
+      .for('update');
+    return row;
+  }
+
+  /** The step of the last accepted code (the replay guard, RFC 6238 §5.2). */
+  async acceptedStep(userId: string, step: number): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({ totpLastStep: step, updatedAt: sql`now()` })
+      .where(eq(corePlatformStaff.userId, userId));
+  }
+
+  /** A confirmed TOTP secret, encrypted under `core_platform_staff:<user_id>`, and its first step. */
+  async enrolTotp(userId: string, ciphertext: Buffer, keyId: string, step: number): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({
+        totpSecretCiphertext: ciphertext,
+        totpKeyId: keyId,
+        totpLastStep: step,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(corePlatformStaff.userId, userId));
+  }
+
+  /**
+   * An accepted platform invitation (plan 2.10): the staff row with the invited role. A revoked row
+   * comes back with its TOTP cleared (enrol again); a live one only takes the role.
+   */
+  async grant(userId: string, role: PlatformStaffRole, grantedBy: string | null): Promise<void> {
+    await this.unscoped()
+      .insert(corePlatformStaff)
+      .values({ userId, role, grantedBy })
+      .onConflictDoUpdate({
+        target: corePlatformStaff.userId,
+        set: {
+          role,
+          grantedBy,
+          totpSecretCiphertext: sql`CASE WHEN ${corePlatformStaff.revokedAt} IS NULL THEN ${corePlatformStaff.totpSecretCiphertext} END`,
+          totpKeyId: sql`CASE WHEN ${corePlatformStaff.revokedAt} IS NULL THEN ${corePlatformStaff.totpKeyId} END`,
+          totpLastStep: sql`CASE WHEN ${corePlatformStaff.revokedAt} IS NULL THEN ${corePlatformStaff.totpLastStep} END`,
+          revokedAt: null,
+          updatedAt: sql`now()`,
+        },
+      });
+  }
+
+  /** Whether any platform staff row exists, or a live super admin invitation (the bootstrap, 2.12). */
+  async bootstrapped(): Promise<boolean> {
+    const rows = await this.unscoped().execute<{ found: boolean }>(sql`
+      SELECT EXISTS (SELECT 1 FROM core_platform_staff)
+          OR EXISTS (SELECT 1 FROM core_invitations
+                     WHERE kind = 'platform' AND platform_role = 'super_admin'
+                       AND accepted_at IS NULL AND expires_at > now()) AS found`);
+    return rows[0]?.found === true;
+  }
+}
+
+/** A staff row as the TOTP doors need it. */
+export interface PlatformStaffTotp extends PlatformStaffRow {
+  readonly secretCiphertext: Buffer | null;
+  readonly lastStep: number | null;
 }
 
 export interface InvitationRow {
@@ -574,6 +650,7 @@ export interface InvitationRow {
   readonly locale: UserLocale;
   readonly accepted: boolean;
   readonly expired: boolean;
+  readonly invitedBy: string | null;
 }
 
 export class InvitationsRepository extends PlatformRepository<typeof coreInvitations> {
@@ -614,6 +691,7 @@ export class InvitationsRepository extends PlatformRepository<typeof coreInvitat
         locale: coreInvitations.locale,
         accepted: sql<boolean>`${coreInvitations.acceptedAt} IS NOT NULL`,
         expired: sql<boolean>`${coreInvitations.expiresAt} <= now()`,
+        invitedBy: coreInvitations.invitedBy,
       })
       .from(coreInvitations)
       .where(and(eq(coreInvitations.tokenHash, tokenHash), eq(coreInvitations.kind, kind)))

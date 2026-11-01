@@ -133,4 +133,25 @@ describe('refreshVerdict', () => {
       code: 'token_invalid',
     });
   });
+
+  it('ends a platform session after 12 hours idle: the row expires 12 h after its last rotation', () => {
+    // Item G: a platform row's `expires_at` is its rotation time plus the idle TTL (sliding), so
+    // the fake clock 12 h after the last rotation finds it expired, and a second earlier still live.
+    const platform = {
+      surface: 'platform' as const,
+      membershipId: null,
+      membership: null,
+      platformStaff: { role: 'super_admin' as const, revoked: false },
+    };
+    const request = { surface: 'platform' as const, userAgentHash: agent };
+    const rotatedAt = now.getTime();
+    const idle = 43_200 * 1000;
+    const at = (ms: number) =>
+      row({ ...platform, expiresAt: new Date(rotatedAt + idle), now: new Date(ms) });
+    expect(verdict(at(rotatedAt + idle - 1000), request)).toEqual({ kind: 'rotate' });
+    expect(verdict(at(rotatedAt + idle), request)).toEqual({
+      kind: 'refuse',
+      code: 'token_expired',
+    });
+  });
 });

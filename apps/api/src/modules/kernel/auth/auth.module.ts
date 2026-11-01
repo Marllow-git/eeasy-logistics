@@ -18,6 +18,7 @@ import { Invitations } from './invitations.js';
 import { PasswordResets } from './password-resets.js';
 import { BreachedPasswords, PasswordHasher } from './passwords.js';
 import { PlatformAuthController } from './platform-auth.controller.js';
+import { PlatformSignIn } from './platform-sign-in.js';
 import { SecondFactorResets } from './second-factor-resets.js';
 import { StaffSecondFactor } from './second-factor.js';
 import { SessionService } from './sessions.js';
@@ -108,6 +109,40 @@ export class AuthModule {
                 config.auth.signingKey === undefined
                   ? undefined
                   : emailKeyOf(config.auth.signingKey.reveal()),
+            }),
+        },
+        {
+          // PLAT-11 plan 2.9, 2.10: platform sign-in with TOTP.
+          provide: PlatformSignIn,
+          inject: [
+            SessionService,
+            PasswordHasher,
+            BreachedPasswords,
+            AUDIT_SINK,
+            StaffSignIn,
+            { token: PERMISSION_RESOLVER, optional: true },
+            { token: RATE_LIMITER, optional: true },
+          ],
+          useFactory: (
+            sessions: SessionService,
+            passwords: PasswordHasher,
+            breached: BreachedPasswords,
+            audit: AuditSink,
+            signIn: StaffSignIn,
+            resolver: PermissionResolver | undefined,
+            limiter: RateLimiter | undefined,
+          ) =>
+            new PlatformSignIn({
+              sessions,
+              passwords,
+              breached,
+              resolver,
+              audit,
+              limiter,
+              emailRef: (email) => signIn.emailRef(email),
+              cipher:
+                config.credentials === null ? null : createCredentialsCipher(config.credentials),
+              totpIssuer: config.auth.totpIssuer,
             }),
         },
         {

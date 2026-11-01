@@ -51,6 +51,9 @@ export const namedBudgets = {
   // pseudonym, never the address) and by the client address, the email charged first.
   login_email: { limit: 10, windowMs: hourMs },
   login_ip: { limit: 50, windowMs: hourMs },
+  // `platformLogin` counts apart from the staff door (plan 2.11: the same 10 and 50).
+  platform_login_email: { limit: 10, windowMs: hourMs },
+  platform_login_ip: { limit: 50, windowMs: hourMs },
   password_reset_email: { limit: 3, windowMs: hourMs },
   password_reset_ip: { limit: 20, windowMs: hourMs },
   /** Accept an invitation, confirm a reset, redeem an enrolment link, select an account. */
