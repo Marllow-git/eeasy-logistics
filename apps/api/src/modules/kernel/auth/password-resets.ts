@@ -6,6 +6,7 @@ import type { OutboxWriter } from '../outbox/outbox-writer.js';
 import type { IdentityStore } from '../platform/identity.repository.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { addressKey } from '../rate-limit/rate-limiter.js';
+import { countRevocations } from './auth-metrics.js';
 import { enqueueMail, mailLink } from './mail-links.js';
 import type { BreachedPasswords, PasswordHasher } from './passwords.js';
 import { passwordProblem } from './passwords.js';
@@ -101,6 +102,7 @@ export class PasswordResets {
       await tx.users.setPassword(user.id, passwordHash, { endSessions: true });
       await tx.resets.use(reset.id);
       const families = await tx.refreshTokens.revokeAll(user.id, 'password_reset');
+      countRevocations('password_reset', families.length);
       await this.#deps.audit.record({
         actorType: 'user',
         actorId: user.id,

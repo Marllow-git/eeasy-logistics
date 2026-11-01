@@ -30,6 +30,8 @@ const requiredForRuntime: readonly ServerVariable[] = [
 
 export function requiredInProduction(role: AppRole): readonly ServerVariable[] {
   if (role === 'migrate') return ['DATABASE_URL_OWNER'];
+  // The first super admin's invitation (PLAT-11 plan 2.12): the platform pool and the console URL.
+  if (role === 'bootstrap') return ['DATABASE_URL_PLATFORM', 'PUBLIC_ADMIN_URL'];
   // Only the api serves HTTP behind the edge (platform §8); see the depth check below.
   return role === 'api' ? [...requiredForRuntime, 'TRUST_PROXY_HOPS'] : requiredForRuntime;
 }
@@ -153,7 +155,7 @@ export function productionRefusals(input: RefusalInput): ConfigIssue[] {
   }
   // The release names the image the api and worker run (`sha-<commit>`, the Dockerfile's build
   // argument): `dev` or nothing would tag every span and error report wrongly (adversary A-8).
-  if (input.role !== 'migrate') {
+  if (input.role !== 'migrate' && input.role !== 'bootstrap') {
     const release = input.raw('ELX_RELEASE');
     if (release === undefined || release === '' || release === 'dev') {
       issues.push({
@@ -165,6 +167,7 @@ export function productionRefusals(input: RefusalInput): ConfigIssue[] {
   // The migration job sends nothing; only the api and worker need a messaging decision.
   if (
     input.role !== 'migrate' &&
+    input.role !== 'bootstrap' &&
     !input.present('MESSAGING_PROVIDER') &&
     input.messagingDisabled !== true
   ) {

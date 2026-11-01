@@ -227,6 +227,12 @@ export async function startWorker(
         deps.logger.log(
           `OTP purge: ${c.messages} message rows, ${c.challenges} challenges, ${c.nonces} callback nonces deleted`,
         );
+        const a = run.auth;
+        if (a !== undefined) {
+          deps.logger.log(
+            `Auth purge: ${a.refreshTokens} refresh tokens, ${a.invitations} invitations, ${a.passwordResets} resets, ${a.challenges} challenges deleted; ${a.successorsCleared} kept successors cleared`,
+          );
+        }
       }
     } catch (error) {
       deps.logger.warn(

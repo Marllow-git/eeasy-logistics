@@ -5,7 +5,8 @@ import type { PermissionResolver } from '../authz/permission-resolver.js';
 import { assertRoleCombination } from '../authz/separation.js';
 import { ApiException } from '../errors/api-exception.js';
 import type { OutboxWriter } from '../outbox/outbox-writer.js';
-import type { IdentityStore } from '../platform/identity.repository.js';
+import type { AuditSink } from '../audit/audit-sink.js';
+import type { IdentityStore, IdentityTransaction } from '../platform/identity.repository.js';
 import type { PlatformStaffRole } from '../schema/identity.js';
 import { enqueueMail, mailLink } from './mail-links.js';
 import { opaqueToken, tokenHash } from './tokens.js';
@@ -134,29 +135,79 @@ export class Invitations {
   /** Invites `email` as platform staff with `role`; the console link, no membership. */
   async createPlatform(input: PlatformInvitation): Promise<CreatedInvitation> {
     const store = this.#store();
-    const email = input.email.toLowerCase();
     const token = opaqueToken();
     const link = mailLink(this.#deps.publicAdminUrl, 'invitations', token);
-    const created = await store.run(async (tx) => {
-      const user = await tx.users.findByEmail(email);
-      const userId = user?.id ?? uuidv7();
-      if (user === undefined) {
-        await tx.users.insert({ id: userId, name: input.name, email, locale: input.locale });
-      }
-      const invitationId = uuidv7();
-      await tx.invitations.insert({
-        id: invitationId,
-        kind: 'platform',
+    const created = await store.run((tx) => this.#platform(tx, input, token, link, true));
+    this.#logger.log(`platform invitation created role=${input.role}`);
+    return created;
+  }
+
+  /**
+   * The first super admin (plan 2.12, the `--role bootstrap` command): under a transaction-scoped
+   * advisory lock, refuses (undefined) when any platform staff row or a live super admin invitation
+   * exists; else creates the invitation without a mail (SMTP may not exist yet; the command prints
+   * the link once) and audits `core.platform_staff.bootstrapped` as the system.
+   */
+  async bootstrap(
+    input: { readonly email: string; readonly name: string; readonly locale: Locale },
+    audit: Pick<AuditSink, 'record'>,
+    runId: string,
+  ): Promise<CreatedInvitation | undefined> {
+    const store = this.#store();
+    const token = opaqueToken();
+    const link = mailLink(this.#deps.publicAdminUrl, 'invitations', token);
+    return store.run(async (tx) => {
+      await tx.platformStaff.lockBootstrap();
+      if (await tx.platformStaff.bootstrapped()) return undefined;
+      const created = await this.#platform(
+        tx,
+        { ...input, role: 'super_admin', invitedBy: null },
+        token,
+        link,
+        false,
+      );
+      await audit.record({
+        actorType: 'system',
+        actorId: null,
         accountId: null,
-        membershipId: null,
-        platformRole: input.role,
-        email,
-        name: input.name,
-        locale: input.locale,
-        tokenHash: tokenHash(token),
-        ttlSeconds: invitationTtlSeconds,
-        invitedBy: input.invitedBy,
+        targetType: 'invitation',
+        targetId: created.invitationId,
+        action: 'core.platform_staff.bootstrapped',
+        after: { role: 'super_admin', user_id: created.userId },
+        requestId: runId,
       });
+      return created;
+    });
+  }
+
+  async #platform(
+    tx: IdentityTransaction,
+    input: PlatformInvitation,
+    token: string,
+    link: string,
+    mail: boolean,
+  ): Promise<CreatedInvitation> {
+    const email = input.email.toLowerCase();
+    const user = await tx.users.findByEmail(email);
+    const userId = user?.id ?? uuidv7();
+    if (user === undefined) {
+      await tx.users.insert({ id: userId, name: input.name, email, locale: input.locale });
+    }
+    const invitationId = uuidv7();
+    await tx.invitations.insert({
+      id: invitationId,
+      kind: 'platform',
+      accountId: null,
+      membershipId: null,
+      platformRole: input.role,
+      email,
+      name: input.name,
+      locale: input.locale,
+      tokenHash: tokenHash(token),
+      ttlSeconds: invitationTtlSeconds,
+      invitedBy: input.invitedBy,
+    });
+    if (mail) {
       await enqueueMail(this.#deps.outbox, tx, {
         type: 'core.invitation.created',
         aggregate: { type: 'invitation', id: invitationId },
@@ -166,10 +217,8 @@ export class Invitations {
         params: { link },
         supersedeKey: `platform_invitation:${userId}`,
       });
-      return { invitationId, userId, membershipId: null, link };
-    });
-    this.#logger.log(`platform invitation created role=${input.role}`);
-    return created;
+    }
+    return { invitationId, userId, membershipId: null, link };
   }
 
   #store(): IdentityStore {

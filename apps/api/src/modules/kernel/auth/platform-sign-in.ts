@@ -11,6 +11,7 @@ import type {
 } from '../platform/identity.repository.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { addressKey } from '../rate-limit/rate-limiter.js';
+import { countedLogin, countRevocations } from './auth-metrics.js';
 import type { IssuedSession } from './cookies.js';
 import type { PlatformMeView } from './me.js';
 import { platformMe } from './me.js';
@@ -93,6 +94,18 @@ export class PlatformSignIn {
    * or non-staff (or revoked) user; then a `totp` challenge.
    */
   async login(
+    input: { email: string; password: string },
+    facts: RequestFacts,
+  ): Promise<TotpChallengeStep> {
+    // The password step always leads to TOTP: its success is counted as `second_factor`.
+    return countedLogin(
+      'platform',
+      () => this.#login(input, facts),
+      () => 'second_factor',
+    );
+  }
+
+  async #login(
     input: { email: string; password: string },
     facts: RequestFacts,
   ): Promise<TotpChallengeStep> {
@@ -287,7 +300,8 @@ export class PlatformSignIn {
       if (user === undefined || user.disabled) throw new ApiException('token_invalid');
       const hadPassword = user.passwordHash !== null;
       await tx.users.setPassword(user.id, passwordHash, { name, endSessions: hadPassword });
-      if (hadPassword) await tx.refreshTokens.revokeAll(user.id, 'revoked');
+      if (hadPassword)
+        countRevocations('revoked', (await tx.refreshTokens.revokeAll(user.id, 'revoked')).length);
       await tx.platformStaff.grant(user.id, invitation.platformRole, invitation.invitedBy);
       await tx.invitations.accept(invitation.id);
       await this.#deps.audit.record({

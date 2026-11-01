@@ -622,6 +622,13 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
       });
   }
 
+  /** Serialises bootstrap runs (a transaction-scoped advisory lock). */
+  async lockBootstrap(): Promise<void> {
+    await this.unscoped().execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('elx:platform-bootstrap'))`,
+    );
+  }
+
   /** Whether any platform staff row exists, or a live super admin invitation (the bootstrap, 2.12). */
   async bootstrapped(): Promise<boolean> {
     const rows = await this.unscoped().execute<{ found: boolean }>(sql`
@@ -779,6 +786,57 @@ export class InvitingAccounts extends PlatformRepository<typeof coreAccounts> {
       .from(coreAccounts)
       .where(eq(coreAccounts.id, id));
     return row;
+  }
+}
+
+/** What one auth purge removed (plan 2.13). */
+export interface AuthPurgeCounts {
+  readonly successorsCleared: number;
+  readonly refreshTokens: number;
+  readonly invitations: number;
+  readonly passwordResets: number;
+  readonly challenges: number;
+}
+
+/**
+ * The retention of the identity tables (plan 2.13; data §10): refresh, invitation, reset and
+ * challenge rows are deleted 7 days after the latest of their expiry, use, acceptance, consumption
+ * or revocation; a kept successor (the reuse grace's ciphertext) is cleared an hour after the use.
+ */
+export class IdentityPurgeRepository extends PlatformRepository<typeof coreRefreshTokens> {
+  constructor(uow: PlatformUnitOfWork) {
+    super(uow, coreRefreshTokens);
+  }
+
+  async purge(): Promise<AuthPurgeCounts> {
+    const db = this.unscoped();
+    const successors = await db.execute(sql`
+      UPDATE core_refresh_tokens SET successor_ciphertext = NULL, updated_at = now()
+      WHERE successor_ciphertext IS NOT NULL AND used_at < now() - interval '1 hour'
+      RETURNING id`);
+    const refreshTokens = await db.execute(sql`
+      DELETE FROM core_refresh_tokens
+      WHERE greatest(expires_at, used_at, revoked_at) < now() - interval '7 days'
+      RETURNING id`);
+    const invitations = await db.execute(sql`
+      DELETE FROM core_invitations
+      WHERE greatest(expires_at, accepted_at) < now() - interval '7 days'
+      RETURNING id`);
+    const passwordResets = await db.execute(sql`
+      DELETE FROM core_password_resets
+      WHERE greatest(expires_at, used_at) < now() - interval '7 days'
+      RETURNING id`);
+    const challenges = await db.execute(sql`
+      DELETE FROM core_auth_challenges
+      WHERE greatest(expires_at, consumed_at) < now() - interval '7 days'
+      RETURNING id`);
+    return {
+      successorsCleared: successors.length,
+      refreshTokens: refreshTokens.length,
+      invitations: invitations.length,
+      passwordResets: passwordResets.length,
+      challenges: challenges.length,
+    };
   }
 }
 
