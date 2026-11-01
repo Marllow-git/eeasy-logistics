@@ -6,9 +6,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   READINESS_CHECKS,
   ReadyController,
+  readinessCacheMs,
   readinessTimeoutMs,
 } from '../src/health/ready.controller.js';
 import type { CheckName, ReadinessCheck } from '../src/health/readiness.js';
+import { migrationNumber, migrationsCheck } from '../src/health/readiness.js';
 
 const passing = (name: CheckName): ReadinessCheck => ({ name, run: () => Promise.resolve() });
 const failing = (name: CheckName): ReadinessCheck => ({
@@ -59,4 +61,42 @@ describe('GET /ready (checks replaced by fakes)', () => {
     },
     readinessTimeoutMs + 3000,
   );
+
+  it('runs the checks once for concurrent probes and caches the result (review L-1)', async () => {
+    let runs = 0;
+    const counted: ReadinessCheck = {
+      name: 'database',
+      run: async () => {
+        runs += 1;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      },
+    };
+    const http = await start([counted]);
+    await Promise.all([http.get('/ready').expect(200), http.get('/ready').expect(200)]);
+    await http.get('/ready').expect(200);
+    expect(runs).toBe(1);
+    expect(readinessCacheMs).toBe(2000);
+  });
+});
+
+describe('the migrations check (rolling deploys)', () => {
+  const fakeDb = (version: string) =>
+    ({ execute: () => Promise.resolve([{ version }]) }) as unknown as Parameters<
+      typeof migrationsCheck
+    >[0];
+  const signal = new AbortController().signal;
+
+  it('reads the order from the tag prefix', () => {
+    expect(migrationNumber('0004_rls_switch')).toBe(4);
+    expect(migrationNumber('')).toBeNaN();
+  });
+
+  it('passes at or beyond the build version and fails behind it', async () => {
+    const check = (version: string) =>
+      migrationsCheck(fakeDb(version), '0004_rls_switch').run(signal);
+    await expect(check('0004_rls_switch')).resolves.toBeUndefined();
+    await expect(check('0007_later_order')).resolves.toBeUndefined();
+    await expect(check('0003_core_accounts_policies')).rejects.toThrow('behind');
+    await expect(check('')).rejects.toThrow('behind');
+  });
 });
