@@ -1,8 +1,8 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { getUnitOfWork, uuidv7 } from '@eeasy-logistics/db';
+import { createAppPool, getUnitOfWork, uuidv7, withUnitOfWork } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import type { Pool } from '@eeasy-logistics/db';
-import { createPlatformPool } from '@eeasy-logistics/db/platform';
+import { createPlatformPool, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import type { INestApplication } from '@nestjs/common';
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -13,6 +13,8 @@ import type { App } from 'supertest/types.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { platformCookie, staffCookie } from '../../src/modules/kernel/auth/principal.js';
+import { TenantIdempotencyStore } from '../../src/modules/kernel/idempotency/idempotency.repository.js';
+import { PlatformIdempotencyStore } from '../../src/modules/kernel/platform/idempotency.repository.js';
 import { ApiException, Idempotent } from '../../src/modules/kernel/public/index.js';
 import {
   purgeIdempotencyKeys,
@@ -338,6 +340,65 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     expect(replay.headers['idempotency-replayed']).toBe('true');
     expect(await keyRows(key)).toMatchObject([
       { account_id: null, principal_type: 'platform', principal_id: platformUser },
+    ]);
+  });
+});
+
+describe('idempotency TTL (review round 1, finding 1)', () => {
+  const config = integrationConfig();
+  const account = uuidv7();
+  const principal = uuidv7();
+  let owner: postgres.Sql;
+
+  beforeAll(async () => {
+    owner = connectAs('owner', config);
+    await owner`INSERT INTO core_accounts (id, name) VALUES (${account}, 'TTL account')`;
+  });
+
+  afterAll(async () => {
+    await owner`DELETE FROM core_idempotency_keys WHERE principal_id = ${principal}`;
+    await owner`DELETE FROM core_accounts WHERE id = ${account}`;
+    await owner.end();
+  });
+
+  it('derives expires_at from the same TTL in the tenant and the platform store', async () => {
+    const appPool = createAppPool(config.db, 'elx-ttl-test');
+    const platformPool = createPlatformPool(config.db, 'elx-ttl-test-platform');
+    const claim = (key: string) => ({
+      principalType: 'staff' as const,
+      principalId: principal,
+      key,
+      route: 'POST /x',
+      requestHash: Buffer.alloc(32),
+    });
+    const context = {
+      accountId: account,
+      membershipId: null,
+      userId: principal,
+      deviceId: null,
+      actingCrossTenant: false,
+    };
+    try {
+      await withUnitOfWork(appPool.db, context, async (uow) => {
+        const store = new TenantIdempotencyStore(uow, 48);
+        const id = await store.insert(claim(randomUUID()));
+        await store.complete(id ?? '', 201, {});
+      });
+      await withPlatformUnitOfWork(platformPool.db, async (uow) => {
+        const store = new PlatformIdempotencyStore(uow, 48);
+        const id = await store.insert(claim(randomUUID()));
+        await store.complete(id ?? '', 201, {});
+      });
+    } finally {
+      await appPool.close();
+      await platformPool.close();
+    }
+    const rows = await owner<{ account_id: string | null; hours: number }[]>`
+      SELECT account_id, extract(epoch FROM expires_at - created_at)::int / 3600 AS hours
+      FROM core_idempotency_keys WHERE principal_id = ${principal} ORDER BY account_id NULLS LAST`;
+    expect(rows).toEqual([
+      { account_id: account, hours: 48 },
+      { account_id: null, hours: 48 },
     ]);
   });
 });

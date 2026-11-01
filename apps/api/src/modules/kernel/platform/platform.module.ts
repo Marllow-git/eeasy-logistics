@@ -19,20 +19,25 @@ import { PLATFORM_POOL } from './tokens.js';
 export { PLATFORM_POOL } from './tokens.js';
 
 /**
- * The platform frames on one pool: plain platform work, and the cross-tenant door, which first
- * checks that the target account exists (an unknown id is `404 not_found`, like a malformed one).
+ * The platform frames on one pool: plain platform work, and the cross-tenant door, whose one
+ * transaction first checks that the target account exists (an unknown id is `404 not_found`, like a
+ * malformed one), then sets the account and runs the work.
  */
 export function platformFrames(db: PlatformDatabase): PlatformFrames {
   return {
     runPlatform: <T>(context: PlatformContext, fn: () => Promise<T>) =>
       withPlatformUnitOfWork(db, () => fn(), context),
-    runCrossTenant: async <T>(context: RequestContext, fn: () => Promise<T>) => {
-      const exists = await withPlatformUnitOfWork(db, (uow) =>
-        new AccountsDirectory(uow).exists(context.accountId),
-      );
-      if (!exists) throw new ApiException('not_found');
-      return withCrossTenantUnitOfWork(db, context, () => fn());
-    },
+    runCrossTenant: <T>(context: RequestContext, fn: () => Promise<T>) =>
+      withCrossTenantUnitOfWork(
+        db,
+        context,
+        () => fn(),
+        async (uow) => {
+          if (!(await new AccountsDirectory(uow).exists(context.accountId))) {
+            throw new ApiException('not_found');
+          }
+        },
+      ),
   };
 }
 

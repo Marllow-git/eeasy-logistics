@@ -25,27 +25,49 @@ export interface CrossTenantTarget {
   readonly reason: string;
 }
 
+/** A refused door call: what the audit event records, and the error the caller answers. */
+export interface CrossTenantRefusal {
+  readonly outcome: 'reason_missing' | 'reason_invalid' | 'not_found';
+  /** The target when it is a well-formed id; a malformed path value is never recorded. */
+  readonly accountId: string | null;
+  readonly error: ApiException;
+}
+
 /**
- * The target and reason of a `@CrossTenant()` request. A missing or blank reason is
- * `400 reason_required` (errors.md §5); a reason over 200 characters or with control characters is
- * `400 validation_failed`; a malformed account id is `404 not_found`, like an unknown one.
+ * The target and reason of a `@CrossTenant()` request, or why it is refused. A missing or blank
+ * reason is `400 reason_required` (errors.md §5); a reason over 200 characters or with control
+ * characters is `400 validation_failed`; a malformed account id is `404 not_found`, like an
+ * unknown one. The caller audits refusals too (identity and tenancy §5: every call).
  */
-export function crossTenantTarget(request: Request): CrossTenantTarget {
-  const accountId: unknown = request.params[accountIdParam];
-  if (typeof accountId !== 'string') {
+export function crossTenantTarget(request: Request): CrossTenantTarget | CrossTenantRefusal {
+  const raw: unknown = request.params[accountIdParam];
+  if (typeof raw !== 'string') {
     // A programming error: the decorator is on a route without `:accountId`.
     throw new Error('@CrossTenant() needs a route parameter :accountId');
   }
+  const accountId = isUuid(raw) ? raw : null;
   const header = request.headers[supportReasonHeader];
   const reason = typeof header === 'string' ? header.trim() : '';
-  if (reason === '') throw new ApiException('reason_required');
+  if (reason === '') {
+    return { outcome: 'reason_missing', accountId, error: new ApiException('reason_required') };
+  }
   const pointer = `/header/${supportReasonHeader}`;
-  if ([...reason].length > supportReasonMaxLength) {
-    throw new ApiException('validation_failed', { fields: [{ pointer, code: 'too_long' }] });
+  if ([...reason].length > supportReasonMaxLength || /\p{Cc}/u.test(reason)) {
+    const code = /\p{Cc}/u.test(reason) ? 'invalid' : 'too_long';
+    return {
+      outcome: 'reason_invalid',
+      accountId,
+      error: new ApiException('validation_failed', { fields: [{ pointer, code }] }),
+    };
   }
-  if (/\p{Cc}/u.test(reason)) {
-    throw new ApiException('validation_failed', { fields: [{ pointer, code: 'invalid' }] });
+  if (accountId === null) {
+    return { outcome: 'not_found', accountId, error: new ApiException('not_found') };
   }
-  if (!isUuid(accountId)) throw new ApiException('not_found');
   return { accountId, reason };
+}
+
+export function isRefusal(
+  value: CrossTenantTarget | CrossTenantRefusal,
+): value is CrossTenantRefusal {
+  return 'outcome' in value;
 }
