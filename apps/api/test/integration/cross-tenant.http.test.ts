@@ -26,7 +26,7 @@ import { connectAs, integrationConfig } from './support.js';
 // checks (plan 2.12). A platform token reaches tenant rows only through the door: reason required,
 // the unit of work runs on elx_platform with the target account set, one audit event per call.
 
-@Controller('v1/platform/accounts/:accountId/probe-rows')
+@Controller('v1/platform/accounts/:account_id/probe-rows')
 class CrossTenantProbeController {
   @CrossTenant()
   @Get()

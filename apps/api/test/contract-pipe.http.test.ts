@@ -1,4 +1,4 @@
-import { operationSchemas } from '@eeasy-logistics/contracts/platform';
+import { operationSchemas } from '@eeasy-logistics/contracts/platform/schemas';
 import type { INestApplication } from '@nestjs/common';
 import { Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { Test } from '@nestjs/testing';

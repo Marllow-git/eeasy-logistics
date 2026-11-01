@@ -47,4 +47,8 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
       'contracts-only-in-controllers-and-presenters',
     ]);
   });
+
+  it('refuses a barrel surface entry from a controller (contracts-server-entries-only)', () => {
+    expect(rulesOf('kernel-barrel.controller.ts')).toEqual(['contracts-server-entries-only']);
+  });
 });

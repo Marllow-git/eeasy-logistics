@@ -1,7 +1,9 @@
 import { loadConfig } from '@eeasy-logistics/config/node';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
+import { configureHttp } from './http-app.js';
 import { EX_CONFIG } from '@eeasy-logistics/config';
 import { BootChecks } from './modules/kernel/platform/boot-checks.js';
 import { RequestLogger } from './modules/kernel/request/request-id.js';
@@ -45,7 +47,10 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
-  const app = await NestFactory.create(AppModule.forRoot(config), { logger: new RequestLogger() });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), {
+    logger: new RequestLogger(),
+  });
+  configureHttp(app, config);
   // Each configured pool must be its plain role before anything is served (PLAT-6 plan 2.12,
   // PLAT-5 ruling M-6); the refusal names the role, never the URL.
   try {

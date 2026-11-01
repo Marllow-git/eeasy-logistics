@@ -26,7 +26,9 @@ const requiredForRuntime: readonly ServerVariable[] = [
 ];
 
 export function requiredInProduction(role: AppRole): readonly ServerVariable[] {
-  return role === 'migrate' ? ['DATABASE_URL_OWNER'] : requiredForRuntime;
+  if (role === 'migrate') return ['DATABASE_URL_OWNER'];
+  // Only the api serves HTTP behind the edge (platform §8); see the depth check below.
+  return role === 'api' ? [...requiredForRuntime, 'TRUST_PROXY_HOPS'] : requiredForRuntime;
 }
 
 /**
@@ -102,6 +104,17 @@ export function productionRefusals(input: RefusalInput): ConfigIssue[] {
   for (const variable of adapterSelectors) {
     if (input.raw(variable) === 'stub') {
       issues.push({ variable, problem: 'selects a stub adapter, which production refuses' });
+    }
+  }
+  // The client address of rate limits and audit comes from `X-Forwarded-For` behind Cloudflare
+  // (platform §8: one hop, and the origin accepts only Cloudflare ranges, so the header cannot be
+  // forged around the edge). Production states the depth; 0 would key every caller by the edge.
+  if (input.role === 'api' && input.present('TRUST_PROXY_HOPS')) {
+    if (input.raw('TRUST_PROXY_HOPS') === '0') {
+      issues.push({
+        variable: 'TRUST_PROXY_HOPS',
+        problem: 'must be at least 1 in production (Cloudflare is one hop)',
+      });
     }
   }
   // The migration job sends nothing; only the api and worker need a messaging decision.
