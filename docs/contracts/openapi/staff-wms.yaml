@@ -24,7 +24,7 @@ tags:
   - {name: returns, description: "Returns (§4.8, W-17)"}
   - {name: adjustments, description: "Adjustments (§4.8, W-16)"}
   - {name: counting, description: "Count sessions (§4.15)"}
-  - {name: channels, description: "Channel publications (§4.9, ADR-0013)"}
+  - {name: channel-publications, description: "Channel publications (§4.9, ADR-0013)"}
 paths:
   /locations:
     get:
@@ -1034,7 +1034,7 @@ paths:
       operationId: listChannelPublications
       summary: "Stock publications to Salla and Zid"
       description: 'Read only (ADR-0013, W-18); dead rows are replayed from the platform surface.'
-      tags: [channels]
+      tags: [channel-publications]
       x-wave: 4
       x-permission: wms.channel_publications.read
       security: [{staffCookie: []}]

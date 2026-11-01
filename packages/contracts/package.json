@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "lint": "redocly lint --config ../../docs/contracts/redocly.yaml",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "pnpm run build:bundle",
+    "build:bundle": "node scripts/bundle.ts",
+    "lint:bundles": "redocly lint generated/openapi/staff.yaml generated/openapi/platform.yaml generated/openapi/driver.yaml generated/openapi/recipient.yaml generated/openapi/public.yaml"
   },
   "devDependencies": {
     "@redocly/cli": "2.72.1",

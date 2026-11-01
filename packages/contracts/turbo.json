@@ -2,7 +2,20 @@
   "$schema": "https://turborepo.com/schema.json",
   "extends": ["//"],
   "tasks": {
+    "build": {
+      "inputs": [
+        "$TURBO_ROOT$/docs/contracts/**",
+        "orval.config.ts",
+        "scripts/**",
+        "src/**",
+        "package.json"
+      ],
+      "outputs": ["generated/**"]
+    },
     "lint": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/docs/contracts/**"]
+    },
+    "test": {
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/docs/contracts/**"]
     }
   }
