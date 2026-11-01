@@ -1,6 +1,7 @@
-// First-load JavaScript budget (WEB-1 plan 2.10; web §10.2): after `next build`, sums the gzip size
-// of the chunks each route loads first and fails when a route exceeds the budget of its class.
-// apps/web and apps/admin both run it from their census lane:
+// First-load JavaScript budget (WEB-1 plan 2.10; web §10.2, lead ruling on WEB-1 §8.2 #28): after
+// `next build`, sums the gzip size of the chunks each route loads first and fails when the route's
+// JavaScript above the shared framework chunk exceeds its class budget, or when the framework chunk
+// itself exceeds its cap. apps/web and apps/admin both run it from their census lane:
 //   node apps/web/scripts/check-budget.ts apps/web     (or apps/admin; default: the current dir)
 //
 // Source: Next 16 with Turbopack writes no app-build-manifest.json; it writes
@@ -8,67 +9,44 @@
 // app-path-routes-manifest.json maps each route to its route group, which decides the class.
 // The framework floor is build-manifest.json `rootMainFiles`: React, React DOM and the Next
 // runtime, loaded by every App Router page.
-//
-// Measures (WEB-1 §8.2 #27, provisional until the lead rules): merchant, platform and auth routes
-// count their whole first load (web §10.2's definition). Recipient routes count the JavaScript
-// above the framework floor, because the floor alone (about 128 KB gzip with Next 16.4 and
-// React 19.3) is over the 90 KB the document sets; their total is printed beside it.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 
-type Measure = 'total' | 'above-floor';
-type RouteClass = { name: string; budgetKb: number; measure: Measure };
+/** Cap of the shared framework chunk (web §10.2), gzip. */
+export const floorCapKb = 135;
 
-const merchant: RouteClass = { name: 'merchant', budgetKb: 180, measure: 'total' };
-const platform: RouteClass = { name: 'platform', budgetKb: 180, measure: 'total' };
-const recipient: RouteClass = { name: 'recipient', budgetKb: 90, measure: 'above-floor' };
-// Sign-in doors carry the staff shell of their app, so they get the staff pages' budget.
-const signIn: RouteClass = { name: 'sign-in', budgetKb: 180, measure: 'total' };
-
-/** Route group → class (web §10.2). An unknown group fails, so a new group must be classified. */
-const classOfGroup: Record<string, RouteClass> = {
-  merchant,
-  platform,
-  recipient,
-  auth: signIn,
+/** Route group → budget of the JavaScript above the floor (web §10.2), gzip. */
+export const budgetKbOfGroup: Record<string, number> = {
+  recipient: 90,
+  merchant: 180,
+  platform: 180,
+  // Sign-in doors carry the staff shell of their app, so they get the staff pages' budget.
+  auth: 180,
 };
 
-const appDir = path.resolve(process.argv[2] ?? '.');
-const nextDir = path.join(appDir, '.next');
+export type BuildFacts = {
+  stats: { route: string; firstLoadChunkPaths: string[] }[];
+  appPaths: Record<string, string>;
+  /** `.next/`-relative chunk paths of the framework floor. */
+  floorChunks: string[];
+  /** Gzip size in bytes of a chunk path as written in `stats`. */
+  gzipSize: (chunk: string) => number;
+};
 
-function readJson<T>(file: string): T {
-  try {
-    return JSON.parse(readFileSync(path.join(nextDir, file), 'utf8')) as T;
-  } catch (error) {
-    throw new Error(`cannot read .next/${file} in ${appDir}; run \`next build\` first`, {
-      cause: error,
-    });
-  }
-}
+export type RouteResult = {
+  route: string;
+  group: string;
+  budgetKb: number;
+  totalBytes: number;
+  aboveFloorBytes: number;
+  ok: boolean;
+};
 
-const stats = readJson<{ route: string; firstLoadChunkPaths: string[] }[]>(
-  'diagnostics/route-bundle-stats.json',
-);
-const appPaths = readJson<Record<string, string>>('app-path-routes-manifest.json');
-const floorChunks = new Set(
-  readJson<{ rootMainFiles: string[] }>('build-manifest.json').rootMainFiles.map(
-    (file) => `.next/${file}`,
-  ),
-);
-
-const gzipBytes = new Map<string, number>();
-function gzipSize(chunk: string): number {
-  let size = gzipBytes.get(chunk);
-  if (size === undefined) {
-    size = gzipSync(readFileSync(path.join(appDir, chunk)), { level: 9 }).length;
-    gzipBytes.set(chunk, size);
-  }
-  return size;
-}
+export type BudgetReport = { floorBytes: number; floorOk: boolean; routes: RouteResult[] };
 
 /** `/(recipient)/track/[token]/page` → `recipient`; Next's own routes (`/_not-found`) → null. */
-function groupOf(route: string): string | null {
+function groupOf(route: string, appPaths: Record<string, string>): string | null {
   if (route.startsWith('/_')) return null;
   const entry = Object.entries(appPaths).find(([, url]) => url === route)?.[0];
   const group = entry ? /^\/\(([^)]+)\)/.exec(entry)?.[1] : undefined;
@@ -76,32 +54,80 @@ function groupOf(route: string): string | null {
   return group;
 }
 
-const kb = (bytes: number) => (bytes / 1024).toFixed(1);
-const floorBytes = [...floorChunks].reduce((sum, chunk) => sum + gzipSize(chunk), 0);
-let failures = 0;
-
-console.log(`First-load JavaScript, gzip, ${path.relative(process.cwd(), appDir) || '.'}`);
-console.log(`  framework floor (rootMainFiles): ${kb(floorBytes)} KB`);
-for (const { route, firstLoadChunkPaths } of stats) {
-  const group = groupOf(route);
-  if (group === null) continue;
-  const routeClass = classOfGroup[group];
-  if (!routeClass) throw new Error(`route group (${group}) of ${route} has no budget class`);
-  const total = firstLoadChunkPaths.reduce((sum, chunk) => sum + gzipSize(chunk), 0);
-  const above = firstLoadChunkPaths
-    .filter((chunk) => !floorChunks.has(chunk))
-    .reduce((sum, chunk) => sum + gzipSize(chunk), 0);
-  const measured = routeClass.measure === 'total' ? total : above;
-  const ok = measured <= routeClass.budgetKb * 1024;
-  if (!ok) failures += 1;
-  console.log(
-    `  ${ok ? 'ok  ' : 'OVER'} ${route} (${group}, ${routeClass.name} class): ` +
-      `${kb(measured)} KB ${routeClass.measure} of ${routeClass.budgetKb} KB ` +
-      `[total ${kb(total)} KB, above floor ${kb(above)} KB]`,
-  );
+/** Measures every route against its class budget and the floor against its cap. */
+export function checkBudget({ stats, appPaths, floorChunks, gzipSize }: BuildFacts): BudgetReport {
+  const floor = new Set(floorChunks.map((file) => `.next/${file}`));
+  const floorBytes = [...floor].reduce((sum, chunk) => sum + gzipSize(chunk), 0);
+  const routes: RouteResult[] = [];
+  for (const { route, firstLoadChunkPaths } of stats) {
+    const group = groupOf(route, appPaths);
+    if (group === null) continue;
+    const budgetKb = budgetKbOfGroup[group];
+    if (budgetKb === undefined) throw new Error(`route group (${group}) of ${route} has no budget`);
+    const totalBytes = firstLoadChunkPaths.reduce((sum, chunk) => sum + gzipSize(chunk), 0);
+    const aboveFloorBytes = firstLoadChunkPaths
+      .filter((chunk) => !floor.has(chunk))
+      .reduce((sum, chunk) => sum + gzipSize(chunk), 0);
+    routes.push({
+      route,
+      group,
+      budgetKb,
+      totalBytes,
+      aboveFloorBytes,
+      ok: aboveFloorBytes <= budgetKb * 1024,
+    });
+  }
+  return { floorBytes, floorOk: floorBytes <= floorCapKb * 1024, routes };
 }
 
-if (failures > 0) {
-  console.error(`${failures} route(s) over the first-load budget (web §10.2)`);
-  process.exit(1);
+/** Reads the facts of a built app from its `.next` directory. */
+export function readBuild(appDir: string): BuildFacts {
+  const readJson = <T>(file: string): T => {
+    try {
+      return JSON.parse(readFileSync(path.join(appDir, '.next', file), 'utf8')) as T;
+    } catch (error) {
+      throw new Error(`cannot read .next/${file} in ${appDir}; run \`next build\` first`, {
+        cause: error,
+      });
+    }
+  };
+  const sizes = new Map<string, number>();
+  return {
+    stats: readJson('diagnostics/route-bundle-stats.json'),
+    appPaths: readJson('app-path-routes-manifest.json'),
+    floorChunks: readJson<{ rootMainFiles: string[] }>('build-manifest.json').rootMainFiles,
+    gzipSize(chunk) {
+      let size = sizes.get(chunk);
+      if (size === undefined) {
+        size = gzipSync(readFileSync(path.join(appDir, chunk)), { level: 9 }).length;
+        sizes.set(chunk, size);
+      }
+      return size;
+    },
+  };
+}
+
+const kb = (bytes: number) => (bytes / 1024).toFixed(1);
+
+/** Prints the report; returns the number of failures (routes over budget, plus the floor). */
+export function printReport(report: BudgetReport): number {
+  console.log('First-load JavaScript, gzip');
+  console.log(
+    `  ${report.floorOk ? 'ok  ' : 'OVER'} framework floor (rootMainFiles): ` +
+      `${kb(report.floorBytes)} KB of ${floorCapKb} KB`,
+  );
+  for (const r of report.routes) {
+    console.log(
+      `  ${r.ok ? 'ok  ' : 'OVER'} ${r.route} (${r.group}): ${kb(r.aboveFloorBytes)} KB above ` +
+        `the floor, budget ${r.budgetKb} KB [total ${kb(r.totalBytes)} KB]`,
+    );
+  }
+  const failures = report.routes.filter((r) => !r.ok).length + (report.floorOk ? 0 : 1);
+  if (failures > 0) console.error(`${failures} first-load budget failure(s) (web §10.2)`);
+  return failures;
+}
+
+if (import.meta.main) {
+  const report = checkBudget(readBuild(path.resolve(process.argv[2] ?? '.')));
+  if (printReport(report) > 0) process.exit(1);
 }
