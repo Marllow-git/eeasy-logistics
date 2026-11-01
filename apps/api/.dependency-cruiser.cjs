@@ -30,6 +30,27 @@ module.exports = {
         pathNot: ['(?:^|/)modules/$1/', '(?:^|/)modules/[^/]+/public/'],
       },
     },
+    {
+      name: 'platform-pool-only-in-platform-code',
+      comment:
+        'ADR-0031, data §4.4, PLAT-5 plan 2.5: the elx_platform pool and unscoped() ' +
+        '(@eeasy-logistics/db/platform) are imported only by the platform module ' +
+        '(modules/kernel/platform/) and the worker system jobs (src/worker/system/).',
+      severity: 'error',
+      from: {
+        pathNot: ['(?:^|/)modules/kernel/platform/', '(?:^|/)src/worker/system/'],
+      },
+      to: { path: '(?:^|/)packages/db/src/platform\\.ts$' },
+    },
+    {
+      name: 'db-testing-only-in-tests',
+      comment:
+        'PLAT-5 plan 2.5: the test-only context setter (@eeasy-logistics/db/testing) never ' +
+        'reaches application code; the request guard (PLAT-6) owns the real one.',
+      severity: 'error',
+      from: { path: '^src/', pathNot: '\\.test\\.ts$' },
+      to: { path: '(?:^|/)packages/db/src/testing\\.ts$' },
+    },
     ...environmentRules(),
     noUnresolvable,
   ],
