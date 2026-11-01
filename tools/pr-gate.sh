@@ -71,7 +71,7 @@ fi
 # 6b. Scope (owner request 2026-11-01): a docs-only PR skips the build and test lanes in CI, so
 # check the skip was right. Same classifier as CI (tools/changed-scope.sh). A code PR needs every
 # required lane green, never skipped; a docs PR still needs typecheck-lint (Prettier) and gitleaks.
-scope="$(printf '%s\n' "$files" | "$(dirname "$0")/changed-scope.sh")"
+scope="$("$(dirname "$0")/changed-scope.sh" <<<"$files")"
 [[ "$scope" == "docs" ]] && say "    " "docs-only: yes" || say "    " "docs-only: no"
 required=(typecheck-lint api-test api-test-rls web-build-census admin-build-census driver-test gitleaks)
 [[ "$scope" == "docs" ]] && required=(typecheck-lint gitleaks)
