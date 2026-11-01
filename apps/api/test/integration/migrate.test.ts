@@ -1,17 +1,51 @@
+import { randomBytes } from 'node:crypto';
+import type { Config } from '@eeasy-logistics/config';
 import { uuidv7 } from '@eeasy-logistics/db';
+import { databaseOf, dropDatabase, recreateDatabase } from '@eeasy-logistics/db/admin';
 import {
   expectedSchemaVersion,
   maintainAuditPartitions,
   runMigrations,
 } from '@eeasy-logistics/db/migrate';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { maintainAuditLog, migrationsFolder, retentionCutoff } from '../../src/migrate/run.js';
-import { connectAs, integrationConfig } from './support.js';
+import { connectAs, harnessDatabase, integrationConfig } from './support.js';
 
-// The migration runner on this run's database, already migrated by global-setup.ts (PLAT-5 item B).
+// The migration runner (PLAT-5 item B). Its runs take the advisory lock, switch RLS on under
+// ELX_RLS=on (`ALTER TABLE … ENABLE ROW LEVEL SECURITY` on every tenant table) and drop and create
+// audit partitions: locks the other files' writes deadlock with on a shared database (issue #71,
+// CHORE-2). So with DATABASE_URL_ADMIN this file migrates a scratch database of its own and runs
+// there; without it (ci today: elx_owner may not create databases) it uses this run's database,
+// and the `migrator` project of vitest.integration.config.ts starts it only after every other
+// file has finished.
+let config: Config = integrationConfig();
+let dropOwnDatabase: () => Promise<void> = () => Promise.resolve();
+
+beforeAll(async () => {
+  const admin = config.db.urls.admin;
+  if (admin === undefined) return;
+  const database = `elx_test_${randomBytes(6).toString('hex')}`;
+  await recreateDatabase(admin, database);
+  dropOwnDatabase = () => dropDatabase(admin, database);
+  config = integrationConfig({}, database);
+  await runMigrations({ url: config.db.urls.owner, folder: migrationsFolder, rls: config.db.rls });
+});
+
+afterAll(() => dropOwnDatabase());
 
 describe('runMigrations', () => {
-  const config = integrationConfig();
+  it.skipIf(integrationConfig().db.urls.admin === undefined)(
+    'runs on a database of its own, never on the one the other files share (CHORE-2)',
+    () => {
+      const { owner, app, platform } = config.db.urls;
+      if (owner === undefined || app === undefined || platform === undefined) {
+        throw new Error('The suite needs the owner, app and platform URLs');
+      }
+      for (const url of [owner, app, platform]) {
+        expect(databaseOf(url)).not.toBe(harnessDatabase());
+      }
+    },
+  );
 
   it('is idempotent and serialises concurrent runs: both finish, neither applies anything', async () => {
     const run = () =>
@@ -70,8 +104,6 @@ describe('runMigrations', () => {
 // M-3), in this file so it never races the partition re-creation case above (vitest runs one
 // file's tests in order).
 describe('audit partition maintenance in the migration job', () => {
-  const config = integrationConfig();
-
   it('keeps partitions ahead, drops a planted 25-month-old one and audits the drop in its transaction', async () => {
     const owner = connectAs('owner', config);
     try {
