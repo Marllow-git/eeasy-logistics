@@ -9,5 +9,62 @@
     "merchant": "لوحة التاجر قيد الإنشاء.",
     "recipient": "صفحة تتبع الطلب قيد الإنشاء.",
     "driver": "تطبيق السائق قيد الإنشاء."
+  },
+  "locale": {
+    "label": "اللغة",
+    "ar": "العربية",
+    "en": "English"
+  },
+  "shell": {
+    "skip_to_content": "انتقل إلى المحتوى",
+    "open_navigation": "افتح القائمة",
+    "close_navigation": "أغلق القائمة",
+    "account": "الحساب"
+  },
+  "actions": {
+    "close": "إغلاق"
+  },
+  "currency": {
+    "sar": "ريال سعودي"
+  },
+  "updated_ago": {
+    "just_now": "حُدّث الآن",
+    "seconds": "حُدّث قبل {count, plural, one {ثانية واحدة} two {ثانيتين} few {{value} ثوانٍ} other {{value} ثانية}}",
+    "minutes": "حُدّث قبل {count, plural, one {دقيقة واحدة} two {دقيقتين} few {{value} دقائق} other {{value} دقيقة}}",
+    "hours": "حُدّث قبل {count, plural, one {ساعة واحدة} two {ساعتين} few {{value} ساعات} other {{value} ساعة}}"
+  },
+  "status": {
+    "order": {
+      "pending": "قيد الانتظار",
+      "accepted": "مقبول",
+      "offered": "معروض على سائق",
+      "assigned": "مُسند",
+      "picked_up": "تم الاستلام",
+      "out_for_delivery": "في الطريق للتسليم",
+      "attempted": "محاولة تسليم",
+      "delivered": "تم التسليم",
+      "failed": "تعذّر التسليم",
+      "returned": "مُرتجع",
+      "cancelled": "ملغى"
+    },
+    "offer": {
+      "sent": "مُرسل",
+      "accepted": "مقبول",
+      "declined": "مرفوض",
+      "expired": "منتهي",
+      "withdrawn": "مسحوب"
+    },
+    "attempt": {
+      "open": "جارية",
+      "succeeded": "ناجحة",
+      "failed": "فاشلة",
+      "voided": "ملغاة"
+    },
+    "custody": {
+      "collected": "لدى السائق",
+      "with_cashier": "لدى أمين الصندوق",
+      "with_bank": "مودَع",
+      "not_held": "غير نقدي"
+    }
   }
 }
