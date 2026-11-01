@@ -17,15 +17,46 @@ export interface UnitOfWork {
 }
 
 const transactions = new WeakMap<UnitOfWork, Transaction>();
+/** Units of work (tenant and platform) whose transaction has committed or rolled back. */
+const retired = new WeakSet<object>();
 
 /**
- * The transaction of `uow`. Package-internal: the repository bases use it; tests reach it through
- * `@eeasy-logistics/db/testing`, which the apps/api architecture test keeps out of `src/`.
+ * A statement on a unit of work whose transaction has ended (PLAT-6 adversary M-1): a continuation
+ * left running after the response (a timer, an unawaited promise) must never reach the pooled
+ * connection, which by then may serve another request's transaction.
+ */
+export class UnitOfWorkClosedError extends Error {
+  constructor() {
+    super('The unit of work is closed: its transaction has committed or rolled back');
+    this.name = 'UnitOfWorkClosedError';
+  }
+}
+
+/** Retires a unit of work when its transaction settles (package-internal). */
+export function retire<K extends object>(uow: K, map: WeakMap<K, Transaction>): void {
+  map.delete(uow);
+  retired.add(uow);
+}
+
+/** The open transaction of `uow` in `map`, else `UnitOfWorkClosedError` or `notOpened` (internal). */
+export function openTransaction<K extends object>(
+  uow: K,
+  map: WeakMap<K, Transaction>,
+  notOpened: string,
+): Transaction {
+  const tx = map.get(uow);
+  if (tx !== undefined) return tx;
+  if (retired.has(uow)) throw new UnitOfWorkClosedError();
+  throw new Error(notOpened);
+}
+
+/**
+ * The transaction of `uow`. Package-internal: the repository bases resolve it on every statement,
+ * so a handle kept past the end of the transaction throws `UnitOfWorkClosedError`; tests reach it
+ * through `@eeasy-logistics/db/testing`, which the apps/api architecture test keeps out of `src/`.
  */
 export function transactionOf(uow: UnitOfWork): Transaction {
-  const tx = transactions.get(uow);
-  if (tx === undefined) throw new Error('Not a unit of work opened by @eeasy-logistics/db');
-  return tx;
+  return openTransaction(uow, transactions, 'Not a unit of work opened by @eeasy-logistics/db');
 }
 
 /**
@@ -42,7 +73,11 @@ export async function runTenantTransaction<T>(
   await tx.execute(sql`SELECT set_config('elx.account_id', ${context.accountId}, true)`);
   const uow: UnitOfWork = Object.freeze({ context });
   transactions.set(uow, tx);
-  return runInFrame({ context, unitOfWork: uow }, () => fn(uow));
+  try {
+    return await runInFrame({ context, unitOfWork: uow }, () => fn(uow));
+  } finally {
+    retire(uow, transactions);
+  }
 }
 
 /**
@@ -73,6 +108,7 @@ export async function withUnitOfWork<T>(
  */
 export function getUnitOfWork(): UnitOfWork {
   const uow = currentFrame()?.unitOfWork;
+  if (uow !== undefined && retired.has(uow)) throw new UnitOfWorkClosedError();
   if (uow === undefined || !transactions.has(uow as UnitOfWork)) {
     throw new Error('No tenant unit of work: tenant repositories run inside one');
   }

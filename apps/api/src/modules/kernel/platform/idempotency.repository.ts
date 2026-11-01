@@ -21,26 +21,27 @@ export class PlatformIdempotencyStore
 
   constructor(uow: PlatformUnitOfWork, ttlHours: number = idempotencyTtlHours) {
     super(uow, coreIdempotencyKeys);
-    const tx = this.unscoped();
+    // Resolved per statement, like the repository bases (adversary M-1).
+    const tx = () => this.unscoped();
     const scoped = (condition: SQL) =>
       and(isNull(coreIdempotencyKeys.accountId), condition) ?? sql`false`;
     this.#statements = idempotencyStatements(
       {
         tryLock: async (name) => {
-          const rows = await tx.execute<{ locked: boolean }>(
+          const rows = await tx().execute<{ locked: boolean }>(
             sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${`platform/${name}`}, 0)) AS locked`,
           );
           return rows[0]?.locked === true;
         },
         insertIgnoringConflicts: (values) =>
-          tx
+          tx()
             .insert(coreIdempotencyKeys)
             .values({ ...values, accountId: null } as never)
             .onConflictDoNothing()
             .returning({ id: coreIdempotencyKeys.id }),
-        findMany: (condition) => tx.select().from(coreIdempotencyKeys).where(scoped(condition)),
+        findMany: (condition) => tx().select().from(coreIdempotencyKeys).where(scoped(condition)),
         updateWhere: (values, condition) =>
-          tx.update(coreIdempotencyKeys).set(values).where(scoped(condition)),
+          tx().update(coreIdempotencyKeys).set(values).where(scoped(condition)),
       },
       ttlHours,
     );
