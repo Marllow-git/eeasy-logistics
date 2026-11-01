@@ -74,7 +74,7 @@ describe('outbox outcomes (plan 2.5)', () => {
   const runJob = (
     handler: KindHandler,
     outboxId: string,
-    extra: { parker?: ConnectionParker } = {},
+    extra: { parker?: ConnectionParker; audit?: Pick<AuditWriter, 'record'> } = {},
   ) => {
     const { job, moveToDelayed } = fakeJob(outboxId);
     const deps = {
@@ -82,6 +82,7 @@ describe('outbox outcomes (plan 2.5)', () => {
       registry: new KindHandlerRegistry([handler]),
       logger: quiet,
       random: () => 0.5,
+      audit: new AuditWriter(pool),
       ...extra,
     };
     return { result: processOutboxJob(deps, handler.kind, job, 'token'), moveToDelayed };
@@ -280,7 +281,7 @@ describe('outbox outcomes (plan 2.5)', () => {
 
   it('storage_lifecycle: deletes through the stub and audits the executed batch', async () => {
     const storage = new StubObjectStorage('ci');
-    const handler = new StorageLifecycleHandler(storage, new AuditWriter(pool));
+    const handler = new StorageLifecycleHandler(storage);
     const keys = [`acc/${account}/exports/1`, `acc/${account}/imports/2.csv`];
     const id = await insert('storage_lifecycle', 0, { keys });
     const { result } = runJob(handler, id);
@@ -307,9 +308,35 @@ describe('outbox outcomes (plan 2.5)', () => {
     });
   });
 
+  it('storage_lifecycle: a failed outcome write leaves no audit row; its retry leaves exactly one', async () => {
+    const storage = new StubObjectStorage('ci');
+    const handler = new StorageLifecycleHandler(storage);
+    const keys = [`acc/${account}/exports/retry`];
+    const id = await insert('storage_lifecycle', 0, { keys });
+    const writer = new AuditWriter(pool);
+    // The outcome transaction fails after the audit insert (any failure there rolls both back).
+    const failing = {
+      record: async (event: Parameters<AuditWriter['record']>[0]) => {
+        await writer.record(event);
+        throw new Error('outcome write failed');
+      },
+    };
+    await expect(runJob(handler, id, { audit: failing }).result).rejects.toThrow(
+      'outcome write failed',
+    );
+    const auditRows = () =>
+      owner`SELECT 1 FROM core_audit_log WHERE target_type = 'outbox_row' AND target_id = ${id}`;
+    expect(await auditRows()).toHaveLength(0);
+    expect(await stored(id)).toMatchObject({ status: 'enqueued' });
+    // BullMQ retries the job: the batch is deleted again and audited once, with the outcome.
+    expect(await runJob(handler, id).result).toBe('done');
+    expect(await auditRows()).toHaveLength(1);
+    expect(storage.deleted).toEqual([...keys, ...keys]);
+  });
+
   it("storage_lifecycle: another account's key kills the row; nothing deleted or audited", async () => {
     const storage = new StubObjectStorage('ci');
-    const handler = new StorageLifecycleHandler(storage, new AuditWriter(pool));
+    const handler = new StorageLifecycleHandler(storage);
     const id = await insert('storage_lifecycle', 0, { keys: [`acc/${uuidv7()}/proofs/x`] });
     const { result } = runJob(handler, id);
     expect(await result).toBe('dead');

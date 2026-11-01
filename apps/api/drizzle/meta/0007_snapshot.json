@@ -849,6 +849,12 @@
           "name": "core_outbox_supersede_key_pending_idx",
           "columns": [
             {
+              "expression": "account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
               "expression": "supersede_key",
               "isExpression": false,
               "asc": true,
@@ -856,7 +862,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"core_outbox\".\"status\" = 'pending'",
+          "where": "\"core_outbox\".\"status\" = 'pending' AND \"core_outbox\".\"supersede_key\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

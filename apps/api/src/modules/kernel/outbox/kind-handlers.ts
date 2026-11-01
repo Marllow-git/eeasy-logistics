@@ -1,3 +1,4 @@
+import type { AuditEvent } from '../audit/audit-sink.js';
 import type { OutboxKind, coreOutbox } from '../schema/outbox.js';
 
 /** The envelope columns the relay reads to order a row; never the payload (PLAT-8 plan 2.3). */
@@ -26,7 +27,14 @@ export type OutboxRow = typeof coreOutbox.$inferSelect;
  * `error` is a provider status code and message; the worker redacts it before it is stored.
  */
 export type KindOutcome =
-  | { readonly outcome: 'done' }
+  | {
+      readonly outcome: 'done';
+      /**
+       * An audit row the worker writes in the same platform transaction as the outcome, so one
+       * executed effect yields exactly one row (lead review round 2).
+       */
+      readonly audit?: AuditEvent;
+    }
   | {
       readonly outcome: 'retry';
       readonly retryAfterS?: number;

@@ -5,6 +5,7 @@ import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { createPlatformPool, listenOnPlatformPool } from '@eeasy-logistics/db/platform';
 import { Logger } from '@nestjs/common';
 import { Redis } from 'ioredis';
+import { AuditWriter } from '../../modules/kernel/audit/audit-writer.js';
 import type { KindHandler } from '../../modules/kernel/outbox/kind-handlers.js';
 import { KindHandlerRegistry } from '../../modules/kernel/outbox/kind-handlers.js';
 import { OutboxQueues } from '../../modules/kernel/outbox/queues.js';
@@ -103,6 +104,7 @@ async function startOutboxWorkers(
     connection,
     registry,
     logger: new Logger('OutboxWorkers'),
+    audit: new AuditWriter(pool),
   });
   workers.start();
   return Promise.resolve({

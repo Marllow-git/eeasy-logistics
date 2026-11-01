@@ -2,7 +2,6 @@ import type { Config } from '@eeasy-logistics/config';
 import type { Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { Logger } from '@nestjs/common';
-import { AuditWriter } from '../../modules/kernel/audit/audit-writer.js';
 import { kernelConsumers } from '../../modules/kernel/outbox/account-suspended.consumer.js';
 import { DomainEventConsumerRegistry } from '../../modules/kernel/outbox/domain-event-consumers.js';
 import type { KindHandler } from '../../modules/kernel/outbox/kind-handlers.js';
@@ -42,7 +41,7 @@ export function buildKindHandlers(
   if (storage === undefined) {
     logger.warn('storage_lifecycle has no handler: no object storage adapter before OPS-1');
   } else {
-    handlers.push(new StorageLifecycleHandler(storage, new AuditWriter(pool)));
+    handlers.push(new StorageLifecycleHandler(storage));
   }
   return handlers;
 }

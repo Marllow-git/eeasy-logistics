@@ -1,10 +1,11 @@
 import { isUuid } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
+import { withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import type { Job } from 'bullmq';
 import { DelayedError, UnrecoverableError, Worker } from 'bullmq';
-import type { SQL } from 'drizzle-orm';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
+import type { AuditEvent, AuditSink } from '../../modules/kernel/audit/audit-sink.js';
 import type { ConnectionParker } from '../../modules/kernel/outbox/connection-parker.js';
 import { LoggingConnectionParker } from '../../modules/kernel/outbox/connection-parker.js';
 import type {
@@ -25,6 +26,7 @@ import {
 import type { OutboxJobData } from '../../modules/kernel/outbox/queues.js';
 import { outboxQueueName, outboxQueuePrefix } from '../../modules/kernel/outbox/queues.js';
 import type { OutboxKind } from '../../modules/kernel/schema/outbox.js';
+import { PlatformOutbox } from '../../modules/kernel/platform/outbox.repository.js';
 import { coreOutbox } from '../../modules/kernel/schema/outbox.js';
 
 // The consumer side of the outbox queues (PLAT-8 plan 2.4, 2.5, 2.9; ADR-0024, ADR-0036;
@@ -60,6 +62,8 @@ export interface OutboxWorkerDependencies {
   readonly now?: () => Date;
   /** Where `unauthorised` failures go (plan 2.5); the logging stub by default. */
   readonly parker?: ConnectionParker;
+  /** Writes a handler's audit event with the outcome (`AuditWriter.record`). */
+  readonly audit?: Pick<AuditSink, 'record'>;
 }
 
 /** What happened to one job, for logs and tests. */
@@ -72,38 +76,22 @@ async function readRow(db: PlatformDatabase, outboxId: string): Promise<OutboxRo
 }
 
 /**
- * Writes the outcome to the row in one statement (one transaction) on the platform pool, only
- * while the row is still `pending` or `enqueued` (a replay or a second delivery that finished
- * first wins). Returns whether the row changed.
+ * Writes the outcome to the row in one platform unit of work, only while the row is still
+ * `pending` or `enqueued` (a replay or a second delivery that finished first wins), and the
+ * handler's audit event, if any, in that same transaction. Returns whether the row changed.
  */
 export async function writeOutcome(
   db: PlatformDatabase,
   id: string,
   write: RowWrite,
+  audit?: { readonly event: AuditEvent; readonly sink: Pick<AuditSink, 'record'> },
 ): Promise<boolean> {
-  let set: SQL;
-  switch (write.status) {
-    case 'done':
-      set = sql`status = 'done', done_at = now()`;
-      break;
-    case 'superseded':
-      set = sql`status = 'superseded', done_at = now(), last_error = ${write.lastError}`;
-      break;
-    case 'dead':
-      set = sql`status = 'dead', attempts = ${write.attempts}, last_error = ${write.lastError}`;
-      break;
-    case 'enqueued':
-      set = sql`status = 'enqueued', attempts = ${write.attempts},
-        next_attempt_at = ${write.nextAttemptAt.toISOString()}::timestamptz,
-        last_error = coalesce(${write.lastError}, last_error),
-        enqueued_at = coalesce(enqueued_at, now())`;
-      break;
-  }
-  const changed = await db.execute<{ id: string }>(sql`
-    UPDATE core_outbox SET ${set}
-    WHERE id = ${id} AND status IN ('pending', 'enqueued')
-    RETURNING id`);
-  return changed.length === 1;
+  return withPlatformUnitOfWork(db, async (uow) => {
+    const changed = await new PlatformOutbox(uow).writeOutcome(id, write);
+    // In the same transaction: a failed outcome write leaves no audit row (lead review round 2).
+    if (changed && audit !== undefined) await audit.sink.record(audit.event);
+    return changed;
+  });
 }
 
 /** The job operations the processor uses (a retry moves the job itself to delayed). */
@@ -111,7 +99,7 @@ export type OutboxJob = Pick<Job<OutboxJobData>, 'data' | 'moveToDelayed'>;
 
 export type ProcessDependencies = Pick<
   OutboxWorkerDependencies,
-  'db' | 'registry' | 'logger' | 'policies' | 'random' | 'now' | 'parker'
+  'db' | 'registry' | 'logger' | 'policies' | 'random' | 'now' | 'parker' | 'audit'
 >;
 
 /**
@@ -149,7 +137,15 @@ export async function processOutboxJob(
   const policy = deps.policies?.[kind] ?? outboxQueuePolicies[kind];
   const now = deps.now?.() ?? new Date();
   const write = resolveOutcome(row, outcome, policy, now, deps.random);
-  if (!(await writeOutcome(deps.db, row.id, write))) return 'skipped';
+  const event = outcome.outcome === 'done' ? outcome.audit : undefined;
+  let audit: Parameters<typeof writeOutcome>[3];
+  if (event !== undefined) {
+    if (deps.audit === undefined) {
+      throw new Error(`Outbox kind ${kind} returned an audit event but the worker has no sink`);
+    }
+    audit = { event, sink: deps.audit };
+  }
+  if (!(await writeOutcome(deps.db, row.id, write, audit))) return 'skipped';
   if (write.status === 'dead') {
     deps.logger.warn(`Outbox row ${row.id} (${kind}) dead after ${write.attempts} attempts`);
   }

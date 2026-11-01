@@ -7,7 +7,7 @@ import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import type postgres from 'postgres';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { KindHandler } from '../../src/modules/kernel/outbox/kind-handlers.js';
+import type { KindHandler, RelayRow } from '../../src/modules/kernel/outbox/kind-handlers.js';
 import { KindHandlerRegistry } from '../../src/modules/kernel/outbox/kind-handlers.js';
 import { nextOutboxId } from '../../src/modules/kernel/outbox/outbox-id.js';
 import {
@@ -205,6 +205,46 @@ describe('outbox relay (plan 2.3)', () => {
     await relayBatch(pool.db, queues, registry, 500);
     expect(await statuses([held])).toEqual(['enqueued']);
     await owner`UPDATE core_accounts SET status = 'suspended' WHERE id = ${suspended}`;
+  });
+
+  it("enqueues a suspended account's internal_event rows and holds its other kinds (lead ruling)", async () => {
+    // Real kinds that other suites also write: the double records what the relay would enqueue,
+    // then refuses, so the batch rolls back and no other suite's row is ever marked.
+    const internal = await insert(uuidv7(), 1, { accountId: suspended, kind: 'internal_event' });
+    const webhook = await insert(uuidv7(), 1, { accountId: suspended, kind: 'webhook' });
+    const activeWebhook = await insert(uuidv7(), 1, { kind: 'webhook' });
+    // One kind per batch, so the one `add` call carries every row the relay would enqueue.
+    const offeredFor = async (only: OutboxKind) => {
+      const offered = new Set<string>();
+      const refusing: RelayDependencies['queues'] = {
+        add: (_kind, ids) => {
+          for (const id of ids) offered.add(id);
+          return Promise.reject(new Error('rolled back on purpose'));
+        },
+        existingJobs: () => Promise.resolve(new Set()),
+      };
+      const single = new KindHandlerRegistry([
+        {
+          kind: only,
+          orderingKey: (row: RelayRow) => row.aggregateId,
+          execute: () => Promise.resolve({ outcome: 'done' as const }),
+        },
+      ]);
+      await relayBatch(pool.db, refusing, single, 100_000).catch((error: unknown) => {
+        if (!(error instanceof Error) || error.message !== 'rolled back on purpose') throw error;
+      });
+      return offered;
+    };
+    expect((await offeredFor('internal_event')).has(internal)).toBe(true);
+    const webhooks = await offeredFor('webhook');
+    expect(webhooks.has(activeWebhook)).toBe(true);
+    expect(webhooks.has(webhook)).toBe(false);
+    expect(await statuses([internal, webhook, activeWebhook])).toEqual([
+      'pending',
+      'pending',
+      'pending',
+    ]);
+    await owner`UPDATE core_outbox SET status = 'done' WHERE id IN (${internal}, ${webhook}, ${activeWebhook})`;
   });
 
   it('skips and counts kinds with no handler, never enqueueing them', async () => {

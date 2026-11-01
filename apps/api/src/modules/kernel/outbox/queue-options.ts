@@ -56,7 +56,9 @@ export const outboxQueuePolicies: Readonly<Record<OutboxKind, QueuePolicy>> = {
     limiter: null,
     backoff: { type: 'doubling', firstMs: second, capMs: 5 * minute },
     deadAfter: { failures: 10 },
-    note: 'a dead row parks later events of the aggregate (K-11)',
+    // §4.2 says a dead row parks later events (K-11); here a dead row is finished, so the relay
+    // releases later events and staff replay the dead one (plan 2.6, leg 2 §8.2 #20).
+    note: 'a dead row releases later events of the aggregate; staff replay it (plan 2.6)',
   },
   webhook: {
     concurrency: 50,

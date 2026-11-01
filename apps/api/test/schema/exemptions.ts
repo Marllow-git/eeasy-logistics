@@ -39,8 +39,6 @@ export const nullableAccountTables: Readonly<Record<string, string>> = {
 export const globalUniqueIndexes: Readonly<Record<string, readonly (readonly string[])[]>> = {
   // The key of a partitioned table must contain the partition key (data §2.1; PLAT-7).
   core_audit_log: [['id', 'occurred_at']],
-  // One pending row per key; keys embed the aggregate's UUID (integrations §4.1; data §5.2).
-  core_outbox: [['supersede_key']],
   // Event ids are UUIDv7, unique across accounts (data §4.1 names `(consumer, event_id)`).
   core_consumer_receipts: [['consumer', 'event_id']],
   core_consumer_dead_letters: [['consumer', 'event_id']],
