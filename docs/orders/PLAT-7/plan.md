@@ -1,0 +1,89 @@
+# PLAT-7 · Audit log
+
+- **Status:** planned
+- **Date:** 2026-11-01
+- **Wave:** 0 (roadmap §1.1). **Depends on:** PLAT-6 (merged, PR #41); CHORE-1 (merged: Node 24, `util.parseEnv`, SWC builder).
+- **Lead:** architecture lead. **Executor:** `executor-api` (Opus), own worktree, native stack scratch databases. **Adversary:** yes (private data in `before`/`after`, cross-tenant reads, append-only ledger-class table, retention drops).
+- **Issue:** #58. **Merge danger:** one-way door (migration 0006 with a partitioned table and the partition functions; the worker gains a job that drops partitions older than the retention). **Legs:** one (items A–E).
+- **Paths:** `apps/api`, `packages/db` (one helper), `packages/config` (one variable), `.env.example`, `.serena/memories`. WEB-1 (in flight) touches `packages/ui`, `packages/i18n`, `apps/web`, `apps/admin`, `.github/workflows`; disjoint.
+
+## 0. Goal
+
+Every admin and ledger-adjacent action, every cross-tenant call and every refusal the kernel already records lands as an immutable row in `core_audit_log`, written inside the business transaction when the action commits and on its own committed transaction when the request is refused, partitioned by month so two years of retention is a partition drop, readable per account on the staff surface and across accounts on the platform surface under the cross-tenant door, so that PLAT-10 to PLAT-13 can write their before-and-after rows into a frame that is already enforced and tested.
+
+## 1. Binding rules and ADRs
+
+- AGENTS.md hard rules: ledgers append-only (this table is ledger-class, K-7); tenancy structural; config through `packages/config`.
+- ADR-0025 "Decision"; ADR-0031 "Decision" (roles; `elx_owner` for migration and partition jobs). ADR-0029 "Decision" (cursor pagination, 24-hour cursors bound to filters and sort).
+- `docs/architecture/identity-and-tenancy.md` §7 "Audit log" (columns; synchronous for admin and ledger-adjacent actions; asynchronous through the outbox for high-volume audited reads; two years; exportable per account), §5 "Tenancy" bullet 3 (every cross-tenant call writes an audit row).
+- `docs/architecture/domain-model.md` §2.5 "AuditLog" (K-7).
+- `docs/architecture/data.md` §2.1 row `core_audit_log` (columns, monthly range partitions on `occurred_at`, PK `(id, occurred_at)`, the two indexes, AO), §2.4 "nullable account" row, §3.1 row `core_audit_log` (`core_reject_mutation` on the partitioned parent, inherited; the only lawful removal is dropping a partition older than 24 months), §3.2 "Privileges", §10 "Personal data inventory and retention" rows "Any actor" (`actor_id`, `ip`, `user_agent`, `before`, `after`: two years by dropping monthly partitions; the deletion tool keeps audit rows with ids and no personal data) and the `COMMENT ON COLUMN … 'pii:<actor>'` rule, §11.5 (the migration job ensures the next three monthly partitions exist).
+- `docs/contracts/README.md` §3 rows Pagination, Filtering, Sorting; `docs/contracts/openapi/staff.yaml` `listAuditLog`; `platform.yaml` `platformListAudit` and `platformListAccountAudit` (`x-cross-tenant`, `X-Support-Reason`, `400 reason_required`); `components.yaml` `AuditLogEntry`, `Page`, `Cursor`, `Limit`, `Sort`, `CreatedFrom`, `CreatedTo`.
+- PLAT-5 plan §6 "Partitions (review M-4)" (revoke the runtime roles' grants on every partition; extend the schema test to partitions) and §9 L-3 ruling. PLAT-6 plan §9: M-5 ruling (a kernel helper that commits security counters and refusal audits on their own transaction; this order ships the helper because the refusal audit needs it, PLAT-11 reuses it), L-4 ruling (the `ok` cross-tenant audit is written inside the door transaction before the handler and is lost on rollback; this order moves it to a committed write after the handler's outcome is known, with the outcome in the row), the `AuditSink` port in `apps/api/src/modules/kernel/audit/audit-sink.ts`, the cross-tenant door in `modules/kernel/tenancy` and `modules/kernel/platform`, `ContractPipe` and the A-17 rules (controllers import `@eeasy-logistics/contracts/<surface>/schemas`, presenters map rows to `AuditLogEntry`).
+- A-17 (doc 3 §9): request and response types only from the contracts; HTTP tests parse responses with the generated response schema.
+- CHORE-1: Node 24.22.2 is the runtime (`engines` refuses 22); the API builds with SWC (`nest build`, `tsc --noEmit` stays the typecheck); `packages/config` parses `.env` with `util.parseEnv`.
+
+## 2. Decisions (with defaults)
+
+| # | Decision | Default |
+|---|---|---|
+| 2.1 | Table | Migration `0006_core_audit_log` (hand-written, `-- reviewed`): `core_audit_log` `PARTITION BY RANGE (occurred_at)` with the data §2.1 columns (`id uuid NOT NULL DEFAULT core_uuidv7()`, `occurred_at timestamptz NOT NULL DEFAULT now()`, `actor_type` CHECK in (user, api_key, driver, system, platform_user), `actor_id uuid` (nullable only for `system`), `account_id uuid NULL REFERENCES core_accounts(id)`, `target_type text NOT NULL`, `target_id text NOT NULL`, `action text NOT NULL` (CHECK matches `^[a-z]+\.[a-z_]+\.[a-z_]+$`), `before jsonb`, `after jsonb`, `request_id text NOT NULL`, `ip inet`, `user_agent text`, `reason text`), PK `(id, occurred_at)`, indexes `(account_id, occurred_at DESC, id DESC)` and `(target_type, target_id, occurred_at DESC)`, plus `(actor_id, occurred_at DESC)`; `COMMENT ON COLUMN` `'pii:any'` on `actor_id`, `ip`, `user_agent`, `before`, `after`; `SELECT core_make_append_only('core_audit_log')` on the parent (row trigger inherited by partitions; the statement TRUNCATE trigger covers the parent, partitions are protected by having no grants); policies `tenant_isolation` (SELECT only, `account_id = NULLIF(current_setting('elx.account_id', true), '')::uuid`) and `platform_access` on the parent; `core_audit_log` listed in `appendOnlyTables` and as a nullable-account exemption in `test/schema/exemptions.ts` |
+| 2.2 | Partitions | Functions in the same migration, owner-only (EXECUTE revoked from PUBLIC): `core_ensure_audit_partitions(months_ahead integer)` creates `core_audit_log_YYYYMM` for the current month and the next `months_ahead` months when missing and runs `REVOKE ALL ON <partition> FROM elx_app, elx_platform` on each new partition (the parent keeps `SELECT, INSERT` for the runtime roles, so every read and write goes through the parent, its triggers and its policies; the default privileges would otherwise grant DML on the partition); `core_drop_audit_partitions_before(cutoff date)` detaches and drops partitions whose upper bound is before `cutoff` and returns their names; the migration itself calls `core_ensure_audit_partitions(3)` once; the migrate job (`packages/db/src/migrate.ts`) calls it after every run (data §11.5) inside the same transaction as the version write |
+| 2.3 | Schema test | Extended per PLAT-5 §6: partitions of tables in `appendOnlyTables` are enumerated (`relispartition`), each must hold no privilege for `elx_app` or `elx_platform`, and the parent must carry both triggers and both policies; a planted partition with a grant goes red |
+| 2.4 | Writer | `AuditWriter` in `modules/kernel/audit/` replaces `LogAuditSink` behind the same `AUDIT_SINK` token and a wider `AuditEvent`: `actorType`, `actorId`, `accountId`, `targetType`, `targetId`, `action` (`<module>.<object>.<verb>` past tense, e.g. `platform.cross_tenant.accessed`, `platform.cross_tenant.refused`, `platform.audit_partition.dropped`), `before`, `after`, `reason`, `requestId` (server-minted), `clientRequestId` (folded into `after.client_request_id` when present), `ip` (from the trust-proxy-aware `request.ip`), `userAgent` (truncated to 512 characters); two methods: `record(event)` writes through the current unit of work (tenant or platform; throws outside one) so the row commits or rolls back with the action; `recordCommitted(event)` writes on its own transaction on the platform pool through the new `packages/db` helper `withCommittedSideEffect(platformPool, fn)` (the PLAT-6 M-5 helper: a transaction opened outside the request frame, committed regardless of the request's outcome, never given the request's `elx.account_id`; the architecture test allows its import only from `modules/kernel/audit/` and, later, PLAT-11's counters); the cross-tenant door uses `recordCommitted` for refusals and, per the L-4 ruling, records the `ok` outcome after the handler settles with `outcome` in `after` (`{ outcome: 'ok' | 'failed', status }`) on a committed write, so a door call that fails after reading data still leaves a row |
+| 2.5 | Redaction | `redactForAudit(value)`: removes keys matching `/(password|secret|token|pin|otp|api_key|key_id|ciphertext|authorization|cookie)/i` at any depth (replaced by `"[redacted]"`), caps strings at 2,000 characters and the whole document at 32 KB (replaced by `{ truncated: true, bytes }` beyond the cap), strips `__proto__`; applied to `before`, `after` and `reason`; unit-tested |
+| 2.6 | Reads | `AuditLogRepository` (tenant, `ScopedRepository`; predicate `account_id = ctx`) and `PlatformAuditLogRepository` (`PlatformRepository`; `unscoped()` with explicit predicates): keyset cursor on `(occurred_at, id)` descending by default, `sort` accepts `-occurred_at` and `occurred_at` only; filters `target_type`, `target_id`, `actor_id`, `action` (platform), `created_from`/`created_to` (on `occurred_at`; the contract names them `created_*`), `account_id` (platform); cursor = base64url of `{ v: 1, k: [occurred_at, id], f: sha256(filters + sort), exp }` with 24 h validity per ADR-0029; a cursor whose `f` does not match answers `400 validation_failed` on `/query/cursor` |
+| 2.7 | Operations | `listAuditLog` (staff surface; the account from the context; no cross-tenant); `platformListAccountAudit` (`@CrossTenant()` on `account_id` from the path, audited per call); `platformListAudit`: with `account_id` in the query it is a cross-tenant call (the door takes the account from the query parameter in this one operation, declared in the decorator as `@CrossTenant({ from: 'query', name: 'account_id' })`, audited per call); without `account_id` it returns platform-actor rows only (`account_id IS NULL`) with no door; all three through `ContractPipe` with the generated schemas and a presenter to `AuditLogEntry`; permission enforcement (`x-permission`) is PLAT-10's: until then these routes require only the surface credential, and no token can be issued before PLAT-11, which depends on PLAT-10 |
+| 2.8 | Partition job | `--role worker`: daily (first run at boot, then every 24 h, Redis lock `elx:lock:audit-partitions` TTL 23 h, same pattern as the idempotency purge) `core_ensure_audit_partitions(3)` then `core_drop_audit_partitions_before(first day of the month 24 months ago)` using `config.audit.retentionMonths` (new variable `AUDIT_RETENTION_MONTHS`, integer ≥ 24, default 24; a value below 24 is refused by the schema); each dropped partition is itself audited (`platform.audit_partition.dropped`, actor `system`, `after: { partition, upper_bound }`) through `recordCommitted`; the job runs on the platform pool for the audit row and on a dedicated `elx_owner` connection for the two functions (the owner URL is allowed to the worker role only for this job: amend `refusedInDeployedEnvironments` so the worker may hold `DATABASE_URL_OWNER` when `AUDIT_PARTITION_JOB=on` (default on), and record the interpretation; the alternative, a SECURITY DEFINER function owned by `elx_owner`, is refused by ADR-0031) |
+| 2.9 | Export | Not in this order: the per-account export is the platform admin tool on `elx_maintenance` of data §10 (wave 1 data order); no contract operation exists for an audit export; recorded in §6 and as owner question 1 |
+| 2.10 | Tests | Integration on the PLAT-5 harness: the row trigger rejects UPDATE/DELETE on a partition and on the parent with `EL001`; `elx_app` cannot read or write a partition directly (`42501`); a tenant token lists only its account's rows; the platform list without `account_id` returns platform rows only; `platformListAccountAudit` writes its own cross-tenant row per call; a refused door call (missing reason) leaves a committed row even though the request rolled back; a handler that throws after `record()` leaves no row; redaction removes a nested `password`; cursors: stable order across pages, filter change refused, expiry refused; the partition job creates three months ahead and drops a planted 25-month-old partition with an audit row; the schema test red on a planted partition grant |
+
+## 3. Build list
+
+| Item | Delivers | Verify |
+|---|---|---|
+| A | Migration 0006 per 2.1 and 2.2; migrate job calls `core_ensure_audit_partitions(3)`; schema test per 2.3 with `exemptions.ts` updated | psql: parent partitioned, three partitions with no runtime grants, triggers and policies on the parent; migrate twice (idempotent); schema test red then green on the planted grant |
+| B | `withCommittedSideEffect` in `packages/db` with its architecture rule; `AuditWriter` per 2.4; redaction per 2.5; the cross-tenant door moved to committed outcome rows (L-4) and `recordCommitted` for refusals (M-5) | unit tests for redaction (counts); integration: refusal row survives rollback, failed handler leaves an `ok`/`failed` outcome row, thrown handler after `record()` leaves none |
+| C | Repositories and cursors per 2.6; the three operations per 2.7 with `ContractPipe` and presenters | HTTP tests parsing responses with the generated schemas; cursor cases; tenant isolation (two accounts); platform rows only without `account_id`; per-call audit of the door operations |
+| D | Partition job per 2.8; `AUDIT_RETENTION_MONTHS` and the worker-owner-URL refusal amendment in `packages/config` with tests; `.env.example` | worker boots, ensures partitions, drops the planted old one, audits the drop; without Redis it logs the disabled job (PLAT-6 rule); config tests |
+| E | README "Audit log" section; `.serena/memories` per `memory_upkeep` (new table, partitions, writer, job, config variable); plan §8; draft PR | `pnpm turbo run typecheck lint test` green; `test:integration` green with `ELX_RLS` off and on; counts in §8.0 |
+
+## 4. Commit plan
+
+One commit per item `PLAT-7: <letter> <title>` with its §8.0 row; draft PR from the template with `Release note: none (technical PR)` and the `Memories:` line.
+
+## 5. Exit criteria
+
+- `core_audit_log` rows cannot be updated, deleted or truncated by any runtime role, directly or through a partition; proven by tests in both RLS lanes.
+- Every cross-tenant call and every door refusal leaves exactly one row; a refused request's row survives its rollback.
+- The three list operations return `AuditLogEntry` pages with stable cursors; a tenant never sees another account's rows.
+- Partitions exist three months ahead after every migrate run; the worker drops partitions past the retention and audits each drop.
+- The adversary pass finds no critical or high.
+
+## 6. Not in this order
+
+Per-account export (wave 1 data order, data §10); asynchronous audit of high-volume reads through the outbox (PLAT-8); before-and-after rows for provisioning, flags, roles and members (PLAT-10, PLAT-12, PLAT-13 write them through `AuditWriter`); permission enforcement on the list routes (PLAT-10); the staging anonymiser for `pii:` columns (OPS-1); impersonation (identity open question 3).
+
+## 7. Owner questions
+
+| # | Question | Provisional default |
+|---|---|---|
+| 1 | Audit export: a contract operation on the staff surface (CSV of `listAuditLog`) or only the per-account platform export tool of data §10? | Only the platform tool, wave 1; add a staff export operation to the contracts if merchants ask. |
+| 2 | Retention: 24 months fixed, or per-account configurable above 24? | Fixed 24 months in wave 0 (`AUDIT_RETENTION_MONTHS` global, minimum 24). |
+
+## 8. Executor notes (filled by the executor)
+
+### 8.0 Progress
+
+| Item | Commit | Tests (counts) | Interpretation |
+|---|---|---|---|
+
+### 8.1 Skills, documents and versions consulted
+
+### 8.2 Interpretations the lead should check
+
+### 8.3 Not done here
+
+## 9. Lead review and adversary
+
+Adversary: required (private data in audit rows, cross-tenant reads, append-only table, retention drops).
