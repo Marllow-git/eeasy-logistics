@@ -20,8 +20,11 @@
 -- core_outbox_pending_id_idx serves the relay's batch, ORDER BY id over pending rows (data §5.2;
 -- PLAT-8 lead review round 1); core_outbox_pending_due_idx serves the oldest-due-row alert query.
 --
--- Global unique keys without account_id (data §4.1): the pending supersede_key (keys embed the
--- aggregate's UUID, integrations §4.1) and (consumer, event_id) (event ids are UUIDv7).
+-- The pending supersede_key is unique per account, (account_id, supersede_key) NULLS NOT DISTINCT
+-- (hand-added: the Drizzle index builder cannot say it), so two accounts may share a key and the
+-- platform-only rows share one scope (PLAT-8 lead review round 2); rows without a key are left
+-- out, as NULLS NOT DISTINCT would otherwise make them collide within an account. Global unique key without
+-- account_id (data §4.1): (consumer, event_id) (event ids are UUIDv7).
 CREATE TABLE "core_consumer_dead_letters" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"consumer" text NOT NULL,
@@ -81,7 +84,7 @@ CREATE INDEX "core_outbox_pending_id_idx" ON "core_outbox" USING btree ("id") WH
 CREATE INDEX "core_outbox_enqueued_idx" ON "core_outbox" USING btree ("enqueued_at") WHERE "core_outbox"."status" = 'enqueued';--> statement-breakpoint
 CREATE INDEX "core_outbox_account_idx" ON "core_outbox" USING btree ("account_id","status","created_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "core_outbox_aggregate_idx" ON "core_outbox" USING btree ("aggregate_id","sequence");--> statement-breakpoint
-CREATE UNIQUE INDEX "core_outbox_supersede_key_pending_idx" ON "core_outbox" USING btree ("supersede_key") WHERE "core_outbox"."status" = 'pending';
+CREATE UNIQUE INDEX "core_outbox_supersede_key_pending_idx" ON "core_outbox" USING btree ("account_id","supersede_key") NULLS NOT DISTINCT WHERE "core_outbox"."status" = 'pending' AND "core_outbox"."supersede_key" IS NOT NULL;
 --> statement-breakpoint
 -- Personal data inventory (data §10): a payload may carry recipient data (document 2 §6.3) and a
 -- provider's error text may echo it; the worker stores a redacted message only (integrations §4.4).

@@ -116,7 +116,9 @@ export interface RelayBatch {
 
 /**
  * One relay batch, in one transaction on the platform pool: selects up to `batchSize` due rows of
- * kinds with a handler, of accounts that are not suspended (K-2; platform-only rows always),
+ * kinds with a handler, of accounts that are not suspended (K-2; platform-only rows always;
+ * `internal_event` rows always, lead ruling on leg 2: the suspension event itself drives the
+ * internal effects, and internal consumers make no external call),
  * `ORDER BY id … FOR UPDATE OF o SKIP LOCKED` (a second leader after a lost lock skips them),
  * drops the rows the ordering rule holds, adds one job per row (`jobId` = row id) and marks them
  * `enqueued`. A Redis failure throws and rolls the marks back; the rows stay `pending`.
@@ -137,7 +139,7 @@ export async function relayBatch(
         LEFT JOIN core_accounts a ON a.id = o.account_id
         WHERE o.status = 'pending' AND o.next_attempt_at <= now()
           AND o.kind IN (${list(kinds)})
-          AND (o.account_id IS NULL OR a.status <> 'suspended')
+          AND (o.account_id IS NULL OR o.kind = 'internal_event' OR a.status <> 'suspended')
         ORDER BY o.id
         LIMIT ${batchSize}
         FOR UPDATE OF o SKIP LOCKED`)

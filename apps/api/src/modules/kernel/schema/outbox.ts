@@ -79,9 +79,13 @@ export const coreOutbox = pgTable(
       .where(sql`${table.status} = 'enqueued'`),
     index('core_outbox_account_idx').on(table.accountId, table.status, table.createdAt.desc()),
     index('core_outbox_aggregate_idx').on(table.aggregateId, table.sequence),
+    // One pending row per key and account, as `supersedePending` is account-scoped (lead review
+    // round 2): two accounts may share a key. Migration 0007 adds NULLS NOT DISTINCT by hand (the
+    // Drizzle index builder cannot say it), so platform-only rows (NULL account) share one scope.
+    // Rows without a key are left out: NULLS NOT DISTINCT would make them collide per account.
     uniqueIndex('core_outbox_supersede_key_pending_idx')
-      .on(table.supersedeKey)
-      .where(sql`${table.status} = 'pending'`),
+      .on(table.accountId, table.supersedeKey)
+      .where(sql`${table.status} = 'pending' AND ${table.supersedeKey} IS NOT NULL`),
     check(
       'core_outbox_kind_check',
       sql`${table.kind} IN ('internal_event', 'webhook', 'message', 'push', 'channel_publish', 'carrier_call', 'storage_lifecycle')`,

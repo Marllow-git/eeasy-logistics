@@ -168,6 +168,27 @@ describe('OutboxWriter (plan 2.2)', () => {
     ]);
   });
 
+  it('keeps a pending row per account for a key two accounts share (lead review round 2)', async () => {
+    const aggregateId = uuidv7();
+    const keyed = (version: number) =>
+      entry(aggregateId, {
+        kind: 'message',
+        supersedeKey: `msg:${aggregateId}:shared`,
+        aggregate: { type: 'account', id: aggregateId, version },
+      });
+    await withUnitOfWork(app.db, context(accountA), (uow) => writer.enqueue(uow, keyed(1)));
+    // Account B's write neither fails on A's pending row nor supersedes it.
+    await withUnitOfWork(app.db, context(accountB), (uow) => writer.enqueue(uow, keyed(2)));
+    // A second write in A supersedes A's row only.
+    await withUnitOfWork(app.db, context(accountA), (uow) => writer.enqueue(uow, keyed(3)));
+    const rows = await rowsOf(aggregateId);
+    expect(rows.map((row) => [row.sequence, row.account_id, row.status])).toEqual([
+      [1, accountA, 'superseded'],
+      [2, accountB, 'pending'],
+      [3, accountA, 'pending'],
+    ]);
+  });
+
   it('rolls a supersede back with the transaction', async () => {
     const aggregateId = uuidv7();
     const keyed = entry(aggregateId, { kind: 'message', supersedeKey: `msg:${aggregateId}:x` });

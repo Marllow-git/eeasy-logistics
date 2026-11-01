@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
-import type { AuditSink } from '../audit/audit-sink.js';
+import type { AuditEvent } from '../audit/audit-sink.js';
 import type { ObjectStorage } from '../storage/object-storage.js';
 import type { KindHandler, KindOutcome, OutboxRow } from './kind-handlers.js';
 
 // The `storage_lifecycle` kind (ADR-0036; integrations §2.6, §4.1; PLAT-8 plan 2.5): one row is a
 // batch of up to 1,000 object keys to delete, written by the retention scheduler or the account
-// closure tool. The handler checks the batch, calls `ObjectStorage.deleteMany`, then writes one
-// audit row per executed batch, committed on its own (platform §6: every deletion is audited).
+// closure tool. The handler checks the batch and calls `ObjectStorage.deleteMany`; one audit row
+// per executed batch is written with the row's outcome (platform §6: every deletion is audited).
 
 export const storageBatchMax = 1_000;
 export const storageKeyMaxLength = 1_024;
@@ -61,10 +61,7 @@ export function batchKeys(row: Pick<OutboxRow, 'accountId' | 'payload'>): string
 export class StorageLifecycleHandler implements KindHandler {
   readonly kind = 'storage_lifecycle' as const;
 
-  constructor(
-    private readonly storage: ObjectStorage,
-    private readonly audit: Pick<AuditSink, 'recordCommitted'>,
-  ) {}
+  constructor(private readonly storage: ObjectStorage) {}
 
   /** No ordering (integrations §4.1). */
   orderingKey(): null {
@@ -72,9 +69,11 @@ export class StorageLifecycleHandler implements KindHandler {
   }
 
   /**
-   * A refused batch is dead at once (retrying cannot fix it) and deletes nothing. A storage or
-   * audit failure throws: the batch is retried whole (`deleteMany` tolerates gone keys) and the
-   * audit row is written only after the deletion succeeded.
+   * A refused batch is dead at once (retrying cannot fix it) and deletes nothing. A storage
+   * failure throws and the batch is retried whole (`deleteMany` tolerates gone keys). After the
+   * deletion the outcome carries the batch's audit event, which the worker writes in the same
+   * platform transaction as the row's `done` (lead review round 2): a failed outcome write leaves
+   * no audit row, and its retry leaves exactly one.
    */
   async execute(row: OutboxRow): Promise<KindOutcome> {
     const keys = batchKeys(row);
@@ -82,7 +81,7 @@ export class StorageLifecycleHandler implements KindHandler {
       return { outcome: 'dead', error: { status: 'invalid_batch', message: keys } };
     }
     await this.storage.deleteMany(keys);
-    await this.audit.recordCommitted({
+    const audit: AuditEvent = {
       actorType: 'system',
       actorId: null,
       accountId: row.accountId,
@@ -91,7 +90,7 @@ export class StorageLifecycleHandler implements KindHandler {
       action: storageAuditAction,
       after: deletedBatchAudit(keys),
       requestId: row.id,
-    });
-    return { outcome: 'done' };
+    };
+    return { outcome: 'done', audit };
   }
 }

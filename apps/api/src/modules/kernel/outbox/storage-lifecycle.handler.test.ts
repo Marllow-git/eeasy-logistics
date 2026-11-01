@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { StubObjectStorage, StubStorageRefused } from '../storage/object-storage.js';
 import type { OutboxRow } from './kind-handlers.js';
 import {
@@ -49,15 +49,13 @@ describe('batchKeys', () => {
 });
 
 describe('StorageLifecycleHandler', () => {
-  it('deletes the batch, then audits it through recordCommitted', async () => {
+  it('deletes the batch and returns done with its audit event, for the outcome transaction', async () => {
     const storage = new StubObjectStorage('ci');
-    const recordCommitted = vi.fn(() => Promise.resolve());
-    const handler = new StorageLifecycleHandler(storage, { recordCommitted });
+    const handler = new StorageLifecycleHandler(storage);
     const keys = [`acc/${account}/exports/2`, `acc/${account}/exports/1`];
-    expect(await handler.execute(rowOf({ keys }))).toEqual({ outcome: 'done' });
-    expect(storage.deleted).toEqual(keys);
-    expect(recordCommitted).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(await handler.execute(rowOf({ keys }))).toEqual({
+      outcome: 'done',
+      audit: {
         actorType: 'system',
         actorId: null,
         accountId: account,
@@ -65,21 +63,19 @@ describe('StorageLifecycleHandler', () => {
         targetId: rowOf(null).id,
         action: storageAuditAction,
         requestId: rowOf(null).id,
-      }),
-    );
-    expect(recordCommitted.mock.calls[0]).toMatchObject([
-      { after: { count: 2, objects: [...keys].sort() } },
-    ]);
+        after: expect.objectContaining({ count: 2, objects: [...keys].sort() }) as unknown,
+      },
+    });
+    expect(storage.deleted).toEqual(keys);
   });
 
-  it('is dead at once on a refused batch, deleting and auditing nothing', async () => {
+  it('is dead at once on a refused batch, deleting nothing and carrying no audit event', async () => {
     const storage = new StubObjectStorage('ci');
-    const recordCommitted = vi.fn(() => Promise.resolve());
-    const handler = new StorageLifecycleHandler(storage, { recordCommitted });
+    const handler = new StorageLifecycleHandler(storage);
     const outcome = await handler.execute(rowOf({ keys: [`acc/${other}/a`] }));
     expect(outcome).toMatchObject({ outcome: 'dead', error: { status: 'invalid_batch' } });
+    expect('audit' in outcome).toBe(false);
     expect(storage.deleted).toEqual([]);
-    expect(recordCommitted).not.toHaveBeenCalled();
   });
 
   it('lists the keys in the audit row only while they fit', () => {
