@@ -59,7 +59,7 @@ The owner merges. The owner may delegate merging to the lead in writing (chat ru
 
 ## PR description
 
-The template is `.github/pull_request_template.md`; the gate script checks that its headings are present. The four sections: **What** (plan items delivered, ADRs relied on), **How verified** (exact commands and counts, red-then-green), **Merge danger** (two-way or one-way door, blast radius), **Skipped / not checked**.
+The template is `.github/pull_request_template.md`; the gate script checks that its headings are present. Two body lines carry waivers the gate script reads: `Memories: unchanged` (no memory trigger applies) and `Release note: none <reason>` (app source changed but nothing is user-visible). The four sections: **What** (plan items delivered, ADRs relied on), **How verified** (exact commands and counts, red-then-green), **Merge danger** (two-way or one-way door, blast radius), **Skipped / not checked**.
 
 ## Stopping
 
