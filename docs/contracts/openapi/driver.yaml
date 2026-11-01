@@ -27,7 +27,7 @@ paths:
     post:
       operationId: driverRequestOtp
       summary: "Send a six-digit OTP over WhatsApp"
-      description: 'Phone normalised to E.164 first; 5 per phone and 20 per IP per hour; 60 s cooldown. Always 202 (document 4 §3.2, §8).'
+      description: 'Phone normalised to E.164 first; 5 per phone and 20 per IP per hour; 60 s cooldown. Always 202 for any phone, known or not (document 4 §3.2, §8); 503 messaging_unavailable while the messaging breaker is open or messaging is paused (integrations §2.4).'
       tags: [auth]
       x-wave: 1
       x-permission: core.auth.anonymous
@@ -39,6 +39,7 @@ paths:
         '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+        '503': {$ref: './components.yaml#/components/responses/ServiceUnavailable', description: 'Codes: messaging_unavailable.'}
   /auth/otp/verify:
     post:
       operationId: driverVerifyOtp

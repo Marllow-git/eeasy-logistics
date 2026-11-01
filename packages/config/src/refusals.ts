@@ -5,7 +5,7 @@ import type { AppRole, ServerVariable } from './server.ts';
  * What production refuses to start without (plan 2.3, platform §3), per process role. Each role gets
  * only the database credential of its duty (data §4.4, ADR-0031; PLAT-5 review H-2, amending PLAT-4):
  * `api` and `worker` need the `elx_app` and `elx_platform` URLs plus the public web and admin URLs, Redis,
- * object storage, the token signing key and the credentials keys; the one-shot `migrate` job needs
+ * object storage, the token signing key, the credentials keys and SMTP (PLAT-9); the one-shot `migrate` job needs
  * only the `elx_owner` URL. No role needs `DATABASE_URL_MAINTENANCE` yet: the deletion tool is a
  * wave 1 order and will get its own role.
  */
@@ -23,6 +23,9 @@ const requiredForRuntime: readonly ServerVariable[] = [
   'AUTH_SIGNING_KEY',
   'CREDENTIALS_KEYS',
   'CREDENTIALS_ACTIVE_KEY_ID',
+  // Invitations and password resets (PLAT-9 plan 2.2).
+  'MAIL_SMTP_URL',
+  'MAIL_FROM',
 ];
 
 export function requiredInProduction(role: AppRole): readonly ServerVariable[] {
@@ -74,7 +77,11 @@ export interface RefusalInput {
  * Tooling credentials that only `local` and `ci` may hold (PLAT-5): the superuser URL creates and
  * drops scratch databases and the `elx_seed` template. Staging and production refuse it.
  */
-export const localAndCiOnly: readonly ServerVariable[] = ['DATABASE_URL_ADMIN'];
+export const localAndCiOnly: readonly ServerVariable[] = [
+  'DATABASE_URL_ADMIN',
+  // The WhatsApp stub (PLAT-9 plan 2.1; integrations §9): never reachable from staging or production.
+  'MESSAGING_STUB_URL',
+];
 
 export function productionRefusals(input: RefusalInput): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
