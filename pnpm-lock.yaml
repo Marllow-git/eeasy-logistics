@@ -291,9 +291,6 @@ importers:
 
   packages/config:
     dependencies:
-      dotenv:
-        specifier: 18.0.9
-        version: 18.0.9
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -4161,11 +4158,6 @@ packages:
 
   dnssd-advertise@1.1.6:
     resolution: {integrity: sha512-Ndrrf6BMPalkQPd/zubL+4YghH2J9NspapQ09uDXwYbvOPkP0oaqf5CkcwJ0b50kS2O3ul6yVu+jz+RY62Cejg==}
-
-  dotenv@18.0.9:
-    resolution: {integrity: sha512-3fVOW4cB02R066PUSwn8O4TJyz9NckQl7F81blIbaq9jKBm2tSmOKky7ZHIXzGvkVPXCSn6jkpziBPZdGFs8Tw==}
-    engines: {node: '>=12'}
-    hasBin: true
 
   drizzle-kit@0.31.11:
     resolution: {integrity: sha512-YCYqxTLIB2OCqf6w9/Vef13baBVbwQIPcbT4Y56AfO6B9ajZhDhD8Jkveg/hJvT/iuMloKD/IYYkyMMNhr7Kqg==}
@@ -11025,8 +11017,6 @@ snapshots:
       wrappy: 1.0.2
 
   dnssd-advertise@1.1.6: {}
-
-  dotenv@18.0.9: {}
 
   drizzle-kit@0.31.11:
     dependencies:

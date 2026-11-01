@@ -3,7 +3,7 @@
 // `defineConfig()`; nothing else in a server process may read the environment.
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import dotenv from 'dotenv';
+import { parseEnv } from 'node:util';
 import { ConfigError, EX_CONFIG } from './errors.ts';
 import type { EnvRecord } from './fields.ts';
 import type { Config, DefineConfigOptions } from './server.ts';
@@ -24,7 +24,8 @@ export function readEnvironment(
   if (processEnv.APP_ENV !== 'local') return { ...processEnv };
   const path = findEnvFile(cwd);
   if (path === undefined) return { ...processEnv };
-  const file = dotenv.parse(readFileSync(path));
+  // Node's own `.env` parser (stable since Node 24.10; CHORE-1 compared it with dotenv on our files).
+  const file = parseEnv(readFileSync(path, 'utf8'));
   // `APP_ENV` never comes from the file, so the file cannot turn a local process into anything else.
   delete file.APP_ENV;
   return { ...file, ...withoutEmpty(processEnv) };
