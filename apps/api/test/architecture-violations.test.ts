@@ -64,6 +64,13 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
     expect(rulesOf('delivery/migrate-runner.ts')).toEqual(['db-migrate-only-in-owner-jobs']);
   });
 
+  it('refuses the migration job reaching the application or the contracts (PLAT-7 CI fix)', () => {
+    const rules = violations
+      .filter((violation) => violation.from === 'test/architecture/violations/migrate/loads-app.ts')
+      .map((violation) => violation.rule.name);
+    expect(rules).toContain('migrate-job-loads-no-application');
+  });
+
   it('refuses a barrel surface entry from a controller (contracts-server-entries-only)', () => {
     expect(rulesOf('kernel-barrel.controller.ts')).toEqual(['contracts-server-entries-only']);
   });
