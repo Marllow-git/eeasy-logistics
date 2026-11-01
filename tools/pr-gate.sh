@@ -35,7 +35,9 @@ elif [[ "$pending" != "0" ]]; then bad "$pending check(s) still running";
 else ok "$total checks green"; fi
 
 # 4. Order PRs: head carries implementation commits beyond the plan (lesson of PR #29).
-files="$(jq -r '.files[].path' <<<"$json")"
+# The file list is paginated through the REST API: `gh pr view --json files` caps at 100 entries,
+# which hid PLAT-14's release note (PR #76). Renames list the old path too, as CI does.
+files="$(gh api "repos/{owner}/{repo}/pulls/$pr/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')"
 if [[ "$branch" =~ ^feat/([A-Z]+-[0-9]+) ]]; then
   order="${BASH_REMATCH[1]}"
   plan="docs/orders/$order/plan.md"
