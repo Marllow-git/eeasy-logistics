@@ -20,6 +20,7 @@ export async function runMigrateJob(config: Config): Promise<void> {
   const result = await runMigrations({
     url: config.db.urls.owner,
     folder: migrationsFolder,
+    rls: config.db.rls,
     log: (line) => logger.log(line),
   });
   logger.log(

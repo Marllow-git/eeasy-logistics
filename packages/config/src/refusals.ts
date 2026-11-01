@@ -49,9 +49,25 @@ export interface RefusalInput {
   readonly messagingDisabled: boolean | undefined;
 }
 
+/**
+ * Tooling credentials that only `local` and `ci` may hold (PLAT-5): the superuser URL creates and
+ * drops scratch databases and the `elx_seed` template. Staging and production refuse it.
+ */
+export const localAndCiOnly: readonly ServerVariable[] = ['DATABASE_URL_ADMIN'];
+
 export function productionRefusals(input: RefusalInput): ConfigIssue[] {
-  if (input.appEnv !== 'production') return [];
   const issues: ConfigIssue[] = [];
+  if (input.appEnv === 'staging' || input.appEnv === 'production') {
+    for (const variable of localAndCiOnly) {
+      if (input.present(variable)) {
+        issues.push({
+          variable,
+          problem: `is for local and ci tooling only; ${input.appEnv} refuses it`,
+        });
+      }
+    }
+  }
+  if (input.appEnv !== 'production') return issues;
   for (const variable of requiredInProduction) {
     if (!input.present(variable)) {
       issues.push({ variable, problem: 'is required when APP_ENV=production' });

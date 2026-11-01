@@ -1,7 +1,13 @@
 import { eq, sql } from 'drizzle-orm';
 import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { AppDatabase, Pool, RequestContext, TenantInsert, UnitOfWork } from '../src/index.ts';
+import type {
+  AppDatabase,
+  Pool,
+  RequestContext,
+  TenantInsert,
+  UnitOfWork,
+} from '@eeasy-logistics/db';
 import {
   ScopedRepository,
   createAppPool,
@@ -9,10 +15,10 @@ import {
   getContext,
   uuidv7,
   withUnitOfWork,
-} from '../src/index.ts';
-import { testConfig } from './database.ts';
+} from '@eeasy-logistics/db';
+import { integrationConfig } from './support.js';
 
-// Real PostgreSQL as elx_app (plan item A). One connection (pool size 1), so "two sequential
+// Real PostgreSQL as elx_app (plan item A; moved here from packages/db so the CI lanes run it). One connection (pool size 1), so "two sequential
 // transactions on one connection" is literal. Only a temporary table is used: it lives in this
 // session and disappears when the connection closes.
 
@@ -67,7 +73,7 @@ describe('withUnitOfWork on the elx_app pool', () => {
   const accountB = uuidv7();
 
   beforeAll(async () => {
-    const config = testConfig();
+    const config = integrationConfig();
     pool = createAppPool({ ...config.db, poolSize: { app: 1 } }, 'elx-db-test');
     await pool.db.execute(sql`SELECT 1`);
     await pool.db.execute(sql`

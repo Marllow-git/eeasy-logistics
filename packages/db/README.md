@@ -7,6 +7,8 @@ Shared database helpers (data architecture §1.2, §4; ADR-0020, ADR-0025, propo
 | `@eeasy-logistics/db` | `createAppPool` (`elx_app`), `withUnitOfWork`, `RequestContext` and `getContext()`, `ScopedRepository`, `uuidv7()` | any server code |
 | `@eeasy-logistics/db/platform` | `createPlatformPool` (`elx_platform`), `withPlatformUnitOfWork`, `PlatformRepository` with `unscoped()` | `apps/api/src/modules/kernel/platform/` and the worker's system jobs only (architecture test) |
 | `@eeasy-logistics/db/testing` | the test-only context setter | tests only (architecture test) |
+| `@eeasy-logistics/db/migrate` | `runMigrations` (advisory lock, history check, `core_schema_meta`, the `ELX_RLS` switch), `expectedSchemaVersion` | the migration job, `/ready`, the seed tool and the test harness |
+| `@eeasy-logistics/db/admin` | superuser helpers: `recreateDatabase`, `dropDatabase`, `withDatabase` (local and ci only; `DATABASE_URL_ADMIN` is refused in staging and production) | `apps/api/src/seed/` and tests only (architecture test) |
 
 ## Rules
 
@@ -17,4 +19,4 @@ Shared database helpers (data architecture §1.2, §4; ADR-0020, ADR-0025, propo
 
 ## Tests
 
-`pnpm --filter @eeasy-logistics/db test` needs a real PostgreSQL (handbook 03) reachable through `DATABASE_URL_APP`: `APP_ENV=local` with the root `.env` and the native or Compose stack, or `APP_ENV=ci` with the variables set. The tests use a temporary table only and leave nothing behind.
+`pnpm --filter @eeasy-logistics/db test` runs the pure unit tests (no database). The database behaviour of this package (transaction-local setting, repository predicate, RLS, triggers, migration runner) is tested against a real PostgreSQL in `apps/api/test/integration/`, which the CI lanes `api-test` and `api-test-rls` run (handbook 03).

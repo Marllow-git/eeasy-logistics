@@ -104,6 +104,22 @@ describe('production refusals (plan 2.3)', () => {
     expect(problems({ APP_ENV: appEnv, MESSAGING_PROVIDER: 'stub' })).toEqual({});
   });
 
+  it.each(['staging', 'production'])('refuses the superuser DATABASE_URL_ADMIN in %s', (appEnv) => {
+    const admin = 'postgres://postgres:fake-admin-pw@db.internal:5432/postgres';
+    const env = appEnv === 'production' ? productionEnv : { APP_ENV: appEnv };
+    const found = problems({ ...env, DATABASE_URL_ADMIN: admin });
+    expect(found).toEqual({
+      DATABASE_URL_ADMIN: `is for local and ci tooling only; ${appEnv} refuses it`,
+    });
+  });
+
+  it.each(['local', 'ci'])('accepts DATABASE_URL_ADMIN in %s (PLAT-5 tooling)', (appEnv) => {
+    const admin = 'postgres://postgres:fake-admin-pw@127.0.0.1:5432/postgres';
+    const config = defineConfig({ APP_ENV: appEnv, DATABASE_URL_ADMIN: admin });
+    expect(config.db.urls.admin?.reveal()).toBe(admin);
+    expect(String(config.db.urls.admin)).toBe('[redacted]');
+  });
+
   it('resolves an unset provider to the stub in local and ci only', () => {
     expect(defineConfig({ APP_ENV: 'local' }).messaging.provider).toBe('stub');
     expect(defineConfig({ APP_ENV: 'ci' }).messaging.provider).toBe('stub');

@@ -18,6 +18,11 @@ export interface MigrateOptions {
   readonly url: Secret | undefined;
   /** The folder holding the SQL files and `meta/_journal.json`. */
   readonly folder: string;
+  /**
+   * `config.db.rls` (`ELX_RLS=on`): after the migrations, enable row-level security on every table
+   * with a `tenant_isolation` policy (`core_enable_tenant_rls()`, plan 2.6). Off never disables it.
+   */
+  readonly rls: boolean;
   /** Progress lines; never given a value from the configuration. */
   readonly log?: (line: string) => void;
 }
@@ -27,6 +32,8 @@ export interface MigrateResult {
   readonly applied: number;
   /** The tag of the last migration in the folder, now recorded in `core_schema_meta`. */
   readonly version: string;
+  /** Tables whose RLS this run enabled (or kept enabled); 0 when `rls` is off. */
+  readonly rlsTables: number;
 }
 
 interface JournalEntry {
@@ -87,7 +94,15 @@ export async function runMigrations(options: MigrateOptions): Promise<MigrateRes
 
     const after = await appliedMigrations(client);
     await client`UPDATE core_schema_meta SET version = ${version}, migrated_at = now()`;
-    return { applied: after.length - before.length, version };
+    let rlsTables = 0;
+    if (options.rls) {
+      const [result] = await client<
+        { enabled: number }[]
+      >`SELECT core_enable_tenant_rls() AS enabled`;
+      rlsTables = result?.enabled ?? 0;
+      log(`ELX_RLS=on: row-level security enabled on ${rlsTables} table(s).`);
+    }
+    return { applied: after.length - before.length, version, rlsTables };
   } finally {
     // Closing the session releases the lock as well; the explicit unlock keeps the order clear.
     await client`SELECT pg_advisory_unlock_all()`.catch(() => undefined);

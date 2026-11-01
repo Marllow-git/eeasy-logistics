@@ -51,6 +51,15 @@ module.exports = {
       from: { path: '^src/', pathNot: '\\.test\\.ts$' },
       to: { path: '(?:^|/)packages/db/src/testing\\.ts$' },
     },
+    {
+      name: 'db-admin-only-in-tooling',
+      comment:
+        'PLAT-5 plan 2.8: the superuser helpers (@eeasy-logistics/db/admin: create and drop ' +
+        'databases) serve the seed tool (src/seed/) and the test harness only.',
+      severity: 'error',
+      from: { path: '^src/', pathNot: ['^src/seed/', '\\.test\\.ts$'] },
+      to: { path: '(?:^|/)packages/db/src/admin\\.ts$' },
+    },
     ...environmentRules(),
     noUnresolvable,
   ],
