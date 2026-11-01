@@ -14,7 +14,13 @@ import { KernelModule } from '../../src/modules/kernel/kernel.module.js';
 import { PLATFORM_POOL } from '../../src/modules/kernel/platform/tokens.js';
 import { platformCookie, staffCookie } from '../../src/modules/kernel/auth/principal.js';
 import type { AuditEvent, AuditSink } from '../../src/modules/kernel/public/index.js';
-import { ApiException, AUDIT_SINK, CrossTenant } from '../../src/modules/kernel/public/index.js';
+import {
+  ApiException,
+  AUDIT_SINK,
+  CrossTenant,
+  Operation,
+} from '../../src/modules/kernel/public/index.js';
+import { probeOperations } from '../support/probe-operations.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import type { AuditRow } from './audit-rows.js';
 import { auditRowsOf } from './audit-rows.js';
@@ -59,24 +65,28 @@ class StaffAuditProbe {
   constructor(@Inject(AUDIT_SINK) private readonly audit: AuditSink) {}
 
   @Get('commit')
+  @Operation(probeOperations.staffRead)
   async commit(): Promise<{ ok: true }> {
     await this.audit.record(tenantEvent({ name: 'New', password: 'hunter2' }));
     return { ok: true };
   }
 
   @Get('throw')
+  @Operation(probeOperations.staffRead)
   async throws(): Promise<never> {
     await this.audit.record(tenantEvent({ name: 'Never' }));
     throw new ApiException('not_found');
   }
 
   @Get('committed-then-throw')
+  @Operation(probeOperations.staffRead)
   async committedThenThrow(): Promise<never> {
     await this.audit.recordCommitted(tenantEvent({ name: 'Refused' }));
     throw new ApiException('forbidden');
   }
 
   @Get('foreign')
+  @Operation(probeOperations.staffRead)
   async foreign(): Promise<{ ok: true }> {
     await this.audit.record({ ...tenantEvent(null), accountId: uuidv7() });
     return { ok: true };
@@ -88,6 +98,7 @@ class PlatformAuditProbe {
   constructor(@Inject(AUDIT_SINK) private readonly audit: AuditSink) {}
 
   @Get('audit-probe')
+  @Operation(probeOperations.platformRead)
   async platformAction(): Promise<{ ok: true }> {
     await this.audit.record({
       actorType: 'platform_user',
@@ -104,6 +115,7 @@ class PlatformAuditProbe {
 
   @CrossTenant()
   @Get('accounts/:account_id/audit-effect')
+  @Operation(probeOperations.platformCrossTenant)
   async effect(): Promise<{ ok: true }> {
     // The handler's own effect inside the door: a row in the target account's log.
     await this.audit.record(tenantEvent({ name: 'Effect' }));
@@ -112,6 +124,7 @@ class PlatformAuditProbe {
 
   @CrossTenant()
   @Get('accounts/:account_id/audit-probe')
+  @Operation(probeOperations.platformCrossTenant)
   async readThenFail(): Promise<never> {
     await this.audit.record(tenantEvent({ name: 'Inside the door' }));
     throw new ApiException('version_conflict');

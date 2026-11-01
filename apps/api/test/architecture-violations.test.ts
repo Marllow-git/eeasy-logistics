@@ -137,6 +137,18 @@ describe('A-17 ESLint rules fail on their violation fixtures (adversary M-6)', (
     expect(count(found, 'no-restricted-syntax')).toBe(1);
   });
 
+  it(
+    'reports an operation built in the controller instead of the generated entry (PLAT-10)',
+    { timeout: 30_000 },
+    async () => {
+      expect(await rulesOf('forged-operation.controller.ts')).toEqual([
+        'no-restricted-syntax',
+        'no-restricted-syntax',
+        'no-restricted-syntax',
+      ]);
+    },
+  );
+
   it('reports @Controller() outside a *.controller.ts file', { timeout: 30_000 }, async () => {
     expect(await rulesOf('orders.service.ts')).toEqual(['no-restricted-syntax']);
   });

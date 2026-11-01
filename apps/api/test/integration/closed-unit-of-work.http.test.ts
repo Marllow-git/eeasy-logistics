@@ -11,6 +11,8 @@ import { platformCookie, staffCookie } from '../../src/modules/kernel/auth/princ
 import { PlatformIdempotencyStore } from '../../src/modules/kernel/platform/idempotency.repository.js';
 import { getPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
+import { Operation } from '../../src/modules/kernel/public/index.js';
+import { probeOperations } from '../support/probe-operations.js';
 import { webClientHeaders } from '../support/web-client.js';
 import { ProbeRepository, createProbeTable, dropProbeTable, probeLabels } from './probe-table.js';
 import { connectAs, integrationConfig } from './support.js';
@@ -27,6 +29,7 @@ const after = (ms: number, fn: () => Promise<unknown>) =>
 @Controller('v1/staff/late-probe')
 class StaffLateProbe {
   @Post()
+  @Operation(probeOperations.staffWrite)
   @HttpCode(201)
   create(): { ok: true } {
     const repository = new ProbeRepository(getUnitOfWork());
@@ -37,6 +40,7 @@ class StaffLateProbe {
   }
 
   @Post('frame')
+  @Operation(probeOperations.staffWrite)
   @HttpCode(201)
   frame(): { ok: true } {
     // The same continuation asking the frame for the unit of work again.
@@ -45,6 +49,7 @@ class StaffLateProbe {
   }
 
   @Get()
+  @Operation(probeOperations.staffRead)
   async list(): Promise<{ count: number }> {
     // A request that is open while the late statement fires.
     const rows = await new ProbeRepository(getUnitOfWork()).all();
@@ -56,6 +61,7 @@ class StaffLateProbe {
 @Controller('v1/platform/late-probe')
 class PlatformLateProbe {
   @Post()
+  @Operation(probeOperations.platformWrite)
   @HttpCode(201)
   create(): { ok: true } {
     const store = new PlatformIdempotencyStore(getPlatformUnitOfWork());

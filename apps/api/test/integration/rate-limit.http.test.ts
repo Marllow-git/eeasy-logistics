@@ -16,6 +16,8 @@ import {
 } from '../../src/modules/kernel/rate-limit/rate-limiter.js';
 import type { TestSigningKey } from '../support/access-tokens.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
+import { Operation } from '../../src/modules/kernel/public/index.js';
+import { probeOperations } from '../support/probe-operations.js';
 import { integrationConfig } from './support.js';
 
 // PLAT-6 item F against the real Redis of the stack (REDIS_URL): per-identity budgets in a fixed
@@ -25,6 +27,7 @@ import { integrationConfig } from './support.js';
 @Controller('v1/staff/limit-probe')
 class StaffLimitProbe {
   @Get()
+  @Operation(probeOperations.staffRead)
   read(): { ok: true } {
     return { ok: true };
   }
@@ -33,6 +36,7 @@ class StaffLimitProbe {
 @Controller('v1/recipient/limit-probe')
 class RecipientLimitProbe {
   @Get()
+  @Operation(probeOperations.recipientRead)
   read(): { ok: true } {
     return { ok: true };
   }
