@@ -24,7 +24,7 @@
 - Compose (`compose.yaml`, profiles `dev|ci|stack-a|stack-b`) only in CI; `tools/stack.sh` for isolated stack pairs there.
 
 ## Workflow
-- `tools/pr-gate.sh <PR>` before any merge (checks head, CI, plan §8/§9, release note, template).
+- `tools/pr-gate.sh <PR>` before any merge (checks head, CI, plan §8/§9, release note, template). It prints `docs-only: yes|no` from `tools/changed-scope.sh` (the same classifier CI uses to skip build and test lanes on docs-only PRs) and fails a code PR whose required lane did not succeed.
 - `gh pr create` from `.github/pull_request_template.md`; branch `feat/<ORDER-ID>-<slug>` with `docs/orders/<ID>/plan.md` as first commit.
 - `git worktree list` / `git worktree prune` — executor worktrees live under `.claude/worktrees/`.
 

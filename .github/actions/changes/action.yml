@@ -1,0 +1,32 @@
+# Classifies a pull request as docs only or code with tools/changed-scope.sh (owner request
+# 2026-11-01). A docs-only PR skips the build and test lanes; every non-PR event counts as code.
+# The caller checks out .github and tools (sparse).
+name: changes
+description: Outputs code=false only when every file in the pull request is documentation
+
+outputs:
+  code:
+    description: "'true' unless the pull request changes documentation only"
+    value: ${{ steps.classify.outputs.code }}
+
+runs:
+  using: composite
+  steps:
+    - id: classify
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        EVENT: ${{ github.event_name }}
+        PR: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        if [ "$EVENT" != "pull_request" ]; then
+          echo "event $EVENT: code"
+          echo "code=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # Renames list the old path too, so moving a code file into docs/ still counts as code.
+        scope=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)' | tools/changed-scope.sh)
+        if [ "$scope" = docs ]; then code=false; else code=true; fi
+        echo "code=$code" >> "$GITHUB_OUTPUT"
+        echo "code=$code"

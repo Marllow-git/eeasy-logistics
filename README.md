@@ -187,7 +187,7 @@ GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
 
 | Workflow | Runs on | Jobs |
 |---|---|---|
-| `.github/workflows/pr.yml` | every pull request | the seven required checks below |
+| `.github/workflows/pr.yml` | every pull request | the seven required checks below; on a docs-only PR (`tools/changed-scope.sh`: only `docs/` minus `docs/contracts/` and `docs/architecture/domain-model.md`, `adr/`, and `.md` outside `.serena/`, `.claude/`, `.github/`) the build and test lanes skip, `typecheck-lint` runs Prettier only and `gitleaks` runs in full |
 | `.github/workflows/main.yml` | push to `main`; pull requests as a dry run | per image: build, run probe, Trivy scan, push to GHCR (push to `main` only). The PR checks are not re-run on `main` (owner ruling 2026-11-01): the merge gate requires them green on the exact head merged |
 
 | Check | What it runs | Locally |
