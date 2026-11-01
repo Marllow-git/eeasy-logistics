@@ -18,6 +18,11 @@ export const tenancyExemptions: Readonly<Record<string, { class: string; reason:
     class: 'platform table',
     reason: 'the system role bundles (data §2.4), seeded by migration 0008; runtime SELECT only',
   },
+  core_otp_challenges: {
+    class: 'users',
+    reason:
+      'the challenge precedes knowing the account; keyed by E.164 phone (data §2.4; PLAT-9, migration 0009)',
+  },
 };
 
 /**

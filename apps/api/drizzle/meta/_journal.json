@@ -64,6 +64,13 @@
       "when": 1793548273454,
       "tag": "0008_core_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793552297935,
+      "tag": "0009_core_otp_challenges",
+      "breakpoints": true
     }
   ]
 }

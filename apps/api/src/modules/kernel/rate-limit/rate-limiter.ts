@@ -6,8 +6,8 @@ import { Redis } from 'ioredis';
 import type { Principal } from '../auth/principal.js';
 import { requestSurface } from '../auth/surfaces.js';
 import { ApiException } from '../errors/api-exception.js';
-import type { Budgets } from './budgets.js';
-import { budgetFor, defaultBudgets, windowMs } from './budgets.js';
+import type { Budgets, NamedBudgetName } from './budgets.js';
+import { budgetFor, defaultBudgets, namedBudgets, windowMs } from './budgets.js';
 
 // Per-route budgets in Redis (PLAT-6 plan 2.10; contracts README §7; identity and tenancy §8). A
 // fixed window per minute: one Lua script increments the counter and starts its expiry on the
@@ -177,6 +177,29 @@ export class RateLimiter implements OnModuleInit, OnApplicationShutdown {
     );
     response.setHeader(rateLimitHeaders.reset, String(resetS));
     if (window.count > budget.limit) {
+      throw new ApiException('rate_limited', {
+        details: { retry_after_s: resetS },
+        headers: { 'Retry-After': String(resetS) },
+      });
+    }
+  }
+
+  /**
+   * Charges one hit of a named budget (PLAT-9 plan 2.4) to `identity` under
+   * `<prefix>:named:<name>:<identity>`; throws `429 rate_limited` with `Retry-After` when over it.
+   * Fails open like `enforce` when the store is down.
+   */
+  async charge(name: NamedBudgetName, identity: string): Promise<void> {
+    const budget = (this.#budgets.named ?? namedBudgets)[name];
+    let window: WindowCount;
+    try {
+      window = await this.#store.hit(`${this.#prefix}:named:${name}:${identity}`, budget.windowMs);
+    } catch {
+      this.#failOpen();
+      return;
+    }
+    if (window.count > budget.limit) {
+      const resetS = Math.max(1, Math.ceil(window.ttlMs / 1000));
       throw new ApiException('rate_limited', {
         details: { retry_after_s: resetS },
         headers: { 'Retry-After': String(resetS) },
