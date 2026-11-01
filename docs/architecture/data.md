@@ -1,6 +1,6 @@
 # Data architecture
 
-Foundation document 5. Date: 2026-10-31. Status: for owner review. Governed by ADR-0010 (distance matrix cache), ADR-0011 (stock ledger), ADR-0012 (tracking mode and locations), ADR-0013 (channel publications), ADR-0019 (PostgreSQL 16 with PostGIS), ADR-0020 (Drizzle and SQL migrations), ADR-0024 (outbox), ADR-0025 (tenancy), the proposed ADR-0026 (bounded contexts), ADR-0027 (event envelope), ADR-0028 (location pings) and ADR-0030 (merchant webhooks), and the proposed ADR-0031 (database roles and the ledger writer) introduced here; derives from the domain model (2) and the contracts (3); informs wave 0 and the integration document (9). Order: ARCH-1, decision 2.5.
+Foundation document 5. Date: 2026-10-31. Status: for owner review. Governed by ADR-0010 (distance matrix cache), ADR-0011 (stock ledger), ADR-0012 (tracking mode and locations), ADR-0013 (channel publications), ADR-0019 (PostgreSQL 16 with PostGIS), ADR-0020 (Drizzle and SQL migrations), ADR-0024 (outbox), ADR-0025 (tenancy), the proposed ADR-0026 (bounded contexts), ADR-0027 (event envelope), ADR-0028 (location pings) and ADR-0040 (merchant webhooks), and the proposed ADR-0031 (database roles and the ledger writer) introduced here; derives from the domain model (2) and the contracts (3); informs wave 0 and the integration document (9). Order: ARCH-1, decision 2.5.
 
 The domain model (`docs/architecture/domain-model.md`, "document 2") is the vocabulary: aggregates, attributes, state machines and invariants K-, D-, W- are cited by number and never redefined here. Tenancy mechanics are document 4 (`identity-and-tenancy.md`) §5; environments, migrations and backups are document 6 (`platform.md`) §1, §5, §6. The tables below must serve every schema in `docs/contracts/openapi/components.yaml`; where a column exists only to serve a contract field, the field is named.
 
@@ -74,7 +74,7 @@ Abbreviations: **AO** append-only (trigger, 3.1); **IO** insert-only, same trigg
 | `core_channel_connections` | channel connections §1 | `channel` CHECK salla, zid; `external_store_id`, `status` CHECK active, paused, disconnected; `credentials_ciphertext bytea`, `credentials_key_id`, `webhook_secret_ciphertext bytea`, `connected_by`, `last_synced_at`, `version` | PU `(channel, external_store_id) WHERE status <> 'disconnected'` (one store, one account); `(account_id, status)` | |
 | `core_inbound_webhooks` | verified inbound webhooks §1.1 | `source` CHECK salla, zid, eeasy_shipping, whatsapp; `connection_id`, `external_event_id`, `received_at`, `payload jsonb`, `processed_at` | unique `(account_id, source, external_event_id)`; only verified requests are stored | |
 | `core_webhook_nonces` | replay window, document 4 §8 | `source`, `nonce`, `expires_at` | unique `(account_id, source, nonce)`; worker scan `(expires_at)` | |
-| `core_webhook_subscriptions` | merchant webhooks, ADR-0030 | `url`, `event_types text[]`, `status` CHECK pending_verification, active, paused, disabled; `secret_ciphertext bytea`, `secret_key_id`, `secret_prefix`, `previous_secret_ciphertext`, `previous_secret_expires_at` (24 h overlap), `verification_token_hash`, `verification_expires_at`, `description`, `version` | `(account_id, status)` | |
+| `core_webhook_subscriptions` | merchant webhooks, ADR-0040 | `url`, `event_types text[]`, `status` CHECK pending_verification, active, paused, disabled; `secret_ciphertext bytea`, `secret_key_id`, `secret_prefix`, `previous_secret_ciphertext`, `previous_secret_expires_at` (24 h overlap), `verification_token_hash`, `verification_expires_at`, `description`, `version` | `(account_id, status)` | |
 | `core_webhook_deliveries` | `WebhookDelivery` | `subscription_id`, `event_id`, `event_type`, `aggregate_id`, `sequence`, `envelope jsonb` (kept for redelivery after the outbox row is pruned), `status` CHECK pending, delivered, retrying, dead; `attempts`, `next_attempt_at`, `last_status_code smallint`, `last_error`, `test boolean` | `(account_id, subscription_id, created_at DESC)`; PU `(subscription_id, event_id) WHERE NOT test`; worker scan `(next_attempt_at) WHERE status IN ('pending','retrying')` | |
 
 ### 2.2 Delivery (`del_`)
@@ -374,7 +374,7 @@ WHERE status = 'dead' GROUP BY account_id, kind;
 
 - `core_consumer_receipts` rows are written in the consumer's transaction (document 2 §2.7) and purged after 35 days, longer than the 30-day dead-row window, so any replayable event still finds its receipt.
 - Parked events (a `sequence` gap, document 2 §6.2) are BullMQ delayed jobs, not rows. After 15 minutes parked, the event moves to `core_consumer_dead_letters`, which feeds the platform `ConsumerList` (`parked`, `dead`). Dead letters are kept 30 days.
-- Merchant webhooks: one `core_webhook_deliveries` row per subscription and event, created by the webhook fan-out consumer and kept 30 days as the merchant-visible delivery log (ADR-0030).
+- Merchant webhooks: one `core_webhook_deliveries` row per subscription and event, created by the webhook fan-out consumer and kept 30 days as the merchant-visible delivery log (ADR-0040).
 
 ## 6. Telemetry storage (ADR-0028, document 2 §7)
 

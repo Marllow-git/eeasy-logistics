@@ -17,7 +17,7 @@ tags:
   - {name: reference, description: "Sites, statuses and reason codes"}
   - {name: orders, description: "Orders (§3.1, §3.13)"}
   - {name: tracking, description: "Tracking"}
-  - {name: webhooks, description: "Webhook subscriptions (webhooks.md, ADR-0030)"}
+  - {name: webhooks, description: "Webhook subscriptions (webhooks.md, ADR-0040)"}
   - {name: wms, description: "WMS, after the WMS pilot (owner question 2)"}
   - {name: webhook-events, description: "Events POSTed to subscribers (document 2 §6.3)"}
 paths:
@@ -214,7 +214,7 @@ paths:
     post:
       operationId: publicCreateWebhookSubscription
       summary: "Subscribe a URL to event types; the secret is shown once"
-      description: 'Status pending_verification. The URL check and a webhook.verification request with a one-time verification_token go through the outbox; the subscription delivers events only after the verify call (webhooks.md §4, ADR-0030). Scope: each event type needs the matching read permission of the creator (delivery.order.* and delivery.cod.* → delivery.orders.read; delivery.proof.* → delivery.proofs.read; wms.stock.* → wms.stock.read; wms.fulfilment_order.* and wms.package.* → wms.fulfilment.read; wms.inbound_receipt.* and wms.return.* → wms.receipts.read), checked at create, update and every delivery; a missing scope returns 403 forbidden with details.missing_scope. The subscription is paused when the creating key is revoked or loses the scope, or the creating member is revoked.'
+      description: 'Status pending_verification. The URL check and a webhook.verification request with a one-time verification_token go through the outbox; the subscription delivers events only after the verify call (webhooks.md §4, ADR-0040). Scope: each event type needs the matching read permission of the creator (delivery.order.* and delivery.cod.* → delivery.orders.read; delivery.proof.* → delivery.proofs.read; wms.stock.* → wms.stock.read; wms.fulfilment_order.* and wms.package.* → wms.fulfilment.read; wms.inbound_receipt.* and wms.return.* → wms.receipts.read), checked at create, update and every delivery; a missing scope returns 403 forbidden with details.missing_scope. The subscription is paused when the creating key is revoked or loses the scope, or the creating member is revoked.'
       tags: [webhooks]
       x-wave: 4
       x-permission: core.webhooks.manage
@@ -427,7 +427,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.created}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderCreated'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.accepted:
@@ -438,7 +438,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.accepted}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderAccepted'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.assigned:
@@ -449,7 +449,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.assigned}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderAssigned'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.picked_up:
@@ -460,7 +460,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.picked_up}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderPickedUp'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.out_for_delivery:
@@ -471,7 +471,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.out_for_delivery}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderOutForDelivery'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.attempted:
@@ -482,7 +482,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.attempted}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderAttempted'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.delivered:
@@ -493,7 +493,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.delivered}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderDelivered'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.failed:
@@ -504,7 +504,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.failed}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderFailed'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.returned:
@@ -515,7 +515,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.returned}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderReturned'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.cancelled:
@@ -526,7 +526,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.cancelled}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderCancelled'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.order.rescheduled:
@@ -537,7 +537,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.order.rescheduled}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryOrderRescheduled'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.proof.stored:
@@ -548,7 +548,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.proof.stored}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryProofStored'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   delivery.cod.collected:
@@ -559,7 +559,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: delivery.cod.collected}, version: {const: 1}, payload: {$ref: '#/components/schemas/DeliveryCodCollected'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   wms.inbound_receipt.received:
@@ -570,7 +570,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.inbound_receipt.received}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsInboundReceiptReceived'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   wms.stock.available_changed:
@@ -581,7 +581,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.stock.available_changed}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsStockAvailableChanged'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   wms.fulfilment_order.created:
@@ -592,7 +592,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.fulfilment_order.created}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsFulfilmentOrderCreated'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   wms.fulfilment_order.on_hold:
@@ -603,7 +603,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.fulfilment_order.on_hold}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsFulfilmentOrderOnHold'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   wms.package.packed:
@@ -614,7 +614,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.package.packed}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsPackagePacked'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   wms.package.shipment_created:
@@ -625,7 +625,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.package.shipment_created}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsPackageShipmentCreated'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   wms.package.handed_over:
@@ -636,7 +636,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.package.handed_over}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsPackageHandedOver'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   wms.fulfilment_order.completed:
@@ -647,7 +647,7 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.fulfilment_order.completed}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsFulfilmentOrderCompleted'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
   wms.return.received:
@@ -658,23 +658,29 @@ webhooks:
       x-wave: 4
       x-permission: core.webhooks.manage
       security: []
-      parameters: [{$ref: '#/components/parameters/XEeasySignature'}, {$ref: '#/components/parameters/XEeasyTimestamp'}]
+      parameters: [{$ref: '#/components/parameters/WebhookId'}, {$ref: '#/components/parameters/WebhookTimestamp'}, {$ref: '#/components/parameters/WebhookSignature'}]
       requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: './components.yaml#/components/schemas/Envelope'}, {type: object, properties: {type: {const: wms.return.received}, version: {const: 1}, payload: {$ref: '#/components/schemas/WmsReturnReceived'}}}]}}}}
       responses: {'2XX': {description: Acknowledged; any other status or a timeout above 10 s is retried}}
 components:
   parameters:
-    XEeasySignature:
-      name: X-Eeasy-Signature
+    WebhookId:
+      name: webhook-id
       in: header
       required: true
-      description: 'v1=<hex HMAC-SHA256 of "<timestamp>.<raw body>"> with the subscription secret; two values during a secret rotation (ADR-0030)'
+      description: The envelope id, identical on every retry; deduplicate on it (Standard Webhooks v1, ADR-0040)
       schema: {type: string}
-    XEeasyTimestamp:
-      name: X-Eeasy-Timestamp
+    WebhookTimestamp:
+      name: webhook-timestamp
       in: header
       required: true
-      description: Unix seconds; reject when more than 300 s from now
+      description: Unix seconds of this attempt; reject when more than 300 s from now (ADR-0040)
       schema: {type: integer}
+    WebhookSignature:
+      name: webhook-signature
+      in: header
+      required: true
+      description: 'v1,<base64 HMAC-SHA256 of "<webhook-id>.<webhook-timestamp>.<raw body>"> with the base64-decoded whsec_ secret; two space-separated values during a secret rotation (Standard Webhooks v1, ADR-0040)'
+      schema: {type: string}
   securitySchemes:
     apiKey: {$ref: './components.yaml#/components/securitySchemes/apiKey'}
   schemas:
