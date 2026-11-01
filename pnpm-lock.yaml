@@ -17,6 +17,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@eeasy-logistics/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@nestjs/common':
         specifier: 12.3.2
         version: 12.3.2(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -69,6 +72,9 @@ importers:
 
   apps/driver:
     dependencies:
+      '@eeasy-logistics/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@eeasy-logistics/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -112,6 +118,9 @@ importers:
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
+      dependency-cruiser:
+        specifier: 18.7.0
+        version: 18.7.0
       eslint:
         specifier: 9.39.5
         version: 9.39.5
@@ -127,6 +136,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@eeasy-logistics/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@eeasy-logistics/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -169,6 +181,13 @@ importers:
         version: 6.0.3
 
   packages/config:
+    dependencies:
+      dotenv:
+        specifier: 18.0.9
+        version: 18.0.9
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
     devDependencies:
       '@eeasy-logistics/config-eslint':
         specifier: workspace:*
@@ -176,6 +195,12 @@ importers:
       '@eeasy-logistics/config-ts':
         specifier: workspace:*
         version: link:../config-ts
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
+      dependency-cruiser:
+        specifier: 18.7.0
+        version: 18.7.0
       eslint:
         specifier: 9.39.5
         version: 9.39.5
@@ -230,6 +255,9 @@ importers:
       '@eeasy-logistics/config-ts':
         specifier: workspace:*
         version: link:../config-ts
+      dependency-cruiser:
+        specifier: 18.7.0
+        version: 18.7.0
       drizzle-kit:
         specifier: 0.31.11
         version: 0.31.11
@@ -254,6 +282,9 @@ importers:
       '@types/node':
         specifier: 22.20.5
         version: 22.20.5
+      dependency-cruiser:
+        specifier: 18.7.0
+        version: 18.7.0
       eslint:
         specifier: 9.39.5
         version: 9.39.5
@@ -272,6 +303,9 @@ importers:
       '@eeasy-logistics/config-ts':
         specifier: workspace:*
         version: link:../config-ts
+      dependency-cruiser:
+        specifier: 18.7.0
+        version: 18.7.0
       eslint:
         specifier: 9.39.5
         version: 9.39.5
@@ -3616,6 +3650,11 @@ packages:
 
   dnssd-advertise@1.1.6:
     resolution: {integrity: sha512-Ndrrf6BMPalkQPd/zubL+4YghH2J9NspapQ09uDXwYbvOPkP0oaqf5CkcwJ0b50kS2O3ul6yVu+jz+RY62Cejg==}
+
+  dotenv@18.0.9:
+    resolution: {integrity: sha512-3fVOW4cB02R066PUSwn8O4TJyz9NckQl7F81blIbaq9jKBm2tSmOKky7ZHIXzGvkVPXCSn6jkpziBPZdGFs8Tw==}
+    engines: {node: '>=12'}
+    hasBin: true
 
   drizzle-kit@0.31.11:
     resolution: {integrity: sha512-YCYqxTLIB2OCqf6w9/Vef13baBVbwQIPcbT4Y56AfO6B9ajZhDhD8Jkveg/hJvT/iuMloKD/IYYkyMMNhr7Kqg==}
@@ -9796,6 +9835,8 @@ snapshots:
       wrappy: 1.0.2
 
   dnssd-advertise@1.1.6: {}
+
+  dotenv@18.0.9: {}
 
   drizzle-kit@0.31.11:
     dependencies:

@@ -1,3 +1,4 @@
+import { loadConfig } from '@eeasy-logistics/config/node';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
@@ -7,6 +8,8 @@ const logger = new Logger('Bootstrap');
 
 async function bootstrap(): Promise<void> {
   const role = parseRole(process.argv.slice(2));
+  // Read and validated once, before anything else starts; exits 78 naming every invalid variable.
+  const config = loadConfig({ role });
 
   if (role === 'worker') {
     // No queue consumers, outbox relay or schedulers exist yet (platform §2); they arrive with later orders.
@@ -17,9 +20,8 @@ async function bootstrap(): Promise<void> {
   }
 
   const app = await NestFactory.create(AppModule);
-  const port = process.env.PORT ?? 3000; // PLAT-4 replaces: the config module will own PORT.
-  await app.listen(port);
-  logger.log(`Role: api. Listening on port ${port}.`);
+  await app.listen(config.app.port);
+  logger.log(`Role: api. Environment: ${config.app.env}. Listening on port ${config.app.port}.`);
 }
 
 await bootstrap();

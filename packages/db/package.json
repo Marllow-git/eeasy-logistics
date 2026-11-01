@@ -10,11 +10,13 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests && pnpm run test:architecture",
+    "test:architecture": "depcruise src --config .dependency-cruiser.cjs"
   },
   "devDependencies": {
     "@eeasy-logistics/config-eslint": "workspace:*",
     "@eeasy-logistics/config-ts": "workspace:*",
+    "dependency-cruiser": "18.7.0",
     "drizzle-kit": "0.31.11",
     "eslint": "9.39.5",
     "typescript": "6.0.3",
