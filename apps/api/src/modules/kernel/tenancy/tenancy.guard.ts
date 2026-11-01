@@ -3,7 +3,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request, Response } from 'express';
 import type { Principal, PrincipalResolver } from '../auth/principal.js';
-import { surfaceOf } from '../auth/surfaces.js';
+import { requestSurface } from '../auth/surfaces.js';
 import { ApiException } from '../errors/api-exception.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { RATE_LIMITER, rateLimitIdentity } from '../rate-limit/rate-limiter.js';
@@ -42,7 +42,7 @@ export class TenancyGuard implements CanActivate {
     }
     let principal: Principal;
     try {
-      const surface = surfaceOf(request.path);
+      const surface = requestSurface(request);
       if (surface === undefined || this.resolver === undefined) {
         throw new ApiException('unauthenticated');
       }

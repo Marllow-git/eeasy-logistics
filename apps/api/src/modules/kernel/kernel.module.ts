@@ -6,6 +6,7 @@ import { ContractPipe } from './contract/contract-pipe.js';
 import { IdempotentRoutesCheck } from './idempotency/idempotency.interceptor.js';
 import { ApiExceptionFilter } from './errors/exception.filter.js';
 import { RequestIdMiddleware } from './request/request-id.js';
+import { ContentTypeGuard } from './request/content-type.guard.js';
 import { WebClientGuard } from './request/web-client.guard.js';
 import { TenancyGuard } from './tenancy/tenancy.guard.js';
 import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
@@ -27,6 +28,8 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
     // marker on staff and platform writes, both before any interceptor opens a transaction.
     { provide: APP_GUARD, useClass: TenancyGuard },
     { provide: APP_GUARD, useClass: WebClientGuard },
+    // JSON bodies only (adversary H-1): a form post is refused before any interceptor.
+    { provide: APP_GUARD, useClass: ContentTypeGuard },
     { provide: APP_INTERCEPTOR, useClass: UnitOfWorkInterceptor },
     // Every `@Input()` parsed with its operation's generated strict schemas (A-17).
     { provide: APP_PIPE, useClass: ContractPipe },
