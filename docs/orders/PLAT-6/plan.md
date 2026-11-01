@@ -183,4 +183,34 @@ Leg 1, all on 2026-11-01. Context7: NestJS docs (`/nestjs/docs.nestjs.com`: requ
 
 ## 9. Lead review and adversary
 
-Adversary: required (tokens, tenancy, cross-tenant, idempotency, rate limits). The identity document §9 checklist is answered here by the lead after the pass.
+**Lead review round 1 (Fable `/code-review`, leg 1, 2026-11-01):** hardcoded idempotency TTL in the platform store; duplicated store code; two transactions on the cross-tenant path; no audit event for rejected cross-tenant attempts; worker exited 78 without Redis in the image probe. All fixed in 6a445c9. Ruling: outside production the worker boots with whatever is configured, logs the disabled job and exits 0 when no job is enabled (PLAT-8 brings consumers). `reason_required` for a missing support reason accepted (errors.md §5) as a deviation from decision 2.7.
+
+**Lead review round 2 (leg 2):** trust proxy from config; `:account_id` per the contract; server-safe `./<surface>/schemas` entry points and the API image building the contracts; `@HttpCode()` required by `@Idempotent()` with a boot check; control-character test computed once. Fixed in 332eb29.
+
+**Adversary pass (Fable, on a41f3ef): CHANGES REQUIRED. Re-check: PASS.**
+
+| Id | Severity | Finding | Status | Lead ruling |
+|---|---|---|---|---|
+| H-1 | high | case-insensitive route matching bypassed surface detection on `@Public()` doors (no rate budget, no web-client marker; urlencoded login CSRF) | fixed: surface from the matched route, case-sensitive and strict routing set before Nest creates the app, JSON-only bodies with a content-type guard | – |
+| M-1 | medium | a unit of work kept past its request ran inside the next request's transaction on the pooled connection (confirmed by probe) | fixed: unit of work retired on settle; repositories resolve the transaction per statement; `UnitOfWorkClosedError` | leftover accepted: a query built inside and awaited after the transaction is deliberate misuse |
+| M-2 | medium | request hash was plain SHA-256; PINs and OTPs in stored bodies brute-forceable offline | fixed: HMAC-SHA256 under the HKDF-derived key over method, route and the whole body | note: a signing-key rotation invalidates in-flight idempotency hashes (README) |
+| M-3 | medium | `secretResponse` stored a secret under a field name outside the list | fixed: `{ id }` only | – |
+| M-4 | medium | no trust proxy; all anonymous traffic shared one budget behind the edge | fixed in round 2 (`TRUST_PROXY_HOPS`, required ≥ 1 in production); N-1 closes the `00` gap | OPS-1 must keep the origin on Cloudflare ranges only |
+| M-5 | medium | a 4xx rolls back failure counters and refusal audits | ruled, no code: PLAT-11 adds a kernel helper that commits security counters and refusal audits on their own transaction (plan §6) | – |
+| M-6 | medium | controllers could bypass `ContractPipe` with raw parameter decorators | fixed (rule + fixture), completed in the lows commit (aliases, namespace imports, other decorators, `@Controller` only in controller files, kernel uses carry a reason) | – |
+| L-1 | low | verifier without `maxTokenAge`, `typ`, `iat` bound | fixed | PLAT-11's issuer sets `typ: at+jwt` |
+| L-2 | low | duplicate credential cookies; no `__Host-` prefix | duplicates refused (401) | `__Host-` rename is a contract change for PLAT-11 |
+| L-3 | low | `platform_access USING (true)` under the door; the predicate is the only scope | ruled deferred to the wave 1 RLS-exit migration | – |
+| L-4 | low | audit request id client-minted; `ok` audit lost on rollback once PLAT-7 writes to the table | server-minted id fixed; the rollback half is PLAT-7's | – |
+| L-5 | low | replay stored 200 for a 201 | fixed in round 2 | – |
+| L-6 | low | `details.fields[]` uncapped | fixed (50 + `truncated`) | – |
+| L-7 | low | IPv6 keyed per address | fixed (/64) | – |
+| L-8 | low | DTO regex gaps; contract types via a re-exporting controller; `__proto__` in `canonicalJson` | regex and `__proto__` fixed | re-export accepted (controllers are reviewed) |
+| N-1 | low | `TRUST_PROXY_HOPS=00` passed the production refusal | fixed in the lows commit | – |
+| N-2 | low | stored responses lost `toJSON` values after the L-8 change | fixed in the lows commit | – |
+| N-3 | low | inherited `@Idempotent()` handlers unchecked | fixed in the lows commit | – |
+| N-4 | low | strict routing makes `/health/` a 404 | accepted; README notes it for probes | – |
+
+**Identity §9 checklist (lead):** 1 no account from a parameter (door audited by design); 2 no existence oracle in any 4xx; 3 every write idempotent in the frame; 4 revocation within one token lifetime bounded by `maxTokenAge` (PLAT-11 checks `ver`); 5 admin actions audited through the sink, before/after rows are PLAT-7's; 6 secrets never stored or logged after M-2 and M-3.
+
+**Verdict for the gate:** no critical or high open; mediums fixed or ruled above. One-way door (migration 0005, production refusals for `PUBLIC_ADMIN_URL` and `TRUST_PROXY_HOPS`); the lead merges under the owner's delegation of 2026-11-01.
