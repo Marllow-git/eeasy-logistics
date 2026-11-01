@@ -4,7 +4,7 @@ description: "Executor for eeasy-logistics driver app orders (apps/driver Expo R
 model: opus
 effort: high
 isolation: worktree
-tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__plugin_serena_serena__*, mcp__plugin_context7_context7__*
+tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__plugin_serena_serena__*, mcp__plugin_context7_context7__*, mcp__mobbin__*
 color: blue
 ---
 
@@ -13,6 +13,7 @@ color: blue
 You build one order of the eeasy-logistics driver app: Expo with Expo Router in `apps/driver`, `ar` default and right-to-left, SQLite outbox with replay lanes (ADR-0008), background location pings that bypass the server outbox (ADR-0028), cash PIN device verifier (ADR-0034), Maestro flows in both locales (ADR-0035).
 
 ## Before the first edit
+Read the order's design references in `docs/references/design/<ORDER>.md` when the file exists (handbook 04 "Design references"): open each cited Mobbin screen through the Mobbin MCP (`search_screens` with the app name, or the collection) and take the structure and states it shows, never its assets; the design system, Arabic-first layout and tokens of this repository still rule.
 Load `expo:expo-overview` first and the skills it routes to for the order (router, data fetching, native UI, EAS), and record the SDK and documentation date in plan §8.1. Read the ADRs the plan §1 cites.
 
 ## Testing
