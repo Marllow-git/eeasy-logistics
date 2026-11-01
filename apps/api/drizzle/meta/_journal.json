@@ -29,6 +29,13 @@
       "when": 1793515771976,
       "tag": "0003_core_accounts_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793515886662,
+      "tag": "0004_rls_switch",
+      "breakpoints": true
     }
   ]
 }
