@@ -160,6 +160,17 @@ Operational notes:
 - The idempotency request hash is an HMAC under a key derived from `AUTH_SIGNING_KEY`: rotating the key changes every hash, so a client retrying across a rotation with the same `Idempotency-Key` gets `422 idempotency_key_reused` (keys live 24 h).
 - Access tokens must carry the header `typ: at+jwt` and an `iat` no more than 60 s in the future; PLAT-11's issuer sets both.
 
+## Design system
+
+Both web apps render through `packages/ui` (order WEB-1; ADR-0016, ADR-0033, ADR-0038 bullet 5; web §5, §6, §10.2, §11):
+
+- **Tokens** in `packages/ui/src/tokens.css`, a Tailwind CSS 4 `@theme` block (semantic colours, type scale with separate Arabic and Latin line heights, spacing, radius, elevation, motion) plus one `--status-<machine>-<state>` colour per order, offer, attempt and custody state. `pnpm --filter ui test` checks WCAG 2.2 AA contrast over the file. Light theme only.
+- **Components** in `packages/ui/src/components/<name>/<name>.tsx` on Radix (`radix-ui`), imported one path each: `@eeasy-logistics/ui/components/<name>`. Every component has a test in `rtl` and `ltr`. State lists for `StatusChip` come from `@eeasy-logistics/contracts/unions`.
+- **Logical CSS only.** `@eeasy-logistics/config-eslint`'s `logicalCss` config rejects physical-direction utilities (`ml-4`, `text-left`, `rounded-r-md`…) in `className`, `cn(`, `cva(` and `tv(` and names the logical replacement (`ms-4`, `text-start`, `rounded-e-md`).
+- **Shell** in `packages/ui/src/shell/`: `RootHtml` (`<html lang dir>` from the `el_locale` cookie, Arabic by default; the IBM Plex Sans Arabic woff2 files of `packages/ui/fonts/`, self-hosted with `next/font/local`; the next-intl client provider with only the namespaces the group renders; Radix direction), `LocaleSwitch`, and `shellRequestConfig`, the next-intl request config each app's `src/i18n/request.ts` exports. `AppShell` is the frame: grouped navigation on the start side (right in Arabic) with an account block, a top bar with the locale switch, a sheet below `md`. Each route group keeps its own root layout (web §1.2).
+- **Strings** in `packages/i18n/<locale>/<namespace>.json` (`common`, `nav`, `auth`, `errors`, `recipient`), typed from the Arabic catalogue so a missing key fails typecheck; the `platform` namespace lives only in `apps/admin/messages/<locale>/` (ADR-0038). The parity test (`pnpm --filter i18n test`) covers both roots. Dates, numbers, money and phone numbers go through `packages/i18n/src/format.ts` (Gregorian, Western digits, `Asia/Riyadh`).
+- **Checks**: each app's census (`tests/census-shell.spec.ts`: `ar` at 1440 and 390 px, `en` at 1440 px; locale, digits, raw keys, overflow, axe, headers, screenshot baselines) and the first-load JavaScript budget (`apps/web/scripts/check-budget.ts`, run by both apps as `check:budget` after `next build`). Both run in the `web-build-census` and `admin-build-census` lanes below.
+
 ## CI
 
 GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
