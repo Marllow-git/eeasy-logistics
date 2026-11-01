@@ -2,7 +2,9 @@ import { errorMessage, fieldMessage } from '@eeasy-logistics/i18n/errors';
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { requestIdHeader, requestIdOf } from '../request/request-id.js';
+import { requestSurface } from '../auth/surfaces.js';
+import { requestIdHeader, requestIdOf, serverRequestIdOf } from '../request/request-id.js';
+import { reportError } from '../telemetry/sentry.js';
 import type { FieldProblem } from './api-exception.js';
 import { ApiException } from './api-exception.js';
 import type { ErrorCode } from './error-codes.js';
@@ -92,7 +94,14 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const request = http.getRequest<Request>();
     const response = http.getResponse<Response>();
     const resolved = resolveException(exception);
-    if (resolved.status >= 500) this.logger.error(describeFailure(exception));
+    if (resolved.status >= 500) {
+      this.logger.error(describeFailure(exception));
+      // Sentry gets `internal_error` only, never a 4xx (PLAT-14 plan 2.5); fire-and-forget.
+      reportError(exception, {
+        request_id: serverRequestIdOf(request),
+        surface: requestSurface(request),
+      });
+    }
     if (response.headersSent) return;
 
     const requestId = requestIdOf(request);

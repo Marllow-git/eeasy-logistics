@@ -15,6 +15,16 @@ export function publicConfig(): WebPublicConfig {
     NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
+    NEXT_PUBLIC_RELEASE: process.env.NEXT_PUBLIC_RELEASE,
+    NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
   });
   return cached;
+}
+
+/**
+ * The runtime Next.js evaluates `instrumentation.ts` in (`nodejs` or `edge`), so its `register()`
+ * loads the server SDK only where Node.js runs (PLAT-14 plan 2.7). Next sets it per bundle.
+ */
+export function nextRuntime(): string | undefined {
+  return process.env.NEXT_RUNTIME;
 }

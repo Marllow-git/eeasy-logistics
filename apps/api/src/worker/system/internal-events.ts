@@ -22,6 +22,7 @@ import { failureOutcome, formatLastError } from '../../modules/kernel/outbox/out
 import { ConsumerReceiptRepository } from '../../modules/kernel/outbox/outbox.repository.js';
 import type { QueuePolicy } from '../../modules/kernel/outbox/queue-options.js';
 import { isFinalFailure, outboxQueuePolicies } from '../../modules/kernel/outbox/queue-options.js';
+import { withSpan } from '../../modules/kernel/telemetry/spans.js';
 
 // The `internal_event` kind (PLAT-8 plan 2.6; domain model §2.7, §6.2; data §5.3; ADR-0036): the
 // dispatcher runs every registered consumer of the row's type once. Per consumer, in one
@@ -113,7 +114,19 @@ export class InternalEventDispatcher implements KindHandler {
         continue;
       }
       try {
-        await this.#run(row, consumer, event);
+        // One span per consumer run (PLAT-14 plan 2.2), inside the job's span.
+        await withSpan(
+          'outbox.consumer',
+          {
+            'elx.consumer': consumer.consumer,
+            'elx.outbox.kind': 'internal_event',
+            'elx.outbox.row_id': row.id,
+            'elx.event_type': row.type,
+            'elx.correlation_id': row.correlationId ?? undefined,
+            'elx.account.id': row.accountId ?? undefined,
+          },
+          () => this.#run(row, consumer, event),
+        );
       } catch (error) {
         const outcome = failureOutcome(error);
         const detail =

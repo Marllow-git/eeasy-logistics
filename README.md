@@ -204,6 +204,10 @@ Every side effect leaves the business transaction as a `core_outbox` row and not
 - **Pruning.** With `OUTBOX_PRUNE=on` (default) the worker prunes once a day under the Redis lock `elx:lock:outbox-prune` (held 23 h): `done` and `superseded` rows after 7 days, `dead` rows after 30, receipts after 35, dead letters after 30, 5,000 rows per statement. `pending` and `enqueued` rows are never pruned.
 - **Redis.** `REDIS_URL` (Redis locally and in CI; production Valkey is OPS-1's choice, roadmap A-24). Without it, or without `DATABASE_URL_PLATFORM`, the worker warns and runs none of the outbox jobs, and the API answers the replay and consumer operations with 500.
 
+## Observability
+
+Traces, metrics and JSON logs from the api and worker (OpenTelemetry over OTLP), errors from every app to Sentry, product events from the web apps to PostHog through `/monitoring` and `/ingest` on their own origin, all with ids only and through one redactor per side; the alert rules are `observability/alerts.yaml`. Details, variables and what is not built yet: [`observability/README.md`](observability/README.md) (PLAT-14; platform §7, web §10.4).
+
 ## CI
 
 GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):

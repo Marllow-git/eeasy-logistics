@@ -28,8 +28,23 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
+  // OpenTelemetry for the api and worker only (PLAT-14 plan 2.1), before Nest and ioredis load so
+  // the loader hook sees them; the migration job above never loads it.
+  const { serviceNames, startTelemetry } = await import('./modules/kernel/telemetry/sdk.js');
+  startTelemetry(config, role, { loaderHook: true });
+  // Sentry when SENTRY_DSN is set: exceptions only, scrubbed (plan 2.5).
+  const { initSentry } = await import('./modules/kernel/telemetry/sentry.js');
+  initSentry(config, role);
+  // JSON lines through the telemetry redactor for every Nest logger from here on (plan 2.4).
+  const { JsonLogger } = await import('./modules/kernel/telemetry/logger.js');
+  const jsonLogger = new JsonLogger({
+    service: serviceNames[role],
+    release: config.observability.release,
+    level: config.observability.logLevel,
+  });
+  Logger.overrideLogger(jsonLogger);
+
   const { NestFactory } = await import('@nestjs/core');
-  const { RequestLogger } = await import('./modules/kernel/request/request-id.js');
 
   if (role === 'worker') {
     // System jobs on timers until PLAT-8's queues: the hourly idempotency purge (PLAT-6 plan 2.9).
@@ -38,7 +53,7 @@ async function bootstrap(): Promise<void> {
       const { WorkerModule } = await import('./worker/system/worker.module.js');
       const worker = await NestFactory.createApplicationContext(WorkerModule.forRoot(config), {
         abortOnError: false,
-        logger: new RequestLogger(),
+        logger: jsonLogger,
       });
       // SIGTERM and SIGINT stop the timers and close the pool and the Redis client.
       worker.enableShutdownHooks();
@@ -56,7 +71,7 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule.forRoot(config),
     createHttpAdapter(config),
-    { ...httpAppOptions, logger: new RequestLogger() },
+    { ...httpAppOptions, logger: jsonLogger },
   );
   configureHttp(app);
   // Each configured pool must be its plain role before anything is served (PLAT-6 plan 2.12,

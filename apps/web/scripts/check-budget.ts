@@ -26,6 +26,9 @@ export const budgetKbOfGroup: Record<string, number> = {
   platform: 180,
   // Sign-in doors carry the staff shell of their app, so they get the staff pages' budget.
   auth: 180,
+  // The census fault routes (PLAT-14 plan 2.9): a root layout that fails on purpose in local and
+  // ci builds, so the census reaches global-error.tsx; 404 elsewhere.
+  census: 180,
 };
 
 export type BuildFacts = {

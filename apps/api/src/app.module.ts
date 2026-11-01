@@ -7,6 +7,7 @@ import { ReadinessModule } from './health/readiness.module.js';
 import { DeliveryModule } from './modules/delivery/delivery.module.js';
 import { KernelModule } from './modules/kernel/kernel.module.js';
 import { RequestFrameModule } from './modules/kernel/request-frame.module.js';
+import { TelemetryShutdown } from './modules/kernel/telemetry/telemetry-shutdown.js';
 import { WmsModule } from './modules/wms/wms.module.js';
 
 /**
@@ -27,6 +28,8 @@ export class AppModule {
         RequestFrameModule.forRoot(config),
         ReadinessModule.forRoot(config),
       ],
+      // PLAT-14: flushes the telemetry main.ts started.
+      providers: [TelemetryShutdown],
     };
   }
 }

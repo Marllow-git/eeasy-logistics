@@ -1,6 +1,6 @@
 import { inspect } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { ConfigError, defineConfig, Secret } from '../src/index.ts';
+import { ConfigError, defineConfig, parseOtlpHeaders, Secret } from '../src/index.ts';
 import { fakeKey, minimalEnv, productionEnv, valuesOf } from './fixtures.ts';
 
 function configError(run: () => unknown): ConfigError {
@@ -201,6 +201,68 @@ describe('defineConfig: missing and malformed input', () => {
     expect(error.message).not.toContain('fake-url-password');
     const dsnOnly = { APP_ENV: 'local', SENTRY_DSN: env.SENTRY_DSN };
     expect(defineConfig(dsnOnly).observability.sentryDsn).toBe(env.SENTRY_DSN);
+  });
+
+  it('defaults the observability settings by environment (PLAT-14)', () => {
+    expect(defineConfig({ APP_ENV: 'local' }).observability).toMatchObject({
+      release: 'dev',
+      logLevel: 'debug',
+      traceSampleRatio: 1,
+    });
+    expect(defineConfig({ APP_ENV: 'ci' }).observability).toMatchObject({
+      logLevel: 'info',
+      traceSampleRatio: 1,
+    });
+    expect(defineConfig(productionEnv).observability).toMatchObject({
+      logLevel: 'info',
+      traceSampleRatio: 0.1,
+    });
+    const set = defineConfig({
+      APP_ENV: 'production' as const,
+      ...productionEnv,
+      ELX_RELEASE: 'sha-0123456789abcdef0123456789abcdef01234567',
+      LOG_LEVEL: 'warn',
+      OTEL_TRACES_SAMPLER_ARG: '0.25',
+    }).observability;
+    expect(set).toMatchObject({
+      release: 'sha-0123456789abcdef0123456789abcdef01234567',
+      logLevel: 'warn',
+      traceSampleRatio: 0.25,
+    });
+  });
+
+  it('reads OTEL_EXPORTER_OTLP_HEADERS as a secret and parses it (PLAT-14 A-7)', () => {
+    const text = 'Authorization=Basic%20ZmFrZTpmYWtl,x-scope=elx';
+    const config = defineConfig({ APP_ENV: 'local', OTEL_EXPORTER_OTLP_HEADERS: text });
+    const headers = config.observability.otlpHeaders;
+    expect(headers).toBeInstanceOf(Secret);
+    expect(String(headers)).toBe('[redacted]');
+    expect(JSON.stringify(config)).not.toContain('ZmFrZTpmYWtl');
+    expect(parseOtlpHeaders(headers?.reveal() ?? '')).toEqual({
+      Authorization: 'Basic ZmFrZTpmYWtl',
+      'x-scope': 'elx',
+    });
+    const error = configError(() =>
+      defineConfig({ APP_ENV: 'local', OTEL_EXPORTER_OTLP_HEADERS: 'no-equals-sign-secret' }),
+    );
+    expect(error.issues.map((issue) => issue.variable)).toEqual(['OTEL_EXPORTER_OTLP_HEADERS']);
+    expect(error.message).not.toContain('no-equals-sign-secret');
+  });
+
+  it('refuses a malformed release, log level or sampling ratio (PLAT-14)', () => {
+    const error = configError(() =>
+      defineConfig({
+        APP_ENV: 'local',
+        ELX_RELEASE: 'sha 1; rm',
+        LOG_LEVEL: 'verbose',
+        OTEL_TRACES_SAMPLER_ARG: '1.5',
+      }),
+    );
+    expect(error.issues.map((issue) => issue.variable).sort()).toEqual([
+      'ELX_RELEASE',
+      'LOG_LEVEL',
+      'OTEL_TRACES_SAMPLER_ARG',
+    ]);
   });
 
   it('refuses a signing key with fewer than 16 distinct characters', () => {
