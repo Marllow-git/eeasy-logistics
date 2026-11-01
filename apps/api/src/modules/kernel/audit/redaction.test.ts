@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { maxDocumentBytes, redactForAudit, redactText } from './redaction.js';
+import { keyTokens, maxDocumentBytes, redactForAudit, redactText } from './redaction.js';
 
 // PLAT-7 plan 2.5: what reaches core_audit_log is redacted first.
 
@@ -29,6 +29,47 @@ describe('redactForAudit', () => {
     'Cookie',
   ])('redacts the key %s whatever its value', (key) => {
     expect(redactForAudit({ [key]: { nested: 'value' } })).toEqual({ [key]: '[redacted]' });
+  });
+
+  it.each([
+    'private_key',
+    'accessKey',
+    'signing-key',
+    'credentials',
+    'encryption_key',
+    'access.key',
+    'APIKey',
+    'session_cookies',
+    'idempotency_key',
+    'key_id',
+    'passwd',
+  ])('redacts %s by its key tokens (lead review round 1)', (key) => {
+    expect(redactForAudit({ [key]: 'value' })).toEqual({ [key]: '[redacted]' });
+  });
+
+  it.each(['shipping_fee', 'shipping_address', 'spinner', 'keyboard_layout', 'pinned', 'monkey'])(
+    'keeps %s: a secret word inside a token is not a token',
+    (key) => {
+      expect(redactForAudit({ [key]: 'value' })).toEqual({ [key]: 'value' });
+    },
+  );
+
+  it('redacts by tokens inside nested arrays and objects', () => {
+    expect(
+      redactForAudit({
+        connections: [{ provider: 'salla', credentials: { clientId: 'c', clientSecret: 's' } }],
+        shipping: { shipping_fee: 1500, signingKey: { kid: 'k1' } },
+      }),
+    ).toEqual({
+      connections: [{ provider: 'salla', credentials: '[redacted]' }],
+      shipping: { shipping_fee: 1500, signingKey: '[redacted]' },
+    });
+  });
+
+  it('splits keys on separators and camelCase', () => {
+    expect(keyTokens('newPassword')).toEqual(['new', 'password']);
+    expect(keyTokens('APIKey')).toEqual(['api', 'key']);
+    expect(keyTokens('signing-key.id_v2')).toEqual(['signing', 'key', 'id', 'v', '2']);
   });
 
   it('keeps keys that name no secret', () => {

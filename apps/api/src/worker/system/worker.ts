@@ -147,6 +147,11 @@ export async function startWorker(
           deps.logger.log(
             `Audit partitions: ${run.created} created, ${run.dropped} dropped past ${config.audit.retentionMonths} months`,
           );
+          if (run.defaultRows > 0) {
+            deps.logger.warn(
+              `core_audit_log_default holds ${run.defaultRows} row(s): a month had no partition; retention does not drop them until moved`,
+            );
+          }
         }
       } catch (error) {
         deps.logger.warn(`Audit partition job skipped: ${errorName(error)}`);
