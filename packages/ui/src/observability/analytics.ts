@@ -17,6 +17,18 @@ const urlLike = /^(?:[A-Za-z][A-Za-z0-9+.-]*:\/\/|\/)/;
  * Properties the SDK needs as they are: the project key PostHog routes on (public, the same value
  * the bundle carries) and the SDK's own random ids (distinct, device, session, window, insert).
  */
+/**
+ * Properties never sent (adversary W-4): the page title (it may name an order or a person) and the
+ * referrer (a WhatsApp link, another site's page), initial or current.
+ */
+const droppedKeys = new Set([
+  '$title',
+  '$referrer',
+  '$referring_domain',
+  '$initial_referrer',
+  '$initial_referring_domain',
+]);
+
 const sdkKeys = new Set([
   'token',
   'distinct_id',
@@ -61,6 +73,7 @@ export function scrubAnalyticsEvent<Capture extends AnalyticsCapture>(
   for (const [key, value] of Object.entries(capture.properties)) {
     // The SDK's own ids first (`token` and `$session_id` would read as secret names), then
     // every other secret-named key is dropped, at any depth (lead review round 2).
+    if (droppedKeys.has(key)) continue;
     if (sdkKeys.has(key) && typeof value === 'string') properties[key] = value;
     else if (!isSecretKey(key)) properties[key] = scrubValue(value, 1);
   }

@@ -24,6 +24,10 @@ What the api, the worker and the two web apps emit (PLAT-14) and the alert rules
 
 `alerts.yaml` lists every alert of platform §7 and integrations §4.5 and §10 in a provider-neutral shape (name, source, metric and labels, condition, threshold, window, severity, runbook, origin). Rules marked `pending` name the order whose code first emits their series; until then they never fire. `apps/api/test/alerts.test.ts` validates the file: the shape, unique names, every metric in the catalogue, every label declared on its metric (unless pending), and the ADR-0036 thresholds.
 
+## Edge
+
+`/monitoring` and `/ingest/*` take anonymous POSTs on every web and admin hostname. Each reads at most its cap (256 kB, 512 kB) while streaming and refuses a body without `Content-Length` (411); `/monitoring` passes Sentry's 429, `X-Sentry-Rate-Limits` and `Retry-After` back so the browser SDK backs off. A per-IP rate rule for both routes belongs at the edge and is OPS-1's (PLAT-14 adversary W-2).
+
 ## Not here
 
 OPS-1 turns `alerts.yaml` into the host's alerting, routes it to the owner's channel and runs the collector (no collector container in this repository, owner ruling A-24); it also decides how the web images get their public values (today an image is built without DSN, key or environment and reports nothing) and uploads source maps. Dashboards are not part of PLAT-14; the driver app's Sentry and PostHog are DRV-1's.

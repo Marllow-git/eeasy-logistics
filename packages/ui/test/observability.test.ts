@@ -46,6 +46,7 @@ describe('redaction', () => {
       'https://web.example.test/track/:token',
     );
     expect(scrubUrl(`/reschedule/${token}?code=123456`)).toBe('/reschedule/:token');
+    expect(scrubUrl(`https://wa.me/966501234567?text=${token}`)).toBe('https://wa.me/:phone');
   });
 
   it('masks phones to the last four digits and redacts emails, JWTs, credentials and tokens', () => {
@@ -301,7 +302,7 @@ describe('filterSentryEnvelope (/monitoring)', () => {
 });
 
 describe('scrubAnalyticsEvent (before_send)', () => {
-  it('rewrites URLs, redacts strings, keeps SDK ids and drops person properties', () => {
+  it('rewrites URLs, redacts strings, keeps SDK ids, drops person properties, title and referrer', () => {
     const capture = {
       event: '$pageview',
       properties: {
@@ -310,7 +311,10 @@ describe('scrubAnalyticsEvent (before_send)', () => {
         $current_url: `https://web.example.test/track/${token}?phone=${phone}&name=Sara`,
         $pathname: `/track/${token}`,
         $referrer: `https://wa.me/966501234567?text=${token}`,
+        $referring_domain: 'wa.me',
+        $initial_referrer: 'https://wa.me/966501234567',
         $title: `Order for ${phone}`,
+        $screen_name: `Order for ${phone}`,
         nested: { list: [`sara@example.com`] },
         count: 3,
       },
@@ -327,10 +331,13 @@ describe('scrubAnalyticsEvent (before_send)', () => {
       distinct_id: '0192f3a4-5b6c-7d8e-9f01-23456789abcd',
       $current_url: 'https://web.example.test/track/:token',
       $pathname: '/track/:token',
-      $referrer: 'https://wa.me/:phone',
-      $title: 'Order for [phone …4567]',
+      $screen_name: 'Order for [phone …4567]',
       count: 3,
     });
+    // Adversary W-4: the page title and the referrer are never sent.
+    for (const key of ['$title', '$referrer', '$referring_domain', '$initial_referrer']) {
+      expect(result?.properties, key).not.toHaveProperty(key);
+    }
     expect(result).not.toHaveProperty('$set');
     expect(result).not.toHaveProperty('$set_once');
     expect(scrubAnalyticsEvent(null)).toBeNull();

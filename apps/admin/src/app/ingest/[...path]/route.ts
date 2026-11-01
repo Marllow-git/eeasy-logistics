@@ -1,3 +1,4 @@
+import { readCappedBody } from '@eeasy-logistics/ui/observability';
 import { observabilityConfig } from '../../../observability/settings';
 
 // The PostHog proxy (web §10.4, PLAT-14 plan 2.8): posthog-js posts its event batches here, on
@@ -23,11 +24,10 @@ export async function POST(
   if (config?.posthogKey === undefined) return new Response(null, { status: 204 });
   const path = (await params).path.join('/');
   if (!capturePaths.has(path)) return new Response(null, { status: 404 });
-  if (Number(request.headers.get('content-length') ?? 0) > maxBodyBytes) {
-    return new Response(null, { status: 413 });
-  }
-  const body = await request.arrayBuffer();
-  if (body.byteLength > maxBodyBytes) return new Response(null, { status: 413 });
+  // The cap holds while reading: no length 411, over 512 kB 413 (adversary W-1).
+  const read = await readCappedBody(request, maxBodyBytes);
+  if (!read.ok) return new Response(null, { status: read.status });
+  const body = read.body;
 
   const target = new URL(`/${path}/`, config.posthogHost);
   const query = new URL(request.url).searchParams;
