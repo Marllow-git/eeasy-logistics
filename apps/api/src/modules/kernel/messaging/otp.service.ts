@@ -158,7 +158,7 @@ export class OtpService {
         supersedeKey: `otp:${phone}:${input.purpose}`,
         payload: {
           channel: 'whatsapp',
-          template: 'auth_otp',
+          template_key: 'auth_otp',
           to: phone,
           locale: input.locale,
           challenge_id: id,

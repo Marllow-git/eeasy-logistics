@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AppRole } from '../src/index.ts';
 import { ConfigError, defineConfig } from '../src/index.ts';
 import { requiredInProduction } from '../src/refusals.ts';
-import { productionEnv, productionOwnerUrl, valuesOf } from './fixtures.ts';
+import { engineEnv, productionEnv, productionOwnerUrl, valuesOf } from './fixtures.ts';
 
 function problems(env: Record<string, string>, role: AppRole = 'api'): Record<string, string> {
   try {
@@ -105,12 +105,7 @@ describe('production refusals (plan 2.3)', () => {
   });
 
   it('refuses each missing database URL, Redis, storage, signing key and credentials keys at once', () => {
-    const found = problems({
-      APP_ENV: 'production',
-      MESSAGING_PROVIDER: 'meta',
-      MESSAGING_ACCESS_TOKEN: 'fake-token',
-      MESSAGING_SENDER_ID: '1',
-    });
+    const found = problems({ APP_ENV: 'production', MESSAGING_PROVIDER: 'engine', ...engineEnv() });
     expect(Object.keys(found).sort()).toEqual(
       [...requiredInProduction('api'), 'ELX_RELEASE'].sort(),
     );
@@ -144,7 +139,7 @@ describe('production refusals (plan 2.3)', () => {
   });
 
   it('refuses production with no messaging provider unless MESSAGING_DISABLED=true', () => {
-    const env = without('MESSAGING_PROVIDER', 'MESSAGING_ACCESS_TOKEN', 'MESSAGING_SENDER_ID');
+    const env = without('MESSAGING_PROVIDER', ...Object.keys(engineEnv()));
     expect(Object.keys(problems(env))).toEqual(['MESSAGING_PROVIDER']);
     const config = defineConfig({ ...env, MESSAGING_DISABLED: 'true' });
     expect(config.messaging).toMatchObject({ provider: null, disabled: true });

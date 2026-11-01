@@ -26,6 +26,8 @@ import {
   mailFrom,
   secret,
   smtpUrl,
+  engineUrl,
+  serviceIdentityPattern,
 } from './formats.ts';
 import { productionRefusals } from './refusals.ts';
 import { Secret } from './secret.ts';
@@ -33,7 +35,11 @@ import { Secret } from './secret.ts';
 export const appRoles = ['api', 'worker', 'migrate'] as const;
 export type AppRole = (typeof appRoles)[number];
 
-export const messagingProviders = ['stub', 'meta', 'bsp'] as const;
+/**
+ * `stub` (`tools/whatsapp-stub`, local and ci) or `engine` (the Eeasy WhatsApp engine, ADR-0041);
+ * both speak the engine's signed internal API through the same adapter.
+ */
+export const messagingProviders = ['stub', 'engine'] as const;
 export type MessagingProvider = (typeof messagingProviders)[number];
 
 /** `CREDENTIALS_KEYS`: comma-separated `<key id>:<base64 of exactly 32 bytes>` entries. */
@@ -125,17 +131,18 @@ export const serverVariables = {
   // messaging
   MESSAGING_PROVIDER: z.enum(messagingProviders).optional(),
   MESSAGING_DISABLED: boolean().default(false),
-  MESSAGING_ACCESS_TOKEN: secret().optional(),
-  MESSAGING_SENDER_ID: z.string().min(1).optional(),
-  // PLAT-9: the provider's inbound webhook secret (validated now, used by the INT order), the
-  // template name prefix (integrations §5.2: `elx_` when the namespace is shared) and the WhatsApp
-  // stub's URL (local and ci only).
-  MESSAGING_WEBHOOK_SECRET: secret(z.string().min(16)).optional(),
-  MESSAGING_TEMPLATE_NAMESPACE: z
-    .string()
-    .regex(/^[a-z][a-z0-9]{0,15}$/)
-    .default('elx'),
+  // The WhatsApp stub's URL (local and ci only).
   MESSAGING_STUB_URL: httpUrl().optional(),
+  // The engine's signed internal API (PLAT-9 plan 2A.1; engine contract §2): its base URL, our
+  // service identity and command key, the separate callback key, and the platform's linked sender
+  // instance (OTP and platform messages, 2A.4). The stub reads the same signing variables.
+  WHATSAPP_ENGINE_URL: secret(engineUrl()).optional(),
+  WHATSAPP_ENGINE_SERVICE_ID: secret(z.string().regex(serviceIdentityPattern)).optional(),
+  WHATSAPP_ENGINE_KEY_ID: secret(keyId()).optional(),
+  WHATSAPP_ENGINE_COMMAND_SECRET: secret(z.string().min(32)).optional(),
+  WHATSAPP_ENGINE_CALLBACK_KEY_ID: secret(keyId()).optional(),
+  WHATSAPP_ENGINE_CALLBACK_SECRET: secret(z.string().min(32)).optional(),
+  WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID: z.uuid().optional(),
   // mail (PLAT-9 plan 2.2): SMTP for invitations and resets; Mailpit locally and in ci.
   MAIL_SMTP_URL: secret(smtpUrl()).optional(),
   MAIL_FROM: mailFrom().optional(),
@@ -199,12 +206,15 @@ export const serverExpectations = {
   AUTH_DRIVER_REFRESH_TTL_SECONDS: seconds1y,
   MESSAGING_PROVIDER: `one of ${messagingProviders.join(', ')}`,
   MESSAGING_DISABLED: 'true or false',
-  MESSAGING_ACCESS_TOKEN: 'a provider access token',
-  MESSAGING_SENDER_ID: 'a provider sender id',
-  MESSAGING_WEBHOOK_SECRET: 'a secret of at least 16 characters',
-  MESSAGING_TEMPLATE_NAMESPACE:
-    'a lower-case prefix of 1 to 16 letters and digits, starting with a letter',
   MESSAGING_STUB_URL: 'an http(s) URL',
+  WHATSAPP_ENGINE_URL: 'an https URL, or http on a loopback host (engine contract §2.8)',
+  WHATSAPP_ENGINE_SERVICE_ID:
+    'a service identity of 1 to 64 letters, digits, dot, underscore or dash',
+  WHATSAPP_ENGINE_KEY_ID: keyIdExpectation,
+  WHATSAPP_ENGINE_COMMAND_SECRET: 'a secret of at least 32 characters',
+  WHATSAPP_ENGINE_CALLBACK_KEY_ID: keyIdExpectation,
+  WHATSAPP_ENGINE_CALLBACK_SECRET: 'a secret of at least 32 characters',
+  WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID: 'a UUID (the engine sender instance of the platform)',
   MAIL_SMTP_URL: 'an smtp:// or smtps:// URL',
   MAIL_FROM: 'a sender address, optionally with a display name: Name <user@example.com>',
   EXPO_ACCESS_TOKEN: 'an Expo access token',
@@ -279,14 +289,10 @@ export interface Config {
     /** `null` only when no provider is set in staging or production; see `resolveProvider`. */
     readonly provider: MessagingProvider | null;
     readonly disabled: boolean;
-    readonly accessToken: Secret | undefined;
-    readonly senderId: string | undefined;
-    /** The provider's inbound webhook secret (the INT order verifies signatures with it). */
-    readonly webhookSecret: Secret | undefined;
-    /** Prefix of provider template names (`elx` → `elx_auth_otp`; integrations §5.2). */
-    readonly templateNamespace: string;
     /** The WhatsApp stub (`tools/whatsapp-stub`); local and ci only. */
     readonly stubUrl: string | undefined;
+    /** The engine's signed internal API (ADR-0041); all set when the provider is `engine`. */
+    readonly engine: EngineSettings;
   };
   readonly mail: {
     /** SMTP URL (Mailpit locally); required in production for the api and worker. */
@@ -319,6 +325,32 @@ export interface Config {
   } | null;
 }
 
+/** The engine's signed internal API (PLAT-9 plan 2A.1); every value from its own variable. */
+export interface EngineSettings {
+  readonly url: Secret | undefined;
+  /** Our service identity, `X-Eeasy-Service` on commands. */
+  readonly serviceId: Secret | undefined;
+  /** The command key id (`X-Eeasy-Key-Id` on commands). */
+  readonly keyId: Secret | undefined;
+  readonly commandSecret: Secret | undefined;
+  /** The key id the engine signs callbacks under. */
+  readonly callbackKeyId: Secret | undefined;
+  readonly callbackSecret: Secret | undefined;
+  /** The platform's linked sender instance (OTP and platform messages, plan 2A.4). */
+  readonly platformInstanceId: string | undefined;
+}
+
+/** Required together when `MESSAGING_PROVIDER=engine`. */
+const engineVariables: readonly ServerVariable[] = [
+  'WHATSAPP_ENGINE_URL',
+  'WHATSAPP_ENGINE_SERVICE_ID',
+  'WHATSAPP_ENGINE_KEY_ID',
+  'WHATSAPP_ENGINE_COMMAND_SECRET',
+  'WHATSAPP_ENGINE_CALLBACK_KEY_ID',
+  'WHATSAPP_ENGINE_CALLBACK_SECRET',
+  'WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID',
+];
+
 export interface DefineConfigOptions {
   /** The process role from `--role` (platform §2); default `api`. */
   readonly role?: AppRole;
@@ -345,12 +377,21 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
   }
 
   issues.push(...pairRules(present));
-  if (v.MESSAGING_PROVIDER === 'meta' || v.MESSAGING_PROVIDER === 'bsp') {
-    for (const variable of ['MESSAGING_ACCESS_TOKEN', 'MESSAGING_SENDER_ID'] as const) {
+  if (v.MESSAGING_PROVIDER === 'engine') {
+    for (const variable of engineVariables) {
       if (!present(variable)) {
-        issues.push({ variable, problem: 'is required when MESSAGING_PROVIDER is meta or bsp' });
+        issues.push({ variable, problem: 'is required when MESSAGING_PROVIDER is engine' });
       }
     }
+  }
+  // Engine contract §2.1: the two directions never share a secret.
+  const command = v.WHATSAPP_ENGINE_COMMAND_SECRET;
+  const callback = v.WHATSAPP_ENGINE_CALLBACK_SECRET;
+  if (command !== undefined && callback !== undefined && command.reveal() === callback.reveal()) {
+    issues.push({
+      variable: 'WHATSAPP_ENGINE_CALLBACK_SECRET',
+      problem: 'must differ from WHATSAPP_ENGINE_COMMAND_SECRET (engine contract §2.1)',
+    });
   }
   if (v.CREDENTIALS_KEYS !== undefined && v.CREDENTIALS_ACTIVE_KEY_ID !== undefined) {
     if (!Object.hasOwn(v.CREDENTIALS_KEYS, v.CREDENTIALS_ACTIVE_KEY_ID)) {
@@ -420,11 +461,16 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
     messaging: {
       provider: resolveProvider(v.MESSAGING_PROVIDER, appEnv),
       disabled: v.MESSAGING_DISABLED,
-      accessToken: v.MESSAGING_ACCESS_TOKEN,
-      senderId: v.MESSAGING_SENDER_ID,
-      webhookSecret: v.MESSAGING_WEBHOOK_SECRET,
-      templateNamespace: v.MESSAGING_TEMPLATE_NAMESPACE,
       stubUrl: v.MESSAGING_STUB_URL,
+      engine: {
+        url: v.WHATSAPP_ENGINE_URL,
+        serviceId: v.WHATSAPP_ENGINE_SERVICE_ID,
+        keyId: v.WHATSAPP_ENGINE_KEY_ID,
+        commandSecret: v.WHATSAPP_ENGINE_COMMAND_SECRET,
+        callbackKeyId: v.WHATSAPP_ENGINE_CALLBACK_KEY_ID,
+        callbackSecret: v.WHATSAPP_ENGINE_CALLBACK_SECRET,
+        platformInstanceId: v.WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID,
+      },
     },
     mail: { smtpUrl: v.MAIL_SMTP_URL, from: v.MAIL_FROM },
     push: { expoAccessToken: v.EXPO_ACCESS_TOKEN },

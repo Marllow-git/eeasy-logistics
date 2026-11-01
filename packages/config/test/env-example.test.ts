@@ -22,6 +22,7 @@ const stackVariables = [
   'MINIO_BUCKET',
   'OSRM_HOST',
   'OSRM_PORT',
+  'WHATSAPP_STUB_CALLBACK_URL',
 ];
 
 describe('.env.example', () => {

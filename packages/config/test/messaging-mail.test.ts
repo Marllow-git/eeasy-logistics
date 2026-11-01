@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { AppRole } from '../src/index.ts';
 import { ConfigError, defineConfig } from '../src/index.ts';
-import { productionEnv, valuesOf } from './fixtures.ts';
+import { engineEnv, productionEnv, valuesOf } from './fixtures.ts';
 
-// PLAT-9 plan 2.9 (items A): the messaging additions (webhook secret, template namespace, the
-// stub's URL) and the mail group (plan 2.2), with their production rules.
+// PLAT-9 plan 2.9 and 2A.1 (ADR-0041): the stub's URL, the engine variables with their rules, and
+// the mail group (plan 2.2), with their production rules.
 
 function problems(env: Record<string, string>, role: AppRole = 'api'): Record<string, string> {
   try {
@@ -17,43 +17,88 @@ function problems(env: Record<string, string>, role: AppRole = 'api'): Record<st
   return {};
 }
 
-describe('messaging additions (PLAT-9 plan 2.9)', () => {
-  it('defaults the template namespace to elx and leaves the rest unset', () => {
+describe('messaging (PLAT-9 plan 2.9, 2A.1)', () => {
+  it('defaults the provider to the stub locally and leaves the stub URL and the engine unset', () => {
     const config = defineConfig({ APP_ENV: 'local' });
-    expect(config.messaging).toMatchObject({
-      templateNamespace: 'elx',
-      stubUrl: undefined,
-      webhookSecret: undefined,
-    });
+    expect(config.messaging.provider).toBe('stub');
+    expect(config.messaging.stubUrl).toBeUndefined();
+    expect(Object.values(config.messaging.engine).every((value) => value === undefined)).toBe(true);
     expect(config.mail).toEqual({ smtpUrl: undefined, from: undefined });
   });
 
-  it('reads the stub URL, the namespace and the webhook secret as a Secret', () => {
-    const config = defineConfig({
-      APP_ENV: 'ci',
-      MESSAGING_STUB_URL: 'http://127.0.0.1:8080',
-      MESSAGING_TEMPLATE_NAMESPACE: 'elx2',
-      MESSAGING_WEBHOOK_SECRET: 'fake-webhook-secret-0123',
-    });
-    expect(config.messaging.stubUrl).toBe('http://127.0.0.1:8080');
-    expect(config.messaging.templateNamespace).toBe('elx2');
-    expect(config.messaging.webhookSecret?.reveal()).toBe('fake-webhook-secret-0123');
-    expect(String(config.messaging.webhookSecret)).toBe('[redacted]');
+  it('reads the engine variables, every one but the instance id as a Secret', () => {
+    const env = engineEnv();
+    const config = defineConfig({ APP_ENV: 'ci', MESSAGING_PROVIDER: 'engine', ...env });
+    const engine = config.messaging.engine;
+    expect(engine.url?.reveal()).toBe(env.WHATSAPP_ENGINE_URL);
+    expect(engine.serviceId?.reveal()).toBe(env.WHATSAPP_ENGINE_SERVICE_ID);
+    expect(engine.keyId?.reveal()).toBe(env.WHATSAPP_ENGINE_KEY_ID);
+    expect(engine.commandSecret?.reveal()).toBe(env.WHATSAPP_ENGINE_COMMAND_SECRET);
+    expect(engine.callbackKeyId?.reveal()).toBe(env.WHATSAPP_ENGINE_CALLBACK_KEY_ID);
+    expect(engine.callbackSecret?.reveal()).toBe(env.WHATSAPP_ENGINE_CALLBACK_SECRET);
+    expect(engine.platformInstanceId).toBe(env.WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID);
+    const printed = JSON.stringify(config);
+    expect(printed).not.toContain(env.WHATSAPP_ENGINE_COMMAND_SECRET);
+    expect(printed).not.toContain(env.WHATSAPP_ENGINE_CALLBACK_SECRET);
   });
 
-  it.each(['', 'Elx', '1elx', 'elx_', 'a-b', 'abcdefghijklmnopq'])(
-    'refuses the template namespace %j',
-    (value) => {
-      expect(
-        Object.keys(problems({ APP_ENV: 'local', MESSAGING_TEMPLATE_NAMESPACE: value })),
-      ).toEqual(value === '' ? [] : ['MESSAGING_TEMPLATE_NAMESPACE']);
-    },
-  );
+  it.each(['meta', 'bsp'])('refuses the withdrawn provider %s (ADR-0041)', (provider) => {
+    expect(Object.keys(problems({ APP_ENV: 'local', MESSAGING_PROVIDER: provider }))).toEqual([
+      'MESSAGING_PROVIDER',
+    ]);
+  });
 
-  it('refuses a webhook secret shorter than 16 characters', () => {
-    expect(problems({ APP_ENV: 'local', MESSAGING_WEBHOOK_SECRET: 'short-secret' })).toHaveProperty(
-      'MESSAGING_WEBHOOK_SECRET',
-    );
+  it.each(Object.keys(engineEnv()))('requires %s when the provider is engine', (variable) => {
+    const env: Record<string, string> = {
+      APP_ENV: 'local',
+      MESSAGING_PROVIDER: 'engine',
+      ...engineEnv(),
+    };
+    delete env[variable];
+    expect(problems(env)).toEqual({ [variable]: 'is required when MESSAGING_PROVIDER is engine' });
+  });
+
+  it('refuses the same secret for commands and callbacks', () => {
+    const env: Record<string, string> = { APP_ENV: 'local', ...engineEnv() };
+    env.WHATSAPP_ENGINE_CALLBACK_SECRET = env.WHATSAPP_ENGINE_COMMAND_SECRET ?? '';
+    expect(problems(env)).toEqual({
+      WHATSAPP_ENGINE_CALLBACK_SECRET:
+        'must differ from WHATSAPP_ENGINE_COMMAND_SECRET (engine contract §2.1)',
+    });
+  });
+
+  it.each([
+    ['https://wa-engine.internal:8790', true],
+    ['http://127.0.0.1:8790', true],
+    ['http://localhost:8790', true],
+    ['http://[::1]:8790', true],
+    ['http://wa-engine.internal:8790', false],
+    ['http://10.0.0.5:8790', false],
+    ['https://user:fake-pw@wa-engine.internal', false],
+    ['ftp://wa-engine.internal', false],
+  ])('engine URL %s accepted: %s (https off loopback, contract §2.8)', (url, ok) => {
+    const found = problems({ APP_ENV: 'local', WHATSAPP_ENGINE_URL: url });
+    expect(Object.keys(found)).toEqual(ok ? [] : ['WHATSAPP_ENGINE_URL']);
+  });
+
+  it('refuses short secrets and malformed key, service and instance ids', () => {
+    const found = problems({
+      APP_ENV: 'local',
+      WHATSAPP_ENGINE_COMMAND_SECRET: 'too-short-secret',
+      WHATSAPP_ENGINE_CALLBACK_SECRET: 'too-short-secret-2',
+      WHATSAPP_ENGINE_KEY_ID: 'bad key id',
+      WHATSAPP_ENGINE_CALLBACK_KEY_ID: 'bad\nid',
+      WHATSAPP_ENGINE_SERVICE_ID: 'eeasy laravel',
+      WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID: 'not-a-uuid',
+    });
+    expect(Object.keys(found).sort()).toEqual([
+      'WHATSAPP_ENGINE_CALLBACK_KEY_ID',
+      'WHATSAPP_ENGINE_CALLBACK_SECRET',
+      'WHATSAPP_ENGINE_COMMAND_SECRET',
+      'WHATSAPP_ENGINE_KEY_ID',
+      'WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID',
+      'WHATSAPP_ENGINE_SERVICE_ID',
+    ]);
   });
 
   it.each(['staging', 'production'])('refuses the stub URL in %s', (appEnv) => {

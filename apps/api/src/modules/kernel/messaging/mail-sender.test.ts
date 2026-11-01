@@ -54,6 +54,14 @@ describe('smtpFailure', () => {
   });
 });
 
+/** The signing variables the stub needs (fake values). */
+const signing = {
+  WHATSAPP_ENGINE_SERVICE_ID: 'eeasy-laravel-control-plane',
+  WHATSAPP_ENGINE_KEY_ID: 'test-command',
+  WHATSAPP_ENGINE_COMMAND_SECRET: 'fake-command-secret-0123456789abcdef0123',
+  WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID: '00000000-0000-4000-8000-000000000001',
+};
+
 describe('createMessageSenders', () => {
   const deps = {
     breakerStore: memoryBreakerStateStore(),
@@ -65,6 +73,7 @@ describe('createMessageSenders', () => {
       defineConfig({
         APP_ENV: 'ci',
         MESSAGING_STUB_URL: 'http://127.0.0.1:8080',
+        ...signing,
         MAIL_SMTP_URL: 'smtp://127.0.0.1:1025',
         MAIL_FROM: 'no-reply@example.test',
       }),
@@ -74,16 +83,15 @@ describe('createMessageSenders', () => {
     expect(platform.provider).toBe('stub');
     expect(senders.senderFor('00000000-0000-7000-8000-00000000000a')).toBe(platform);
     expect(senders.senderFor(null, 'mail').provider).toBe('smtp');
+    expect(senders.platformRoute).toEqual({
+      engineAccountId: 1,
+      senderInstanceId: signing.WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID,
+    });
   });
 
-  it('has no WhatsApp sender for a provider without an adapter in this build, nor mail unset', () => {
+  it('has no WhatsApp sender for the stub without its signing settings, nor mail unset', () => {
     const senders = createMessageSenders(
-      defineConfig({
-        APP_ENV: 'local',
-        MESSAGING_PROVIDER: 'meta',
-        MESSAGING_ACCESS_TOKEN: 'fake-token',
-        MESSAGING_SENDER_ID: '1',
-      }),
+      defineConfig({ APP_ENV: 'local', MESSAGING_STUB_URL: 'http://127.0.0.1:8080' }),
       deps,
     );
     expect(() => senders.senderFor(null)).toThrow(MessagingNotConfigured);

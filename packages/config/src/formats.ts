@@ -93,6 +93,34 @@ function hasPassword(value: string): boolean {
   }
 }
 
+/** Loopback hosts, the only ones plain http may reach for the engine (engine contract §2.8). */
+const loopbackHosts: ReadonlySet<string> = new Set(['127.0.0.1', '[::1]', 'localhost']);
+
+/** Whether `value` is https, or http to a loopback host (engine contract §2.8). */
+export function isConfidentialUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' || (url.protocol === 'http:' && loopbackHosts.has(url.hostname))
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The engine's base URL: http(s), no password, and https unless the host is loopback, since the
+ * channel carries recipients' numbers and OTP text and HMAC gives no confidentiality (engine
+ * contract §2.8).
+ */
+export const engineUrl = () =>
+  httpUrl().refine(isConfidentialUrl, {
+    message: 'must use https unless the host is loopback (engine contract §2.8)',
+  });
+
+/** An ASCII service identity (`X-Eeasy-Service`, engine contract §2.1). */
+export const serviceIdentityPattern = /^[A-Za-z0-9._-]{1,64}$/;
+
 export const postgresUrl = () => z.url({ protocol: /^postgres(?:ql)?$/ });
 export const redisUrl = () => z.url({ protocol: /^rediss?$/ });
 /** SMTP (`smtp://`, STARTTLS when offered) or SMTP over TLS (`smtps://`); may carry a password. */
