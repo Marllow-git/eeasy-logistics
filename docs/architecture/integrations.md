@@ -1,6 +1,6 @@
 # Integration architecture
 
-Foundation document 9. Date: 2026-10-31. Status: for owner review. Governed by ADR-0010 (VROOM over Hudhud), ADR-0013 (one-way channel stock sync), ADR-0014 (pack-time shipments via Eeasy shipping), ADR-0015 (storage first), ADR-0017 (payment port gated), ADR-0023 (own identity), ADR-0024 (outbox and queue), the proposed ADR-0027 (event envelope) and ADR-0030 (merchant webhook signing), and the proposed ADR-0036 (outbox kinds and worker queues) and ADR-0037 (messaging: templates only, no SMS before wave 3); derives from the domain model (2) and the contracts (3); informs waves 1 to 4 and the roadmap (12). Order: ARCH-1, decision 2.8.
+Foundation document 9. Date: 2026-10-31. Status: for owner review. Governed by ADR-0010 (VROOM over Hudhud), ADR-0013 (one-way channel stock sync), ADR-0014 (pack-time shipments via Eeasy shipping), ADR-0015 (storage first), ADR-0017 (payment port gated), ADR-0023 (own identity), ADR-0024 (outbox and queue), the proposed ADR-0027 (event envelope) and ADR-0040 (merchant webhook signing), and the proposed ADR-0036 (outbox kinds and worker queues) and ADR-0037 (messaging: templates only, no SMS before wave 3); derives from the domain model (2) and the contracts (3); informs waves 1 to 4 and the roadmap (12). Order: ARCH-1, decision 2.8.
 
 The domain model is the vocabulary. Ports, aggregates, states, invariants (K-, D-, W-), outbox columns and events are cited from `domain-model.md` (document 2) by section and never redefined here. Merchant webhook payloads, signing and delivery are in `docs/contracts/webhooks.md`. Secrets, containers and alerts are in `platform.md` (document 6). Inbound webhook replay protection is in `identity-and-tenancy.md` (document 4) §8. Where a provider fact could not be checked from public material on 2026-10-31 it is marked **to confirm**; nothing marked so may be built on until confirmed in the wave's order.
 
@@ -157,7 +157,7 @@ Named only (ADR-0017, document 2 §1.1). No adapter, no queue, no credentials un
 | | |
 |---|---|
 | Methods | `deliver(subscription, envelope, attempt) → {status_code, duration_ms} \| error` |
-| Owner | kernel (ADR-0030, `webhooks.md`) |
+| Owner | kernel (ADR-0040, `webhooks.md`) |
 | Adapters | HTTP client with SSRF guard (§11) |
 | Kind | outbox, kind `webhook` |
 | Timeout, retry, ordering, dead letters | as `webhooks.md` §3: 10 s, backoff to 24 h, one in-flight delivery per subscription and aggregate |
@@ -190,7 +190,7 @@ Raw payloads hold recipient PII: retained 30 days, then the body is deleted and 
 |---|---|---|---|
 | Salla | `/hooks/salla` | an app-level webhook URL; a signature header computed as HMAC-SHA256 of the body with the app's webhook secret when the app chooses the signature strategy (header names `X-Salla-Signature` and `X-Salla-Security-Strategy`; **to confirm** on the partner portal); store events carry the merchant (store) id; app events (`app.store.authorize`, `app.uninstalled`) arrive on the same URL | signature strategy is required for our app; verify HMAC with the app secret; no timestamp in the signature (**to confirm**), so step 4 is skipped and step 5 dedupes on the event id plus body hash |
 | Zid | `/hooks/zid/{connection_id}` | webhooks registered per store through the Zid API with an event and target URL; no body signature is documented (**to confirm**) | the path carries the connection id, and the per-connection random secret is sent as the Basic Auth password Zid supports at registration (`username` and `password` fields, confirmed 2026-10-31, `docs/research/provider-facts-2026-10.md`); it is compared in constant time and redacted from logs; then the consumer re-fetches the order with `fetchOrder` before acting (verify by fetch), so a forged call can at most trigger a read |
-| Eeasy shipping | `/hooks/eeasy-shipping` | signed webhooks are a listed need of eeasynew #885 (foundation plan §5); the scheme is not yet defined | we ask #885 to adopt the ADR-0030 scheme unchanged (`X-Eeasy-Timestamp`, `X-Eeasy-Signature: v1=` HMAC over `"<timestamp>.<raw body>"`, per-account secret, 300 s window, event id); until then **to confirm** |
+| Eeasy shipping | `/hooks/eeasy-shipping` | signed webhooks are a listed need of eeasynew #885 (foundation plan §5); the scheme is not yet defined | we ask #885 to adopt the ADR-0040 scheme unchanged (`X-Eeasy-Timestamp`, `X-Eeasy-Signature: v1=` HMAC over `"<timestamp>.<raw body>"`, per-account secret, 300 s window, event id); until then **to confirm** |
 | WhatsApp provider | `/hooks/whatsapp` | message status (sent, delivered, read, failed) and inbound replies; Meta Cloud API signs with `X-Hub-Signature-256` (HMAC-SHA256 with the app secret); business solution providers use their own schemes (**to confirm** with the chosen provider) | provider scheme; statuses update the message log; an opt-out reply updates the opt-out list (§5.5) |
 | Expo push | none | Expo exposes receipts by polling, not webhooks | not applicable (§2.5) |
 
@@ -404,7 +404,7 @@ The merchant owner pastes the Eeasy shipping API key in account settings (or a p
 | label as PDF (sticker sizes 10 × 15 cm and A6 at least) | §7.4 |
 | cancel before pickup with a typed refusal | W-13 |
 | track by shipment id with status history | reconcile and support |
-| signed tracking webhooks per ADR-0030, with event ids, a published status list and retries | §3.2, §7.3 |
+| signed tracking webhooks per ADR-0040, with event ids, a published status list and retries | §3.2, §7.3 |
 | lookup by merchant reference | lost-response recovery |
 | documented rate limits and error codes | §4.2 |
 
@@ -477,9 +477,9 @@ Rules:
 
 ## 11. Security
 
-- **Credential storage and rotation.** Per-account credentials are encrypted with the credentials key and carry its key id (platform §3); the "rotate the credentials key" runbook re-encrypts in the background while both keys decrypt. Platform secrets rotate by redeploy with an overlap where the provider allows two (Hudhud, WhatsApp provider, Expo). Merchant webhook secrets rotate per ADR-0030. Secrets are never logged, never in outbox payloads (the worker loads them by connection id at execution), and never returned by any API after creation.
+- **Credential storage and rotation.** Per-account credentials are encrypted with the credentials key and carry its key id (platform §3); the "rotate the credentials key" runbook re-encrypts in the background while both keys decrypt. Platform secrets rotate by redeploy with an overlap where the provider allows two (Hudhud, WhatsApp provider, Expo). Merchant webhook secrets rotate per ADR-0040. Secrets are never logged, never in outbox payloads (the worker loads them by connection id at execution), and never returned by any API after creation.
 - **Least privilege per provider.** Storage key limited to one bucket; channel apps request only the scopes in §8.1; the Eeasy key is the merchant's own and limited by Eeasy to that merchant; Expo token limited to the project; the WhatsApp token limited to the business account's messaging.
-- **SSRF on merchant URLs** (ADR-0030): `https` only, port 443 by default, DNS resolved by the worker at every delivery and the connection pinned to the checked address; private, loopback, link-local, CGNAT and metadata ranges refused, for IPv4 and IPv6; no redirects followed; response body read at most 64 KB. Provider endpoints are fixed in configuration, never taken from a request.
+- **SSRF on merchant URLs** (ADR-0040): `https` only, port 443 by default, DNS resolved by the worker at every delivery and the connection pinned to the checked address; private, loopback, link-local, CGNAT and metadata ranges refused, for IPv4 and IPv6; no redirects followed; response body read at most 64 KB. Provider endpoints are fixed in configuration, never taken from a request.
 - **PII minimisation outbound.** Hudhud receives address text or coordinates only; VROOM receives coordinates and ids only; WhatsApp receives the recipient phone and template parameters only; Eeasy shipping receives what a shipment needs (recipient name, phone, address, COD, items); merchant webhooks carry no driver phone or surname (`webhooks.md` §5.1); push payloads carry ids and localisation keys, not addresses (the app fetches details over its authenticated API).
 - **Logging redaction.** A shared redactor removes `Authorization`, `X-API-Key`, `X-Manager-Token`, signature headers, tokens in URLs (the Zid path secret), OTP codes, phone numbers (kept as last four digits) and address text from logs, spans and `last_error`. Raw inbound bodies exist only in `core_inbound_webhooks` with their retention (§3.1).
 - **Inbound hardening.** Signature before parse; per-provider rate limit on `/hooks/*`; Cloudflare WAF in front (platform §8) with the webhook paths excluded from bot challenges.
@@ -488,7 +488,7 @@ Rules:
 
 1. **WhatsApp provider.** Meta Cloud API directly (lowest per-message cost, we build template management) or a business solution provider with a Saudi presence such as Unifonic (support, local billing, a markup per message). Needed before wave 0 exits, because the driver OTP depends on it.
 2. **Hudhud contract.** Who signs the B2B agreement, the quota, the price per geocode and per matrix element, and whether National Address short-code lookup is included or needs the SPL API. Needed before wave 1 (geocoding at intake).
-3. **eeasynew #885 timeline.** Accept the 2027-01-15 go or no-go date for carrier fulfilment in wave 3 (§7.7), and the request that Eeasy shipping signs its webhooks with the ADR-0030 scheme.
+3. **eeasynew #885 timeline.** Accept the 2027-01-15 go or no-go date for carrier fulfilment in wave 3 (§7.7), and the request that Eeasy shipping signs its webhooks with the ADR-0040 scheme.
 4. **Second partner apps.** Register new Salla and Zid partner apps for this product (proposed), which on Salla may need a second partner account; or reuse eeasynew's apps, which couples the two products' review cycles and tokens.
 5. **Order status back to the channel.** ADR-0013 makes stock one way; merchants usually also expect the Salla or Zid order to show "shipped" and "delivered" with a tracking link. Should wave 4 write order status back to the channel (a new ADR and a `channel_publish` use), or stay read-only for orders?
 
