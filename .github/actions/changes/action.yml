@@ -26,7 +26,12 @@ runs:
           exit 0
         fi
         # Renames list the old path too, so moving a code file into docs/ still counts as code.
-        scope=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)' | tools/changed-scope.sh)
+        # The file list is materialised before classification: changed-scope.sh stops reading at the
+        # first code path, and a paginated listing still being written would otherwise get SIGPIPE
+        # (exit 141 under pipefail) on a pull request with more than 100 files.
+        files="$RUNNER_TEMP/changed-files.txt"
+        gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)' > "$files"
+        scope=$(tools/changed-scope.sh < "$files")
         if [ "$scope" = docs ]; then code=false; else code=true; fi
         echo "code=$code" >> "$GITHUB_OUTPUT"
         echo "code=$code"
