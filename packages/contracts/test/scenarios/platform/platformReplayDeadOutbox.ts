@@ -8,13 +8,16 @@ export default defineScenario({
   expectedStatus: 401,
   run: ({ fetcher }) =>
     client.platformReplayDeadOutbox(
-      { kind: 'internal_event', reason: 'Contract scenario' },
+      {
+        account_id: '00000000-0000-7000-8000-000000000000',
+        kind: 'internal_event',
+        reason: 'Contract scenario',
+      },
       {
         fetcher,
         headers: {
           'Idempotency-Key': '00000000-0000-4000-8000-000000000002',
           'X-EL-Client': 'web',
-          'X-Support-Reason': 'Contract scenario',
         },
       },
     ),

@@ -3,7 +3,7 @@ import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import type { Job } from 'bullmq';
 import { DelayedError, UnrecoverableError, Worker } from 'bullmq';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
 import type { AuditEvent, AuditSink } from '../../modules/kernel/audit/audit-sink.js';
 import type { ConnectionParker } from '../../modules/kernel/outbox/connection-parker.js';
@@ -27,6 +27,7 @@ import type { OutboxJobData } from '../../modules/kernel/outbox/queues.js';
 import { outboxQueueName, outboxQueuePrefix } from '../../modules/kernel/outbox/queues.js';
 import type { OutboxKind } from '../../modules/kernel/schema/outbox.js';
 import { PlatformOutbox } from '../../modules/kernel/platform/outbox.repository.js';
+import { coreAccounts } from '../../modules/kernel/schema/accounts.js';
 import { coreOutbox } from '../../modules/kernel/schema/outbox.js';
 
 // The consumer side of the outbox queues (PLAT-8 plan 2.4, 2.5, 2.9; ADR-0024, ADR-0036;
@@ -67,7 +68,29 @@ export interface OutboxWorkerDependencies {
 }
 
 /** What happened to one job, for logs and tests. */
-export type JobResult = 'skipped' | RowWrite['status'];
+export type JobResult = 'skipped' | 'held' | RowWrite['status'];
+
+/** The account's status, or undefined when it does not exist. */
+async function accountStatusOf(
+  db: PlatformDatabase,
+  accountId: string,
+): Promise<string | undefined> {
+  const [account] = await db
+    .select({ status: coreAccounts.status })
+    .from(coreAccounts)
+    .where(eq(coreAccounts.id, accountId));
+  return account?.status;
+}
+
+/** Returns a row to `pending` (no attempt, no outcome), while it is still open; true if it did. */
+async function holdRow(db: PlatformDatabase, id: string): Promise<boolean> {
+  const held = await db
+    .update(coreOutbox)
+    .set({ status: 'pending', enqueuedAt: null, nextAttemptAt: sql`now()` })
+    .where(and(eq(coreOutbox.id, id), inArray(coreOutbox.status, ['pending', 'enqueued'])))
+    .returning({ id: coreOutbox.id });
+  return held.length === 1;
+}
 
 /** The row of `outboxId`, or undefined when it is gone (pruned) or never existed. */
 async function readRow(db: PlatformDatabase, outboxId: string): Promise<OutboxRow | undefined> {
@@ -132,6 +155,15 @@ export async function processOutboxJob(
   if (handler === undefined) throw new Error(`No outbox handler for kind ${kind}`);
   const row = await readRow(deps.db, outboxId);
   if (row === undefined || row.kind !== kind || !runnable.has(row.status)) return 'skipped';
+  // A row of an account no longer provisioned or active (suspended, closed) does not execute: it
+  // goes back to `pending` without an attempt, and the relay holds it until the account is active
+  // again (K-2, adversary M-2). `internal_event` is exempt, like the relay's hold (A-23).
+  if (kind !== 'internal_event' && row.accountId !== null) {
+    const status = await accountStatusOf(deps.db, row.accountId);
+    if (status !== 'provisioned' && status !== 'active') {
+      return (await holdRow(deps.db, row.id)) ? 'held' : 'skipped';
+    }
+  }
 
   let outcome: KindOutcome;
   try {

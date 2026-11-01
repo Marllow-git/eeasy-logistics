@@ -58,6 +58,9 @@ export const coreOutbox = pgTable(
     // Delivery state (§2.7; data §5.2).
     status: text('status', { enum: outboxStatuses }).notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
+    // Retries that consumed no attempt (`rate_limited`, `unauthorised`, a park): capped at 50
+    // before `dead` (adversary M-4).
+    deferrals: integer('deferrals').notNull().default(0),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
     lastError: text('last_error'),
     // The consumers an `internal_event` row is parked for (sequence gap, plan 2.6); null when not
@@ -109,6 +112,7 @@ export const coreOutbox = pgTable(
     check('core_outbox_event_version_check', sql`${table.eventVersion} >= 1`),
     check('core_outbox_sequence_check', sql`${table.sequence} >= 1`),
     check('core_outbox_attempts_check', sql`${table.attempts} >= 0`),
+    check('core_outbox_deferrals_check', sql`${table.deferrals} >= 0`),
   ],
 );
 

@@ -104,6 +104,7 @@ export class PlatformOutbox
           lastError: sql`coalesce(${write.lastError}, ${coreOutbox.lastError})`,
           enqueuedAt: sql`coalesce(${coreOutbox.enqueuedAt}, now())`,
           parkedConsumers: write.parkedConsumers === null ? null : [...write.parkedConsumers],
+          deferrals: write.deferrals,
         };
         break;
     }
@@ -164,11 +165,11 @@ export class PlatformOutbox
     return row;
   }
 
+  /** Dead platform-only rows (no account) of the filter: a door covers every account's rows. */
   deadRows(
     filter: BulkReplayFilter,
     afterId: string | undefined,
     limit: number,
-    scope: 'all' | 'platform-only',
   ): Promise<ReplayCandidate[]> {
     return this.unscoped()
       .select({
@@ -179,27 +180,19 @@ export class PlatformOutbox
         createdAt: coreOutbox.createdAt,
       })
       .from(coreOutbox)
-      .where(
-        and(
-          deadRowsCondition(filter, afterId),
-          scope === 'platform-only' ? isNull(coreOutbox.accountId) : undefined,
-        ),
-      )
+      .where(and(deadRowsCondition(filter, afterId), isNull(coreOutbox.accountId)))
       .orderBy(desc(coreOutbox.id))
       .limit(limit);
   }
 
-  async markPending(ids: readonly string[], scope: 'all' | 'platform-only'): Promise<string[]> {
+  /** Replays platform-only rows only (no account). */
+  async markPending(ids: readonly string[]): Promise<string[]> {
     if (ids.length === 0) return [];
     const rows = await this.unscoped()
       .update(coreOutbox)
       .set(replayedState())
       .where(
-        and(
-          inArray(coreOutbox.id, [...ids]),
-          scope === 'platform-only' ? isNull(coreOutbox.accountId) : undefined,
-          replayableCondition(),
-        ),
+        and(inArray(coreOutbox.id, [...ids]), isNull(coreOutbox.accountId), replayableCondition()),
       )
       .returning({ id: coreOutbox.id });
     return rows.map((row) => row.id);
@@ -264,17 +257,14 @@ export function currentPlatformOutbox(): PlatformOutbox {
 }
 
 /**
- * The replay store on the platform side: `platform-only` for a row of no account (no door can
- * open on it), `all` for a bulk replay across accounts (no payload is read).
+ * The replay store on the platform side, for rows of no account only (no door can open on them);
+ * an account's rows are replayed through its door (adversary M-1).
  */
-export function platformReplayStore(
-  outbox: PlatformOutbox,
-  scope: 'all' | 'platform-only',
-): ReplayStore {
+export function platformReplayStore(outbox: PlatformOutbox): ReplayStore {
   return {
     find: (id) => outbox.findPlatformOnly(id),
-    deadRows: (filter, afterId, limit) => outbox.deadRows(filter, afterId, limit, scope),
-    markPending: (ids) => outbox.markPending(ids, scope),
+    deadRows: (filter, afterId, limit) => outbox.deadRows(filter, afterId, limit),
+    markPending: (ids) => outbox.markPending(ids),
     markDeadLettersReplayed: (ids) => outbox.markDeadLettersReplayed(ids),
   };
 }

@@ -204,7 +204,45 @@ describe('outbox relay (plan 2.3)', () => {
     await owner`UPDATE core_accounts SET status = 'active' WHERE id = ${suspended}`;
     await relayBatch(pool.db, queues, registry, 500);
     expect(await statuses([held])).toEqual(['enqueued']);
+    // A closed account's rows are held too (adversary L-2).
+    await owner`UPDATE core_accounts SET status = 'closed' WHERE id = ${suspended}`;
+    const closed = await insert(uuidv7(), 1, { accountId: suspended });
+    await relayBatch(pool.db, queues, registry, 500);
+    expect(await statuses([closed])).toEqual(['pending']);
     await owner`UPDATE core_accounts SET status = 'suspended' WHERE id = ${suspended}`;
+  });
+
+  it("never holds a row behind another account's row of the same aggregate id (adversary L-3)", async () => {
+    const aggregate = uuidv7();
+    const foreign = await insert(aggregate, 1, { accountId: suspended });
+    const own = await insert(aggregate, 2);
+    await relayBatch(pool.db, queues, registry, 500);
+    expect(await statuses([foreign, own])).toEqual(['pending', 'enqueued']);
+  });
+
+  it('re-adds a job for a pending row whose earlier job finished (adversary M-2)', async () => {
+    const id = await insert(uuidv7(), 1);
+    await relayBatch(pool.db, queues, registry, 500);
+    const workerConnection = new Redis(config.redis.url?.reveal() ?? '', {
+      maxRetriesPerRequest: null,
+    });
+    const worker = new Worker(outboxQueueName(kind), () => Promise.resolve(), {
+      connection: workerConnection,
+      prefix,
+    });
+    try {
+      await expect
+        .poll(async () => (await inspect.getJob(id))?.finishedOn !== undefined, { timeout: 5_000 })
+        .toBe(true);
+    } finally {
+      await worker.close();
+      workerConnection.disconnect();
+    }
+    // As the processor leaves a held row: back to pending, its job completed and retained.
+    await owner`UPDATE core_outbox SET status = 'pending', enqueued_at = NULL WHERE id = ${id}`;
+    await relayBatch(pool.db, queues, registry, 500);
+    expect(await statuses([id])).toEqual(['enqueued']);
+    expect(await inspect.getJobState(id)).toBe('waiting');
   });
 
   it("enqueues a suspended account's internal_event rows and holds its other kinds (lead ruling)", async () => {

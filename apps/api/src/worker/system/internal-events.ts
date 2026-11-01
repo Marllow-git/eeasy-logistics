@@ -1,4 +1,5 @@
-import { uuidv7 } from '@eeasy-logistics/db';
+import type { AppDatabase } from '@eeasy-logistics/db';
+import { uuidv7, withUnitOfWork } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { withPlatformAccountTransaction } from '@eeasy-logistics/db/platform';
 import type { SQL } from 'drizzle-orm';
@@ -18,13 +19,15 @@ import type {
   RelayRow,
 } from '../../modules/kernel/outbox/kind-handlers.js';
 import { failureOutcome, formatLastError } from '../../modules/kernel/outbox/outcome.js';
+import { ConsumerReceiptRepository } from '../../modules/kernel/outbox/outbox.repository.js';
 import type { QueuePolicy } from '../../modules/kernel/outbox/queue-options.js';
 import { isFinalFailure, outboxQueuePolicies } from '../../modules/kernel/outbox/queue-options.js';
 
 // The `internal_event` kind (PLAT-8 plan 2.6; domain model §2.7, §6.2; data §5.3; ADR-0036): the
 // dispatcher runs every registered consumer of the row's type once. Per consumer, in one
-// platform-pool transaction (with `elx.account_id` set when the row has an account): insert the
-// receipt `(consumer, event_id)` first, a conflict meaning already processed; then run it. An
+// transaction: insert the receipt `(consumer, event_id)` first, a conflict meaning already
+// processed; then run it. An account's event runs in a tenant unit of work on `elx_app` for that
+// account (adversary M-3), a platform-only event on the platform pool. An
 // event whose consumer has not yet processed an earlier event of the aggregate is parked (the job
 // is delayed, 30 s then doubling) and dead-lettered for that consumer 15 minutes after its first
 // park (the job carries `parkedSince`; the row's `parked_consumers` names who waits).
@@ -35,7 +38,10 @@ export const parkFirstMs = 30_000;
 export const parkWindowMs = 15 * 60_000;
 
 export interface InternalEventDispatcherDependencies {
+  /** Gap checks, dead letters and platform-only events. */
   readonly db: PlatformDatabase;
+  /** The `elx_app` pool: an account's event runs its consumers in a tenant unit of work here. */
+  readonly app: AppDatabase;
   readonly consumers: DomainEventConsumerRegistry;
   readonly logger: { warn(message: string): void };
   /** The clock for the parking window; tests advance it. Must match the worker's. */
@@ -95,6 +101,9 @@ export class InternalEventDispatcher implements KindHandler {
     const now = this.#deps.now?.() ?? new Date();
 
     const settled = await this.#settled(row.id, consumers);
+    const deadLettered = [...settled]
+      .filter(([, by]) => by === 'dead_letter')
+      .map(([name]) => name);
     const parked: DomainEventConsumer[] = [];
     const failed: { consumer: DomainEventConsumer; error: OutcomeError }[] = [];
     for (const consumer of consumers) {
@@ -152,19 +161,35 @@ export class InternalEventDispatcher implements KindHandler {
         parked: { consumers, since },
       };
     }
+    if (deadLettered.length > 0) {
+      // A consumer settled by a live dead letter never ends `done` (adversary L-5).
+      return {
+        outcome: 'dead',
+        error: { message: `dead-lettered for ${deadLettered.join(', ')}` },
+      };
+    }
     return { outcome: 'done' };
   }
 
-  /** Consumers of `eventId` with a receipt, or a dead letter not replayed since. */
-  async #settled(eventId: string, consumers: readonly DomainEventConsumer[]): Promise<Set<string>> {
+  /** Consumers of `eventId` with a receipt, or else a dead letter not replayed since. */
+  async #settled(
+    eventId: string,
+    consumers: readonly DomainEventConsumer[],
+  ): Promise<Map<string, 'receipt' | 'dead_letter'>> {
     const names = list(consumers.map((c) => c.consumer));
-    const rows = await this.#deps.db.execute<{ consumer: string }>(sql`
-      SELECT consumer FROM core_consumer_receipts
+    const rows = await this.#deps.db.execute<{ consumer: string; by: 'receipt' | 'dead_letter' }>(
+      sql`
+      SELECT consumer, 'receipt' AS by FROM core_consumer_receipts
       WHERE event_id = ${eventId} AND consumer IN (${names})
       UNION
-      SELECT consumer FROM core_consumer_dead_letters
-      WHERE event_id = ${eventId} AND consumer IN (${names}) AND replayed_at IS NULL`);
-    return new Set(rows.map((r) => r.consumer));
+      SELECT consumer, 'dead_letter' AS by FROM core_consumer_dead_letters
+      WHERE event_id = ${eventId} AND consumer IN (${names}) AND replayed_at IS NULL`,
+    );
+    const settled = new Map<string, 'receipt' | 'dead_letter'>();
+    for (const r of rows) {
+      if (settled.get(r.consumer) !== 'receipt') settled.set(r.consumer, r.by);
+    }
+    return settled;
   }
 
   /**
@@ -178,6 +203,7 @@ export class InternalEventDispatcher implements KindHandler {
     const gap = await this.#deps.db.execute<{ id: string }>(sql`
       SELECT o.id FROM core_outbox o
       WHERE o.aggregate_id = ${row.aggregateId}
+        AND o.account_id IS NOT DISTINCT FROM ${row.accountId}
         AND o.kind = 'internal_event'
         AND o.type IN (${list(types)})
         AND (o.sequence < ${row.sequence} OR (o.sequence = ${row.sequence} AND o.id < ${row.id}))
@@ -191,12 +217,30 @@ export class InternalEventDispatcher implements KindHandler {
     return gap.length > 0;
   }
 
-  /** The receipt first, then the consumer, in one transaction (a failure rolls both back). */
+  /**
+   * The receipt first, then the consumer, in one transaction (a failure rolls both back): a tenant
+   * unit of work on `elx_app` for an account's event, the platform pool for a platform-only one.
+   */
   async #run(row: OutboxRow, consumer: DomainEventConsumer, event: DomainEvent): Promise<void> {
-    await withPlatformAccountTransaction(this.#deps.db, row.accountId, async (tx) => {
+    const accountId = row.accountId;
+    if (accountId !== null) {
+      const context = {
+        accountId,
+        membershipId: null,
+        userId: null,
+        deviceId: null,
+        actingCrossTenant: false,
+      };
+      await withUnitOfWork(this.#deps.app, context, async (uow) => {
+        if (!(await new ConsumerReceiptRepository(uow).claim(consumer.consumer, row.id))) return;
+        await consumer.handle(event, uow);
+      });
+      return;
+    }
+    await withPlatformAccountTransaction(this.#deps.db, null, async (tx) => {
       const inserted = await tx.execute<{ consumer: string }>(sql`
         INSERT INTO core_consumer_receipts (consumer, event_id, account_id)
-        VALUES (${consumer.consumer}, ${row.id}, ${row.accountId})
+        VALUES (${consumer.consumer}, ${row.id}, NULL)
         ON CONFLICT (consumer, event_id) DO NOTHING
         RETURNING consumer`);
       if (inserted.length === 0) return; // processed meanwhile by another delivery

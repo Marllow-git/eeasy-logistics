@@ -23,7 +23,7 @@ import { kernelConsumers } from './account-suspended.consumer.js';
 import { DomainEventConsumerRegistry } from './domain-event-consumers.js';
 import type { OutboxSort } from './outbox-list.js';
 import { outboxSorts } from './outbox-list.js';
-import { replayBulk, replayOne } from './outbox-replay.js';
+import { replayAuditIdLimit, replayBulk, replayOne } from './outbox-replay.js';
 import { OutboxRepository, tenantReplayStore } from './outbox.repository.js';
 import { presentConsumers, presentOutboxPage, presentOutboxRow } from './outbox.presenter.js';
 import type { OutboxQueues } from './queues.js';
@@ -210,7 +210,7 @@ export class PlatformOutboxController {
     const door = findContext() !== undefined;
     const store = door
       ? tenantReplayStore(getUnitOfWork())
-      : platformReplayStore(currentPlatformOutbox(), 'platform-only');
+      : platformReplayStore(currentPlatformOutbox());
     const result = await replayOne(store, queues, id);
     if (result === undefined) throw new ApiException('not_found');
     if (!result.replayed) {
@@ -241,7 +241,7 @@ export class PlatformOutboxController {
    * through its door or across accounts without it, in batches of 500; one audit row with the
    * counts.
    */
-  @CrossTenant({ from: 'body', name: accountIdParam })
+  @CrossTenant({ from: 'body', name: accountIdParam, reason: 'body' })
   @Post('outbox/replay-dead')
   @HttpCode(202)
   @Idempotent()
@@ -249,8 +249,14 @@ export class PlatformOutboxController {
   async replayDead(@Input() input: ContractInput<typeof bulkOp>): Promise<BulkReplayResult> {
     const queues = this.requireQueues();
     const { body } = input;
-    const door = body.account_id !== undefined;
-    if (door && getContext().accountId !== body.account_id) {
+    // `account_id` is required (adversary M-1): the contract schema refuses its absence before the
+    // handler runs; this guards the door having opened on it.
+    if (findContext() === undefined) {
+      throw new ApiException('validation_failed', {
+        fields: [{ pointer: '/body/account_id', code: 'required' }],
+      });
+    }
+    if (getContext().accountId !== body.account_id) {
       throw new Error('Door and body disagree');
     }
     const filter = {
@@ -259,28 +265,27 @@ export class PlatformOutboxController {
       from: body.created_from,
       to: body.created_to,
     };
-    const store = door
-      ? tenantReplayStore(getUnitOfWork())
-      : platformReplayStore(currentPlatformOutbox(), 'all');
-    const counts = await replayBulk(store, queues, filter);
+    const counts = await replayBulk(tenantReplayStore(getUnitOfWork()), queues, filter);
     const { userId, requestId } = caller();
     await this.audit.record({
       actorType: 'platform_user',
       actorId: userId,
-      accountId: body.account_id ?? null,
+      accountId: body.account_id,
       targetType: 'outbox_kind',
       targetId: body.kind,
       action: 'platform.outbox_rows.replayed',
       after: {
-        account_id: body.account_id ?? null,
+        account_id: body.account_id,
         kind: body.kind,
         type: body.type ?? null,
         created_from: body.created_from ?? null,
         created_to: body.created_to ?? null,
         matched: counts.matched,
         replayed: counts.replayed,
+        // The replayed rows, at most 500 (the first batch); `replayed` has the full count.
+        outbox_ids: counts.ids.slice(0, replayAuditIdLimit),
       },
-      reason: input.headers['X-Support-Reason'],
+      reason: input.body.reason,
       requestId,
     });
     return { matched: counts.matched, replayed: counts.replayed };

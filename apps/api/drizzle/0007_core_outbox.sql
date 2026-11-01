@@ -62,6 +62,7 @@ CREATE TABLE "core_outbox" (
 	"kind" text NOT NULL,
 	"status" text DEFAULT 'pending' NOT NULL,
 	"attempts" integer DEFAULT 0 NOT NULL,
+	"deferrals" integer DEFAULT 0 NOT NULL,
 	"next_attempt_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_error" text,
 	"parked_consumers" text[],
@@ -74,7 +75,8 @@ CREATE TABLE "core_outbox" (
 	CONSTRAINT "core_outbox_type_check" CHECK ("core_outbox"."type" ~ '^[a-z]+(_[a-z]+)*([.][a-z]+(_[a-z]+)*){2}$'),
 	CONSTRAINT "core_outbox_event_version_check" CHECK ("core_outbox"."event_version" >= 1),
 	CONSTRAINT "core_outbox_sequence_check" CHECK ("core_outbox"."sequence" >= 1),
-	CONSTRAINT "core_outbox_attempts_check" CHECK ("core_outbox"."attempts" >= 0)
+	CONSTRAINT "core_outbox_attempts_check" CHECK ("core_outbox"."attempts" >= 0),
+	CONSTRAINT "core_outbox_deferrals_check" CHECK ("core_outbox"."deferrals" >= 0)
 );
 --> statement-breakpoint
 ALTER TABLE "core_consumer_dead_letters" ADD CONSTRAINT "core_consumer_dead_letters_account_id_core_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."core_accounts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
