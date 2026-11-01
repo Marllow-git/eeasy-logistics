@@ -8,7 +8,8 @@ import type { App } from 'supertest/types.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { staffCookie } from '../../src/modules/kernel/auth/principal.js';
-import { ApiException } from '../../src/modules/kernel/public/index.js';
+import { ApiException, Operation } from '../../src/modules/kernel/public/index.js';
+import { probeOperations } from '../support/probe-operations.js';
 import type { TestSigningKey } from '../support/access-tokens.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import type { ProbeRow } from './probe-table.js';
@@ -30,6 +31,7 @@ import { connectAs, integrationConfig } from './support.js';
 @Controller('v1/staff/probe-rows')
 class StaffProbeController {
   @Get()
+  @Operation(probeOperations.staffRead)
   async list(): Promise<{ account: string; rows: ProbeRow[] }> {
     const rows = await new ProbeRepository(getUnitOfWork()).all();
     return { account: getContext().accountId, rows };
@@ -37,6 +39,7 @@ class StaffProbeController {
 
   // The body tries to name another account; the repository takes the token's.
   @Post()
+  @Operation(probeOperations.staffWrite)
   @HttpCode(201)
   async create(@Body() body: { label: string; account_id?: string; accountId?: string }) {
     const input = { id: uuidv7(), label: body.label, accountId: body.accountId } as never;
@@ -45,6 +48,7 @@ class StaffProbeController {
   }
 
   @Post('then-fail')
+  @Operation(probeOperations.staffWrite)
   async createThenFail(@Body() body: { label: string }): Promise<never> {
     await new ProbeRepository(getUnitOfWork()).add({ id: uuidv7(), label: body.label });
     throw new ApiException('invalid_transition');
@@ -54,6 +58,7 @@ class StaffProbeController {
 @Controller('v1/driver/probe-rows')
 class DriverProbeController {
   @Get()
+  @Operation(probeOperations.driverWork)
   async list(): Promise<{ device: string | null; rows: ProbeRow[] }> {
     const rows = await new ProbeRepository(getUnitOfWork()).all();
     return { device: getContext().deviceId, rows };
