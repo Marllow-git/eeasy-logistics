@@ -6,13 +6,15 @@
 - `pnpm format` / `pnpm format:check`.
 
 ## Per workspace (`--filter @eeasy-logistics/<api|web|driver|config|db|i18n|ui|contracts>`)
-- `pnpm --filter @eeasy-logistics/api run test:unit | test:integration | test:architecture | migrate | dev` (`dev` sets `APP_ENV=local`; API role via `--role api|worker|migrate`).
+- `pnpm --filter @eeasy-logistics/api run test:unit | test:integration | test:architecture | migrate | seed | dev` (`dev` sets `APP_ENV=local`; API role via `--role api|worker|migrate`). `migrate` builds then runs the one-shot job as `elx_owner`; `seed` writes two fixture accounts, `seed --template` rebuilds `elx_seed` (needs `DATABASE_URL_ADMIN`).
+- Integration suite locally: `APP_ENV=local DATABASE_URL_ADMIN=postgres://$(id -un)@127.0.0.1:5432/postgres ELX_RLS=off|on pnpm --filter @eeasy-logistics/api run test:integration` — migrates a scratch `elx_test_<hex>` per run and drops it; without the admin URL it refuses locally (in `ci` it uses the migrated ci database).
 - `pnpm --filter @eeasy-logistics/web run typecheck` (runs `next typegen` first), `test:smoke` (Playwright, both locales; needs API + web built and running).
 - `pnpm --filter @eeasy-logistics/driver run test` (Jest + architecture), `doctor`.
 - `pnpm --filter @eeasy-logistics/contracts run lint` (redocly).
 - Quiet test output for agents: `vitest run --reporter=dot`; re-run a failing file verbosely only.
 
 ## Local stack (no Docker on the owner's machine)
+- `tools/native-stack.sh migrate` runs the migration job against the `.env` database (process env wins, so `DATABASE_URL_OWNER=… tools/native-stack.sh migrate` targets a scratch db).
 - `tools/native-stack.sh up | status | down | reset` — Homebrew postgresql@17 + postgis, redis, minio, mailpit, whatsapp-stub on the Compose `dev` ports; roles `elx_owner/app/platform/maintenance`, db `elx`. Data under `.local/native-stack`. Mode (dedicated cluster vs existing 5432) fixed at first `up`.
 - Compose (`compose.yaml`, profiles `dev|ci|stack-a|stack-b`) only in CI; `tools/stack.sh` for isolated stack pairs there.
 
