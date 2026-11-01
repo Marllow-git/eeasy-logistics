@@ -1,31 +1,18 @@
 // `pnpm --filter contracts test:contract [-- --api <origin>]` (PLAT-15 plan 2.8, 2.10): runs the
 // harness self-test and every scenario under test/scenarios against the running API. The origin
 // comes from `--api`, else from `CONTRACT_API_URL` through packages/config; never read directly.
-import { parseArgs } from 'node:util';
 import { contractTestConfig } from '@eeasy-logistics/config/contract-test';
 import { createVitest } from 'vitest/node';
 import { ContractValidator } from '../test/contract/harness.ts';
+import { resolveApiUrl } from './contract-api-url.ts';
 import { packageRoot, surfaces } from './paths.ts';
 
-const { values } = parseArgs({
-  // pnpm forwards a literal `--` before the script's own arguments.
-  args: process.argv.slice(2).filter((arg) => arg !== '--'),
-  options: { api: { type: 'string' } },
-});
-
-const apiUrl = values.api ?? contractTestConfig().apiUrl;
-if (apiUrl === undefined) {
-  console.error(
-    'test:contract needs the API origin: pass --api http://127.0.0.1:3000 or set CONTRACT_API_URL.',
-  );
+const resolved = resolveApiUrl(process.argv.slice(2), contractTestConfig);
+if (!resolved.ok) {
+  console.error(resolved.message);
   process.exit(2);
 }
-try {
-  new URL(apiUrl);
-} catch {
-  console.error('--api must be an absolute http(s) URL.');
-  process.exit(2);
-}
+const { apiUrl } = resolved;
 
 const vitest = await createVitest({
   root: packageRoot,

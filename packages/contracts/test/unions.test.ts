@@ -3,7 +3,13 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ErrorCode, Permission, StreamEventName } from '../generated/unions.ts';
-import { errorCodes, permissions, streamEventNames } from '../generated/unions.ts';
+import {
+  errorCodes,
+  isStreamEventName,
+  permissions,
+  streamEventNames,
+} from '../generated/unions.ts';
+import { expandFamilies, readDomainEvents } from '../scripts/unions.ts';
 import type { ApiErrorCode } from '../src/http.ts';
 
 const contractsDir = resolve(import.meta.dirname, '../../../docs/contracts');
@@ -53,14 +59,41 @@ describe('ErrorCode', () => {
 });
 
 describe('StreamEventName', () => {
-  it('lists the README §6 stream table names plus stream.resync', () => {
+  it('lists the README §6 stream table names plus stream.resync, families expanded', () => {
     const body = section(6);
     const table = body.slice(0, body.indexOf('Rules (ADR-0029)'));
     const rows = table.split('\n').filter((line) => line.startsWith('| ') && line.includes('/v1/'));
     // The "Event names" column is the last one; "Who" names permissions.
     const eventCells = rows.map((row) => row.split('|').at(-2) ?? '');
-    const fromReadme = new Set([...dottedNames(eventCells), 'stream.resync']);
-    expect(new Set(streamEventNames)).toEqual(fromReadme);
+    const readmeNames = [...dottedNames(eventCells), 'stream.resync'];
+    expect(readmeNames).toContain('delivery.order.*');
+    expect(new Set(streamEventNames)).toEqual(
+      new Set(expandFamilies(readmeNames, readDomainEvents())),
+    );
+    expect(streamEventNames.some((name) => name.includes('*'))).toBe(false);
+  });
+
+  it('expands delivery.order.* to the twelve order events of domain-model §6.3', () => {
+    const orderEvents = streamEventNames.filter((name) => name.startsWith('delivery.order.'));
+    expect(orderEvents).toHaveLength(12);
+    expect(orderEvents).toContain('delivery.order.created');
+  });
+
+  it('isStreamEventName agrees with the type: real events in, near misses out', () => {
+    expect(isStreamEventName('delivery.order.created')).toBe(true);
+    expect(isStreamEventName('stream.resync')).toBe(true);
+    expect(isStreamEventName('delivery.orderx')).toBe(false);
+    expect(isStreamEventName('delivery.order.*')).toBe(false);
+    expect(isStreamEventName('delivery.order.pickedup')).toBe(false);
+  });
+
+  it('reads shorthand siblings and refuses a family with no catalogue event', () => {
+    expect(readDomainEvents()).toEqual(
+      expect.arrayContaining(['delivery.shift.started', 'delivery.shift.ended']),
+    );
+    expect(() => expandFamilies(['nothing.here.*'], readDomainEvents())).toThrow(
+      'nothing.here.* matches no catalogue event',
+    );
   });
 });
 
@@ -72,9 +105,11 @@ describe('typecheck guards (checked by tsc, asserted at runtime for completeness
     const code: ErrorCode = 'version_conflit';
     // @ts-expect-error an event outside README §6 is not a StreamEventName
     const event: StreamEventName = 'delivery.shift.startd';
-    // A wildcard family accepts any event of that family.
+    // A family member from the catalogue is a StreamEventName; a typo inside the family is not.
     const family: StreamEventName = 'delivery.order.picked_up';
+    // @ts-expect-error not an event of the delivery.order family in domain-model §6.3
+    const familyTypo: StreamEventName = 'delivery.order.pickedup';
     const apiCode: ApiErrorCode = 'unexpected_response';
-    expect([permission, code, event, family, apiCode]).toHaveLength(5);
+    expect([permission, code, event, family, familyTypo, apiCode]).toHaveLength(6);
   });
 });

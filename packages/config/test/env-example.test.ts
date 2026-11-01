@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import dotenv from 'dotenv';
 import { describe, expect, it } from 'vitest';
 import { defineConfig, serverVariables } from '../src/index.ts';
+import { contractTestVariables } from '../src/contract-test.ts';
 import { driverPublicVariables, webPublicVariables } from '../src/public.ts';
 
 // .env.example at the repository root documents every variable (plan item F).
@@ -28,6 +29,7 @@ describe('.env.example', () => {
     ...Object.keys(serverVariables),
     ...Object.keys(webPublicVariables),
     ...Object.keys(driverPublicVariables),
+    ...Object.keys(contractTestVariables),
   ];
 
   it('lists every variable the package reads, each under a comment', () => {

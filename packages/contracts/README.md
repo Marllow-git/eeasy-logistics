@@ -31,7 +31,7 @@ Turborepo runs `build` before this package's own `typecheck`, `lint` and `test`,
 | `@eeasy-logistics/contracts/driver` | model types; `client`, `schemas`; no hooks, no MSW | `apps/driver` |
 | `@eeasy-logistics/contracts/<staff,platform,public>/mocks` | MSW handlers and mock factories, tests only | test code |
 | `@eeasy-logistics/contracts/http` | `createFetcher`, `apiFetch` (the Orval mutator), `ApiError` | every client |
-| `@eeasy-logistics/contracts/unions` | `Permission`, `StreamEventName`, `ErrorCode` and their runtime lists | every client |
+| `@eeasy-logistics/contracts/unions` | `Permission`, `StreamEventName`, `ErrorCode`, their runtime lists and `isStreamEventName` (SSE families such as `delivery.order.*` expanded from domain-model §6.3) | every client |
 
 The architecture tests of `apps/web` and `apps/driver` enforce the "Used by" column.
 
