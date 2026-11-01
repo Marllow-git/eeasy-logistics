@@ -1,8 +1,9 @@
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, DiscoveryModule } from '@nestjs/core';
 import { AUDIT_SINK, LogAuditSink } from './audit/audit-sink.js';
 import { ContractPipe } from './contract/contract-pipe.js';
+import { IdempotentRoutesCheck } from './idempotency/idempotency.interceptor.js';
 import { ApiExceptionFilter } from './errors/exception.filter.js';
 import { RequestIdMiddleware } from './request/request-id.js';
 import { WebClientGuard } from './request/web-client.guard.js';
@@ -18,7 +19,9 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
  * every non-public request is refused.
  */
 @Module({
+  imports: [DiscoveryModule],
   providers: [
+    IdempotentRoutesCheck,
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
     // Guards run in this order: the principal (and its rate-limit charge), then the web client
     // marker on staff and platform writes, both before any interceptor opens a transaction.

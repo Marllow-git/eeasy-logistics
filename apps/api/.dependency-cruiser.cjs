@@ -114,6 +114,19 @@ module.exports = {
       },
       to: { path: '(?:^|/)packages/contracts/' },
     },
+    {
+      name: 'contracts-server-entries-only',
+      comment:
+        'PLAT-6 review round 2: the API image loads controllers and presenters at run time, so ' +
+        'they import only the server-safe @eeasy-logistics/contracts/<surface>/schemas entries ' +
+        'and /unions, never the barrel entries (fetch client, hooks), /mocks or /http.',
+      severity: 'error',
+      from: { pathNot: '(?:^|/)packages/contracts/' },
+      to: {
+        path: '(?:^|/)packages/contracts/',
+        pathNot: '(?:^|/)packages/contracts/(?:src/schemas/[a-z]+|src/unions|generated/.+)[.]ts$',
+      },
+    },
     ...environmentRules(),
     noUnresolvable,
   ],

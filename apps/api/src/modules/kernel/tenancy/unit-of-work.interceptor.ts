@@ -49,7 +49,7 @@ interface Call {
  * One unit of work per authenticated request (PLAT-6 plan 2.6, 2.7; data §4.2). Staff and driver
  * requests run in `withUnitOfWork` on the elx_app pool for the token's account; platform requests
  * in a platform unit of work with no account; a `@CrossTenant()` platform request on the platform
- * pool with `elx.account_id` set to the route's `:accountId`, after the reason check and with one
+ * pool with `elx.account_id` set to the route's `:account_id`, after the reason check and with one
  * audit event emitted in that transaction before the handler. The handler and every repository it
  * builds see the same transaction through `getUnitOfWork()`. Commit on a 2xx, rollback on a thrown
  * error or a non-2xx answer. Reads run in the transaction too (one connection per request; revisit

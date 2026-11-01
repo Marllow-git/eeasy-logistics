@@ -1,5 +1,10 @@
 import { getUnitOfWork, isUuid } from '@eeasy-logistics/db';
-import type { CallHandler, ExecutionContext, NestInterceptor } from '@nestjs/common';
+import type {
+  CallHandler,
+  ExecutionContext,
+  NestInterceptor,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import {
   Inject,
   Injectable,
@@ -8,7 +13,8 @@ import {
   UseInterceptors,
   applyDecorators,
 } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants.js';
+import { DiscoveryService, Reflector } from '@nestjs/core';
 import type { Request, Response } from 'express';
 import type { Observable } from 'rxjs';
 import { from, lastValueFrom } from 'rxjs';
@@ -135,9 +141,47 @@ export class IdempotencyInterceptor implements NestInterceptor {
 /**
  * Marks a retryable write (contracts README §3): `Idempotency-Key` required, replays answered from
  * the stored response for 24 h per principal. Secret-bearing operations pass `secretResponse`.
+ *
+ * The handler must declare its success status with `@HttpCode()`: the interceptor stores
+ * `response.statusCode` as it stands when the handler returns, before Nest applies a default, so a
+ * handler without it would replay `200` for a `201`. `IdempotentRoutesCheck` refuses to start an
+ * application with an `@Idempotent()` handler that lacks `@HttpCode()`.
  */
 export const Idempotent = (options: IdempotentOptions = {}): MethodDecorator =>
   applyDecorators(
     SetMetadata(IDEMPOTENT, resolveOptions(options)),
     UseInterceptors(IdempotencyInterceptor),
   );
+
+/**
+ * Boot check (review round 2): every `@Idempotent()` handler declares `@HttpCode()`, so the status
+ * stored for a replay is the one the first answer had. Registered in `KernelModule`; a missing one
+ * fails application start naming the handler.
+ */
+@Injectable()
+export class IdempotentRoutesCheck implements OnApplicationBootstrap {
+  constructor(
+    private readonly discovery: DiscoveryService,
+    private readonly reflector: Reflector,
+  ) {}
+
+  onApplicationBootstrap(): void {
+    const missing: string[] = [];
+    for (const wrapper of this.discovery.getControllers()) {
+      const type = wrapper.metatype as (new (...args: never[]) => unknown) | null | undefined;
+      if (typeof type !== 'function') continue;
+      const prototype = type.prototype as Record<string, unknown>;
+      for (const name of Object.getOwnPropertyNames(prototype)) {
+        const handler = prototype[name];
+        if (name === 'constructor' || typeof handler !== 'function') continue;
+        if (this.reflector.get(IDEMPOTENT, handler) === undefined) continue;
+        if (this.reflector.get(HTTP_CODE_METADATA, handler) === undefined) {
+          missing.push(`${type.name}.${name}`);
+        }
+      }
+    }
+    if (missing.length > 0) {
+      throw new Error(`@Idempotent() handlers need @HttpCode(): ${missing.join(', ')}`);
+    }
+  }
+}

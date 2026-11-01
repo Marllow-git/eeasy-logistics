@@ -1,4 +1,4 @@
-import type { Account, PlatformListAccounts200 } from '@eeasy-logistics/contracts/platform';
+import type { Account, PlatformListAccounts200 } from '@eeasy-logistics/contracts/platform/schemas';
 import type { AccountRow } from './accounts.repository.js';
 
 // The sample's presenter (PLAT-6 item I): maps repository rows to the generated response type of

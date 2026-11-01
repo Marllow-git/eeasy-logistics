@@ -20,6 +20,7 @@ describe('defineConfig: valid input', () => {
       env: 'local',
       role: 'api',
       port: 3000,
+      trustProxyHops: 0,
       publicWebUrl: undefined,
       publicAdminUrl: undefined,
       publicApiUrl: undefined,
@@ -242,5 +243,34 @@ describe('PUBLIC_ADMIN_URL (WEB-19 decision 2.5, ADR-0038)', () => {
     expect(error.issues).toEqual([
       { variable: 'PUBLIC_ADMIN_URL', problem: 'is required when APP_ENV=production' },
     ]);
+  });
+});
+
+describe('TRUST_PROXY_HOPS (PLAT-6 review round 2, platform §8)', () => {
+  it('defaults to 0 and reads an integer from 0 to 10', () => {
+    expect(defineConfig(minimalEnv).app.trustProxyHops).toBe(0);
+    expect(defineConfig({ ...minimalEnv, TRUST_PROXY_HOPS: '2' }).app.trustProxyHops).toBe(2);
+    for (const value of ['-1', '11', 'one', '1.5']) {
+      const error = configError(() => defineConfig({ ...minimalEnv, TRUST_PROXY_HOPS: value }));
+      expect(error.issues.map((issue) => issue.variable)).toEqual(['TRUST_PROXY_HOPS']);
+    }
+  });
+
+  it('is required and at least 1 for the api role in production; the worker needs none', () => {
+    const env: Record<string, string> = { ...productionEnv };
+    delete env.TRUST_PROXY_HOPS;
+    expect(configError(() => defineConfig(env)).issues).toEqual([
+      { variable: 'TRUST_PROXY_HOPS', problem: 'is required when APP_ENV=production' },
+    ]);
+    expect(
+      configError(() => defineConfig({ ...productionEnv, TRUST_PROXY_HOPS: '0' })).issues,
+    ).toEqual([
+      {
+        variable: 'TRUST_PROXY_HOPS',
+        problem: 'must be at least 1 in production (Cloudflare is one hop)',
+      },
+    ]);
+    expect(defineConfig(productionEnv).app.trustProxyHops).toBe(1);
+    expect(defineConfig(env, { role: 'worker' }).app.trustProxyHops).toBe(0);
   });
 });

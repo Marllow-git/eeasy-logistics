@@ -1,5 +1,5 @@
-import type { Account } from '@eeasy-logistics/contracts/platform';
-import { operationSchemas } from '@eeasy-logistics/contracts/platform';
+import type { Account } from '@eeasy-logistics/contracts/platform/schemas';
+import { operationSchemas } from '@eeasy-logistics/contracts/platform/schemas';
 import { uuidv7 } from '@eeasy-logistics/db';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';

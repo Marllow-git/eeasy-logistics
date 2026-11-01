@@ -1,5 +1,5 @@
-import type { PlatformListAccounts200 } from '@eeasy-logistics/contracts/platform';
-import { operationSchemas } from '@eeasy-logistics/contracts/platform';
+import type { PlatformListAccounts200 } from '@eeasy-logistics/contracts/platform/schemas';
+import { operationSchemas } from '@eeasy-logistics/contracts/platform/schemas';
 import { getPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { Controller, Get } from '@nestjs/common';
 import type { ContractInput } from '../../src/modules/kernel/public/index.js';

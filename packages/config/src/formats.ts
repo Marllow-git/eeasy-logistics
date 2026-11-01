@@ -13,6 +13,8 @@ const integer = (min: number, max: number) =>
 export const port = () => integer(1, 65535);
 export const count = (max: number) => integer(1, max);
 export const seconds = () => integer(1, 31_536_000);
+/** Reverse-proxy hops in front of the API (`trust proxy`); 0 trusts no forwarded header. */
+export const hops = () => integer(0, 10);
 
 /** Only the literal strings `true` and `false`. */
 export const boolean = () => z.enum(['true', 'false']).transform((value) => value === 'true');
