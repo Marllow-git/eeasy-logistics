@@ -45,7 +45,13 @@ export function ownerPartitionMaintenance(config: Config): MaintainPartitions {
 }
 
 export type PartitionRun =
-  | { readonly ran: true; readonly created: number; readonly dropped: number }
+  | {
+      readonly ran: true;
+      readonly created: number;
+      readonly dropped: number;
+      /** Rows in the DEFAULT partition (should be none; never dropped by retention). */
+      readonly defaultRows: number;
+    }
   | { readonly ran: false };
 
 /**
@@ -77,5 +83,10 @@ export async function runAuditPartitionJob(
       requestId,
     });
   }
-  return { ran: true, created: run.created, dropped: run.dropped.length };
+  return {
+    ran: true,
+    created: run.created,
+    dropped: run.dropped.length,
+    defaultRows: run.defaultRows,
+  };
 }

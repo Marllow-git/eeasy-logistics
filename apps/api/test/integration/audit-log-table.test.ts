@@ -92,6 +92,22 @@ describe('core_audit_log is append-only through the parent and every partition',
     expect(rows).toEqual([{ reason: null }]);
   });
 
+  it('puts a row of a month without a partition into the DEFAULT partition (lead review round 1)', async () => {
+    const id = uuidv7();
+    // Ten years ahead: no monthly partition exists, and the three-month window never reaches it.
+    await platform`
+      INSERT INTO core_audit_log (id, occurred_at, actor_type, target_type, target_id, action,
+                                  request_id)
+      VALUES (${id}, now() + interval '10 years', 'system', 't', '1', 'platform.test.done', 'r')`;
+    const [row] = await owner<{ partition: string }[]>`
+      SELECT tableoid::regclass::text AS partition FROM core_audit_log WHERE id = ${id}`;
+    expect(row?.partition).toBe('core_audit_log_default');
+    expect(await sqlState(app`SELECT count(*) FROM core_audit_log_default`)).toBe('42501');
+    expect(await sqlState(owner`DELETE FROM core_audit_log_default WHERE id = ${id}`)).toBe(
+      'EL001',
+    );
+  });
+
   it('refuses a malformed action and a system-less missing actor', async () => {
     const insert = (action: string, actorType: string) =>
       platform`

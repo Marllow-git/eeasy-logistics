@@ -182,6 +182,11 @@ export interface AuditPartitionRun {
   /** Monthly partitions created ahead (current month and the next `auditPartitionsAhead`). */
   readonly created: number;
   readonly dropped: readonly DroppedAuditPartition[];
+  /**
+   * Rows in `core_audit_log_default`, the safety net for a month without a partition; it should
+   * hold none while the window ahead is kept, and retention never drops them (lead review round 1).
+   */
+  readonly defaultRows: number;
 }
 
 /**
@@ -210,9 +215,12 @@ export async function maintainAuditPartitions(options: {
         SELECT partition_name AS partition,
                to_char(upper_bound AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "upperBound"
         FROM core_drop_audit_partitions_before(${options.cutoff}::text::date)`;
+      const [fallback] = await tx<{ rows: number }[]>`
+        SELECT count(*)::int AS rows FROM core_audit_log_default`;
       return {
         created: ensured?.created ?? 0,
         dropped: dropped.map((row) => ({ partition: row.partition, upperBound: row.upperBound })),
+        defaultRows: fallback?.rows ?? 0,
       };
     });
   } finally {

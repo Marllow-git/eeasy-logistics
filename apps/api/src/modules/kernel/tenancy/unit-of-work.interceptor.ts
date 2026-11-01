@@ -8,7 +8,7 @@ import type { Request, Response } from 'express';
 import type { Observable } from 'rxjs';
 import { from, lastValueFrom } from 'rxjs';
 import { APP_POOL } from '../../../database/database.module.js';
-import type { AuditSink } from '../audit/audit-sink.js';
+import type { AuditEvent, AuditSink } from '../audit/audit-sink.js';
 import { AUDIT_SINK } from '../audit/audit-sink.js';
 import type { Principal } from '../auth/principal.js';
 import { ApiException } from '../errors/api-exception.js';
@@ -135,13 +135,15 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
   }
 
   /**
-   * The door (PLAT-6 plan 2.7; PLAT-7 plan 2.4): every attempt leaves exactly one committed row in
+   * The door (PLAT-6 plan 2.7; PLAT-7 plan 2.4): every attempt leaves exactly one row in
    * core_audit_log (identity and tenancy §5). A refusal (reason missing or invalid, account
-   * malformed or unknown) is recorded as `platform.cross_tenant.refused` before the error is
-   * answered; an admitted call as `platform.cross_tenant.accessed` once the handler has settled,
-   * with `outcome` `ok` or `failed` and the status (ruling L-4), so a call that read data and then
-   * failed still leaves its row. Both on a transaction of their own (ruling M-5): the request's
-   * transaction has committed or rolled back by then and holds no connection.
+   * malformed or unknown) is recorded as `platform.cross_tenant.refused` on a transaction of its
+   * own before the error is answered (ruling M-5). A successful call is recorded as
+   * `platform.cross_tenant.accessed` with `outcome: ok` inside the request transaction after the
+   * handler returned, so the row and the handler's effect commit together or not at all (lead
+   * review round 1). A call that fails after admission (thrown error, non-2xx answer, or the audit
+   * write itself) rolls back; its `outcome: failed` row is then committed on its own transaction
+   * (ruling L-4), so a call that read data and then failed still leaves its row.
    */
   private async crossTenant(
     call: Call,
@@ -149,7 +151,7 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
     platform: PlatformFrames,
   ): Promise<unknown> {
     const { principal, request, requestId, handle } = call;
-    const write = (
+    const event = (
       action: 'accessed' | 'refused',
       fields: {
         readonly accountId: string | null;
@@ -158,21 +160,23 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
         readonly outcome: string;
         readonly status: number;
       },
-    ): Promise<void> =>
-      this.audit.recordCommitted({
-        actorType: 'platform_user',
-        actorId: principal.userId,
-        accountId: fields.accountId,
-        targetType: 'account',
-        targetId: fields.targetId,
-        action: `platform.cross_tenant.${action}`,
-        after: { operation: call.operation, outcome: fields.outcome, status: fields.status },
-        reason: fields.reason,
-        requestId,
-        clientRequestId: clientRequestIdOf(request),
-        ip: request.ip ?? null,
-        userAgent: userAgentOf(request),
-      });
+    ): AuditEvent => ({
+      actorType: 'platform_user',
+      actorId: principal.userId,
+      accountId: fields.accountId,
+      targetType: 'account',
+      targetId: fields.targetId,
+      action: `platform.cross_tenant.${action}`,
+      after: { operation: call.operation, outcome: fields.outcome, status: fields.status },
+      reason: fields.reason,
+      requestId,
+      clientRequestId: clientRequestIdOf(request),
+      ip: request.ip ?? null,
+      userAgent: userAgentOf(request),
+    });
+    /** On a transaction of its own: refusals, and the `failed` outcome after a rollback. */
+    const write = (action: 'accessed' | 'refused', fields: Parameters<typeof event>[1]) =>
+      this.audit.recordCommitted(event(action, fields));
 
     const target = crossTenantTarget(request, source);
     if (target === undefined) {
@@ -200,11 +204,22 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       requestId,
     };
     let admitted = false;
-    let value: unknown;
     try {
-      value = await platform.runCrossTenant(context, () => {
+      return await platform.runCrossTenant(context, async () => {
         admitted = true;
-        return handle();
+        const value = await handle();
+        // In the request transaction (the door's unit of work on the target account), so the row
+        // and the handler's effect commit together; a failure here rolls both back.
+        await this.audit.record(
+          event('accessed', {
+            accountId: target.accountId,
+            targetId: target.accountId,
+            reason: target.reason,
+            outcome: 'ok',
+            status: call.successStatus(),
+          }),
+        );
+        return value;
       });
     } catch (error) {
       if (!admitted && error instanceof ApiException && error.code === 'not_found') {
@@ -227,14 +242,6 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       }
       throw error;
     }
-    await write('accessed', {
-      accountId: target.accountId,
-      targetId: target.accountId,
-      reason: target.reason,
-      outcome: 'ok',
-      status: call.successStatus(),
-    });
-    return value;
   }
 }
 

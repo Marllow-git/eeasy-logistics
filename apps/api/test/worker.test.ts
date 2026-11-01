@@ -31,6 +31,7 @@ function doubles(verify: () => Promise<void> = () => Promise.resolve()) {
     Promise.resolve({
       created: 1,
       dropped: [{ partition: 'core_audit_log_202409', upperBound: '2024-10-01T00:00:00Z' }],
+      defaultRows: 0,
     }),
   );
   const recordCommitted = vi.fn((..._args: unknown[]) => Promise.resolve());
@@ -172,6 +173,24 @@ describe('worker startup', () => {
     });
     await vi.advanceTimersByTimeAsync(partitionIntervalMs);
     expect(maintain).toHaveBeenCalledTimes(2);
+    await worker.stop();
+  });
+
+  it('warns with the count when the DEFAULT partition holds rows (lead review round 1)', async () => {
+    const { deps, warn, maintain } = doubles();
+    maintain.mockImplementation(() => Promise.resolve({ created: 0, dropped: [], defaultRows: 2 }));
+    const worker = await startWorker(
+      config({
+        AUDIT_PARTITION_JOB: 'on',
+        DATABASE_URL_PLATFORM: platformUrl,
+        DATABASE_URL_OWNER: ownerUrl,
+        REDIS_URL: redisUrl,
+      }),
+      deps,
+    );
+    expect(warn).toHaveBeenCalledWith(
+      'core_audit_log_default holds 2 row(s): a month had no partition; retention does not drop them until moved',
+    );
     await worker.stop();
   });
 

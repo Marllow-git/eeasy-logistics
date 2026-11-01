@@ -17,7 +17,8 @@
 --   2. Partitions grant the runtime roles nothing (PLAT-5 plan §6, review M-4): every read and
 --      write goes through the parent, its triggers and its policies (a query naming a partition
 --      would see that partition's policies, of which there are none). The default privileges of
---      0001 would grant DML on each new partition; core_ensure_audit_partitions revokes it at once.
+--      0001 would grant DML on each new partition; core_ensure_audit_partitions revokes it at once,
+--      and so does this migration for the DEFAULT partition at the end.
 --   3. Only elx_owner can detach or drop a partition, and core_drop_audit_partitions_before refuses
 --      any partition newer than 24 months.
 CREATE TABLE "core_audit_log" (
@@ -141,6 +142,14 @@ BEGIN
 END $$;
 --> statement-breakpoint
 REVOKE EXECUTE ON FUNCTION core_drop_audit_partitions_before(date) FROM PUBLIC;
+--> statement-breakpoint
+-- A safety net (lead review round 1): a row whose month has no partition lands here instead of
+-- failing its insert. It should stay empty while the three-month window is kept; the worker's
+-- partition job warns with the count when it is not. Rows here are not dropped by retention
+-- until moved into a monthly partition (a manual chore). No runtime grant, like every partition.
+CREATE TABLE core_audit_log_default PARTITION OF core_audit_log DEFAULT;
+--> statement-breakpoint
+REVOKE ALL ON core_audit_log_default FROM elx_app, elx_platform;
 --> statement-breakpoint
 -- The current month and the next three; the migration job repeats this after every run.
 SELECT core_ensure_audit_partitions(3);

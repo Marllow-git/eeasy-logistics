@@ -2,9 +2,44 @@
 // (redacted of secrets)"). Applied to `before`, `after` and `reason` before anything is stored:
 // secrets never reach core_audit_log, which no one can correct afterwards (append-only).
 
-/** Keys whose value is replaced at any depth. Matched anywhere in the key, case-insensitive. */
-export const secretKeyPattern =
-  /(password|secret|token|pin|otp|api_key|key_id|ciphertext|authorization|cookie)/i;
+/**
+ * Key tokens whose value is replaced at any depth (lead review round 1): a key is split into
+ * tokens on `_`, `-`, `.` and camelCase boundaries, lower-cased, and redacted when any token is in
+ * this set. Tokens, not substrings: `shipping_fee` stays (`pin` is not a token of it), while
+ * `private_key`, `accessKey`, `signing-key` and `credentials` go. `key_id` and `idempotency_key`
+ * are redacted too (harmless).
+ */
+export const secretKeyTokens: ReadonlySet<string> = new Set([
+  'password',
+  'passwd',
+  'secret',
+  'secrets',
+  'token',
+  'tokens',
+  'pin',
+  'otp',
+  'key',
+  'keys',
+  'ciphertext',
+  'authorization',
+  'cookie',
+  'cookies',
+  'credential',
+  'credentials',
+]);
+
+/** The lower-cased tokens of a key: split on `_`, `-`, `.` and camelCase (`APIKey` → api, key). */
+export function keyTokens(key: string): string[] {
+  return key
+    .split(/[_\-.]+/)
+    .flatMap((part) => part.match(/[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+/g) ?? [])
+    .map((token) => token.toLowerCase());
+}
+
+/** Whether `key` names a secret (any of its tokens is in `secretKeyTokens`). */
+export function isSecretKey(key: string): boolean {
+  return keyTokens(key).some((token) => secretKeyTokens.has(token));
+}
 export const redacted = '[redacted]';
 export const maxStringLength = 2_000;
 export const maxDocumentBytes = 32 * 1024;
@@ -48,7 +83,7 @@ function redactValue(value: unknown, depth: number, seen: Set<object>): AuditJso
     const out = Object.create(null) as Record<string, AuditJson>;
     for (const [key, entry] of Object.entries(value)) {
       if (key === '__proto__') continue;
-      if (secretKeyPattern.test(key)) {
+      if (isSecretKey(key)) {
         out[key] = redacted;
         continue;
       }
@@ -62,7 +97,7 @@ function redactValue(value: unknown, depth: number, seen: Set<object>): AuditJso
 }
 
 /**
- * `value` as JSON fit for the audit log: every key matching `secretKeyPattern` replaced by
+ * `value` as JSON fit for the audit log: every key naming a secret (`isSecretKey`) replaced by
  * `"[redacted]"` at any depth, strings capped at 2,000 characters, `__proto__` keys dropped, and the
  * whole document replaced by `{ truncated: true, bytes }` when its JSON exceeds 32 KB.
  */
