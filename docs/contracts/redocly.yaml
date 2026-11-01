@@ -1,6 +1,8 @@
 # Lint configuration for the API contracts (README §9). Run from docs/contracts: npx @redocly/cli lint
 extends:
   - recommended
+plugins:
+  - ../../packages/contracts/redocly/plugin.js
 apis:
   components:
     root: openapi/components.yaml
@@ -20,13 +22,16 @@ apis:
     root: openapi/public.yaml
   platform:
     root: openapi/platform.yaml
+    rules:
+      rule/operation-x-cross-tenant-platform-only: off
 rules:
+  no-unresolved-refs: error
   operation-4xx-response: error
   operation-operationId-unique: error
   rule/operation-x-wave:
     subject: {type: Operation, property: x-wave}
     assertions: {defined: true}
-    message: Every operation declares x-wave (0 to 4; the range is checked by the contract test).
+    message: Every operation declares x-wave (the range 0 to 4 is eeasy/x-wave-range).
     severity: error
   rule/operation-x-permission:
     subject: {type: Operation, property: x-permission}
@@ -37,3 +42,51 @@ rules:
     subject: {type: Operation, property: tags}
     assertions: {defined: true, nonEmpty: true}
     severity: error
+  rule/operation-x-cross-tenant-platform-only:
+    subject: {type: Operation, property: x-cross-tenant}
+    assertions: {defined: false}
+    message: x-cross-tenant is allowed on platform operations only (README §1).
+    severity: error
+  eeasy/permission-in-catalogue:
+    severity: error
+    catalogue: ../../docs/contracts/permissions.yaml
+  eeasy/x-wave-range: error
+  eeasy/sse-events: error
+  eeasy/idempotency-key:
+    severity: error
+    # README §3: session doors under /auth/ on every surface, driver locations, cash PIN check,
+    # and the read-only computations sent as POST. Outbound webhooks are skipped by the rule.
+    exempt:
+      # staff /auth/
+      - acceptInvitation
+      - login
+      - requestSecondFactor
+      - verifySecondFactor
+      - selectAccount
+      - switchAccount
+      - enrolSecondFactor
+      - confirmSecondFactor
+      - redeemEnrolmentLink
+      - refreshSession
+      - logout
+      - requestPasswordReset
+      - confirmPasswordReset
+      # driver /auth/, locations, cash PIN check
+      - driverRequestOtp
+      - driverVerifyOtp
+      - driverRefresh
+      - driverLogout
+      - driverPostLocations
+      - driverVerifyCashPin
+      # platform /auth/
+      - platformLogin
+      - platformVerifyTotp
+      - platformAcceptInvitation
+      - platformEnrolTotp
+      - platformConfirmTotp
+      - platformRefresh
+      - platformLogout
+      # read-only computations sent as POST
+      - checkCoverage
+      - publicCheckCoverage
+      - publicBatchLabels

@@ -696,6 +696,7 @@ paths:
       description: 'Events job.progress and job.completed.'
       tags: [order-imports]
       x-wave: 1
+      x-sse-events: [job.progress, job.completed]
       x-permission: delivery.orders.import
       security: [{staffCookie: []}]
       parameters: [{name: import_id, in: path, required: true, schema: {type: string, format: uuid}}]
@@ -1080,6 +1081,7 @@ paths:
       description: 'Events delivery.order.*, delivery.offer.expired, delivery.driver.cash_blocked, delivery.shift.started, delivery.shift.ended, telemetry.driver_location, stream.resync (README §6, ADR-0029).'
       tags: [streams]
       x-wave: 1
+      x-sse-events: ['delivery.order.*', delivery.offer.expired, delivery.driver.cash_blocked, delivery.shift.started, delivery.shift.ended, telemetry.driver_location, stream.resync]
       x-permission: delivery.orders.read
       security: [{staffCookie: []}]
       parameters: [{$ref: './components.yaml#/components/parameters/SiteIdQuery'}, {$ref: './components.yaml#/components/parameters/LastEventId'}]

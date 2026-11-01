@@ -85,6 +85,7 @@ Wiring the clients into screens (WEB-1, DRV-1); the single-flight refresh wrappe
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A | this commit | `pnpm --filter contracts lint` green on the 8 contract files; `vitest run test/lint-rules.test.ts` 8/8 (clean fixture green; missing key, unknown permission, dangling `$ref`, `x-wave: 5`, `x-cross-tenant` off platform, stream without `x-sse-events` each red; exempt id and platform cross-tenant green). Real-file plant in `staff-wms.yaml` (key removed, `wms.stok.read`, `ClientErrorr`): lint exit 1 with `eeasy/idempotency-key` ×1, `eeasy/permission-in-catalogue` ×1, `no-unresolved-refs` ×2; restored, exit 0 | Rules as a local Redocly plugin `packages/contracts/redocly/plugin.js` (configurable rules cannot test a resolved parameter or a numeric range); exempt list = README §3 doors, 30 operationIds; outbound `webhooks:` skipped by the rule; no contract fix was forced (§8.2) |
 
 ### 8.1 Skills, documents and versions consulted
 

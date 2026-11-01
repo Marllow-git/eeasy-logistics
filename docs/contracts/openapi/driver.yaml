@@ -486,6 +486,7 @@ paths:
       description: 'Events delivery.order.offered (payload OrderOfferedPayload: OfferOrderView only; offer push notifications carry the same), delivery.order.assigned, delivery.order.cancelled, delivery.order.accepted, delivery.driver.cash_blocked, stream.resync; ReducedEnvelope. The full order is fetched through GET /orders/{order_id} after acceptance.'
       tags: [stream]
       x-wave: 1
+      x-sse-events: [delivery.order.offered, delivery.order.assigned, delivery.order.cancelled, delivery.order.accepted, delivery.driver.cash_blocked, stream.resync]
       x-permission: delivery.driver.work
       security: [{driverBearer: []}]
       parameters: [{$ref: './components.yaml#/components/parameters/LastEventId'}, {$ref: './components.yaml#/components/parameters/XAppVersion'}, {$ref: './components.yaml#/components/parameters/XAppPlatform'}]

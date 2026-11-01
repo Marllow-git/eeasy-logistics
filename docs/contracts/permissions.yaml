@@ -1,0 +1,87 @@
+# Permission catalogue (README §11), one list per module row. The lint rule
+# eeasy/permission-in-catalogue checks every x-permission against it, the generated `Permission`
+# union comes from it, and a test in packages/contracts keeps it equal to the README §11 table.
+# Change README §11 and this file together.
+permissions:
+  core:
+    - core.auth.anonymous
+    - core.auth.self
+    - core.account.read
+    - core.account.manage
+    - core.members.read
+    - core.members.manage
+    - core.sites.read
+    - core.sites.manage
+    - core.audit.read
+    - core.api_keys.manage
+    - core.webhooks.manage
+    - core.channels.manage
+  delivery_staff:
+    - delivery.orders.read
+    - delivery.orders.create
+    - delivery.orders.import
+    - delivery.orders.dispatch
+    - delivery.orders.cancel
+    - delivery.orders.receive
+    - delivery.zones.read
+    - delivery.zones.manage
+    - delivery.coverage.manage
+    - delivery.drivers.read
+    - delivery.drivers.manage
+    - delivery.drivers.clear_cash_block
+    - delivery.vehicles.manage
+    - delivery.shifts.manage
+    - delivery.slots.manage
+    - delivery.proofs.read
+    - delivery.cash.read
+    - delivery.cash.receive
+    - delivery.cash.deposit
+    - delivery.cash.close_report
+    - delivery.liability.record
+    - delivery.tracking.manage
+    - delivery.locations.read
+  delivery_driver:
+    - delivery.driver.work
+    - delivery.driver.cash
+    - delivery.driver.locations
+  delivery_recipient:
+    - delivery.tracking.view
+    - delivery.tracking.reschedule
+    - delivery.tracking.pin_address
+  wms:
+    - wms.locations.read
+    - wms.locations.manage
+    - wms.products.read
+    - wms.products.manage
+    - wms.suppliers.manage
+    - wms.purchase_orders.read
+    - wms.purchase_orders.manage
+    - wms.receipts.read
+    - wms.receipts.write
+    - wms.receipts.approve
+    - wms.movements.read
+    - wms.stock.read
+    - wms.fulfilment.read
+    - wms.fulfilment.manage
+    - wms.picking.write
+    - wms.packing.write
+    - wms.returns.write
+    - wms.adjustments.request
+    - wms.adjustments.approve
+    - wms.counts.write
+    - wms.counts.approve
+    - wms.channel_publications.read
+  platform:
+    - platform.auth.self
+    - platform.accounts.read
+    - platform.accounts.provision
+    - platform.accounts.suspend
+    - platform.rollout.manage
+    - platform.flags.manage
+    - platform.tenants.read
+    - platform.outbox.read
+    - platform.outbox.replay
+    - platform.diagnose.run
+    - platform.staff.manage
+    - platform.audit.read
+    - platform.inbound.raw_read
