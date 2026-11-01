@@ -47,9 +47,25 @@ module.exports = {
         'tool (src/seed/, local and ci only).',
       severity: 'error',
       from: {
-        pathNot: ['(?:^|/)modules/kernel/platform/', '(?:^|/)src/worker/system/', '^src/seed/'],
+        pathNot: [
+          '(?:^|/)modules/kernel/platform/',
+          '(?:^|/)src/worker/system/',
+          '^src/seed/',
+          // The package's own committed-side-effect entry (rule below) wraps the platform pool.
+          '(?:^|/)packages/db/src/committed\\.ts$',
+        ],
       },
       to: { path: '(?:^|/)packages/db/src/platform\\.ts$' },
+    },
+    {
+      name: 'committed-side-effects-only-in-audit',
+      comment:
+        'PLAT-6 adversary M-5, PLAT-7 plan 2.4: a transaction committed regardless of the ' +
+        "request's outcome (@eeasy-logistics/db/committed) is for refusal audits only, written " +
+        'by modules/kernel/audit/ (PLAT-11 adds its security counters here when it lands).',
+      severity: 'error',
+      from: { pathNot: ['(?:^|/)modules/kernel/audit/', '(?:^|/)packages/db/src/'] },
+      to: { path: '(?:^|/)packages/db/src/committed\\.ts$' },
     },
     {
       name: 'db-testing-only-in-tests',
