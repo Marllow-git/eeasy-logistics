@@ -140,4 +140,23 @@ OPS-1 (adversary M-3 ruling): schedule `api --role migrate` daily (a CronJob or 
 
 ## 9. Lead review and adversary
 
-Adversary: required (private data in audit rows, cross-tenant reads, append-only table, retention drops).
+**Lead review round 1 (Fable `/code-review`, 2026-11-01), four findings, fixed in the round-1 commit:** redaction matched key substrings (under- and over-redaction); no DEFAULT partition (an insert for a missing month failed); the admitted cross-tenant audit row was written after the request committed (a 500 for a persisted effect). Rulings: token-based redaction; `core_audit_log_default` as a safety net with a warning when it holds rows; the `ok` row is written inside the request transaction after the handler returns, committed writes remain for refusals and failures.
+
+**Adversary pass (Fable, 2026-11-01): PASS, no critical or high; three mediums and four lows fixed or ruled; no re-check (handbook 01 stage 6).**
+
+| Id | Severity | Finding | Status | Lead ruling |
+|---|---|---|---|---|
+| M-1 | medium | a partition drop could go unaudited on a crash between the drop and the audit write | fixed: the drop function inserts the audit row before each DROP in the same transaction | – |
+| M-2 | medium | redaction missed camelCase and hyphenated secret names and unlisted words; over-redacted `shipping_*` | fixed: token matching with the extended word list; Bearer and JWT values redacted | – |
+| M-3 | medium | the long-running worker held the owner URL for the partition job | fixed by design change: partition maintenance folded into `--role migrate`; the worker refuses the owner URL again (PLAT-6 rule restored) | OPS-1 schedules `api --role migrate` daily; three months of partition slack exist |
+| L-1 | low | owner-URL fences bypassable by computed access, re-export, package exemption | fixed: selector, fence, `elx_owner` connection check | – |
+| L-2 | low | an invalid forwarded address broke the audit insert (`inet`) | fixed: `net.isIP` guard | – |
+| L-3 | low | staff surface showed the support reason, internal operation names and the platform caller's request id; `reason` not tagged pii | fixed: hidden on the staff surface; `pii:any` comment on `reason` | ruling: merchants never see support reasons |
+| L-4 | low | partition DDL without `lock_timeout` could stall audited requests | fixed: `SET LOCAL lock_timeout = '5s'` | – |
+| I-1 | info | cursors not bound to the account or principal | fixed: HMAC bound to the account (staff) or account filter plus platform user (platform) | – |
+
+**Executor deviations accepted:** `tenant_isolation` as the full template (grants and triggers still block writes); HMAC-signed cursors (ADR-0029); `ScopedRepository.findMany` order and limit; staff-surface rows by platform staff omit ip and user agent.
+
+**Identity §9 checklist (lead):** 1 no account from a parameter except the declared door, audited per call; 2 no existence oracle (NULL-account rows never match a tenant filter); 3 reads only, replay not applicable; 4 not applicable; 5 before/after rows arrive with PLAT-10 to PLAT-13 through `AuditWriter`; 6 secrets redacted by token before storage.
+
+**Verdict for the gate:** no critical or high open. One-way door (migration 0006); the lead merges under the owner's delegation of 2026-11-01.
