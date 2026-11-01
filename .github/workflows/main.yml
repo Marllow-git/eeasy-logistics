@@ -92,6 +92,9 @@ jobs:
             ${{ env.LOCAL_TAG }}
             ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # The api image names its release after its own sha tag (PLAT-14 plan 2.1; the same
+          # github.sha docker/metadata-action uses); web and admin take no release yet.
+          build-args: ${{ matrix.app == 'api' && format('ELX_RELEASE=sha-{0}', github.sha) || '' }}
           cache-from: type=gha,scope=image-${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=image-${{ matrix.app }}
 

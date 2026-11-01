@@ -71,6 +71,22 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
     expect(rules).toContain('migrate-job-loads-no-application');
   });
 
+  it('refuses the migration job reaching the telemetry SDK (PLAT-14 plan 2.1)', () => {
+    const rules = violations
+      .filter(
+        (violation) => violation.from === 'test/architecture/violations/migrate/loads-telemetry.ts',
+      )
+      .map((violation) => violation.rule.name);
+    expect(rules).toContain('migrate-job-loads-no-application');
+  });
+
+  it('refuses a static telemetry import from main.ts (main-loads-telemetry-lazily)', () => {
+    const rules = violations
+      .filter((violation) => violation.from === 'test/architecture/violations/main/main.ts')
+      .map((violation) => violation.rule.name);
+    expect(rules).toContain('main-loads-telemetry-lazily');
+  });
+
   it('refuses a barrel surface entry from a controller (contracts-server-entries-only)', () => {
     expect(rulesOf('kernel-barrel.controller.ts')).toEqual(['contracts-server-entries-only']);
   });

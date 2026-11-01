@@ -85,6 +85,7 @@ See 2.10. Alert routing to the owner's channel, dashboards and the collector are
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A SDK bootstrap, config, Dockerfile, migrate rule | this commit | config 110/110 (+2: defaults by environment, malformed values refused); `telemetry/sdk.test.ts` 9/9 (in-memory exporter: `service.name` `elx-worker`, `service.version` = `ELX_RELEASE`, `deployment.environment(.name)`; no host/process detection; sampler: root ratio, a remote `sampled` parent cannot force sampling, a local parent is kept); architecture-violations 18/18, red with the old `.dependency-cruiser.cjs`: 2 failed / 16 passed (`migrate/loads-telemetry.ts`, `main/main.ts`); `test:architecture` clean; api unit 290/290; typecheck, lint clean. Boot (`/tmp` script, built `dist`): worker exits 0 with and without `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318` (nothing listening); api serves `/health` 200 and `/v1/staff/audit-log` 401 both ways, SIGTERM exits 143 | 8.2.1–8.2.6 |
 
 ### 8.1 Skills, documents and versions consulted
 

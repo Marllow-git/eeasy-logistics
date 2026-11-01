@@ -23,6 +23,23 @@ export const hops = () => integer(0, 10);
 /** Months the audit log is kept (identity and tenancy §7: two years at least; PLAT-7). */
 export const retentionMonths = () => integer(24, 120);
 
+/** A ratio from 0 to 1 in plain decimal notation (`0`, `1`, `0.1`, `1.0`). */
+export const ratio = () =>
+  z
+    .string()
+    .regex(/^(0|1)(\.\d{1,6})?$/)
+    .transform(Number)
+    .pipe(z.number().min(0).max(1));
+
+/** Levels of the JSON logger, most severe first (PLAT-14). */
+export const logLevels = ['error', 'warn', 'info', 'debug'] as const;
+export type LogLevel = (typeof logLevels)[number];
+
+/** A release name: the image tag `sha-<commit>`, a version or `dev`; printable, at most 128. */
+export const release = () => z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
+export const releaseExpectation =
+  'a release name of 1 to 128 letters, digits, dot, underscore or dash';
+
 /** Only the literal strings `true` and `false`. */
 export const boolean = () => z.enum(['true', 'false']).transform((value) => value === 'true');
 

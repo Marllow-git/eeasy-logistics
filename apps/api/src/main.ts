@@ -28,6 +28,11 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
+  // OpenTelemetry for the api and worker only (PLAT-14 plan 2.1), before Nest and ioredis load so
+  // the loader hook sees them; the migration job above never loads it.
+  const { startTelemetry } = await import('./modules/kernel/telemetry/sdk.js');
+  startTelemetry(config, role, { loaderHook: true });
+
   const { NestFactory } = await import('@nestjs/core');
   const { RequestLogger } = await import('./modules/kernel/request/request-id.js');
 
