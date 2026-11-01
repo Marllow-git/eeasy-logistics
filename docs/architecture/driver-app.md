@@ -89,7 +89,7 @@ flowchart TB
 
 ### 3.2 Schema
 
-`expo-sqlite`, one database file per install, WAL mode, migrations numbered and forward-only (section 12.4).
+`expo-sqlite`, one database file per install, WAL mode, migrations numbered and forward-only (section 12.4). The file is encrypted with SQLCipher (`useSQLCipher` in the `expo-sqlite` config plugin; owner ruling 2026-11-01, ADR-0039): a random 256-bit key is generated on first launch and kept in `expo-secure-store`, set with `PRAGMA key` right after open, and the app refuses to start when `PRAGMA cipher_version` returns no row, because a build without SQLCipher would otherwise store the data unencrypted without any error.
 
 ```sql
 CREATE TABLE outbox_items (
@@ -261,7 +261,7 @@ The figure of record is the server ledger (ADR-0007): `cash_in_hand` and `oldest
 
 Online only. The driver opens the cash screen at the site, checks the listed cash collections (all `collected` cash by default), enters the PIN and sends `driverRequestHandover` with the site of the current shift (or the home site). The driver never confirms custody: the request shows "waiting for the cashier", the cashier counts and confirms on the web, and the result arrives through `driverListHandovers` and the refreshed ledger. A difference becomes a liability entry the driver sees in `driverListLiability`. The button is disabled while any cash item is still pending sync, so the expected amount the server computes matches what the driver holds.
 
-## 6. Shifts and location (ADR-0009, ADR-0028)
+## 6. Shifts and location (ADR-0009, ADR-0028, ADR-0039)
 
 ### 6.1 Shift actions
 
@@ -273,14 +273,18 @@ Shift start is online: `driverListShifts` (planned shifts), `driverListVehicles`
 |---|---|
 | Runs | only while the shift in `me` is `active` or `paused`; started on the `driverStartShift` ack, stopped on the `shift_end` ack, on a server shift that is no longer active, on `409 shift_not_active` from `driverPostLocations`, on sign-out and on revocation; reconciled with `me` on every app start |
 | API | `Location.startLocationUpdatesAsync` with a task defined by `TaskManager.defineTask` at module scope |
-| Cadence | `timeInterval` 10 s, `distanceInterval` 20 m, `deferredUpdatesInterval` 15 s; a point every 10 to 15 s while moving (ADR-0009) |
-| Accuracy | `Accuracy.High` while `active`; `Balanced` while `paused`, and while battery is under 20 % and not charging |
-| Points dropped | accuracy worse than 100 m, or older than the last point sent |
-| Batching | points go to a SQLite `location_buffer`; a batch of up to 20 is sent with `driverPostLocations` when 2 or more points are waiting and 15 s have passed since the last send |
+| Profiles (ADR-0039) | `moving`: `Accuracy.High`, `timeInterval` 10 s, `distanceInterval` 20 m, `deferredUpdatesInterval` 15 s, a point every 10 to 15 s (ADR-0009). `parked`: `Accuracy.Balanced`, about 60 s / 50 m. `Balanced` also applies while the shift is `paused` and while battery is under 20 % and not charging. A profile change restarts the task with the new options (device test owed: Expo does not document option changes on a running task) |
+| Entering `parked` | the driver's own arrival at a stop (local field event), or every fix within 30 m for 3 minutes |
+| Leaving `parked` | the driver departs or starts the next stop, or the exit of the parked geofence: one region of about 150 m around the parked spot, registered with `startGeofencingAsync` on entry and removed on exit. On iOS the exit also restarts an app the driver swiped away; Android does not restart a terminated app |
+| Speed bands | in `moving`, the distance interval widens in a few speed bands (base 20 m, scaled by speed rounded to 5 m/s), with hysteresis and at most one change a minute |
+| Points dropped | accuracy worse than 100 m; older than the last point sent; identical to the previous point; or a jump implying an impossible speed, dropped only when the fix's own reported speed also disagrees. Each drop is counted by reason in the local log ring (§11) |
+| Batching | points go to the SQLite `location_buffer`; a batch of up to 20 is sent with `driverPostLocations` when 2 or more points are waiting and 15 s (`moving`) or 2 to 3 minutes (`parked`) have passed since the last send; every profile change flushes at once |
+| Watchdog | on every wake (task, outbox drain, push, foreground) the app compares the last fix age with the profile's interval; a stale task is restarted, or, where Android 14+ forbids starting a location foreground service from the background, a local notification asks the driver to open the app. The API raises its own stale-tracking alert after 5 minutes without a point on an active shift (DEL-5) |
+| Battery budget | at most 4 % per hour during an active shift on the reference Android device (owner ruling 2026-11-01); points per hour, gaps over 2 minutes and battery per hour are recorded per shift on one reference Android and one reference iPhone before wave 1 exit |
 | Offline | the buffer keeps the newest 240 points (one hour, the same depth as the server ring, document 2 §7) and drops the oldest; on reconnect it drains oldest first within the 12 requests per minute budget (document 3 §7) |
 | Not in the outbox | a lost point is a gap on a map, not a lost fact (ADR-0028) |
 
-Each point carries `client_ts` (offset-corrected, 3.6), `lat`, `lng`, `accuracy_m`, `speed_mps`, `heading_deg` and `battery_pct` (`DriverLocationPoint`; battery from `expo-battery`). The location task's wake-up also triggers a light outbox and upload drain (3.3, 4.4) when the network is up.
+Each point carries `client_ts` (offset-corrected, 3.6), `lat`, `lng`, `accuracy_m`, `speed_mps`, `heading_deg` `battery_pct`, `is_charging` and `power_saver` (`DriverLocationPoint`; battery state from `expo-battery`; the last two fields are added to `driver.yaml` by DEL-5, roadmap A-18). The location task's wake-up also triggers a light outbox and upload drain (3.3, 4.4) when the network is up.
 
 ### 6.3 Permissions and platform differences
 
@@ -290,8 +294,8 @@ Permissions are asked on the setup screen, never on a cold start, each after an 
 |---|---|---|
 | Order of prompts | "While Using" first, then "Always" on shift start | fine location first, then background location from system settings (Android 11+ allows no in-dialog "all the time") |
 | Purpose strings | `NSLocationWhenInUseUsageDescription`, `NSLocationAlwaysAndWhenInUseUsageDescription`, `NSCameraUsageDescription` in `ar` and `en` through `expo-localization` app locales | the foreground-service notification text and channel name in both languages |
-| Background mechanism | `UIBackgroundModes: location`, `showsBackgroundLocationIndicator: true`, `pausesUpdatesAutomatically: false`, activity type automotive | a foreground service of type `location` with a persistent notification ("On shift: location shared"); `FOREGROUND_SERVICE_LOCATION` and `POST_NOTIFICATIONS` |
-| Killers | updates stop if the driver swipes the app away; the shift banner asks drivers not to, and the task restarts on the next launch while the shift is active | OEM battery managers stop services; the setup screen links to the battery-optimisation exemption with per-maker instructions |
+| Background mechanism | `UIBackgroundModes: location`, `showsBackgroundLocationIndicator: true`, `pausesUpdatesAutomatically: false`, activity type `OtherNavigation` (`AutomotiveNavigation` snaps tracks to roads and misplaces the walk to the door, ADR-0039) | a foreground service of type `location` with a persistent notification ("On shift: location shared"); `FOREGROUND_SERVICE_LOCATION` and `POST_NOTIFICATIONS` |
+| Killers | updates stop if the driver swipes the app away; the shift banner asks drivers not to; a parked-geofence exit restarts the app, and the task restarts on the next launch while the shift is active | OEM battery managers stop services; the setup screen gives per-maker instructions (dontkillmyapp.com) and opens the battery-optimisation settings screen; the app does not request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` |
 | Store review | App Store background-location justification | Play prominent disclosure and background-location declaration form |
 
 Without "Always" (or background) permission the shift can still start, positions are sent only while the app is in front, and the run list shows a warning; open question 4 asks whether that should block the shift instead.

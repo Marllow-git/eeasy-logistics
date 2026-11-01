@@ -30,6 +30,37 @@ module.exports = {
         pathNot: ['(?:^|/)modules/$1/', '(?:^|/)modules/[^/]+/public/'],
       },
     },
+    {
+      name: 'platform-pool-only-in-platform-code',
+      comment:
+        'ADR-0031, data §4.4, PLAT-5 plan 2.5: the elx_platform pool and unscoped() ' +
+        '(@eeasy-logistics/db/platform) are imported only by the platform module ' +
+        '(modules/kernel/platform/), the worker system jobs (src/worker/system/) and the seed ' +
+        'tool (src/seed/, local and ci only).',
+      severity: 'error',
+      from: {
+        pathNot: ['(?:^|/)modules/kernel/platform/', '(?:^|/)src/worker/system/', '^src/seed/'],
+      },
+      to: { path: '(?:^|/)packages/db/src/platform\\.ts$' },
+    },
+    {
+      name: 'db-testing-only-in-tests',
+      comment:
+        'PLAT-5 plan 2.5: the test-only context setter (@eeasy-logistics/db/testing) never ' +
+        'reaches application code; the request guard (PLAT-6) owns the real one.',
+      severity: 'error',
+      from: { path: '^src/', pathNot: '\\.test\\.ts$' },
+      to: { path: '(?:^|/)packages/db/src/testing\\.ts$' },
+    },
+    {
+      name: 'db-admin-only-in-tooling',
+      comment:
+        'PLAT-5 plan 2.8: the superuser helpers (@eeasy-logistics/db/admin: create and drop ' +
+        'databases) serve the seed tool (src/seed/) and the test harness only.',
+      severity: 'error',
+      from: { path: '^src/', pathNot: ['^src/seed/', '\\.test\\.ts$'] },
+      to: { path: '(?:^|/)packages/db/src/admin\\.ts$' },
+    },
     ...environmentRules(),
     noUnresolvable,
   ],
