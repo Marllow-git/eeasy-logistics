@@ -3,7 +3,7 @@
 Standalone last-mile delivery + WMS for merchants with own drivers and stock. pnpm + Turborepo monorepo. Phase: wave 0 foundation (code exists since PLAT-1, 2026-10-31).
 
 ## Source map
-- `apps/api` NestJS API, three bounded contexts → `mem:api/core`
+- `apps/api` NestJS API, three bounded contexts → `mem:api/core`; `apps/api/resources/` run-time data files the image copies (PLAT-11: `breached-passwords.sha1` with its build script and attribution README)
 - `apps/web` Next.js 16 App Router, merchant/recipient/auth route groups → `mem:web/core`
 - `apps/admin` Next.js 16 platform console, own image and hostname (ADR-0038, WEB-19) → `mem:admin/core`
 - `apps/driver` Expo Router driver app → `mem:driver/core`
