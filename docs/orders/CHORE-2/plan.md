@@ -60,6 +60,7 @@ None.
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
+| A | (this commit) | `vitest list --filesOnly`: 27 files in `parallel`, 1 (`migrate.test.ts`) in `migrator`; suite `ELX_RLS=on` 255/255 in 28 files, `off` 255/255; a verbose run lists `migrate.test.ts` last, after every `parallel` file | Root `globalSetup` kept at root (runs once; Vitest 5 does not inherit it into projects, and its `provide` reaches both); `include` moves into the projects |
 
 ### 8.1 Skills and documents consulted
 
