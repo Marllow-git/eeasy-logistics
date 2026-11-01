@@ -1,14 +1,14 @@
 # AGENTS.md — eeasy-logistics
 
-Standalone last-mile delivery and WMS product for merchants with their own drivers and stock. Monorepo: Next.js web (`apps/web`), NestJS API (`apps/api`), Expo driver app (`apps/driver`), shared packages (`packages/contracts`, `packages/ui`, `packages/i18n`, `packages/config`, `packages/db`) (amended 2026-10-31, roadmap A-7). **Phase: wave 0, foundation — the package is approved (2026-10-31); build follows `docs/roadmap.md`, one order and one PR at a time.**
+Standalone last-mile delivery and WMS product for merchants with their own drivers and stock. Monorepo: Next.js web (`apps/web`), NestJS API (`apps/api`), Expo driver app (`apps/driver`), shared packages (`packages/contracts`, `packages/ui`, `packages/i18n`, `packages/config`, `packages/db`) (amended 2026-10-31, roadmap A-7). **Phase: wave 0, foundation — the package is approved (2026-10-31); build follows `docs/roadmap.md`, one PR per order, pipeline and roles in `docs/handbook/01-workflow.md` and `05-roles-and-agents.md`, agents in `.claude/agents/`.**
 
 Long form: `docs/handbook/`. Decisions: `adr/`. Only remote: `github.com/Marllow-git/eeasy-logistics`, default branch `main`.
 
 ## Workflow
 
 1. **Discuss first, then build.** For anything non-trivial, state what changes, where, and the risk in a few lines; get the owner's OK before editing. Trivial fixes: do them and report.
-2. **Branch + PR.** `docs/…`, `feat/…`, `fix/…`, `chore/…`. Never commit to `main`. The PR says what changed, how it was verified, and one line of **merge danger**: two-way door (a revert undoes it) or one-way door (migration, data rewrite, money, external registration), plus blast radius. The owner merges.
-3. **One task, one PR.** No bundling.
+2. **Branch + PR.** `docs/…`, `feat/…`, `fix/…`, `chore/…`. Never commit to `main`. The PR follows `.github/pull_request_template.md`: what changed, how it was verified, one line of **merge danger**: two-way door (a revert undoes it) or one-way door (migration, data rewrite, money, external registration), plus blast radius. The owner merges, or the lead when the owner has delegated it in writing (`docs/orders/README.md`), after `tools/pr-gate.sh` passes.
+3. **One task, one PR.** No bundling. Orders run in parallel only when the roadmap graph and the paths they touch allow it (handbook 01, two executors at most); the in-flight ledger is `docs/orders/README.md`.
 4. **Verify before reporting done.** Done means tested, not written. Never claim a test ran if it did not.
 5. **Report briefly** in English: what changed, what was verified, what is left or risky. Code, commits, docs in English. Release notes in Arabic.
 6. **Release note with every visible change**: `docs/release-notes/YYYY-MM-DD-<slug>.md`, Arabic, business language. Purely technical PRs ship none.
