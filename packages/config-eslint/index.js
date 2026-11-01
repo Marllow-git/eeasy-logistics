@@ -26,7 +26,7 @@ const processModule = '/^(node:)?process$/';
  * `process.env`), `process` used as a value (`const p = process`, `const { env } = process`,
  * `f(process)`), and `require` or `import()` of the process module.
  */
-const processRestrictions = [
+export const processRestrictions = [
   {
     selector: "MemberExpression[object.type='Identifier'][object.name='process'][computed=true]",
     message: envMessage,
@@ -45,6 +45,23 @@ const processRestrictions = [
     message: envMessage,
   },
   { selector: `ImportExpression[source.value=${processModule}]`, message: envMessage },
+];
+
+/**
+ * PLAT-5 review M-5 (data §4.2, ADR-0031): only packages/db sets the tenancy setting. Any string or
+ * template naming `set_config` or `elx.account_id` elsewhere is code that could set the account
+ * itself, which row-level security cannot defend against. packages/db/src and the database tests
+ * are exempt in their own ESLint configs.
+ */
+export const tenancySettingRestrictions = [
+  {
+    selector: 'Literal[value=/set_config|elx\\.account_id/]',
+    message: 'Only packages/db sets elx.account_id (withUnitOfWork); never set it yourself.',
+  },
+  {
+    selector: 'TemplateElement[value.raw=/set_config|elx\\.account_id/]',
+    message: 'Only packages/db sets elx.account_id (withUnitOfWork); never set it yourself.',
+  },
 ];
 
 export const base = defineConfig(
@@ -77,7 +94,7 @@ export const base = defineConfig(
       // sees imports only, so the global `process` is restricted here (no `env`, no aliasing, no
       // import or require of the module); packages/config exempts its three entry points.
       'no-restricted-properties': ['error', ...envRestrictions],
-      'no-restricted-syntax': ['error', ...processRestrictions],
+      'no-restricted-syntax': ['error', ...processRestrictions, ...tenancySettingRestrictions],
       'no-restricted-imports': [
         'error',
         {
