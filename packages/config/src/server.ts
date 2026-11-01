@@ -15,6 +15,7 @@ import {
   keyIdPattern,
   logLevels,
   port,
+  otlpHeaders,
   postgresUrl,
   ratio,
   redisUrl,
@@ -132,6 +133,8 @@ export const serverVariables = {
   OSRM_URL: httpUrl().optional(),
   // observability
   OTEL_EXPORTER_OTLP_ENDPOINT: httpUrl().optional(),
+  // The collector's headers (its credentials), `name=value,...` percent-encoded (adversary A-7).
+  OTEL_EXPORTER_OTLP_HEADERS: otlpHeaders().optional(),
   SENTRY_DSN: httpUrl().optional(),
   POSTHOG_API_KEY: z.string().min(1).optional(),
   // PLAT-14: the image tag (`sha-<commit>`) the Dockerfile bakes in from its build argument;
@@ -189,6 +192,7 @@ export const serverExpectations = {
   VROOM_URL: 'an http(s) URL',
   OSRM_URL: 'an http(s) URL',
   OTEL_EXPORTER_OTLP_ENDPOINT: 'an http(s) URL',
+  OTEL_EXPORTER_OTLP_HEADERS: 'comma-separated name=value pairs, values percent-encoded',
   SENTRY_DSN: 'an http(s) URL',
   POSTHOG_API_KEY: 'a PostHog project API key',
   ELX_RELEASE: releaseExpectation,
@@ -266,6 +270,8 @@ export interface Config {
   };
   readonly observability: {
     readonly otlpEndpoint: string | undefined;
+    /** `OTEL_EXPORTER_OTLP_HEADERS`; parse the revealed text with `parseOtlpHeaders`. */
+    readonly otlpHeaders: Secret | undefined;
     readonly sentryDsn: string | undefined;
     readonly posthogApiKey: string | undefined;
     /** The image tag the process runs (`ELX_RELEASE`, `sha-<commit>`), `dev` outside an image. */
@@ -390,6 +396,7 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
     geo: { hudhudApiKey: v.HUDHUD_API_KEY, vroomUrl: v.VROOM_URL, osrmUrl: v.OSRM_URL },
     observability: {
       otlpEndpoint: v.OTEL_EXPORTER_OTLP_ENDPOINT,
+      otlpHeaders: v.OTEL_EXPORTER_OTLP_HEADERS,
       sentryDsn: v.SENTRY_DSN,
       posthogApiKey: v.POSTHOG_API_KEY,
       release: v.ELX_RELEASE,

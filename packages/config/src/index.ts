@@ -10,7 +10,7 @@ export {
 } from './credentials.ts';
 export { ConfigError, EX_CONFIG, type ConfigIssue } from './errors.ts';
 export type { EnvRecord } from './fields.ts';
-export { appEnvs, logLevels, type AppEnv, type LogLevel } from './formats.ts';
+export { appEnvs, logLevels, parseOtlpHeaders, type AppEnv, type LogLevel } from './formats.ts';
 export { Secret } from './secret.ts';
 export {
   appRoles,

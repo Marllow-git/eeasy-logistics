@@ -119,6 +119,17 @@ export function productionRefusals(input: RefusalInput): ConfigIssue[] {
       });
     }
   }
+  // The release names the image the api and worker run (`sha-<commit>`, the Dockerfile's build
+  // argument): `dev` or nothing would tag every span and error report wrongly (adversary A-8).
+  if (input.role !== 'migrate') {
+    const release = input.raw('ELX_RELEASE');
+    if (release === undefined || release === '' || release === 'dev') {
+      issues.push({
+        variable: 'ELX_RELEASE',
+        problem: 'must name the image release (sha-<commit>) when APP_ENV=production',
+      });
+    }
+  }
   // The migration job sends nothing; only the api and worker need a messaging decision.
   if (
     input.role !== 'migrate' &&

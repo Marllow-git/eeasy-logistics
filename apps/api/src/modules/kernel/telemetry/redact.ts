@@ -44,22 +44,36 @@ export function isWithheldKey(key: string): boolean {
   return keyHasToken(key, telemetryKeyTokens);
 }
 
-const bearer = /\bbearer\s+[^\s,;"']+/gi;
+/**
+ * Input longer than this is cut before any pattern runs (adversary A-1): every pattern below is
+ * linear from an anchored start, and the cap bounds what is left (a pair key scanning to the end
+ * of the text from each start).
+ */
+export const maxInputLength = 4_096;
+
+// Every pattern starts where its first character cannot extend a longer run (lookbehind), so a
+// run of key or address characters is tried once, not from each of its positions (adversary A-1).
+const bearer = /(?<![A-Za-z0-9])bearer\s+[^\s,;"']+/gi;
 /** `Basic <base64>` credentials (the PLAT-8 `last_error` rule). */
-const basic = /\bbasic\s+[A-Za-z0-9+/=._~-]+/gi;
+const basic = /(?<![A-Za-z0-9])basic\s+[A-Za-z0-9+/=._~-]+/gi;
 const digest =
-  /\bdigest\s+[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+)(?:\s*,\s*[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+))*/gi;
+  /(?<![A-Za-z0-9])digest\s+[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+)(?:\s*,\s*[A-Za-z_-]+=(?:"[^"]*"|[^\s,]+))*/gi;
 /** URL user-info, `scheme://user:password@host`. */
-const userInfo = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
-const jwt = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
+const userInfo = /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
+const jwt = /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
+/** A JWT cut by the input cap: its header and the start of its claims still go. */
+const jwtTail = /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]*)?$/;
 /** A quoted value of a `name=` / `name:` pair (it may hold spaces and commas). */
-const quotedPair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["'])((?:(?!\4).)*)\4/g;
+const quotedPair =
+  /(?<![A-Za-z0-9_.-])(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["'])((?:(?!\4).)*)\4/g;
 /**
  * `name=value`, `name: value`, `"name":"value"` and query-string pairs; a URL scheme (`https://`)
  * is not a pair, so the query string after it is still read pair by pair.
  */
-const pair = /(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=](?!\/\/)\s*)(["']?)([^\s,;&"'}]+)\4/g;
-const email = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+const pair =
+  /(?<![A-Za-z0-9_.-])(["']?)([A-Za-z][A-Za-z0-9_.-]*)\1(\s*[:=](?!\/\/)\s*)(["']?)([^\s,;&"'}]+)\4/g;
+const email =
+  /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 /**
  * Phone numbers: E.164 (`+` and 8 to 15 digits, spaces or dashes allowed between groups), the
  * `00` international prefix, and Saudi mobiles written without it (`9665XXXXXXXX`,
@@ -101,19 +115,21 @@ const secretPathMarkers: ReadonlySet<string> = new Set([
 const uuidSegment = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const jwtSegment = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 const hexSegment = /^[0-9a-f]{32,}$/i;
-const base64urlSegment = /^[A-Za-z0-9_-]{24,}$/;
+const base64urlSegment = /^[A-Za-z0-9_-]{20,}$/;
 /** A route template parameter (`:token`, `{token}`): a name, never a value. */
 const templateSegment = /^(?::[A-Za-z_]\w*|\{[A-Za-z_]\w*\})$/;
 
 /**
  * Whether a path segment has the shape of a token (integrations §11 "tokens in URLs"): a JWT, hex
- * of 32 or more, or base64url of 24 or more holding both a letter and a digit (a long kebab-case
- * route word has no digit; a UUID, the ids of our routes, is never a token).
+ * of 32 or more, or base64url of 20 or more holding a letter and either a digit or both cases
+ * (adversary A-5). Our route words are lower-case kebab without digits, and a UUID, the ids of our
+ * routes, is never a token.
  */
 export function isTokenSegment(segment: string): boolean {
   if (uuidSegment.test(segment)) return false;
   if (jwtSegment.test(segment) || hexSegment.test(segment)) return true;
-  return base64urlSegment.test(segment) && /\d/.test(segment) && /[A-Za-z]/.test(segment);
+  if (!base64urlSegment.test(segment) || !/[A-Za-z]/.test(segment)) return false;
+  return /\d/.test(segment) || (/[a-z]/.test(segment) && /[A-Z]/.test(segment));
 }
 
 /** A path with token-shaped segments, and every segment after a webhook marker, redacted. */
@@ -150,7 +166,13 @@ export function capText(text: string, max: number = maxTextLength): string {
 export function redactText(text: string, max: number = maxTextLength): string {
   const withheld = (whole: string, q1: string, key: string, sep: string, q2: string) =>
     isWithheldKey(key) ? `${q1}${key}${q1}${sep}${q2}${redacted}${q2}` : whole;
-  const clean = withoutControls(text)
+  // The cap comes first (adversary A-1); a token cut by it loses its tail with it.
+  const cut = text.length > maxInputLength;
+  let input = cut ? text.slice(0, maxInputLength) : text;
+  if (cut && /[\uD800-\uDBFF]$/.test(input)) input = input.slice(0, -1);
+  // A JWT or a phone number cut in half would escape its pattern: their tails go.
+  if (cut) input = input.replace(jwtTail, redacted).replace(/(?<![\d +-])\+?\d[\d -]*$/, '');
+  const clean = withoutControls(input)
     .replace(bearer, `Bearer ${redacted}`)
     .replace(digest, `Digest ${redacted}`)
     .replace(basic, `Basic ${redacted}`)
@@ -161,7 +183,7 @@ export function redactText(text: string, max: number = maxTextLength): string {
     .replace(pair, withheld)
     .replace(email, maskedEmail)
     .replace(phone, maskPhone);
-  return capText(clean, max);
+  return capText(cut ? `${clean}…` : clean, max);
 }
 
 /** JSON-shaped telemetry data. */
@@ -186,6 +208,14 @@ function redactAt(value: unknown, depth: number, seen: Set<object>): TelemetryJs
   }
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
   if (value instanceof Error) return describeError(value);
+  // Bytes, maps and sets would enumerate their contents past the string redactor (adversary A-2):
+  // their size only.
+  if (ArrayBuffer.isView(value)) return `[bytes ${value.byteLength}]`;
+  if (value instanceof ArrayBuffer || value instanceof SharedArrayBuffer) {
+    return `[bytes ${value.byteLength}]`;
+  }
+  if (value instanceof Map) return `[map ${value.size}]`;
+  if (value instanceof Set) return `[set ${value.size}]`;
   if (depth >= maxDepth || seen.has(value)) return '[too_deep]';
   seen.add(value);
   try {
@@ -197,12 +227,14 @@ function redactAt(value: unknown, depth: number, seen: Set<object>): TelemetryJs
     const out = Object.create(null) as Record<string, TelemetryJson>;
     for (const [key, entry] of Object.entries(value)) {
       if (key === '__proto__') continue;
+      // A key is text too: a phone number or an email used as a key is masked (adversary A-4).
+      const safeKey = redactText(key, 100);
       if (isWithheldKey(key)) {
-        out[key] = redacted;
+        out[safeKey] = redacted;
         continue;
       }
       const kept = redactAt(entry, depth + 1, seen);
-      if (kept !== undefined) out[key] = kept;
+      if (kept !== undefined) out[safeKey] = kept;
     }
     return { ...out };
   } finally {

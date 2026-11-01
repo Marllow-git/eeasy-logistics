@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { register } from 'node:module';
 import type { Config } from '@eeasy-logistics/config';
+import { parseOtlpHeaders } from '@eeasy-logistics/config';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -16,6 +17,7 @@ import type { IMetricReader, ViewOptions } from '@opentelemetry/sdk-metrics';
 import { AggregationType, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { core, NodeSDK } from '@opentelemetry/sdk-node';
 import type { Sampler, SpanExporter, SpanProcessor } from '@opentelemetry/sdk-trace';
+import { IngressTraceContextPropagator, rememberIncoming } from './propagation.js';
 import { AllowlistSpanProcessor, finishServerSpan, rememberServerSpan } from './spans.js';
 import {
   BatchSpanProcessor,
@@ -110,8 +112,12 @@ export function signalUrl(endpoint: string, signal: 'traces' | 'metrics' | 'logs
 export function instrumentations(): Instrumentation[] {
   return [
     new HttpInstrumentation({
+      // Runs before the context is extracted: the propagator learns which request it reads.
       // Liveness probes every few seconds are noise; `/ready` is kept.
-      ignoreIncomingRequestHook: (request) => request.url === '/health',
+      ignoreIncomingRequestHook: (request) => {
+        rememberIncoming(request);
+        return request.url === '/health';
+      },
       // An outbound call is traced only inside a request, job or port span.
       requireParentforOutgoingSpans: true,
       // No header is ever recorded (plan 2.2); the allowlist would drop them anyway.
@@ -167,12 +173,16 @@ export function startTelemetry(
       });
     }
     const endpoint = config.observability.otlpEndpoint;
+    // The collector's credentials, from packages/config only (adversary A-7).
+    const secretHeaders = config.observability.otlpHeaders;
+    const headers =
+      secretHeaders === undefined ? {} : (parseOtlpHeaders(secretHeaders.reveal()) ?? {});
     const spanProcessor: SpanProcessor =
       options.spanExporter !== undefined
         ? new SimpleSpanProcessor({ exporter: options.spanExporter })
         : endpoint !== undefined
           ? new BatchSpanProcessor({
-              exporter: new OTLPTraceExporter({ url: signalUrl(endpoint, 'traces') }),
+              exporter: new OTLPTraceExporter({ url: signalUrl(endpoint, 'traces'), headers }),
             })
           : new SimpleSpanProcessor({ exporter: noopSpanExporter });
     const metricReaders: IMetricReader[] =
@@ -181,7 +191,7 @@ export function startTelemetry(
         : endpoint !== undefined
           ? [
               new PeriodicExportingMetricReader({
-                exporter: new OTLPMetricExporter({ url: signalUrl(endpoint, 'metrics') }),
+                exporter: new OTLPMetricExporter({ url: signalUrl(endpoint, 'metrics'), headers }),
                 exportIntervalMillis: metricExportIntervalMs,
               }),
             ]
@@ -192,7 +202,7 @@ export function startTelemetry(
         : endpoint !== undefined
           ? [
               new BatchLogRecordProcessor({
-                exporter: new OTLPLogExporter({ url: signalUrl(endpoint, 'logs') }),
+                exporter: new OTLPLogExporter({ url: signalUrl(endpoint, 'logs'), headers }),
               }),
             ]
           : [];
@@ -207,8 +217,9 @@ export function startTelemetry(
       metricReaders,
       views: droppedInstrumentMetrics,
       logRecordProcessors,
-      // W3C trace context only: no baggage is read from callers or sent to providers.
-      textMapPropagator: new core.W3CTraceContextPropagator(),
+      // W3C trace context only, no baggage; a caller's traceparent only through the trusted
+      // ingress on our own clients' surfaces, and no tracestate outbound (adversary A-6).
+      textMapPropagator: new IngressTraceContextPropagator(config.app.trustProxyHops),
       instrumentations: instrumentations(),
     });
     sdk.start();
