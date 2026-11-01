@@ -17,7 +17,7 @@ const routes = [
 
 test.beforeEach(async ({ context, baseURL }, testInfo) => {
   await context.addCookies([
-    { name: 'el_locale', value: testInfo.project.name, url: baseURL ?? 'http://127.0.0.1:3000' },
+    { name: 'el_locale', value: testInfo.project.name, url: baseURL ?? 'http://127.0.0.1:3001' },
   ]);
 });
 
