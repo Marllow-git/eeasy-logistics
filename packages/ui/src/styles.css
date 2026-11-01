@@ -1,0 +1,45 @@
+/*
+ * The one stylesheet both web apps import from their root layouts (ADR-0033, web §6): Tailwind,
+ * the tokens, and the base rules for direction-aware typography. Logical utilities only; the
+ * ESLint rule eeasy/no-physical-direction-utilities rejects physical ones.
+ */
+@import 'tailwindcss';
+@import './tokens.css';
+
+/* Tailwind scans the importing app by default; the components live here. */
+@source '.';
+
+@layer base {
+  html {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  :lang(ar) {
+    line-height: var(--leading-ar-normal);
+  }
+
+  :lang(en) {
+    line-height: var(--leading-en-normal);
+  }
+
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

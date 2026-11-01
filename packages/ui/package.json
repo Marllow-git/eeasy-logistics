@@ -2,20 +2,33 @@
   "name": "@eeasy-logistics/ui",
   "version": "0.0.0",
   "private": true,
-  "description": "Design system components and tokens; placeholder until WEB-1.",
+  "description": "Design system (ADR-0033): tokens, Tailwind styles, Radix-based components, the shell both web apps render (WEB-1) and the self-hosted IBM Plex Sans Arabic subset.",
   "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
   "exports": {
-    ".": "./src/index.ts"
+    "./styles.css": "./src/styles.css",
+    "./tokens.css": "./src/tokens.css",
+    "./cn": "./src/cn.ts",
+    "./status": "./src/status.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --passWithNoTests && pnpm run test:architecture",
-    "test:architecture": "depcruise src --config .dependency-cruiser.cjs"
+    "test": "vitest run && pnpm run test:architecture",
+    "test:architecture": "depcruise src test --config .dependency-cruiser.cjs"
+  },
+  "dependencies": {
+    "@eeasy-logistics/contracts": "workspace:*",
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.7.0",
+    "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@eeasy-logistics/config-eslint": "workspace:*",
     "@eeasy-logistics/config-ts": "workspace:*",
+    "@types/node": "22.20.5",
     "dependency-cruiser": "18.7.0",
     "eslint": "9.39.5",
     "typescript": "6.0.3",
