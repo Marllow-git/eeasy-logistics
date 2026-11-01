@@ -68,6 +68,18 @@ if grep -qE "$triggers" <<<"$files"; then
   else bad "trigger path changed (scripts, tools, CI, handbook, lint config or a module) but no .serena/memories/ change and no 'Memories: unchanged' line in the body"; fi
 fi
 
+# 6b. Scope (owner request 2026-11-01): a docs-only PR skips the build and test lanes in CI, so
+# check the skip was right. Same classifier as CI (tools/changed-scope.sh). A code PR needs every
+# required lane green, never skipped; a docs PR still needs typecheck-lint (Prettier) and gitleaks.
+scope="$(printf '%s\n' "$files" | "$(dirname "$0")/changed-scope.sh")"
+[[ "$scope" == "docs" ]] && say "    " "docs-only: yes" || say "    " "docs-only: no"
+required=(typecheck-lint api-test api-test-rls web-build-census admin-build-census driver-test gitleaks)
+[[ "$scope" == "docs" ]] && required=(typecheck-lint gitleaks)
+for check in "${required[@]}"; do
+  conclusion="$(jq -r --arg n "$check" '[.statusCheckRollup[]? | select((.name // .context) == $n) | (if ((.conclusion // "") | length) > 0 then .conclusion else (.status // .state // "PENDING") end)] | first // "MISSING"' <<<"$json")"
+  [[ "$conclusion" == "SUCCESS" ]] && ok "required '$check' green" || bad "required '$check' is $conclusion"
+done
+
 # 7. Mergeable.
 [[ "$(jq -r .mergeable <<<"$json")" == "MERGEABLE" ]] && ok "mergeable" || bad "not mergeable (conflicts or unknown)"
 
