@@ -116,4 +116,22 @@ Ruled for PLAT-12 (adversary A-7): `assertRoleCombination` runs over the union o
 
 ## 9. Lead review and adversary
 
-Adversary: required (authorization, site visibility, separation of duties).
+**Lead review round 1 (Fable `/code-review`, 2026-11-01), three lows fixed in 9321d5f:** site admission check and list filter disagreed on case (sites normalised once in the guard); the denial throttle evicted current-window keys under a flood and did a synchronous sweep at the window change (one key set per minute, dropped whole). Ruling on §8.2: the forbidden combination is driver plus a cash-handling permission (`delivery.cash.receive`, `.deposit`, `.close_report`, `delivery.liability.record`); viewer and dispatcher may be drivers.
+
+**Adversary pass (Fable, 2026-11-01, on 440f86d): PASS, no critical or high; mediums and lows fixed or ruled; no re-check (handbook 01 stage 6).**
+
+| Id | Severity | Finding | Status | Lead ruling |
+|---|---|---|---|---|
+| A-1 | medium | `@Public()` on a surface route escaped every check | fixed: a public surface handler must bind an anonymous or self door entry | – |
+| A-2 | medium | `siteFilter` failed open when the context object differed | fixed: `siteIds` on `RequestContext`, throw when missing for a site-scoped principal | – |
+| A-3 | medium | the generated cross-tenant flag was not matched against `@CrossTenant()` | fixed: boot refuses a mismatch in either direction | – |
+| A-4 | low | spread-and-freeze copies of generated entries passed lint and boot | fixed: non-enumerable brand checked at boot | – |
+| A-5 | low | the permission guard ran before the web-client and content-type guards | fixed: guard order | – |
+| A-6 | low | throttle eviction under a full window | fixed in round 1 (drop instead of evict) | – |
+| A-7 | low | one role list per check; two memberships could split driver and cashier | ruled for PLAT-12: check the union of a user's roles in the account on insert and update; `ApprovalParties` are user ids | – |
+
+**Executor deviations accepted:** frozen generated operation entries carrying id, surface, permission and the cross-tenant flag (the kernel may not import the contracts package); `surface` on `core_roles`; bundles passed to `assertRoleCombination`; the doors in no bundle; platform roles read as `platform_<role>` (PLAT-11 issues them so).
+
+**Identity §9 checklist (lead):** 1 account and sites from the token only; 2 404 never distinguishes existence outside the principal's sites; 5 denials audited on a committed write, one row per principal and operation per minute.
+
+**Verdict for the gate:** no critical or high open. One-way door (migration 0008 seed); the lead merges under the owner's delegation of 2026-11-01.
