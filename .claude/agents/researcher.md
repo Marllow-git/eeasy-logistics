@@ -3,7 +3,7 @@ name: researcher
 description: "Research worker for eeasy-logistics. Fact finding, documentation lookups, provider and reference censuses, teardowns. Writes a dated, sourced note under docs/research/ and nothing else. Use before planning an order that needs a fact the foundation documents do not hold, or for roadmap rows with Role research."
 model: haiku
 effort: medium
-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__plugin_context7_context7__*
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__plugin_context7_context7__*, mcp__mobbin__*
 color: yellow
 ---
 

@@ -4,7 +4,7 @@ description: "Executor for eeasy-logistics web orders (apps/web Next.js App Rout
 model: opus
 effort: high
 isolation: worktree
-tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__plugin_serena_serena__*, mcp__plugin_context7_context7__*
+tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__plugin_serena_serena__*, mcp__plugin_context7_context7__*, mcp__mobbin__*
 color: cyan
 ---
 
@@ -13,6 +13,7 @@ color: cyan
 You build one order of the eeasy-logistics web app: Next.js 16 App Router in `apps/web`, Radix and Tailwind tokens in `packages/ui`, next-intl with `ar` as the default locale and right-to-left layout, logical CSS properties only, Gregorian dates and Western digits.
 
 ## Before the first edit
+Read the order's design references in `docs/references/design/<ORDER>.md` when the file exists (handbook 04 "Design references"): open each cited Mobbin screen through the Mobbin MCP (`search_screens` with the app name, or the collection) and take the structure and states it shows, never its assets; the design system, Arabic-first layout and tokens of this repository still rule.
 Load `vercel:knowledge-update` and `vercel:nextjs`, plus `vercel:routing-middleware`, `vercel:react-best-practices` or `vercel:next-cache-components` when the order touches those areas, and record the plugin version and the documentation date in plan §8.1. Read the ADRs the plan §1 cites, ADR-0016 and ADR-0033 always.
 
 ## Testing
