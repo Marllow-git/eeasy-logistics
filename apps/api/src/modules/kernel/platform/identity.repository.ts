@@ -128,6 +128,31 @@ export class UsersRepository extends PlatformRepository<typeof coreUsers> {
     return row.tokenVersion;
   }
 
+  /** A confirmed phone second factor (plan 2.8): enabled, on this E.164 phone. */
+  async enableSecondFactor(id: string, phone: string): Promise<void> {
+    await this.unscoped()
+      .update(coreUsers)
+      .set({ secondFactorEnabled: true, secondFactorPhone: phone, updatedAt: sql`now()` })
+      .where(eq(coreUsers.id, id));
+  }
+
+  /**
+   * A second-factor reset (plan 2.8, staff.yaml `resetMemberSecondFactor`): the factor stops being
+   * asked for, its phone stays as the marker that only an emailed link may enrol again (the password
+   * alone answers `409 second_factor_already_enrolled`), and `token_version` moves so every session
+   * ends at its next refresh or sensitive action.
+   */
+  async resetSecondFactor(id: string): Promise<void> {
+    await this.unscoped()
+      .update(coreUsers)
+      .set({
+        secondFactorEnabled: false,
+        tokenVersion: sql`${coreUsers.tokenVersion} + 1`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(coreUsers.id, id));
+  }
+
   /** A sign-in: `last_login_at`, and a hash made with today's parameters when the old one is not. */
   async signedIn(id: string, rehash?: string): Promise<void> {
     await this.unscoped()

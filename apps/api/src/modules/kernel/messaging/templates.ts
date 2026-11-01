@@ -76,6 +76,15 @@ export const messageTemplates = {
     secretParams: [],
     deferrable: false,
   },
+  // PLAT-11 plan 2.8: the re-enrolment link after `resetMemberSecondFactor` (24 hours).
+  second_factor_reset: {
+    channel: 'mail',
+    linkParam: 'link',
+    category: 'transactional',
+    params: ['link'],
+    secretParams: [],
+    deferrable: false,
+  },
 } as const satisfies Record<MessageTemplateKey, TemplateDefinition>;
 
 export type TemplateKey = keyof typeof messageTemplates;

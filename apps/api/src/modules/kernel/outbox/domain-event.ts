@@ -18,6 +18,7 @@ export const domainEventTypes = [
   // PLAT-11: the `message` rows of an invitation and a password reset (mail; kernel effects too).
   'core.invitation.created',
   'core.password_reset.requested',
+  'core.second_factor.reset',
 ] as const;
 export type DomainEventType = (typeof domainEventTypes)[number];
 
