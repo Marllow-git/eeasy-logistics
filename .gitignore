@@ -6,8 +6,10 @@ node_modules/
 *.log
 
 # Agent and editor tooling state
-.claude/
-.serena/
+.claude/*
+!.claude/agents/
+.serena/*
+!.serena/memories/
 
 # Build and cache output
 .turbo/
