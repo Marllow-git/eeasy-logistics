@@ -110,7 +110,9 @@ export function productionRefusals(input: RefusalInput): ConfigIssue[] {
   // (platform §8: one hop, and the origin accepts only Cloudflare ranges, so the header cannot be
   // forged around the edge). Production states the depth; 0 would key every caller by the edge.
   if (input.role === 'api' && input.present('TRUST_PROXY_HOPS')) {
-    if (input.raw('TRUST_PROXY_HOPS') === '0') {
+    // The parsed depth, not the spelling (re-check N-1); a malformed value is refused by the schema.
+    const hops = Number(input.raw('TRUST_PROXY_HOPS'));
+    if (Number.isInteger(hops) && hops < 1) {
       issues.push({
         variable: 'TRUST_PROXY_HOPS',
         problem: 'must be at least 1 in production (Cloudflare is one hop)',

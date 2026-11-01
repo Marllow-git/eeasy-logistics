@@ -112,6 +112,8 @@ describe('route spelling and body format (adversary H-1)', () => {
       'application/x-www-form-urlencoded',
       'multipart/form-data; boundary=x',
       'text/plain',
+      'application/merge-patch+json',
+      'application/vnd.api+json',
     ]) {
       const response = await request(configured.getHttpServer())
         .post('/v1/staff/door-probe')

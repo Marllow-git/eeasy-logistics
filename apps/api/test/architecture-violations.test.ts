@@ -59,26 +59,72 @@ describe('A-17 architecture rules fail on their violation fixtures', () => {
   });
 });
 
-describe('A-17 ESLint rule fails on its violation fixture (adversary M-6)', () => {
-  // The rule needs no type information: the app's config runs with the TypeScript program off
-  // and only `no-restricted-syntax`, so the lint takes well under a second (CI timed out at 5 s
-  // with the type-aware program); the 30 s timeout covers a loaded runner.
-  it('reports each raw parameter decorator in a controller', { timeout: 30_000 }, async () => {
-    // `ignore: false` lints the fixture, which `eslint .` skips; the config is the app's own.
-    const eslint = new ESLint({
+describe('A-17 ESLint rules fail on their violation fixtures (adversary M-6)', () => {
+  // The rules need no type information: one ESLint instance with the app's own config, the
+  // TypeScript program off and only the three rules under test, lints every fixture in one run
+  // (well under a second; CI timed out at 5 s with the type-aware program). `ignore: false` lints
+  // the fixtures, which `eslint .` skips.
+  const fixtures = 'test/architecture/violations/lint';
+  const rules = new Set([
+    'no-restricted-syntax',
+    'no-restricted-imports',
+    'elx/disable-needs-reason',
+  ]);
+  let findings: Promise<Map<string, string[]>> | undefined;
+  const lint = (): Promise<Map<string, string[]>> => {
+    findings ??= new ESLint({
       ignore: false,
       overrideConfig: {
         languageOptions: { parserOptions: { projectService: false, project: null } },
       },
-      ruleFilter: ({ ruleId }) => ruleId === 'no-restricted-syntax',
-    });
-    const [result] = await eslint.lintFiles([
-      'test/architecture/violations/lint/raw-input.controller.ts',
-    ]);
-    const raw = (result?.messages ?? []).filter(
-      (message) =>
-        message.ruleId === 'no-restricted-syntax' && message.message.includes('@Input()'),
-    );
-    expect(raw).toHaveLength(6);
+      ruleFilter: ({ ruleId }) => rules.has(ruleId),
+    })
+      .lintFiles([`${fixtures}/*.ts`])
+      .then(
+        (results) =>
+          new Map(
+            results.map((result) => [
+              result.filePath.slice(result.filePath.indexOf(fixtures) + fixtures.length + 1),
+              result.messages.map((message) => message.ruleId ?? 'fatal'),
+            ]),
+          ),
+      );
+    return findings;
+  };
+  const rulesOf = async (file: string) => (await lint()).get(file) ?? [];
+  const count = (found: string[], rule: string) => found.filter((id) => id === rule).length;
+
+  it('reports each raw parameter decorator in a controller', { timeout: 30_000 }, async () => {
+    const found = await rulesOf('raw-input.controller.ts');
+    expect(count(found, 'no-restricted-syntax')).toBe(6);
+    expect(count(found, 'no-restricted-imports')).toBe(6);
+  });
+
+  it('reports an aliased import (re-check M-6)', { timeout: 30_000 }, async () => {
+    expect(await rulesOf('alias-import.controller.ts')).toEqual(['no-restricted-imports']);
+  });
+
+  it(
+    'reports a namespace import and the decorator used through it',
+    { timeout: 30_000 },
+    async () => {
+      const found = await rulesOf('namespace-import.controller.ts');
+      expect(count(found, 'no-restricted-imports')).toBe(1);
+      expect(count(found, 'no-restricted-syntax')).toBe(1);
+    },
+  );
+
+  it('reports @Ip() and its import', { timeout: 30_000 }, async () => {
+    const found = await rulesOf('ip.controller.ts');
+    expect(count(found, 'no-restricted-imports')).toBe(1);
+    expect(count(found, 'no-restricted-syntax')).toBe(1);
+  });
+
+  it('reports @Controller() outside a *.controller.ts file', { timeout: 30_000 }, async () => {
+    expect(await rulesOf('orders.service.ts')).toEqual(['no-restricted-syntax']);
+  });
+
+  it('reports a disable comment without a reason', { timeout: 30_000 }, async () => {
+    expect(await rulesOf('unexplained-disable.ts')).toEqual(['elx/disable-needs-reason']);
   });
 });

@@ -1,4 +1,5 @@
 import type { ExecutionContext, PipeTransform } from '@nestjs/common';
+// eslint-disable-next-line no-restricted-imports -- @Input() is the API's one parameter decorator; it hands the raw request to the ContractPipe (A-17)
 import { Injectable, SetMetadata, createParamDecorator } from '@nestjs/common';
 import type { Request } from 'express';
 import type { ZodType, core, output } from 'zod';

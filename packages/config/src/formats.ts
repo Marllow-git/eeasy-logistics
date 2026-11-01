@@ -8,7 +8,12 @@ export const appEnvs = ['local', 'ci', 'staging', 'production'] as const;
 export type AppEnv = (typeof appEnvs)[number];
 
 const integer = (min: number, max: number) =>
-  z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(min).max(max));
+  // No sign, no leading zero (re-check N-1: `00` is not a distinct spelling of 0).
+  z
+    .string()
+    .regex(/^(0|[1-9]\d*)$/)
+    .transform(Number)
+    .pipe(z.number().int().min(min).max(max));
 
 export const port = () => integer(1, 65535);
 export const count = (max: number) => integer(1, max);
