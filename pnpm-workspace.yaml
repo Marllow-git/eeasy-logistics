@@ -18,6 +18,10 @@ ignoredBuiltDependencies:
 # provenance disappears). A version needed sooner goes in minimumReleaseAgeExclude, with a reason.
 minimumReleaseAge: 4320
 trustPolicy: no-downgrade
+# Trust is only checked for versions published in the last 30 days (minutes). A takeover shows up
+# as a fresh release; older versions published before provenance existed (e.g. undici-types 6.21.0)
+# otherwise fail as false downgrades whenever the lockfile is re-resolved.
+trustPolicyIgnoreAfter: 43200
 
 # Accepted advisories, reviewed 2026-11-01. Each sits in build or test tooling (jest, eslint,
 # @expo/cli, drizzle-kit) and never reaches an API image or a web or app bundle. Forcing the
