@@ -1,0 +1,169 @@
+# Merge to main (PLAT-3 decisions 2.1 and 2.8; platform §4): every PR check again, then each
+# image is built once with Buildx, started and probed, scanned with Trivy (fails on a fixable
+# critical finding) and pushed to GHCR tagged sha-<commit> and main.
+# On a pull request the same image jobs run as a dry run: build, probe and scan, never push.
+# Staging deployment is OPS-1's.
+name: main
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  # The newest run per pull request wins; every commit on main runs to the end.
+  group: main-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  checks:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/pr.yml
+
+  images:
+    name: image (${{ matrix.app }})
+    needs: checks
+    # On a pull request the checks job is skipped (pr.yml runs them) and the dry run goes ahead.
+    if: ${{ !cancelled() && (needs.checks.result == 'success' || needs.checks.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, web]
+    env:
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      LOCAL_TAG: elx-${{ matrix.app }}:candidate
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/marllow-git/eeasy-logistics/${{ matrix.app }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=raw,value=main,enable=${{ env.PUSH }}
+
+      # Loaded into the runner's Docker, not pushed: the image that is probed and scanned below
+      # is the one that gets pushed.
+      - name: Build apps/${{ matrix.app }}/Dockerfile
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          load: true
+          push: false
+          provenance: false
+          tags: |
+            ${{ env.LOCAL_TAG }}
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=image-${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.app }}
+
+      - name: The image runs as a non-root user
+        run: |
+          user=$(docker image inspect --format '{{.Config.User}}' "$LOCAL_TAG")
+          echo "image user: ${user:-<root>}"
+          case "$user" in
+            '' | root | 0 | 0:*) echo "::error::$LOCAL_TAG runs as root"; exit 1 ;;
+          esac
+
+      - name: Probe the api image (api, worker and migrate roles)
+        if: matrix.app == 'api'
+        run: |
+          docker run --rm -e APP_ENV=ci "$LOCAL_TAG" --role migrate | tee migrate.log
+          grep -q 'No migrations yet' migrate.log || { echo "::error::--role migrate did not run"; exit 1; }
+          docker run --rm -e APP_ENV=ci "$LOCAL_TAG" --role worker
+          docker run --detach --name probe -e APP_ENV=ci -p 127.0.0.1::3000 "$LOCAL_TAG"
+          url="http://$(docker port probe 3000/tcp | head -n 1)/health"
+          for _ in $(seq 1 30); do
+            if curl -fsS "$url"; then echo; exit 0; fi
+            sleep 1
+          done
+          docker logs probe
+          echo "::error::the api image did not answer GET /health with 200 within 30 s"
+          exit 1
+
+      - name: Probe the web image (GET /)
+        if: matrix.app == 'web'
+        run: |
+          docker run --detach --name probe -p 127.0.0.1::3000 "$LOCAL_TAG"
+          url="http://$(docker port probe 3000/tcp | head -n 1)/"
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null -w 'GET / %{http_code}\n' "$url"; then exit 0; fi
+            sleep 1
+          done
+          docker logs probe
+          echo "::error::the web image did not serve / with 200 within 30 s"
+          exit 1
+
+      - name: Remove the probe container
+        if: always()
+        run: docker rm --force probe || true
+
+      # Fails on a critical vulnerability that has a fix; unfixed ones are listed by the
+      # full report below but do not block (plan §8).
+      - name: Trivy scan (critical, fixable)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          image-ref: ${{ env.LOCAL_TAG }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: Trivy report (high and critical, informational)
+        if: always() && steps.build.outcome == 'success'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          skip-setup-trivy: true
+          image-ref: ${{ env.LOCAL_TAG }}
+          severity: HIGH,CRITICAL
+          exit-code: '0'
+          format: table
+
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push to GHCR
+        if: env.PUSH == 'true'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            docker push "$tag"
+          done <<< "$TAGS"
+
+      - name: Dry run, nothing pushed
+        if: env.PUSH != 'true'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          echo "Dry run on ${GITHUB_EVENT_NAME}: built, probed and scanned; would push:"
+          echo "$TAGS"
