@@ -14,7 +14,7 @@ export default async function MerchantLayout({ children }: { children: ReactNode
     <RootHtml namespaces={['common', 'nav', 'errors']}>
       <AppShell
         brand={t('app.name')}
-        navigation={[{ href: '/', label: nav('home') }]}
+        navigation={[{ items: [{ href: '/', label: nav('home') }] }]}
         topBar={<LocaleSwitch />}
       >
         {children}
