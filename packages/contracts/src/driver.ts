@@ -4,3 +4,5 @@
 export type * from '../generated/driver/model/index.ts';
 export * as client from '../generated/driver/client.ts';
 export * as schemas from '../generated/driver/schemas.ts';
+// Plan 2.12: each operation's strict request schemas and per-status response schemas by operationId.
+export { operationSchemas, type OperationId } from '../generated/driver/operations.ts';

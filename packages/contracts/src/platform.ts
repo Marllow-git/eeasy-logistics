@@ -4,3 +4,5 @@ export type * from '../generated/platform/model/index.ts';
 export * as client from '../generated/platform/client.ts';
 export * as schemas from '../generated/platform/schemas.ts';
 export * as hooks from '../generated/platform/hooks.ts';
+// Plan 2.12: each operation's strict request schemas and per-status response schemas by operationId.
+export { operationSchemas, type OperationId } from '../generated/platform/operations.ts';

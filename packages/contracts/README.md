@@ -6,7 +6,7 @@ The typed seam between the API, the web app and the driver app (ADR-0003). The O
 
 | Command | What it does |
 |---|---|
-| `pnpm --filter contracts build` | `build:bundle` (one Redocly bundle per surface in `generated/openapi/`, the three staff files joined), `build:unions` (`generated/unions.ts`), `build:client` (Orval into `generated/<surface>/`) |
+| `pnpm --filter contracts build` | `build:bundle` (one Redocly bundle per surface in `generated/openapi/`, the three staff files joined), `build:unions` (`generated/unions.ts`), `build:client` (Orval into `generated/<surface>/`); `build:operations` (`zod.coerce.boolean()` → `zod.stringbool()` in each `schemas.ts`, then `generated/<surface>/operations.ts`) |
 | `pnpm --filter contracts lint` | Redocly with `docs/contracts/redocly.yaml` and the repository rules of `redocly/plugin.js`, then ESLint |
 | `pnpm --filter contracts lint:bundles` | Redocly recommended rules over the five bundles |
 | `pnpm --filter contracts typecheck` | `tsc` over `src`, `test`, `scripts` and `generated` |
@@ -25,11 +25,11 @@ Turborepo runs `build` before this package's own `typecheck`, `lint` and `test`,
 
 | Import | Holds | Used by |
 |---|---|---|
-| `@eeasy-logistics/contracts/staff` | model types; `client`, `schemas` (Zod), `hooks` (TanStack Query) namespaces | `apps/web` |
-| `@eeasy-logistics/contracts/recipient` | model types; `client`, `schemas` | `apps/web` |
+| `@eeasy-logistics/contracts/staff` | model types; `client`, `schemas` (Zod), `hooks` (TanStack Query) namespaces; `operationSchemas` | `apps/web` |
+| `@eeasy-logistics/contracts/recipient` | model types; `client`, `schemas`; `operationSchemas` | `apps/web` |
 | `@eeasy-logistics/contracts/platform`, `/public` | as staff | never `apps/web` (the admin app, ADR-0038); `/public` for integrators |
-| `@eeasy-logistics/contracts/driver` | model types; `client`, `schemas`; no hooks, no MSW | `apps/driver` |
-| `@eeasy-logistics/contracts/<staff,platform,public>/mocks` | MSW handlers and mock factories, tests only | test code |
+| `@eeasy-logistics/contracts/driver` | model types; `client`, `schemas`; `operationSchemas`; no hooks | `apps/driver` |
+| `@eeasy-logistics/contracts/<surface>/mocks` (all five) | MSW handlers and mock factories, faker seeded on import (`seedMocks(n)` reseeds); tests only | test code (architecture rules forbid it in app code) |
 | `@eeasy-logistics/contracts/http` | `createFetcher`, `apiFetch` (the Orval mutator), `ApiError` | every client |
 | `@eeasy-logistics/contracts/unions` | `Permission`, `StreamEventName`, `ErrorCode`, their runtime lists and `isStreamEventName` (SSE families such as `delivery.order.*` expanded from domain-model §6.3) | every client |
 
@@ -69,4 +69,10 @@ const { data } = await client.listSites({ limit: 50 }, { fetcher });
   `run` calls the generated client with the `fetcher` it receives (signing in first if it must); an `ApiError` is expected for an error status. Every answer of a documented operation the scenario caused is checked, not only the last.
 - A response fails on: a status the operation does not document (exact, `4XX` range or `default`), a field no schema declares (`undocumented_field`, even where the schema leaves `additionalProperties` unset; an explicit `additionalProperties` is a documented open map), an error `code` outside `ErrorCode`, a schema mismatch (ajv, JSON Schema 2020-12 with formats), an undocumented content type, or a missing or malformed documented header.
 - The self-test (`test/contract/self-test.test.ts`) plays the API in process for `platformListAccounts` and proves each of those checks red; it also runs in `test`.
+
+## Operation schemas (plan 2.12, A-17)
+
+- `schemas` holds Orval's Zod schemas per operation: `<OperationId>Params` (path), `<OperationId>QueryParams`, `<OperationId>Header`, `<OperationId>Body`, and one `<OperationId><status>Response` per documented status. Request schemas are strict (an undeclared field such as `account_id` is refused, K-3); path and query values are coerced from strings to numbers, and query booleans read `true`/`false` (`zod.stringbool`); bodies are not coerced; responses are not strict (the contract tests catch undocumented fields).
+- `operationSchemas` keys the same schemas by operationId: `operationSchemas.platformListAccounts.query.parse({ limit: '50' })` gives `{ limit: 50 }`. It holds every operation of the bundle, so `apps/api`'s `ContractPipe` (PLAT-6) looks its operation up by id.
+- Response TypeScript types per operation and status are in the `client` namespace (`platformListAccountsResponse200`, ...).
 
