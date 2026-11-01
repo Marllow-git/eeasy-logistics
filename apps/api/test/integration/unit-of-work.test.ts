@@ -1,6 +1,8 @@
+import { randomBytes } from 'node:crypto';
 import type { SQL } from 'drizzle-orm';
 import { eq, sql } from 'drizzle-orm';
-import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { pgSchema, text, uuid } from 'drizzle-orm/pg-core';
+import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type {
   AppDatabase,
@@ -17,13 +19,16 @@ import {
   uuidv7,
   withUnitOfWork,
 } from '@eeasy-logistics/db';
-import { integrationConfig } from './support.js';
+import { connectAs, integrationConfig } from './support.js';
 
-// Real PostgreSQL as elx_app (plan item A; moved here from packages/db so the CI lanes run it). One connection (pool size 1), so "two sequential
-// transactions on one connection" is literal. Only a temporary table is used: it lives in this
-// session and disappears when the connection closes.
+// Real PostgreSQL as elx_app (plan item A; moved here from packages/db so the CI lanes run it). One
+// connection (pool size 1), so "two sequential transactions on one connection" is literal. The
+// table lives in a scratch schema the owner creates and drops (runtime roles may not create
+// temporary tables, review L-3), outside public, so the schema test never sees it.
 
-const rows = pgTable('uow_rows', {
+const schema = `scratch_${randomBytes(4).toString('hex')}`;
+const table = sql.raw(`"${schema}".uow_rows`);
+const rows = pgSchema(schema).table('uow_rows', {
   id: uuid('id').primaryKey(),
   accountId: uuid('account_id').notNull(),
   label: text('label').notNull(),
@@ -80,23 +85,29 @@ const currentAccountSetting = async (db: AppDatabase | UnitOfWork['tx']) => {
 
 describe('withUnitOfWork on the elx_app pool', () => {
   let pool: Pool<AppDatabase>;
+  let owner: postgres.Sql;
   const accountA = uuidv7();
   const accountB = uuidv7();
 
   beforeAll(async () => {
     const config = integrationConfig();
     pool = createAppPool({ ...config.db, poolSize: { app: 1 } }, 'elx-db-test');
-    await pool.db.execute(sql`SELECT 1`);
-    await pool.db.execute(sql`
-      CREATE TEMPORARY TABLE uow_rows (
+    owner = connectAs('owner', config);
+    await owner`CREATE SCHEMA ${owner(schema)}`;
+    await owner`
+      CREATE TABLE ${owner(schema)}.uow_rows (
         id uuid PRIMARY KEY,
         account_id uuid NOT NULL,
         label text NOT NULL
-      )`);
+      )`;
+    await owner`GRANT USAGE ON SCHEMA ${owner(schema)} TO elx_app`;
+    await owner`GRANT SELECT, INSERT, UPDATE, DELETE ON ${owner(schema)}.uow_rows TO elx_app`;
   });
 
   afterAll(async () => {
     await pool?.close();
+    await owner`DROP SCHEMA IF EXISTS ${owner(schema)} CASCADE`;
+    await owner.end();
   });
 
   it('runs as elx_app', async () => {
@@ -164,7 +175,7 @@ describe('withUnitOfWork on the elx_app pool', () => {
     );
 
     const stored = await pool.db.execute<{ account_id: string; label: string }>(
-      sql`SELECT account_id, label FROM uow_rows ORDER BY label`,
+      sql`SELECT account_id, label FROM ${table} ORDER BY label`,
     );
     expect(stored.map((row) => [row.label, row.account_id])).toEqual([
       ['a-1', accountA],
@@ -202,7 +213,7 @@ describe('withUnitOfWork on the elx_app pool', () => {
     expect(deletedByB.map((row) => row.label)).toEqual(['b-1']);
 
     const left = await pool.db.execute<{ label: string }>(
-      sql`SELECT label FROM uow_rows ORDER BY label`,
+      sql`SELECT label FROM ${table} ORDER BY label`,
     );
     expect(left.map((row) => row.label)).toEqual(['a-1', 'a-2']);
   });
@@ -223,7 +234,7 @@ describe('withUnitOfWork on the elx_app pool', () => {
     );
     expect(deleted).toEqual([]);
     const left = await pool.db.execute<{ label: string }>(
-      sql`SELECT label FROM uow_rows ORDER BY label`,
+      sql`SELECT label FROM ${table} ORDER BY label`,
     );
     expect(left.map((row) => row.label)).toEqual(['a-1', 'a-2']);
   });

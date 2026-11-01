@@ -1,4 +1,5 @@
--- reviewed: PLAT-5 item C, 2026-11-01. Hand-written (custom migration).
+-- reviewed: PLAT-5 item C, 2026-11-01; review fixes L-3 and M-3 the same day. Hand-written
+-- (custom migration).
 --
 -- The frame every later table lives in (PLAT-5 plan 2.3; data §1.3, §3.1, §3.2, §4.2, §4.4;
 -- ADR-0019, ADR-0025, proposed ADR-0031). Runs as elx_owner, which owns every object; the runtime
@@ -22,9 +23,26 @@ CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 --> statement-breakpoint
 
+-- Hardening (review L-3): nobody but the owner creates objects in public or temporary tables in
+-- this database, and functions elx_owner creates are not executable by PUBLIC unless granted.
+-- Every function below pins its search_path, so an object planted earlier on the path cannot
+-- shadow what it calls.
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+--> statement-breakpoint
+DO $$
+BEGIN
+  EXECUTE format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', current_database());
+END $$;
+--> statement-breakpoint
+-- Without IN SCHEMA on purpose: the PUBLIC EXECUTE default is global, and a per-schema entry can
+-- only add privileges, never take a global one away (PostgreSQL ALTER DEFAULT PRIVILEGES notes).
+ALTER DEFAULT PRIVILEGES FOR ROLE elx_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+--> statement-breakpoint
+
 -- UUIDv7 for SQL-side inserts (seeds, backfills); the API generates its own ids (data §1.3).
 -- 48-bit Unix milliseconds over a random v4, with the version bits turned from 4 to 7.
-CREATE FUNCTION core_uuidv7() RETURNS uuid LANGUAGE sql VOLATILE AS $$
+CREATE FUNCTION core_uuidv7() RETURNS uuid LANGUAGE sql VOLATILE
+  SET search_path = pg_catalog, public, pg_temp AS $$
   SELECT encode(
     set_bit(set_bit(
       overlay(uuid_send(gen_random_uuid())
@@ -34,9 +52,12 @@ CREATE FUNCTION core_uuidv7() RETURNS uuid LANGUAGE sql VOLATILE AS $$
     'hex')::uuid
 $$;
 --> statement-breakpoint
+GRANT EXECUTE ON FUNCTION core_uuidv7() TO elx_app, elx_platform;
+--> statement-breakpoint
 
--- Append-only trigger function, exactly as data §3.1.
-CREATE FUNCTION core_reject_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
+-- Append-only trigger function, as data §3.1 (body verbatim; the search_path line is review L-3).
+CREATE FUNCTION core_reject_mutation() RETURNS trigger LANGUAGE plpgsql
+  SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
   -- The per-account deletion tool (section 10) is the one exception.
   IF TG_OP = 'DELETE' AND current_user = 'elx_maintenance'
@@ -48,8 +69,10 @@ BEGIN
 END $$;
 --> statement-breakpoint
 
--- Outbox envelope immutability, exactly as data §3.1; attached to core_outbox by PLAT-8.
-CREATE FUNCTION core_outbox_envelope_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+-- Outbox envelope immutability, as data §3.1 (body verbatim; search_path per review L-3);
+-- attached to core_outbox by PLAT-8.
+CREATE FUNCTION core_outbox_envelope_immutable() RETURNS trigger LANGUAGE plpgsql
+  SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
   IF (NEW.id, NEW.type, NEW.event_version, NEW.occurred_at, NEW.account_id,
       NEW.aggregate_type, NEW.aggregate_id, NEW.sequence, NEW.causation_id,
@@ -71,7 +94,8 @@ END $$;
 -- and adds the table to `appendOnlyTables` in apps/api/test/schema/exemptions.ts, which the schema
 -- test checks (triggers present, no UPDATE, DELETE or TRUNCATE for the runtime roles).
 -- Ledger tables today: none. Only elx_owner (the migration job) can run it.
-CREATE FUNCTION core_make_append_only(target regclass) RETURNS void LANGUAGE plpgsql AS $$
+CREATE FUNCTION core_make_append_only(target regclass) RETURNS void LANGUAGE plpgsql
+  SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE
   name text := (SELECT relname FROM pg_class WHERE oid = target);
 BEGIN
@@ -85,6 +109,7 @@ BEGIN
     name || '_no_truncate', target);
 END $$;
 --> statement-breakpoint
+-- Already not executable by PUBLIC through the default privileges above; stated for the reader.
 REVOKE EXECUTE ON FUNCTION core_make_append_only(regclass) FROM PUBLIC;
 --> statement-breakpoint
 

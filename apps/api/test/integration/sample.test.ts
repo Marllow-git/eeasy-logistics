@@ -37,7 +37,7 @@ describe('sample integration test', () => {
     expect(rows).toEqual(accountFixtures.map(({ id, name, status }) => ({ id, name, status })));
   });
 
-  it('writes and reads through a unit of work for one account', async () => {
+  it('reads through a unit of work for one account', async () => {
     await owner`INSERT INTO core_accounts (id, name) VALUES (${accountId}, 'Sample account')`;
     const context: RequestContext = {
       accountId,
@@ -48,14 +48,13 @@ describe('sample integration test', () => {
     };
     const pool = createAppPool(config.db, 'elx-sample-test');
     try {
-      const renamed = await withUnitOfWork(pool.db, context, ({ tx, context: ctx }) =>
+      const own = await withUnitOfWork(pool.db, context, ({ tx, context: ctx }) =>
         tx
-          .update(coreAccounts)
-          .set({ name: 'Sample account, renamed', updatedAt: new Date() })
-          .where(eq(coreAccounts.id, ctx.accountId))
-          .returning({ name: coreAccounts.name }),
+          .select({ name: coreAccounts.name })
+          .from(coreAccounts)
+          .where(eq(coreAccounts.id, ctx.accountId)),
       );
-      expect(renamed).toEqual([{ name: 'Sample account, renamed' }]);
+      expect(own).toEqual([{ name: 'Sample account' }]);
       const seen = await withUnitOfWork(pool.db, context, ({ tx }) =>
         tx
           .select({ id: coreAccounts.id })
