@@ -30,7 +30,7 @@ function lint(file) {
 }
 
 describe('eeasy/no-physical-direction-utilities', () => {
-  it('reports every physical utility of the red fixture, with its logical replacement', () => {
+  it('reports every physical utility of the red fixture (clsx object keys included), with its logical replacement', () => {
     const messages = lint('physical.tsx');
     assert.deepEqual(
       messages.map((m) => [m.ruleId, m.message.match(/"([^"]+)"[^"]+"([^"]+)"/).slice(1)]),
@@ -46,6 +46,7 @@ describe('eeasy/no-physical-direction-utilities', () => {
         ['eeasy/no-physical-direction-utilities', ['rtl:-ml-1', 'rtl:-ms-1']],
         ['eeasy/no-physical-direction-utilities', ['float-right', 'float-end']],
         ['eeasy/no-physical-direction-utilities', ['right-3', 'end-3']],
+        ['eeasy/no-physical-direction-utilities', ['ml-4', 'ms-4']],
       ],
     );
   });

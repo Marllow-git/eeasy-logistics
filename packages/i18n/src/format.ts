@@ -90,6 +90,32 @@ export function formatMoneyAmount(locale: Locale, halalas: number): string {
   }).format(toRiyals(halalas));
 }
 
+/**
+ * Integer halalas split the way `Intl.NumberFormat` lays out SAR in the locale: the amount (sign and
+ * Western digits, e.g. `-150.00`) and whether the currency comes before it (English, `SAR 150.00`)
+ * or after it (Arabic, `150.00 SAR`). `<Money>` draws the riyal sign in that position.
+ */
+export function formatMoneyParts(
+  locale: Locale,
+  halalas: number,
+): { amount: string; currencyFirst: boolean } {
+  const parts = new Intl.NumberFormat(intlLocale[locale], {
+    style: 'currency',
+    currency: 'SAR',
+    currencyDisplay: 'code',
+  }).formatToParts(toRiyals(halalas));
+  const numeric = new Set(['minusSign', 'plusSign', 'integer', 'group', 'decimal', 'fraction']);
+  const currencyAt = parts.findIndex((part) => part.type === 'currency');
+  const integerAt = parts.findIndex((part) => part.type === 'integer');
+  return {
+    amount: parts
+      .filter((part) => numeric.has(part.type))
+      .map((part) => part.value)
+      .join(''),
+    currencyFirst: currencyAt < integerAt,
+  };
+}
+
 function toRiyals(halalas: number): number {
   if (!Number.isSafeInteger(halalas)) {
     throw new RangeError(`Money is integer halalas: ${halalas}`);

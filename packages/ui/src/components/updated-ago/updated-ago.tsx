@@ -16,11 +16,13 @@ export function UpdatedAgo({ at, now: fixedNow }: { at: string | Date; now?: num
   const [now, setNow] = useState(() => fixedNow ?? Date.now());
   const seconds = Math.max(0, Math.floor((now - instant.getTime()) / 1000));
 
+  // One interval per cadence, not per tick: it is replaced only when the first minute ends.
+  const everySecond = seconds < 60;
   useEffect(() => {
     if (fixedNow !== undefined) return;
-    const id = setInterval(() => setNow(Date.now()), seconds < 60 ? 1000 : 30_000);
+    const id = setInterval(() => setNow(Date.now()), everySecond ? 1000 : 30_000);
     return () => clearInterval(id);
-  }, [fixedNow, seconds]);
+  }, [fixedNow, everySecond]);
 
   let text: string;
   if (seconds < 5) {

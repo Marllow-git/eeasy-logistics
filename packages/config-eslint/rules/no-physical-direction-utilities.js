@@ -46,7 +46,9 @@ const exact = new Map([
 ]);
 
 const classAttributes = new Set(['className', 'class']);
-const classCallees = new Set(['cn', 'cva', 'tv']);
+const classCallees = new Set(['cn', 'clsx', 'cva', 'tv']);
+/** clsx-style callees, where an object key is a class name (`cn({ 'ms-4': active })`). */
+const objectKeyCallees = new Set(['cn', 'clsx']);
 
 /**
  * The logical replacement for a physical utility, or undefined when the class is not physical.
@@ -73,6 +75,9 @@ export function logicalReplacement(className) {
 
 /** @param {import('estree').Node & { parent?: import('estree').Node }} node */
 function isInClassContext(node) {
+  // An object key is a class name only for clsx-style callees (`cn({ 'ms-4': active })`); under
+  // cva and tv it names a variant (`{ side: { start: … } }`) and is not checked.
+  let isObjectKey = false;
   for (
     let child = node, current = node.parent;
     current;
@@ -80,14 +85,20 @@ function isInClassContext(node) {
   ) {
     if (current.type === 'JSXAttribute') {
       const name = current.name.type === 'JSXIdentifier' ? current.name.name : '';
-      return classAttributes.has(name);
+      return !isObjectKey && classAttributes.has(name);
     }
     if (current.type === 'CallExpression') {
       const { callee } = current;
-      if (callee.type === 'Identifier' && classCallees.has(callee.name)) return true;
+      if (callee.type === 'Identifier' && classCallees.has(callee.name)) {
+        return !isObjectKey || objectKeyCallees.has(callee.name);
+      }
     }
-    // A literal used as an object key names a variant, not a class.
-    if (current.type === 'Property' && current.key === child) return false;
+    if (current.type === 'Property' && current.key === child) {
+      // Only a key of an object passed straight to the call counts; a nested key is a variant.
+      const call = current.parent?.parent;
+      if (isObjectKey || call?.type !== 'CallExpression') return false;
+      isObjectKey = true;
+    }
     if (
       current.type === 'FunctionDeclaration' ||
       current.type === 'Program' ||

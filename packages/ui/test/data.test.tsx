@@ -1,6 +1,6 @@
 import { messages } from '@eeasy-logistics/i18n';
-import { screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { BilingualInput } from '../src/components/bilingual-input/bilingual-input';
 import { BilingualText } from '../src/components/bilingual-text/bilingual-text';
 import { DateTime } from '../src/components/date-time/date-time';
@@ -15,12 +15,20 @@ import { arabicIndicDigits, directions, renderIn } from './render';
 describe.each(directions)('data display in $locale ($dir)', ({ locale }) => {
   const common = messages[locale].common;
 
-  it('Money shows integer halalas with the riyal sign in a left-to-right isolate', () => {
+  it('Money puts the riyal sign where Intl puts the currency, with a no-break space', () => {
     const { container } = renderIn(locale, <Money halalas={15000} />);
-    const bdi = container.querySelector('bdi');
-    expect(bdi?.getAttribute('dir')).toBe('ltr');
-    expect(bdi?.querySelector('svg[aria-hidden]')).toBeTruthy();
-    expect(bdi?.textContent).toBe(`150.00${common.currency.sar}`);
+    const money = container.firstElementChild!;
+    const [first, second] = [...money.children];
+    // Arabic: amount then sign (150.00 SAR); English: sign then amount (SAR 150.00).
+    const [digits, sign] = locale === 'ar' ? [first, second] : [second, first];
+    expect(digits?.tagName).toBe('BDI');
+    expect(digits?.getAttribute('dir')).toBe('ltr');
+    expect(digits?.textContent).toBe('150.00');
+    expect(sign?.tagName.toLowerCase()).toBe('svg');
+    expect(sign?.getAttribute('aria-hidden')).toBe('true');
+    // The SVG has no text, so the text is the digits and the no-break space in Intl's order.
+    const visible = locale === 'ar' ? '150.00\u00a0' : '\u00a0150.00';
+    expect(money.textContent).toBe(`${visible}${common.currency.sar}`);
     expect(container.textContent).not.toMatch(arabicIndicDigits);
   });
 
@@ -104,6 +112,44 @@ describe.each(directions)('data display in $locale ($dir)', ({ locale }) => {
       expect(chip.textContent).toBe(labels[state]);
       expect(chip.className).toContain(`text-(--status-${machine}-${state})`);
       expect(chip.querySelector('svg[aria-hidden]')).toBeTruthy();
+    }
+  });
+
+  it('StatusChip shows an unknown runtime state neutrally with its raw text and warns', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { container } = renderIn(
+      locale,
+      <StatusChip machine="order" state={'on_hold' as never} />,
+    );
+    const chip = container.querySelector('[data-machine="order"]')!;
+    expect(chip.textContent).toBe('on_hold');
+    expect(chip.className).toContain('text-muted-foreground');
+    expect(chip.querySelector('svg[aria-hidden]')).toBeTruthy();
+    expect(warn).toHaveBeenCalledWith('StatusChip: unknown order state "on_hold"');
+    warn.mockRestore();
+  });
+
+  it('UpdatedAgo keeps one interval while it ticks every second, and one after the minute', () => {
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    try {
+      renderIn(locale, <UpdatedAgo at={new Date(Date.now() - 50_000)} />);
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+      // Past the first minute: one more interval at the thirty-second cadence, then no more.
+      act(() => {
+        vi.advanceTimersByTime(90_000);
+      });
+      expect(setIntervalSpy).toHaveBeenCalledTimes(2);
+      expect(setIntervalSpy.mock.calls.map((call) => call[1])).toEqual([1000, 30_000]);
+    } finally {
+      setIntervalSpy.mockRestore();
+      vi.useRealTimers();
     }
   });
 
