@@ -87,6 +87,11 @@ export interface KindHandler {
    * (rate limited, unauthorised, permanent); anything else is retried and consumes an attempt.
    */
   execute(row: OutboxRow, job?: JobContext): Promise<KindOutcome>;
+  /**
+   * The retry schedule of a row when the kind has more than one (`QueuePolicy.variants`, e.g. `otp`
+   * for OTP messages); undefined for the kind's default.
+   */
+  policyVariant?(row: OutboxRow): string | undefined;
   /** Releases what the handler holds (a Redis client); called once when the worker stops. */
   close?(): Promise<void>;
 }

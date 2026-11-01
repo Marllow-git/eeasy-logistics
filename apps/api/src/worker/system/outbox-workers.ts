@@ -186,7 +186,11 @@ export async function processOutboxJob(
     }
     outcome = failureOutcome(error);
   }
-  const policy = deps.policies?.[kind] ?? outboxQueuePolicies[kind];
+  const kindPolicy = deps.policies?.[kind] ?? outboxQueuePolicies[kind];
+  // A row's own schedule when the kind has variants (OTP messages: three attempts within 60 s).
+  const variant = handler.policyVariant?.(row);
+  const variantPolicy = variant === undefined ? undefined : kindPolicy.variants?.[variant];
+  const policy = variantPolicy === undefined ? kindPolicy : { ...kindPolicy, ...variantPolicy };
   const now = deps.now?.() ?? new Date();
   const write = resolveOutcome(row, outcome, policy, now, deps.random);
   const event = outcome.outcome === 'done' ? outcome.audit : undefined;
