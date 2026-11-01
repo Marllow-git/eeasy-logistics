@@ -68,3 +68,11 @@ export async function sqlState(statement: PromiseLike<unknown>): Promise<string>
     return failure.code ?? failure.cause?.code ?? 'unknown';
   }
 }
+
+/**
+ * Mailpit's HTTP API (PLAT-9): `MAILPIT_URL` where the stack publishes it elsewhere (the ci profile's
+ * random port), else the native and Compose dev port. Test tooling only, never application config.
+ */
+export function mailpitUrl(): string {
+  return readEnvironment().MAILPIT_URL ?? 'http://127.0.0.1:8025';
+}
