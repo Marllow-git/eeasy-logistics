@@ -93,11 +93,12 @@ CREATE TRIGGER core_outbox_envelope_immutable BEFORE UPDATE ON core_outbox
   FOR EACH ROW EXECUTE FUNCTION core_outbox_envelope_immutable();
 --> statement-breakpoint
 -- Wakes the relay's LISTEN elx_outbox on commit (PLAT-8 plan 2.2, 2.3). One notification per
--- insert statement, with an empty payload: the relay reads the rows, never the notification.
+-- transaction (PostgreSQL folds identical ones); the payload is the transaction id only, never row
+-- data: the relay reads the rows, and tests tell their own commit from a parallel suite's by it.
 CREATE FUNCTION core_outbox_notify() RETURNS trigger LANGUAGE plpgsql
   SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
-  PERFORM pg_notify('elx_outbox', '');
+  PERFORM pg_notify('elx_outbox', txid_current()::text);
   RETURN NULL;
 END $$;
 --> statement-breakpoint

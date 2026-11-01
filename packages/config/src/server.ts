@@ -91,6 +91,11 @@ export const serverVariables = {
   AUDIT_RETENTION_MONTHS: retentionMonths().default(24),
   // redis
   REDIS_URL: secret(redisUrl()).optional(),
+  // outbox (PLAT-8): --role worker runs the single-leader relay unless OUTBOX_RELAY=off (then it
+  // runs the queues only); rows per relay batch; the daily pruning job.
+  OUTBOX_RELAY: z.enum(['on', 'off']).default('on'),
+  OUTBOX_RELAY_BATCH: count(5000).default(500),
+  OUTBOX_PRUNE: z.enum(['on', 'off']).default('on'),
   // storage
   STORAGE_ENDPOINT: httpUrl().optional(),
   STORAGE_BUCKET: z.string().min(1).optional(),
@@ -151,6 +156,9 @@ export const serverExpectations = {
   ELX_RLS: 'on or off',
   AUDIT_RETENTION_MONTHS: 'an integer from 24 to 120 (months; two years at least)',
   REDIS_URL: 'a redis:// or rediss:// URL',
+  OUTBOX_RELAY: 'on or off',
+  OUTBOX_RELAY_BATCH: 'an integer from 1 to 5000',
+  OUTBOX_PRUNE: 'on or off',
   STORAGE_ENDPOINT: 'an http(s) URL',
   STORAGE_BUCKET: 'a bucket name',
   STORAGE_ACCESS_KEY_ID: 'an access key id',
@@ -207,6 +215,14 @@ export interface Config {
     readonly retentionMonths: number;
   };
   readonly redis: { readonly url: Secret | undefined };
+  readonly outbox: {
+    /** `OUTBOX_RELAY=on`: the worker competes for the relay lock (PLAT-8 plan 2.3). */
+    readonly relay: boolean;
+    /** Rows per relay batch (`OUTBOX_RELAY_BATCH`, default 500; data §5.2). */
+    readonly relayBatch: number;
+    /** `OUTBOX_PRUNE=on`: the worker runs the daily outbox pruning job (plan 2.8). */
+    readonly prune: boolean;
+  };
   readonly storage: {
     readonly endpoint: string | undefined;
     readonly bucket: string | undefined;
@@ -325,6 +341,11 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
     },
     audit: { retentionMonths: v.AUDIT_RETENTION_MONTHS },
     redis: { url: v.REDIS_URL },
+    outbox: {
+      relay: v.OUTBOX_RELAY === 'on',
+      relayBatch: v.OUTBOX_RELAY_BATCH,
+      prune: v.OUTBOX_PRUNE === 'on',
+    },
     storage: {
       endpoint: v.STORAGE_ENDPOINT,
       bucket: v.STORAGE_BUCKET,

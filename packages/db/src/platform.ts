@@ -103,6 +103,33 @@ export async function withCrossTenantUnitOfWork<T>(
   });
 }
 
+/**
+ * `LISTEN <channel>` on a dedicated connection of the platform pool's client (postgres.js opens
+ * one single-connection instance for listeners, outside the pool's `max`, and re-listens after a
+ * reconnect; PLAT-8 plan 2.3). `onNotify` gets no payload: notifications only wake the caller,
+ * which reads the database itself. Resolves once the LISTEN is acknowledged, with the function
+ * that stops listening; closing the pool closes the connection.
+ */
+export async function listenOnPlatformPool(
+  db: PlatformDatabase,
+  channel: string,
+  onNotify: () => void,
+): Promise<() => Promise<void>> {
+  const client = (db as unknown as { $client: ListeningClient }).$client;
+  const { unlisten } = await client.listen(channel, () => onNotify());
+  return async () => {
+    await unlisten();
+  };
+}
+
+/** The part of the postgres.js client `listenOnPlatformPool` uses. */
+interface ListeningClient {
+  listen(
+    channel: string,
+    onNotify: (payload: string) => void,
+  ): Promise<{ unlisten: () => Promise<unknown> }>;
+}
+
 /** The platform unit of work of the current platform request or system job; throws otherwise. */
 export function getPlatformUnitOfWork(): PlatformUnitOfWork {
   const uow = currentFrame()?.unitOfWork;
