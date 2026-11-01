@@ -1,6 +1,8 @@
-# Merge to main (PLAT-3 decisions 2.1 and 2.8; platform §4): every PR check again, then each
-# image is built once with Buildx, started and probed, scanned with Trivy (fails on a fixable
-# critical finding) and pushed to GHCR tagged sha-<commit> and main.
+# Merge to main (PLAT-3 decision 2.8; platform §4; owner ruling 2026-11-01): each image is built
+# once with Buildx, started and probed, scanned with Trivy (fails on a fixable critical finding)
+# and pushed to GHCR tagged sha-<commit> and main. The seven PR checks are not re-run here: the
+# merge gate (tools/pr-gate.sh) requires them green and the PR mergeable on the exact head that
+# is merged, and in-flight orders touch disjoint paths (handbook 01).
 # On a pull request the same image jobs run as a dry run: build, probe and scan, never push.
 # Staging deployment is OPS-1's.
 name: main
@@ -23,15 +25,8 @@ defaults:
     shell: bash
 
 jobs:
-  checks:
-    if: github.event_name == 'push'
-    uses: ./.github/workflows/pr.yml
-
   images:
     name: image (${{ matrix.app }})
-    needs: checks
-    # On a pull request the checks job is skipped (pr.yml runs them) and the dry run goes ahead.
-    if: ${{ !cancelled() && (needs.checks.result == 'success' || needs.checks.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
