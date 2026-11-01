@@ -5,7 +5,8 @@
   "description": "Arabic and English catalogues (<locale>/<namespace>.json) and the typed t() helper.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./errors": "./src/errors.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

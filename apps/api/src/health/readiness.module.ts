@@ -3,13 +3,16 @@ import type { AppDatabase, Pool } from '@eeasy-logistics/db';
 import { expectedSchemaVersion } from '@eeasy-logistics/db/migrate';
 import type { DynamicModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
-import { APP_POOL, DatabaseModule } from '../database/database.module.js';
+import { APP_POOL } from '../database/database.module.js';
 import { migrationsFolder } from '../migrate/run.js';
 import { READINESS_CHECKS, ReadyController } from './ready.controller.js';
 import type { ReadinessCheck } from './readiness.js';
 import { databaseCheck, migrationsCheck, redisCheck, storageCheck } from './readiness.js';
 
-/** `GET /ready` with the four checks of PLAT-5 plan 2.7, built from the validated config. */
+/**
+ * `GET /ready` with the four checks of PLAT-5 plan 2.7, built from the validated config. The app pool
+ * is the global one of `DatabaseModule.forRoot`, imported once by `AppModule.forRoot`.
+ */
 @Module({})
 export class ReadinessModule {
   static forRoot(config: Config): DynamicModule {
@@ -17,7 +20,6 @@ export class ReadinessModule {
     const expectedVersion = expectedSchemaVersion(migrationsFolder);
     return {
       module: ReadinessModule,
-      imports: [DatabaseModule.forRoot(config)],
       controllers: [ReadyController],
       providers: [
         {

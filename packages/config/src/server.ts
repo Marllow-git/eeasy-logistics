@@ -8,6 +8,7 @@ import {
   appEnvs,
   boolean,
   count,
+  hops,
   httpUrl,
   keyId,
   keyIdExpectation,
@@ -67,6 +68,7 @@ export const serverVariables = {
   // app
   APP_ENV: z.enum(appEnvs),
   PORT: port().default(3000),
+  TRUST_PROXY_HOPS: hops().default(0),
   PUBLIC_WEB_URL: httpUrl().optional(),
   // The platform console's own origin (ADR-0038, WEB-19).
   PUBLIC_ADMIN_URL: httpUrl().optional(),
@@ -131,6 +133,7 @@ const seconds1y = 'a number of seconds from 1 to 31536000';
 export const serverExpectations = {
   APP_ENV: `one of ${appEnvs.join(', ')}`,
   PORT: 'an integer from 1 to 65535',
+  TRUST_PROXY_HOPS: 'an integer from 0 to 10',
   PUBLIC_WEB_URL: 'an http(s) URL',
   PUBLIC_ADMIN_URL: 'an http(s) URL',
   PUBLIC_API_URL: 'an http(s) URL',
@@ -174,6 +177,8 @@ export interface Config {
     readonly env: AppEnv;
     readonly role: AppRole;
     readonly port: number;
+    /** Proxies in front of the API whose `X-Forwarded-For` is trusted (platform §8: Cloudflare). */
+    readonly trustProxyHops: number;
     readonly publicWebUrl: string | undefined;
     /** The platform console's origin (apps/admin, ADR-0038). */
     readonly publicAdminUrl: string | undefined;
@@ -293,6 +298,7 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       env: appEnv,
       role,
       port: v.PORT,
+      trustProxyHops: v.TRUST_PROXY_HOPS,
       publicWebUrl: v.PUBLIC_WEB_URL,
       publicAdminUrl: v.PUBLIC_ADMIN_URL,
       publicApiUrl: v.PUBLIC_API_URL,

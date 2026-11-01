@@ -134,6 +134,9 @@ jobs:
       # ci seeds on every run (data §11.6): the deterministic fixtures, idempotent.
       - name: Seed the fixtures
         run: pnpm --filter @eeasy-logistics/api run seed
+      # The API tests import the generated operation schemas (PLAT-6 item I, A-17).
+      - name: Build the contracts
+        run: pnpm --filter @eeasy-logistics/contracts run build
       - name: Unit tests
         run: pnpm --filter @eeasy-logistics/api run test:unit
       - name: Integration tests (ELX_RLS=${{ matrix.rls }})

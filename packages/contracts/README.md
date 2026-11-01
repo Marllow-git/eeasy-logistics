@@ -29,6 +29,7 @@ Turborepo runs `build` before this package's own `typecheck`, `lint` and `test`,
 | `@eeasy-logistics/contracts/recipient` | model types; `client`, `schemas`; `operationSchemas` | `apps/web` |
 | `@eeasy-logistics/contracts/platform`, `/public` | as staff | never `apps/web` (the admin app, ADR-0038); `/public` for integrators |
 | `@eeasy-logistics/contracts/driver` | model types; `client`, `schemas`; `operationSchemas`; no hooks | `apps/driver` |
+| `@eeasy-logistics/contracts/<surface>/schemas` (all five) | server-safe: model types and enum constants, `schemas` (Zod), `operationSchemas`; no client, hooks or MSW (architecture rule `server-safe-schemas-entries`) | `apps/api` controllers and presenters (PLAT-6, A-17) |
 | `@eeasy-logistics/contracts/<surface>/mocks` (all five) | MSW handlers and mock factories, faker seeded on import (`seedMocks(n)` reseeds); tests only | test code (architecture rules forbid it in app code) |
 | `@eeasy-logistics/contracts/http` | `createFetcher`, `apiFetch` (the Orval mutator), `ApiError` | every client |
 | `@eeasy-logistics/contracts/unions` | `Permission`, `StreamEventName`, `ErrorCode`, their runtime lists and `isStreamEventName` (SSE families such as `delivery.order.*` expanded from domain-model §6.3) | every client |

@@ -140,6 +140,26 @@ APP_ENV=local pnpm --filter api test:integration  # scratch database per run, dr
 
 `seed --template` and the integration suite need `DATABASE_URL_ADMIN`, a superuser for local and ci tooling only (staging and production refuse it). With the native stack in database mode that is your own login, for example `DATABASE_URL_ADMIN=postgres://$(id -un)@127.0.0.1:5432/postgres`. The suite never migrates the development database `elx`.
 
+## Request pipeline
+
+Every API request runs through one frame in `apps/api/src/modules/kernel/` (order PLAT-6; ADR-0025, ADR-0031, ADR-0032, ADR-0038; contracts README §3, §4, §7, §9). In order:
+
+1. **Request id** (`request/request-id.ts`, middleware, first): keeps an incoming `X-Request-Id` only when it is a UUID, else mints a UUIDv7; sets it on the response and on every log line.
+2. **Tenancy guard** (`tenancy/tenancy.guard.ts`, global): every route is authenticated unless `@Public()`. The surface comes from the path (`/v1/<surface>`), the principal from that surface's credential only (`el_staff_at` and `el_platform_at` cookies, the driver's bearer token; recipient and public answer 401 until their verifiers land); the account comes from the token, never from a path, query, header or body. The same guard charges the **rate limit** (`rate-limit/`, contracts README §7): a fixed one-minute window in Redis per user, device or, for public routes and refused credentials, client address (`request.ip`, believed through `X-Forwarded-For` only to `TRUST_PROXY_HOPS` proxies: one, Cloudflare, in production); `RateLimit-Limit`, `-Remaining` and `-Reset` on every limited response, `429 rate_limited` with `Retry-After` over budget; a Redis outage fails open with a warning.
+3. **Web client marker and JSON only** (`request/web-client.guard.ts`, `request/content-type.guard.ts`, global): staff and platform writes need `X-EL-Client: web` and the `Origin` of their own application (`PUBLIC_WEB_URL` for staff, `PUBLIC_ADMIN_URL` for the console), else `403 forbidden`; a body that is not JSON is `400 validation_failed` (the API parses JSON only, routes case-sensitively and strictly, and takes every surface from the matched route, never the raw path).
+4. **Unit of work** (`tenancy/unit-of-work.interceptor.ts`, the first interceptor): one transaction per authenticated request, on `elx_app` for staff and driver with `elx.account_id` from the token, on `elx_platform` for platform. `@CrossTenant()` platform handlers need `X-Support-Reason`, open the target account on the platform pool and emit an audit event for every attempt. Commit on 2xx, rollback otherwise; handlers and repositories read `getUnitOfWork()` and `getContext()`; once the transaction settles the unit of work is closed and a late statement throws `UnitOfWorkClosedError`.
+5. **Idempotency** (`idempotency/`, `@Idempotent()` on retryable writes): reserves `Idempotency-Key` per principal in the same transaction; a replay returns the stored answer with `Idempotency-Replayed: true`, a different body `422 idempotency_key_reused`, a running one `409 idempotency_in_progress`.
+6. **Contract input** (`contract/contract-pipe.ts`, global pipe): a handler binds its operation with `@Operation(operationSchemas.<operationId>)` from the server-safe `@eeasy-logistics/contracts/<surface>/schemas` entry and takes `@Input()`; path, query, declared headers and body are parsed with the generated strict schemas, failures are `400 validation_failed` with `details.fields[]` JSON pointers. The handler returns the operation's generated response type (a presenter maps domain rows to it).
+7. **Errors** (`errors/exception.filter.ts`, global): every non-2xx answer is the contract `Error` schema with `request_id` and a message in the caller's `Accept-Language` (`ar` default); no stack, query or input value ever leaves.
+
+Guards run before every interceptor, so a refused request opens no transaction and reserves no key. `apps/api/.dependency-cruiser.cjs` keeps contract types in `*.controller.ts` and `*.presenter.ts` files and forbids DTO files and validation libraries (A-17).
+
+Operational notes:
+
+- Routing is case-sensitive and strict: `/health/` and `/ready/` answer 404, so probes and the edge use the exact paths.
+- The idempotency request hash is an HMAC under a key derived from `AUTH_SIGNING_KEY`: rotating the key changes every hash, so a client retrying across a rotation with the same `Idempotency-Key` gets `422 idempotency_key_reused` (keys live 24 h).
+- Access tokens must carry the header `typ: at+jwt` and an `iat` no more than 60 s in the future; PLAT-11's issuer sets both.
+
 ## CI
 
 GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):

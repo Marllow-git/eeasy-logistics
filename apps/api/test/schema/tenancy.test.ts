@@ -1,7 +1,12 @@
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connectAs, integrationConfig } from '../integration/support.js';
-import { appendOnlyTables, globalUniqueIndexes, tenancyExemptions } from './exemptions.js';
+import {
+  appendOnlyTables,
+  globalUniqueIndexes,
+  nullableAccountTables,
+  tenancyExemptions,
+} from './exemptions.js';
 
 // The tenancy schema test (PLAT-5 plan 2.4; data §4.1; ADR-0025). It reads pg_catalog after the
 // migrations ran from zero (test/integration/global-setup.ts) and fails on any mismatch, printing
@@ -41,13 +46,15 @@ describe('tenancy schema (data §4.1)', () => {
 
   it('finds the tables the migrations create', () => {
     expect(tables.map((table) => table.name)).toEqual(
-      expect.arrayContaining(['core_accounts', 'core_schema_meta']),
+      expect.arrayContaining(['core_accounts', 'core_idempotency_keys', 'core_schema_meta']),
     );
   });
 
   it('lists only exemptions that exist', () => {
     const names = new Set(tables.map((table) => table.name));
-    const stale = Object.keys(tenancyExemptions).filter((name) => !names.has(name));
+    const stale = [...Object.keys(tenancyExemptions), ...Object.keys(nullableAccountTables)].filter(
+      (name) => !names.has(name),
+    );
     expect(stale.map((name) => `${name}: exempted but not in the schema`)).toEqual([]);
   });
 
@@ -63,7 +70,11 @@ describe('tenancy schema (data §4.1)', () => {
         continue;
       }
       if (column.type !== 'uuid') problems.push(`${table.name}: account_id is ${column.type}`);
-      if (!column.notnull) problems.push(`${table.name}: account_id is nullable`);
+      const nullable = table.name in nullableAccountTables;
+      if (!column.notnull && !nullable) problems.push(`${table.name}: account_id is nullable`);
+      if (column.notnull && nullable) {
+        problems.push(`${table.name}: listed as nullable-account but account_id is NOT NULL`);
+      }
 
       const [fk] = await owner<{ n: number }[]>`
         SELECT count(*)::int AS n FROM pg_constraint

@@ -8,11 +8,18 @@ export const appEnvs = ['local', 'ci', 'staging', 'production'] as const;
 export type AppEnv = (typeof appEnvs)[number];
 
 const integer = (min: number, max: number) =>
-  z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(min).max(max));
+  // No sign, no leading zero (re-check N-1: `00` is not a distinct spelling of 0).
+  z
+    .string()
+    .regex(/^(0|[1-9]\d*)$/)
+    .transform(Number)
+    .pipe(z.number().int().min(min).max(max));
 
 export const port = () => integer(1, 65535);
 export const count = (max: number) => integer(1, max);
 export const seconds = () => integer(1, 31_536_000);
+/** Reverse-proxy hops in front of the API (`trust proxy`); 0 trusts no forwarded header. */
+export const hops = () => integer(0, 10);
 
 /** Only the literal strings `true` and `false`. */
 export const boolean = () => z.enum(['true', 'false']).transform((value) => value === 'true');

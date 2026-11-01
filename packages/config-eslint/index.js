@@ -64,6 +64,15 @@ export const tenancySettingRestrictions = [
   },
 ];
 
+/**
+ * The `no-restricted-imports` paths of `base`. A workspace that sets the rule again (it replaces the
+ * options wholesale) spreads these first so the process rule survives (PLAT-6 adversary M-6).
+ */
+export const processImportRestrictions = ['process', 'node:process'].map((name) => ({
+  name,
+  message: envMessage,
+}));
+
 export const base = defineConfig(
   {
     ignores: [
@@ -95,12 +104,7 @@ export const base = defineConfig(
       // import or require of the module); packages/config exempts its three entry points.
       'no-restricted-properties': ['error', ...envRestrictions],
       'no-restricted-syntax': ['error', ...processRestrictions, ...tenancySettingRestrictions],
-      'no-restricted-imports': [
-        'error',
-        {
-          paths: ['process', 'node:process'].map((name) => ({ name, message: envMessage })),
-        },
-      ],
+      'no-restricted-imports': ['error', { paths: processImportRestrictions }],
     },
   },
   {
