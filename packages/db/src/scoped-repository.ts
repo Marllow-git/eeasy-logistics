@@ -1,7 +1,8 @@
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm';
 import { and, eq, sql } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
-import type { UnitOfWork } from './unit-of-work.ts';
+import type { Transaction, UnitOfWork } from './unit-of-work.ts';
+import { transactionOf } from './unit-of-work.ts';
 
 /** A tenant table: declares its `account_id` column as `accountId` (data §1.3, ADR-0025). */
 export type TenantTable = PgTable & { readonly accountId: PgColumn };
@@ -15,15 +16,18 @@ export type TenantUpdate<TTable extends TenantTable> = Partial<TenantInsert<TTab
 /**
  * The repository base for tenant tables (data §4.2). Every read, update and delete carries
  * `account_id = <context account>` and every insert sets `account_id` from the context, never from
- * input. The transaction is private: there is no way to omit the predicate here. Omitting it needs
+ * input. The transaction is private (the unit of work does not expose it either, review M-1):
+ * there is no way to omit the predicate here. Omitting it needs
  * `unscoped()`, which only `PlatformRepository` (`@eeasy-logistics/db/platform`) has.
  */
 export abstract class ScopedRepository<TTable extends TenantTable> {
   readonly #uow: UnitOfWork;
+  readonly #tx: Transaction;
   protected readonly table: TTable;
 
   constructor(uow: UnitOfWork, table: TTable) {
     this.#uow = uow;
+    this.#tx = transactionOf(uow);
     this.table = table;
   }
 
@@ -44,7 +48,7 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
 
   protected async findMany(condition?: SQL): Promise<InferSelectModel<TTable>[]> {
     const table: PgTable = this.table;
-    const rows = await this.#uow.tx.select().from(table).where(this.scoped(condition));
+    const rows = await this.#tx.select().from(table).where(this.scoped(condition));
     return rows as InferSelectModel<TTable>[];
   }
 
@@ -53,7 +57,7 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
   ): Promise<InferSelectModel<TTable>[]> {
     if (rows.length === 0) return [];
     const values = rows.map((row) => ({ ...withoutAccount(row), accountId: this.accountId }));
-    const inserted = await this.#uow.tx
+    const inserted = await this.#tx
       .insert(this.table)
       .values(values as never)
       .returning();
@@ -67,7 +71,7 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
     if (Object.hasOwn(values, 'accountId')) {
       throw new Error('A repository update cannot change account_id');
     }
-    const updated = await this.#uow.tx
+    const updated = await this.#tx
       .update(this.table)
       .set(values as never)
       .where(this.scoped(condition))
@@ -76,7 +80,7 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
   }
 
   protected async deleteWhere(condition?: SQL): Promise<InferSelectModel<TTable>[]> {
-    const deleted = await this.#uow.tx.delete(this.table).where(this.scoped(condition)).returning();
+    const deleted = await this.#tx.delete(this.table).where(this.scoped(condition)).returning();
     return deleted;
   }
 }

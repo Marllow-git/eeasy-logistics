@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { ApiException } from '../src/modules/kernel/errors/api-exception.js';
 import type { ErrorBody } from '../src/modules/kernel/errors/exception.filter.js';
+import { Public } from '../src/modules/kernel/public/index.js';
 
 // PLAT-6 item A: request ids (plan 2.1) and the global exception filter (plan 2.2) through the
 // full application module. The probe controller is public: authentication is item B's and C's.
@@ -16,6 +17,7 @@ const errorOf = (response: { body: unknown }): ErrorBody => response.body as Err
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+@Public()
 @Controller('probe')
 class ProbeController {
   @Get('known')
