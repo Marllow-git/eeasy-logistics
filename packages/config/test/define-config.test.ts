@@ -250,7 +250,7 @@ describe('TRUST_PROXY_HOPS (PLAT-6 review round 2, platform §8)', () => {
   it('defaults to 0 and reads an integer from 0 to 10', () => {
     expect(defineConfig(minimalEnv).app.trustProxyHops).toBe(0);
     expect(defineConfig({ ...minimalEnv, TRUST_PROXY_HOPS: '2' }).app.trustProxyHops).toBe(2);
-    for (const value of ['-1', '11', 'one', '1.5']) {
+    for (const value of ['-1', '11', 'one', '1.5', '00', '01']) {
       const error = configError(() => defineConfig({ ...minimalEnv, TRUST_PROXY_HOPS: value }));
       expect(error.issues.map((issue) => issue.variable)).toEqual(['TRUST_PROXY_HOPS']);
     }
@@ -270,6 +270,12 @@ describe('TRUST_PROXY_HOPS (PLAT-6 review round 2, platform §8)', () => {
         problem: 'must be at least 1 in production (Cloudflare is one hop)',
       },
     ]);
+    // Re-check N-1: `00` is no way around the production rule.
+    expect(
+      configError(() => defineConfig({ ...productionEnv, TRUST_PROXY_HOPS: '00' })).issues.map(
+        (issue) => issue.variable,
+      ),
+    ).toEqual(['TRUST_PROXY_HOPS']);
     expect(defineConfig(productionEnv).app.trustProxyHops).toBe(1);
     expect(defineConfig(env, { role: 'worker' }).app.trustProxyHops).toBe(0);
   });

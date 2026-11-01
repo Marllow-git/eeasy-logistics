@@ -4,12 +4,12 @@ import type { Request } from 'express';
 import { ApiException } from '../errors/api-exception.js';
 
 // JSON only (contracts README §3; adversary H-1). Nest's urlencoded and text parsers are off
-// (`httpAppOptions`), and a request that carries a body must declare `application/json` (or a
-// `+json` type): an HTML form (`application/x-www-form-urlencoded`, `multipart/form-data`,
+// (`httpAppOptions`), and a request that carries a body must declare `application/json` itself
+// (re-check: a `+json` type is not parsed by the JSON parser, so it is refused too): an HTML form (`application/x-www-form-urlencoded`, `multipart/form-data`,
 // `text/plain`), the classic cross-site request a browser sends without a preflight, is refused
 // with `400 validation_failed` before any handler or interceptor runs.
 
-const jsonType = /^application\/(?:[\w.+-]+\+)?json(?:\s*;.*)?$/i;
+const jsonType = /^application\/json(?:\s*;.*)?$/i;
 
 /** Whether the request carries a body (a length above zero or a chunked transfer). */
 function hasBody(request: Pick<Request, 'headers'>): boolean {

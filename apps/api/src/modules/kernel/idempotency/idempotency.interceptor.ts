@@ -58,6 +58,14 @@ function currentStore(): IdempotencyStore {
   }
 }
 
+/**
+ * The value as the client receives it (re-check N-2): `toJSON` applied (a `Date` becomes its ISO
+ * string) before the secret fields are dropped, so a replay is byte-identical to the first answer.
+ */
+function asJson(value: unknown): unknown {
+  return value === undefined ? undefined : (JSON.parse(JSON.stringify(value)) as unknown);
+}
+
 /** What a secret-bearing response stores: `{ id }` when it names one, else nothing. */
 function storedSecretResponse(body: unknown): { id: string } | null {
   const id = resourceIdOf(body);
@@ -136,7 +144,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
           // answers drop the secret fields at any depth.
           const stored = options.secretResponse
             ? storedSecretResponse(value)
-            : stripSecrets(value, options.secretFields).value;
+            : stripSecrets(asJson(value), options.secretFields).value;
           await store.complete(outcome.id, response.statusCode, stored ?? null);
           return value;
         }
@@ -161,6 +169,21 @@ export const Idempotent = (options: IdempotentOptions = {}): MethodDecorator =>
     UseInterceptors(IdempotencyInterceptor),
   );
 
+/** Method names along the prototype chain (re-check N-3: inherited handlers count too). */
+function methodNames(prototype: object): Set<string> {
+  const names = new Set<string>();
+  for (
+    let current: object | null = prototype;
+    current !== null && current !== Object.prototype;
+    current = Object.getPrototypeOf(current) as object | null
+  ) {
+    for (const name of Object.getOwnPropertyNames(current)) {
+      if (name !== 'constructor') names.add(name);
+    }
+  }
+  return names;
+}
+
 /**
  * Boot check (review round 2): every `@Idempotent()` handler declares `@HttpCode()`, so the status
  * stored for a replay is the one the first answer had. Registered in `KernelModule`; a missing one
@@ -179,9 +202,9 @@ export class IdempotentRoutesCheck implements OnApplicationBootstrap {
       const type = wrapper.metatype as (new (...args: never[]) => unknown) | null | undefined;
       if (typeof type !== 'function') continue;
       const prototype = type.prototype as Record<string, unknown>;
-      for (const name of Object.getOwnPropertyNames(prototype)) {
+      for (const name of methodNames(prototype)) {
         const handler = prototype[name];
-        if (name === 'constructor' || typeof handler !== 'function') continue;
+        if (typeof handler !== 'function') continue;
         if (this.reflector.get(IDEMPOTENT, handler) === undefined) continue;
         if (this.reflector.get(HTTP_CODE_METADATA, handler) === undefined) {
           missing.push(`${type.name}.${name}`);

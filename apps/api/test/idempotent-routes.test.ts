@@ -27,6 +27,30 @@ class Undeclared {
   }
 }
 
+// Re-check N-3: the handler lives on a base class, the route on the subclass.
+class UndeclaredBase {
+  @Post()
+  @Idempotent()
+  create(): { ok: true } {
+    return { ok: true };
+  }
+}
+
+@Controller('v1/staff/inherited')
+class Inherited extends UndeclaredBase {}
+
+class DeclaredBase {
+  @Post()
+  @HttpCode(201)
+  @Idempotent()
+  create(): { ok: true } {
+    return { ok: true };
+  }
+}
+
+@Controller('v1/staff/inherited-declared')
+class InheritedDeclared extends DeclaredBase {}
+
 async function start(controller: new () => unknown): Promise<void> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
@@ -43,6 +67,13 @@ async function start(controller: new () => unknown): Promise<void> {
 describe('@Idempotent() handlers declare @HttpCode() (IdempotentRoutesCheck)', () => {
   it('starts when every idempotent handler declares its status', async () => {
     await expect(start(Declared)).resolves.toBeUndefined();
+  });
+
+  it('checks handlers inherited from a base class (re-check N-3)', async () => {
+    await expect(start(InheritedDeclared)).resolves.toBeUndefined();
+    await expect(start(Inherited)).rejects.toThrow(
+      '@Idempotent() handlers need @HttpCode(): Inherited.create',
+    );
   });
 
   it('refuses to start naming the handler without @HttpCode()', async () => {

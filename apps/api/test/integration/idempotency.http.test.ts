@@ -58,6 +58,13 @@ class StaffController {
     return row;
   }
 
+  @Post('dated')
+  @HttpCode(201)
+  @Idempotent()
+  dated(@Body() body: ProbeBody): { label: string; at: Date; nested: { on: Date } } {
+    return { label: body.label, at: new Date(), nested: { on: new Date(0) } };
+  }
+
   @Post('links')
   @HttpCode(201)
   @Idempotent({ secretResponse: true })
@@ -318,6 +325,26 @@ describe('idempotent writes (PLAT-6 item E)', () => {
     const [row] = await keyRows(key);
     expect(row?.response_body).toEqual({ id: issued.id });
     expect(JSON.stringify(row)).not.toContain(issued.secret);
+  });
+
+  it('replays a Date-bearing answer with the same values (re-check N-2)', async () => {
+    const key = randomUUID();
+    const send = async () =>
+      http()
+        .post('/v1/staff/probe-rows/dated')
+        .set(webClientHeaders(config, 'staff'))
+        .set('Cookie', await staff())
+        .set('Idempotency-Key', key)
+        .send({ label: 'dated' })
+        .expect(201);
+    const first = await send();
+    const replay = await send();
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+    // Same values, Dates as the same ISO strings; key order is jsonb's (sorted), not the
+    // handler's, so the bytes may differ in order only (plan 8.2.47).
+    expect(replay.body).toEqual(first.body);
+    expect(JSON.parse(replay.text)).toEqual(JSON.parse(first.text));
+    expect((first.body as { at: string }).at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('stores only the id when the secret has another field name (adversary M-3: link)', async () => {

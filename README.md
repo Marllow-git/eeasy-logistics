@@ -154,6 +154,12 @@ Every API request runs through one frame in `apps/api/src/modules/kernel/` (orde
 
 Guards run before every interceptor, so a refused request opens no transaction and reserves no key. `apps/api/.dependency-cruiser.cjs` keeps contract types in `*.controller.ts` and `*.presenter.ts` files and forbids DTO files and validation libraries (A-17).
 
+Operational notes:
+
+- Routing is case-sensitive and strict: `/health/` and `/ready/` answer 404, so probes and the edge use the exact paths.
+- The idempotency request hash is an HMAC under a key derived from `AUTH_SIGNING_KEY`: rotating the key changes every hash, so a client retrying across a rotation with the same `Idempotency-Key` gets `422 idempotency_key_reused` (keys live 24 h).
+- Access tokens must carry the header `typ: at+jwt` and an `iat` no more than 60 s in the future; PLAT-11's issuer sets both.
+
 ## CI
 
 GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
