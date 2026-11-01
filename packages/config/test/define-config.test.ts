@@ -21,6 +21,7 @@ describe('defineConfig: valid input', () => {
       role: 'api',
       port: 3000,
       publicWebUrl: undefined,
+      publicAdminUrl: undefined,
       publicApiUrl: undefined,
     });
     expect(config.db.poolSize).toEqual({ app: 10, platform: 5 });
@@ -214,5 +215,32 @@ describe('defineConfig: missing and malformed input', () => {
   it('rejects an unknown role', () => {
     const error = configError(() => defineConfig(minimalEnv, { role: 'scheduler' as 'api' }));
     expect(error.issues.map((issue) => issue.variable)).toEqual(['--role']);
+  });
+});
+
+describe('PUBLIC_ADMIN_URL (WEB-19 decision 2.5, ADR-0038)', () => {
+  it('exposes a valid http(s) URL as config.app.publicAdminUrl', () => {
+    const config = defineConfig({ APP_ENV: 'local', PUBLIC_ADMIN_URL: 'http://localhost:3002' });
+    expect(config.app.publicAdminUrl).toBe('http://localhost:3002');
+  });
+
+  it('names an invalid URL without echoing it', () => {
+    const error = configError(() =>
+      defineConfig({ APP_ENV: 'local', PUBLIC_ADMIN_URL: 'ftp://admin-host.invalid' }),
+    );
+    expect(error.issues).toEqual([
+      { variable: 'PUBLIC_ADMIN_URL', problem: 'is invalid: expected an http(s) URL' },
+    ]);
+    expect(error.message).not.toContain('admin-host.invalid');
+  });
+
+  it('is optional outside production and required in production', () => {
+    expect(defineConfig({ APP_ENV: 'staging' }).app.publicAdminUrl).toBeUndefined();
+    const env: Record<string, string> = { ...productionEnv };
+    delete env.PUBLIC_ADMIN_URL;
+    const error = configError(() => defineConfig(env));
+    expect(error.issues).toEqual([
+      { variable: 'PUBLIC_ADMIN_URL', problem: 'is required when APP_ENV=production' },
+    ]);
   });
 });
