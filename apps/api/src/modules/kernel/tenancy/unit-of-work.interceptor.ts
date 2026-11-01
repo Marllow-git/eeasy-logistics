@@ -10,6 +10,7 @@ import { from, lastValueFrom } from 'rxjs';
 import { APP_POOL } from '../../../database/database.module.js';
 import type { AuditEvent, AuditSink } from '../audit/audit-sink.js';
 import { AUDIT_SINK } from '../audit/audit-sink.js';
+import { bindContextSiteScope, requestSiteScope } from '../authz/site-scope.js';
 import type { Principal } from '../auth/principal.js';
 import { ApiException } from '../errors/api-exception.js';
 import { clientRequestIdOf, serverRequestIdOf } from '../request/request-id.js';
@@ -25,17 +26,27 @@ class RollbackWith extends Error {
   }
 }
 
-/** The tenant context of a staff or driver principal (plan 2.5): every field from the token. */
-export function tenantContext(principal: Principal, requestId: string): RequestContext {
+/**
+ * The tenant context of a staff or driver principal (plan 2.5): every field from the token, frozen,
+ * so it keeps its identity through the unit of work; a site-scoped request (PLAT-10 plan 2.6)
+ * binds its sites to it for `siteFilter`.
+ */
+export function tenantContext(
+  principal: Principal,
+  requestId: string,
+  sites?: readonly string[],
+): RequestContext {
   if (principal.kind === 'platform') throw new Error('A platform principal has no account');
-  return {
+  const context: RequestContext = Object.freeze({
     accountId: principal.accountId,
     membershipId: principal.membershipId,
     userId: principal.userId,
     deviceId: principal.kind === 'driver' ? principal.deviceId : null,
     actingCrossTenant: false,
     requestId,
-  };
+  });
+  if (sites !== undefined) bindContextSiteScope(context, sites);
+  return context;
 }
 
 /** The `User-Agent` header, when it is one string. */
@@ -124,7 +135,8 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       }
       const pool = this.appPool;
       if (pool === undefined || pool === null) throw new ApiException('internal_error');
-      return withUnitOfWork(pool.db, tenantContext(principal, requestId), handle);
+      const sites = requestSiteScope(call.request);
+      return withUnitOfWork(pool.db, tenantContext(principal, requestId, sites), handle);
     }
     const platform = this.platform;
     if (platform === undefined) throw new ApiException('internal_error');
