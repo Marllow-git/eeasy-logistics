@@ -148,19 +148,24 @@ export function advances(
 }
 
 type Owner = { readonly accountId: string | null; readonly engineAccountId: number } | 'unknown';
+type Found = Owner | { readonly unallocated: true };
 
 export interface CallbackDoorDependencies {
   readonly settings: CallbackDoorSettings;
   readonly store: MessagingStore;
   readonly optOuts: Pick<OptOutList, 'add' | 'remove'>;
   readonly now?: () => number;
-  readonly logger?: Pick<Logger, 'log' | 'warn'>;
+  readonly logger?: Pick<Logger, 'log' | 'warn'> & Partial<Pick<Logger, 'debug'>>;
 }
 
 export class EngineCallbackDoor {
   readonly #deps: CallbackDoorDependencies;
   readonly #now: () => number;
-  readonly #logger: Pick<Logger, 'log' | 'warn'>;
+  readonly #logger: Pick<Logger, 'log' | 'warn'> & Partial<Pick<Logger, 'debug'>>;
+  /** When each refusal code was last logged at warn. */
+  readonly #lastWarned = new Map<string, number>();
+  /** Instances whose account has no engine id yet, logged once each. */
+  readonly #unallocated = new Set<string>();
 
   constructor(deps: CallbackDoorDependencies) {
     this.#deps = deps;
@@ -175,10 +180,23 @@ export class EngineCallbackDoor {
       provider: 'whatsapp_engine',
       status: answer.status === 200 ? 'accepted' : 'rejected',
     });
-    if (answer.status !== 200) {
-      this.#logger.warn(`engine callback refused status=${answer.status} code=${outcome}`);
-    }
+    if (answer.status !== 200) this.#logRefusal(answer.status, outcome);
     return answer;
+  }
+
+  /**
+   * The first refusal of a code in a minute at warn, the rest at debug (adversary L-1): a flood of
+   * forged callbacks cannot flood the log; `inbound_webhooks_total` still counts every one.
+   */
+  #logRefusal(status: number, code: string): void {
+    const now = this.#now();
+    const line = `engine callback refused status=${status} code=${code}`;
+    if (now - (this.#lastWarned.get(code) ?? -Infinity) >= 60_000) {
+      this.#lastWarned.set(code, now);
+      this.#logger.warn(line);
+    } else {
+      this.#logger.debug?.(line);
+    }
   }
 
   async #receive(request: CallbackRequest): Promise<CallbackAnswer> {
@@ -272,7 +290,20 @@ export class EngineCallbackDoor {
     const at = new Date(occurredAt);
 
     return this.#deps.store.run(async (repo) => {
-      const owner = await this.#owner(repo, callback.sender_instance_id);
+      const found = await this.#owner(repo, callback.sender_instance_id);
+      if (found !== 'unknown' && 'unallocated' in found) {
+        // A linked account without an engine id cannot have sent anything (the linking order
+        // allocates the id before it creates the instance; adversary L-6). Its connection events
+        // are acknowledged and ignored, never refused (a refusal parks the sender); anything else
+        // cannot be bound.
+        if (callback.callback !== 'connection.event') return refuse(422, 'BINDING_MISMATCH');
+        if (!this.#unallocated.has(callback.sender_instance_id)) {
+          this.#unallocated.add(callback.sender_instance_id);
+          this.#logger.warn('engine connection.event for a sender whose account has no engine id');
+        }
+        return ok;
+      }
+      const owner: Owner = found;
       if (owner !== 'unknown' && owner.engineAccountId !== callback.eeasy_account_id) {
         return refuse(422, 'BINDING_MISMATCH');
       }
@@ -299,14 +330,14 @@ export class EngineCallbackDoor {
   }
 
   /** Who an instance belongs to, from our tables only (plan 2A.3, 2A.4). */
-  async #owner(repo: MessagingRepository, instance: string): Promise<Owner> {
+  async #owner(repo: MessagingRepository, instance: string): Promise<Found> {
     if (instance === this.#deps.settings.platformInstanceId) {
       return { accountId: null, engineAccountId: platformEngineAccountId };
     }
     const owner = await repo.ownerOfInstance(instance);
     if (owner === undefined) return 'unknown';
-    // A linked account always has an engine id; one without cannot match any callback.
-    return { accountId: owner.accountId, engineAccountId: owner.engineAccountId ?? -1 };
+    if (owner.engineAccountId === null) return { unallocated: true };
+    return { accountId: owner.accountId, engineAccountId: owner.engineAccountId };
   }
 
   async #messageStatus(

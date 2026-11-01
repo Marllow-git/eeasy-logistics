@@ -101,6 +101,52 @@ describe('messaging (PLAT-9 plan 2.9, 2A.1)', () => {
     ]);
   });
 
+  it('reads the global OTP budget, 500 an hour unless set (adversary M-1)', () => {
+    expect(defineConfig({ APP_ENV: 'local' }).messaging.otpGlobalHourlyBudget).toBe(500);
+    expect(
+      defineConfig({ APP_ENV: 'local', OTP_GLOBAL_HOURLY_BUDGET: '1200' }).messaging
+        .otpGlobalHourlyBudget,
+    ).toBe(1200);
+    for (const bad of ['0', '-1', '100001', 'many']) {
+      expect(Object.keys(problems({ APP_ENV: 'local', OTP_GLOBAL_HOURLY_BUDGET: bad }))).toEqual([
+        'OTP_GLOBAL_HOURLY_BUDGET',
+      ]);
+    }
+  });
+
+  it.each(['staging', 'production'])(
+    'refuses the .env.example engine placeholders in %s, naming the variable only (adversary L-5)',
+    (appEnv) => {
+      const env = appEnv === 'production' ? productionEnv : { APP_ENV: appEnv };
+      const found = problems({
+        ...env,
+        WHATSAPP_ENGINE_KEY_ID: 'local-command',
+        WHATSAPP_ENGINE_COMMAND_SECRET: 'local-engine-command-secret-not-for-production',
+        WHATSAPP_ENGINE_CALLBACK_KEY_ID: 'local-callback',
+        WHATSAPP_ENGINE_CALLBACK_SECRET: 'rotated-but-still-not-for-production-0123456789',
+      });
+      const problem = `holds the local placeholder of .env.example; ${appEnv} refuses it`;
+      expect(found).toEqual({
+        WHATSAPP_ENGINE_KEY_ID: problem,
+        WHATSAPP_ENGINE_COMMAND_SECRET: problem,
+        WHATSAPP_ENGINE_CALLBACK_KEY_ID: problem,
+        WHATSAPP_ENGINE_CALLBACK_SECRET: problem,
+      });
+    },
+  );
+
+  it('accepts the placeholders in local and ci', () => {
+    for (const appEnv of ['local', 'ci']) {
+      expect(
+        problems({
+          APP_ENV: appEnv,
+          WHATSAPP_ENGINE_KEY_ID: 'local-command',
+          WHATSAPP_ENGINE_COMMAND_SECRET: 'local-engine-command-secret-not-for-production',
+        }),
+      ).toEqual({});
+    }
+  });
+
   it.each(['staging', 'production'])('refuses the stub URL in %s', (appEnv) => {
     const env = appEnv === 'production' ? productionEnv : { APP_ENV: appEnv };
     const found = problems({ ...env, MESSAGING_STUB_URL: 'http://stub.internal:8080' });

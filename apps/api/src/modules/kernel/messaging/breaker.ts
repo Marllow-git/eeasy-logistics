@@ -150,9 +150,13 @@ export class BreakerSender implements MessageSender {
   }
 
   async #failed(error: unknown): Promise<void> {
-    // Only outages count: a rate limit, a revoked token or a refused request is the provider
-    // answering, and the outbox handles each of those on its own (ADR-0036).
-    const outage = !(error instanceof ProviderFailure) || error.reason === 'transient';
+    // Outages count, and so do refused credentials (adversary M-3): a sender whose key or secret is
+    // wrong cannot send anything, so the OTP door should answer 503 rather than take requests. A
+    // rate limit or a refused request is the provider answering; the outbox handles those.
+    const outage =
+      !(error instanceof ProviderFailure) ||
+      error.reason === 'transient' ||
+      error.reason === 'unauthorised';
     if (!outage) {
       if (this.#state.kind === 'trial') await this.#succeeded();
       return;

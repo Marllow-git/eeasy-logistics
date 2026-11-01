@@ -11,6 +11,7 @@ import { idempotencyHmacKey } from './idempotency/request-hash.js';
 import { PERMISSION_RESOLVER } from './authz/permission-resolver.js';
 import { PLATFORM_POOL, PlatformModule } from './platform/platform.module.js';
 import { loadPermissionResolver } from './platform/roles.repository.js';
+import { defaultBudgets, namedBudgetsWith } from './rate-limit/budgets.js';
 import { RATE_LIMITER, RateLimiter, redisRateLimitStore } from './rate-limit/rate-limiter.js';
 import type { WebOrigins } from './request/web-client.guard.js';
 import { WEB_ORIGINS, originOf } from './request/web-client.guard.js';
@@ -112,7 +113,12 @@ export class RequestFrameModule {
               new Logger('RateLimit').warn('REDIS_URL is not set: rate limits are not enforced');
               return undefined;
             }
-            return new RateLimiter(redisRateLimitStore(url.reveal()));
+            return new RateLimiter(redisRateLimitStore(url.reveal()), {
+              budgets: {
+                ...defaultBudgets,
+                named: namedBudgetsWith(config.messaging.otpGlobalHourlyBudget),
+              },
+            });
           },
         },
         {

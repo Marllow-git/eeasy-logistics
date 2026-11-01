@@ -1,7 +1,7 @@
 import type { Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase, PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { PlatformRepository, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type { OtpPurpose } from '../schema/otp-challenges.js';
 import { coreOtpChallenges } from '../schema/otp-challenges.js';
 
@@ -9,14 +9,10 @@ import { coreOtpChallenges } from '../schema/otp-challenges.js';
 // one transaction is a platform unit of work with no account (data §2.4), in which the challenge
 // and its `message` outbox row are written together.
 
-/** The newest challenge of a phone and purpose, locked for the rest of the transaction. */
-export interface LockedChallenge {
+/** A live challenge of a phone and purpose, locked for the rest of the transaction. */
+export interface LiveChallenge {
   readonly id: string;
   readonly codeHash: Buffer;
-  readonly attempts: number;
-  readonly consumed: boolean;
-  /** `expires_at <= now()` on the database clock. */
-  readonly expired: boolean;
 }
 
 export interface NewChallenge {
@@ -70,39 +66,51 @@ export class OtpChallengesRepository extends PlatformRepository<typeof coreOtpCh
   }
 
   /**
-   * The newest challenge of the phone and purpose, `FOR UPDATE`: a second verification of the same
-   * challenge waits here until the first commits, then sees it consumed (identity and tenancy §3.2).
-   * Only the newest counts, so a code superseded by a resend no longer verifies.
+   * The live challenges of the phone and purpose (unexpired on the database clock, unconsumed,
+   * under `maxAttempts` wrong codes), newest first, at most `limit`, locked `FOR UPDATE` for the
+   * rest of the transaction (adversary M-2): a code stays valid for its five minutes even after a
+   * resend, and a second verification waits here until the first commits, then no longer sees a
+   * consumed row (identity and tenancy §3.2).
    */
-  async lockNewest(phone: string, purpose: OtpPurpose): Promise<LockedChallenge | undefined> {
-    const [row] = await this.unscoped()
-      .select({
-        id: coreOtpChallenges.id,
-        codeHash: coreOtpChallenges.codeHash,
-        attempts: coreOtpChallenges.attempts,
-        consumed: sql<boolean>`${coreOtpChallenges.consumedAt} IS NOT NULL`,
-        expired: sql<boolean>`${coreOtpChallenges.expiresAt} <= now()`,
-      })
+  async lockLive(
+    phone: string,
+    purpose: OtpPurpose,
+    maxAttempts: number,
+    limit: number,
+  ): Promise<LiveChallenge[]> {
+    return this.unscoped()
+      .select({ id: coreOtpChallenges.id, codeHash: coreOtpChallenges.codeHash })
       .from(coreOtpChallenges)
-      .where(and(eq(coreOtpChallenges.phone, phone), eq(coreOtpChallenges.purpose, purpose)))
+      .where(
+        and(
+          eq(coreOtpChallenges.phone, phone),
+          eq(coreOtpChallenges.purpose, purpose),
+          isNull(coreOtpChallenges.consumedAt),
+          gt(coreOtpChallenges.expiresAt, sql`now()`),
+          lt(coreOtpChallenges.attempts, maxAttempts),
+        ),
+      )
       .orderBy(desc(coreOtpChallenges.createdAt), desc(coreOtpChallenges.id))
-      .limit(1)
+      .limit(limit)
       .for('update');
-    return row;
   }
 
-  async recordFailure(id: string): Promise<void> {
+  /** One more wrong code on each of the rows. */
+  async recordFailures(ids: readonly string[]): Promise<void> {
+    if (ids.length === 0) return;
     await this.unscoped()
       .update(coreOtpChallenges)
       .set({ attempts: sql`${coreOtpChallenges.attempts} + 1`, updatedAt: sql`now()` })
-      .where(eq(coreOtpChallenges.id, id));
+      .where(inArray(coreOtpChallenges.id, [...ids]));
   }
 
-  async consume(id: string): Promise<void> {
+  /** Consumes the rows: the verified one and every other live one of the phone and purpose. */
+  async consumeAll(ids: readonly string[]): Promise<void> {
+    if (ids.length === 0) return;
     await this.unscoped()
       .update(coreOtpChallenges)
       .set({ consumedAt: sql`now()`, updatedAt: sql`now()` })
-      .where(eq(coreOtpChallenges.id, id));
+      .where(inArray(coreOtpChallenges.id, [...ids]));
   }
 }
 

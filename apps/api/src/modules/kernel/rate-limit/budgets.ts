@@ -30,16 +30,29 @@ export interface NamedBudget {
 }
 
 const hourMs = 3_600_000;
+const dayMs = 24 * hourMs;
+
+/** The global hourly OTP request budget unless `OTP_GLOBAL_HOURLY_BUDGET` says otherwise. */
+export const defaultOtpGlobalHourly = 500;
 
 /**
  * Named budgets (PLAT-9 plan 2.4; identity and tenancy §3.2, §8): charged by the service that knows
  * the stable identity, which a guard cannot read before the body is parsed and normalised. OTP
- * requests: 5 per E.164 phone and 20 per client address in a fixed hour.
+ * requests: 5 per E.164 phone and 20 per client address in a fixed hour, 20 per phone a day, and
+ * 500 an hour across the platform (adversary M-1: bounds how many messages the platform number
+ * sends to numbers that are no one's driver, before PLAT-11 looks the phone up).
  */
 export const namedBudgets = {
   otp_request_phone: { limit: 5, windowMs: hourMs },
+  otp_request_phone_day: { limit: 20, windowMs: dayMs },
   otp_request_ip: { limit: 20, windowMs: hourMs },
+  otp_request_global: { limit: defaultOtpGlobalHourly, windowMs: hourMs },
 } as const satisfies Record<string, NamedBudget>;
+
+/** The named budgets with the configured global OTP budget (`OTP_GLOBAL_HOURLY_BUDGET`). */
+export function namedBudgetsWith(otpGlobalHourly: number): Record<NamedBudgetName, NamedBudget> {
+  return { ...namedBudgets, otp_request_global: { limit: otpGlobalHourly, windowMs: hourMs } };
+}
 
 export type NamedBudgetName = keyof typeof namedBudgets;
 

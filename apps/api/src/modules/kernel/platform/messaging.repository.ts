@@ -179,12 +179,23 @@ export class MessagingRepository extends PlatformRepository<typeof coreMessaging
     nonce: string,
     callbackId: string,
   ): Promise<boolean> {
-    const claimed = await this.unscoped().execute(sql`
-      UPDATE core_engine_callback_nonces SET callback_id = ${callbackId}
-      WHERE service_identity = ${serviceIdentity} AND nonce = ${nonce}
-        AND NOT EXISTS (SELECT 1 FROM core_engine_callback_nonces WHERE callback_id = ${callbackId})
-      RETURNING nonce`);
-    return claimed.length === 1;
+    // In a savepoint: two concurrent deliveries of one callback id race past NOT EXISTS, and the
+    // loser's unique violation (23505) must not abort the transaction (adversary L-2).
+    try {
+      const claimed = await this.unscoped().transaction((savepoint) =>
+        savepoint.execute(sql`
+          UPDATE core_engine_callback_nonces SET callback_id = ${callbackId}
+          WHERE service_identity = ${serviceIdentity} AND nonce = ${nonce}
+            AND NOT EXISTS (
+              SELECT 1 FROM core_engine_callback_nonces WHERE callback_id = ${callbackId})
+          RETURNING nonce`),
+      );
+      return claimed.length === 1;
+    } catch (error) {
+      const failure = error as { code?: string; cause?: { code?: string } };
+      if ((failure.code ?? failure.cause?.code) === '23505') return false;
+      throw error;
+    }
   }
 
   /** A `message` row's account and provider state, locked for the update that follows. */

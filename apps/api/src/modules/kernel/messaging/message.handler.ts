@@ -8,12 +8,12 @@ import { getMetrics } from '../telemetry/metrics.js';
 import { BreakerOpen } from './breaker.js';
 import { engineUnavailable } from './engine/engine-message-sender.js';
 import type { EngineRoute, MessageSenders, SentMessage } from './message-sender.js';
-import { MessagingNotConfigured } from './message-sender.js';
+import { MessagingNotConfigured, platformEngineAccountId } from './message-sender.js';
 import type { CapCounter, RecipientLedger } from './message-policies.js';
 import { capKeys, isStaleOtp, messageCaps, quietHoursWaitS } from './message-policies.js';
 import { normalisePhone, phoneTail } from './phone.js';
 import type { TemplateDefinition, TemplateKey } from './templates.js';
-import { isTemplateKey, messageTemplates } from './templates.js';
+import { isTemplateKey, messageTemplates, templateParamsProblem } from './templates.js';
 
 // The `message` outbox handler (PLAT-9 plan 2.5, 2A.1; integrations §2.4, §4.1; ADR-0041): reads a
 // `message` row, decrypts its secret parameters at send time only (the OTP code, never logged),
@@ -219,6 +219,17 @@ export class MessageKindHandler implements KindHandler {
       ) {
         return waitWithoutAttempt(engineUnavailable, 30);
       }
+      if (error instanceof ProviderFailure && error.reason === 'unauthorised') {
+        // Adversary M-3: the row is parked (an hour, no attempt); the alert pages.
+        const sender =
+          payload.channel === 'mail'
+            ? 'mail'
+            : route?.engineAccountId === platformEngineAccountId
+              ? 'platform'
+              : 'account';
+        getMetrics().add('messaging_sender_alerts_total', 1, { event: 'unauthorised', sender });
+        this.#logger.warn(`message sender refused our credentials sender=${sender}`);
+      }
       throw error;
     }
     getMetrics().add('messages_sent_total', 1, { template, locale: payload.locale });
@@ -330,6 +341,7 @@ export class MessageKindHandler implements KindHandler {
         return `parameter ${name} cannot be decrypted`;
       }
     }
-    return params;
+    // Adversary L-7: line breaks, links outside the link parameter, over-long values.
+    return templateParamsProblem(template, params) ?? params;
   }
 }

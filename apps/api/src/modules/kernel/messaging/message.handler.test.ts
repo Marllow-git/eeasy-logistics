@@ -4,6 +4,7 @@ import type { Mock } from 'vitest';
 import { describe, expect, it, vi } from 'vitest';
 import type { OutboxRow } from '../outbox/kind-handlers.js';
 import { ProviderFailure } from '../outbox/provider-failure.js';
+import { getMetrics } from '../telemetry/metrics.js';
 import { BreakerOpen } from './breaker.js';
 import { engineUnavailable } from './engine/engine-message-sender.js';
 import type { MessageSender, SendTemplateInput } from './message-sender.js';
@@ -191,6 +192,22 @@ describe('MessageKindHandler (plan 2.5, 2A.1)', () => {
       consumesAttempt: false,
       error: { status: engineUnavailable },
     });
+  });
+
+  it('counts refused credentials as a sender alert and lets the row park (adversary M-3)', async () => {
+    const add = vi.spyOn(getMetrics(), 'add');
+    const refusing: SendMock = vi.fn();
+    const { handler } = handlerWith({ send: refusing });
+    refusing.mockReset();
+    refusing.mockRejectedValue(
+      new ProviderFailure('unauthorised', 'refused', { status: 'AUTH_BAD_SIGNATURE' }),
+    );
+    await expect(handler.execute(otpRow())).rejects.toMatchObject({ reason: 'unauthorised' });
+    expect(add).toHaveBeenCalledWith('messaging_sender_alerts_total', 1, {
+      event: 'unauthorised',
+      sender: 'platform',
+    });
+    add.mockRestore();
   });
 
   it('lets a refusal through to the outbox (dead by failureOutcome)', async () => {

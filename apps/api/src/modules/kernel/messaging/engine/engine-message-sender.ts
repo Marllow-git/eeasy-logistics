@@ -130,6 +130,13 @@ export function engineFailure(
   retryAfter: string | null,
 ): ProviderFailure {
   const code = typeof answer?.error?.code === 'string' ? answer.error.code.slice(0, 64) : undefined;
+  // A stale timestamp or a replayed nonce is a clock or transport fault on one request, retried with
+  // a fresh timestamp and nonce (adversary M-3); an unknown key or a bad signature is configuration.
+  if (status === 401 && (code === 'AUTH_STALE_TIMESTAMP' || code === 'AUTH_REPLAYED_NONCE')) {
+    return new ProviderFailure('transient', `the engine refused the request (${code})`, {
+      status: engineUnavailable,
+    });
+  }
   if (status === 401 || status === 403) {
     return new ProviderFailure('unauthorised', 'the engine refused our signature', {
       status: code ?? status,

@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { Readable } from 'node:stream';
+import { describe, expect, it, vi } from 'vitest';
 import { classifyReply, normaliseWord } from '../opt-out-list.js';
-import { advances } from './callback-door.js';
+import { EngineCallbackDoor, advances } from './callback-door.js';
 
 // PLAT-9 item G: the monotonic message state of the callback door (engine contract §5.2) and the
 // stop and start words of the opt-out list (integrations §5.5; ADR-0041 union).
@@ -53,5 +54,32 @@ describe('opt-out words (integrations §5.5; ADR-0041)', () => {
 
   it('treats the alef forms alike', () => {
     expect(normaliseWord('إلغاء')).toBe(normaliseWord('الغاء'));
+  });
+});
+
+describe('refusal logging (adversary L-1)', () => {
+  it('logs the first refusal of a code in a minute at warn, the rest at debug', async () => {
+    let now = Date.parse('2026-11-01T10:00:00Z');
+    const logger = { log: vi.fn(), warn: vi.fn(), debug: vi.fn() };
+    const door = new EngineCallbackDoor({
+      settings: { keyId: 'k', secret: 's'.repeat(32), platformInstanceId: undefined },
+      store: { run: () => Promise.reject(new Error('never reached')) },
+      optOuts: { add: vi.fn(), remove: vi.fn() },
+      now: () => now,
+      logger,
+    });
+    const forged = () =>
+      door.receive({
+        method: 'POST',
+        path: '/internal/whatsapp/v1/callbacks',
+        headers: { 'content-length': '2', 'x-eeasy-service': 'someone' },
+        body: Readable.from([Buffer.from('{}')]),
+      });
+    for (let index = 0; index < 3; index += 1) expect((await forged()).status).toBe(401);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.debug).toHaveBeenCalledTimes(2);
+    now += 60_000;
+    await forged();
+    expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 });

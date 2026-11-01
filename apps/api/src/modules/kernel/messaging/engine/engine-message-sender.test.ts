@@ -166,6 +166,10 @@ describe('EngineMessageSender (plan 2A.1)', () => {
 
   it.each([
     [refused(401, 'AUTH_BAD_SIGNATURE'), 'unauthorised', 'AUTH_BAD_SIGNATURE'],
+    [refused(401, 'AUTH_UNKNOWN_KEY'), 'unauthorised', 'AUTH_UNKNOWN_KEY'],
+    // Adversary M-3: clock and transport faults are retried.
+    [refused(401, 'AUTH_STALE_TIMESTAMP'), 'transient', engineUnavailable],
+    [refused(401, 'AUTH_REPLAYED_NONCE'), 'transient', engineUnavailable],
     [refused(422, 'BINDING_MISMATCH'), 'permanent', 'BINDING_MISMATCH'],
     [refused(422, 'EXPIRY_MISMATCH'), 'permanent', 'EXPIRY_MISMATCH'],
     [refused(409, 'EVENT_ALREADY_SENT'), 'permanent', 'EVENT_ALREADY_SENT'],

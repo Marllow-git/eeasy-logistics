@@ -7,6 +7,7 @@ import {
   messageTemplates,
   placeholdersOf,
   renderTemplate,
+  templateParamsProblem,
 } from './templates.js';
 
 // PLAT-9 plan 2.3: the registry and the texts of packages/i18n agree in both locales.
@@ -77,6 +78,26 @@ describe('renderTemplate', () => {
     });
     expect(mail.subject).toContain('join {link} on');
     expect(mail.body).toContain('https://app.example.test/invite/x');
+  });
+
+  it.each([
+    ['a line break in the account name', { account_name: 'Acme\r\nBcc: x@example.test' }],
+    ['a link in the account name', { account_name: 'Visit https://evil.example.test' }],
+    ['an account name over 80 characters', { account_name: 'a'.repeat(81) }],
+    ['a line break in the link', { link: 'https://app.example.test/x\nBcc: y' }],
+  ])('refuses a mail with %s (adversary L-7)', (_name, change) => {
+    const params = { account_name: 'Acme', link: 'https://app.example.test/invite/x', ...change };
+    expect(templateParamsProblem('invitation', params)).toBeDefined();
+    expect(() => renderTemplate('invitation', 'en', params)).toThrow(TemplateParamsError);
+  });
+
+  it('accepts the link in its own parameter and an 80-character Arabic name', () => {
+    expect(
+      templateParamsProblem('invitation', {
+        account_name: 'م'.repeat(80),
+        link: 'https://app.example.test/invite/x',
+      }),
+    ).toBeUndefined();
   });
 
   it('refuses a missing, empty or unknown parameter', () => {

@@ -133,6 +133,8 @@ export const serverVariables = {
   MESSAGING_DISABLED: boolean().default(false),
   // The WhatsApp stub's URL (local and ci only).
   MESSAGING_STUB_URL: httpUrl().optional(),
+  // OTP requests across the platform per hour (PLAT-9 adversary M-1).
+  OTP_GLOBAL_HOURLY_BUDGET: count(100_000).default(500),
   // The engine's signed internal API (PLAT-9 plan 2A.1; engine contract §2): its base URL, our
   // service identity and command key, the separate callback key, and the platform's linked sender
   // instance (OTP and platform messages, 2A.4). The stub reads the same signing variables.
@@ -207,6 +209,7 @@ export const serverExpectations = {
   MESSAGING_PROVIDER: `one of ${messagingProviders.join(', ')}`,
   MESSAGING_DISABLED: 'true or false',
   MESSAGING_STUB_URL: 'an http(s) URL',
+  OTP_GLOBAL_HOURLY_BUDGET: 'an integer from 1 to 100000',
   WHATSAPP_ENGINE_URL: 'an https URL, or http on a loopback host (engine contract §2.8)',
   WHATSAPP_ENGINE_SERVICE_ID:
     'a service identity of 1 to 64 letters, digits, dot, underscore or dash',
@@ -291,6 +294,8 @@ export interface Config {
     readonly disabled: boolean;
     /** The WhatsApp stub (`tools/whatsapp-stub`); local and ci only. */
     readonly stubUrl: string | undefined;
+    /** OTP requests across the platform per hour (`OTP_GLOBAL_HOURLY_BUDGET`, default 500). */
+    readonly otpGlobalHourlyBudget: number;
     /** The engine's signed internal API (ADR-0041); all set when the provider is `engine`. */
     readonly engine: EngineSettings;
   };
@@ -462,6 +467,7 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       provider: resolveProvider(v.MESSAGING_PROVIDER, appEnv),
       disabled: v.MESSAGING_DISABLED,
       stubUrl: v.MESSAGING_STUB_URL,
+      otpGlobalHourlyBudget: v.OTP_GLOBAL_HOURLY_BUDGET,
       engine: {
         url: v.WHATSAPP_ENGINE_URL,
         serviceId: v.WHATSAPP_ENGINE_SERVICE_ID,

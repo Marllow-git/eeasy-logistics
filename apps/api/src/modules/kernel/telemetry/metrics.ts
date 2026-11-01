@@ -86,7 +86,7 @@ export const metricCatalogue = {
   messaging_sender_alerts_total: {
     kind: 'counter',
     description:
-      'WhatsApp sender disconnections that need a person: needs_relink or banned (PLAT-9, ADR-0041)',
+      'Senders that need a person: needs_relink or banned (ADR-0041), or credentials refused (unauthorised, adversary M-3) (PLAT-9)',
     labels: ['event', 'sender'],
   },
   message_budget_used_ratio: {
@@ -120,6 +120,12 @@ export const metricCatalogue = {
     kind: 'gauge',
     description: 'Readiness checks: 1 passing, 0 failing',
     labels: ['check'],
+  },
+  otp_requests_refused_total: {
+    kind: 'counter',
+    description:
+      'OTP requests refused: cooldown, unavailable, or the budget that refused them (PLAT-9, adversary M-1)',
+    labels: ['reason'],
   },
   otp_failures_total: {
     kind: 'counter',

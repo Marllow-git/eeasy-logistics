@@ -294,6 +294,67 @@ describe('engine callback door (PLAT-9 item G)', () => {
     );
   });
 
+  it('acknowledges and ignores a connection event of an account with no engine id yet (adversary L-6)', async () => {
+    const pending = uuidv7();
+    const instance = randomUUID();
+    await owner`INSERT INTO core_accounts (id, name, status) VALUES (${pending}, 'unallocated', 'active')`;
+    await owner`
+      INSERT INTO core_messaging_senders (account_id, sender_instance_id) VALUES (${pending}, ${instance})`;
+    try {
+      const base = {
+        eeasy_account_id: 42,
+        sender_instance_id: instance,
+        occurred_at: wireInstant(Date.now()),
+      };
+      await post({
+        ...base,
+        callback: 'connection.event',
+        event: 'needs_relink',
+        callback_id: randomUUID(),
+      }).expect(200, { ok: true });
+      const [sender] = await owner<{ status: string }[]>`
+        SELECT status FROM core_messaging_senders WHERE account_id = ${pending}`;
+      expect(sender?.status).toBe('linked');
+      const refused = await post({
+        ...base,
+        callback: 'suppression.changed',
+        customer_number: '+966500000778',
+        suppressed: true,
+        callback_id: randomUUID(),
+      }).expect(422);
+      expect((refused.body as { error: { code: string } }).error.code).toBe('BINDING_MISMATCH');
+    } finally {
+      await owner`DELETE FROM core_messaging_senders WHERE account_id = ${pending}`;
+      await owner`DELETE FROM core_accounts WHERE id = ${pending}`;
+    }
+  });
+
+  it('answers a racing redelivery of one callback id as a duplicate, the transaction intact (adversary L-2)', async () => {
+    const callbackId = randomUUID();
+    const first = randomBytes(16).toString('hex');
+    const second = randomBytes(16).toString('hex');
+    const store = messagingStore(pool.db);
+    await store.run((repo) => repo.reserveNonce(engineServiceIdentity, first));
+    await store.run((repo) => repo.reserveNonce(engineServiceIdentity, second));
+    let racing: Promise<[boolean, boolean]> | undefined;
+    await owner.begin(async (tx) => {
+      // The first delivery has claimed the id but not committed when the second claims it.
+      await tx`UPDATE core_engine_callback_nonces SET callback_id = ${callbackId}
+               WHERE service_identity = ${engineServiceIdentity} AND nonce = ${first}`;
+      racing = store.run(async (repo) => {
+        const claimed = await repo.claimCallback(engineServiceIdentity, second, callbackId);
+        // The transaction still works after the caught unique violation.
+        const another = await repo.reserveNonce(
+          engineServiceIdentity,
+          randomBytes(16).toString('hex'),
+        );
+        return [claimed, another] as [boolean, boolean];
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(await racing).toEqual([false, true]);
+  });
+
   it('records a sender’s connection state in event order', async () => {
     const event = (name: string, at: number): Body => ({
       callback: 'connection.event',

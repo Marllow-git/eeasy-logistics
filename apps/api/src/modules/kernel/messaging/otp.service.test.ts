@@ -2,6 +2,8 @@ import { defineConfig } from '@eeasy-logistics/config';
 import type { EnvRecord } from '@eeasy-logistics/config';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiException } from '../errors/api-exception.js';
+import { namedBudgets, namedBudgetsWith } from '../rate-limit/budgets.js';
+import { getMetrics } from '../telemetry/metrics.js';
 import type { OtpStore } from '../platform/otp-challenges.repository.js';
 import { memoryBreakerStateStore } from './breaker.js';
 import { OtpHasher, otpHmacKey } from './otp-code.js';
@@ -107,6 +109,63 @@ describe('OtpService.request budgets (review round 2, finding 2)', () => {
     expect((failure as ApiException).code).toBe('rate_limited');
     expect(charged).toEqual(['otp_request_phone']);
     expect(challenges.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('OtpService.request budgets (adversary M-1)', () => {
+  it.each([
+    ['otp_request_phone_day', ['otp_request_phone', 'otp_request_phone_day']],
+    ['otp_request_ip', ['otp_request_phone', 'otp_request_phone_day', 'otp_request_ip']],
+    [
+      'otp_request_global',
+      ['otp_request_phone', 'otp_request_phone_day', 'otp_request_ip', 'otp_request_global'],
+    ],
+  ])('refused by %s after the narrower ones, counted by reason', async (refusing, expected) => {
+    const add = vi.spyOn(getMetrics(), 'add');
+    const charged: string[] = [];
+    const charge = vi.fn((name: string) => {
+      charged.push(name);
+      return name === refusing
+        ? Promise.reject(new ApiException('rate_limited'))
+        : Promise.resolve();
+    });
+    const challenges = {
+      lockPhone: vi.fn(() => Promise.resolve()),
+      cooldownLeft: vi.fn(() => Promise.resolve(0)),
+      insert: vi.fn(() => Promise.resolve()),
+    };
+    const key = otpHmacKey(Buffer.alloc(32, 7).toString('base64'));
+    const service = new OtpService({
+      store: {
+        run: ((fn: (tx: unknown) => Promise<unknown>) =>
+          fn({ challenges, uow: {} })) as OtpStore['run'],
+      },
+      cipher: { activeKeyId: 'k', encrypt: vi.fn(), decrypt: vi.fn(), rotate: vi.fn() },
+      hasher: new OtpHasher(key, [key]),
+      outbox: { enqueue: vi.fn() },
+      limiter: { charge },
+      availability: { whatsappAvailable: () => Promise.resolve(true) },
+      logger: quiet,
+    });
+    const failure = await service
+      .request({
+        phone: '+966500000123',
+        purpose: 'driver_login',
+        ip: '198.51.100.1',
+        locale: 'ar',
+      })
+      .catch((error: unknown) => error);
+    expect((failure as ApiException).code).toBe('rate_limited');
+    expect(charged).toEqual(expected);
+    expect(challenges.insert).not.toHaveBeenCalled();
+    expect(add).toHaveBeenCalledWith('otp_requests_refused_total', 1, { reason: refusing });
+    add.mockRestore();
+  });
+
+  it('takes 20 per phone a day and 500 an hour across the platform by default', () => {
+    expect(namedBudgets.otp_request_phone_day).toEqual({ limit: 20, windowMs: 86_400_000 });
+    expect(namedBudgets.otp_request_global).toEqual({ limit: 500, windowMs: 3_600_000 });
+    expect(namedBudgetsWith(50).otp_request_global.limit).toBe(50);
   });
 });
 
