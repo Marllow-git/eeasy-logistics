@@ -8,6 +8,8 @@ import { operationSchemas as recipient } from '@eeasy-logistics/contracts/recipi
 import { operationSchemas as staff } from '@eeasy-logistics/contracts/staff/schemas';
 
 export const probeOperations = {
+  /** `core.auth.anonymous`: a sign-in door, the only kind of operation a public staff route binds. */
+  staffDoor: staff.login,
   /** `core.sites.read`: owner, admin, dispatcher, site staff, cashier, viewer. */
   staffRead: staff.listSites,
   /** `core.sites.manage`: owner and admin only. */

@@ -38,15 +38,15 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
     OperationRoutesCheck,
     { provide: DenialAuditThrottle, useFactory: () => new DenialAuditThrottle() },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
-    // Guards run in this order: the principal (and its rate-limit charge), its permission, then the
-    // web client marker on staff and platform writes, all before any interceptor opens a
-    // transaction.
+    // Guards run in this order: the principal (and its rate-limit charge), the web client marker on
+    // staff and platform writes, JSON bodies only, then the operation's permission (PLAT-10;
+    // adversary A-5: a cross-site or form write is refused before any denial audit row), all
+    // before any interceptor opens a transaction.
     { provide: APP_GUARD, useClass: TenancyGuard },
-    // The operation's contract permission (PLAT-10), right after the principal is known.
-    { provide: APP_GUARD, useClass: PermissionGuard },
     { provide: APP_GUARD, useClass: WebClientGuard },
     // JSON bodies only (adversary H-1): a form post is refused before any interceptor.
     { provide: APP_GUARD, useClass: ContentTypeGuard },
+    { provide: APP_GUARD, useClass: PermissionGuard },
     { provide: APP_INTERCEPTOR, useClass: UnitOfWorkInterceptor },
     // Every `@Input()` parsed with its operation's generated strict schemas (A-17).
     { provide: APP_PIPE, useClass: ContractPipe },

@@ -23,6 +23,8 @@ const catalogue = (
     permissions: Record<string, string[]>;
   }
 ).permissions;
+/** The brand of a generated operation entry (scripts/operations.ts; apps/api checks it at boot). */
+const contractOperationBrand = Symbol.for('elx.contract-operation');
 const doors = new Set(['core.auth.anonymous', 'core.auth.self', 'platform.auth.self']);
 
 /** README §11 rows of the "Role bundles" table: role name and the "Holds" cell. */
@@ -207,6 +209,13 @@ describe('generated operation permission maps (plan 2.2)', () => {
         expect(bound?.surface).toBe(name);
         expect(bound?.permission).toBe(operation.permission);
         expect(Object.isFrozen(bound)).toBe(true);
+        // Adversary A-4: a non-enumerable brand holding the id, which a spread copy loses.
+        const brand = Object.getOwnPropertyDescriptor(bound, contractOperationBrand);
+        expect(brand?.value).toBe(operation.id);
+        expect(brand?.enumerable).toBe(false);
+        expect(Object.getOwnPropertyDescriptor({ ...bound }, contractOperationBrand)).toBe(
+          undefined,
+        );
       }
     }
     expect(platformEntry.crossTenantOperations).toContain('platformListAccountAudit');

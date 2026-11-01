@@ -10,7 +10,7 @@ import { from, lastValueFrom } from 'rxjs';
 import { APP_POOL } from '../../../database/database.module.js';
 import type { AuditEvent, AuditSink } from '../audit/audit-sink.js';
 import { AUDIT_SINK } from '../audit/audit-sink.js';
-import { bindContextSiteScope, requestSiteScope } from '../authz/site-scope.js';
+import { requestSiteScope } from '../authz/site-scope.js';
 import type { Principal } from '../auth/principal.js';
 import { ApiException } from '../errors/api-exception.js';
 import { clientRequestIdOf, serverRequestIdOf } from '../request/request-id.js';
@@ -27,9 +27,9 @@ class RollbackWith extends Error {
 }
 
 /**
- * The tenant context of a staff or driver principal (plan 2.5): every field from the token, frozen,
- * so it keeps its identity through the unit of work; a site-scoped request (PLAT-10 plan 2.6)
- * binds its sites to it for `siteFilter`.
+ * The tenant context of a staff or driver principal (plan 2.5): every field from the token; a
+ * site-scoped request (PLAT-10 plan 2.6) carries its normalised sites as `siteIds` for
+ * `siteFilter`.
  */
 export function tenantContext(
   principal: Principal,
@@ -37,16 +37,15 @@ export function tenantContext(
   sites?: readonly string[],
 ): RequestContext {
   if (principal.kind === 'platform') throw new Error('A platform principal has no account');
-  const context: RequestContext = Object.freeze({
+  return Object.freeze({
     accountId: principal.accountId,
     membershipId: principal.membershipId,
     userId: principal.userId,
     deviceId: principal.kind === 'driver' ? principal.deviceId : null,
     actingCrossTenant: false,
     requestId,
+    ...(sites === undefined ? {} : { siteIds: sites }),
   });
-  if (sites !== undefined) bindContextSiteScope(context, sites);
-  return context;
 }
 
 /** The `User-Agent` header, when it is one string. */

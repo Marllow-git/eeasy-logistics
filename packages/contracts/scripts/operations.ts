@@ -142,7 +142,7 @@ export function renderOperations(
       ([status, name]) => `'${status}': schemas.${name}`,
     );
     fields.push(`responses: { ${responses.join(', ')} }`);
-    return `  ${id}: Object.freeze({ ${fields.join(', ')} }),`;
+    return `  ${id}: entry({ ${fields.join(', ')} }),`;
   });
   const permissions = access.map((operation) => `  ${operation.id}: '${operation.permission}',`);
   const crossTenant = access
@@ -166,9 +166,23 @@ ${crossTenant.join('\n')}
 ] as const;
 
 /**
+ * The brand of a generated entry (PLAT-10 adversary A-4): a non-enumerable property holding the
+ * operationId, which a spread copy does not carry; apps/api checks it at boot.
+ */
+export const contractOperationBrand = Symbol.for('elx.contract-operation');
+
+/** Brands and freezes one entry. */
+function entry<const T extends { readonly operationId: string }>(operation: T): Readonly<T> {
+  return Object.freeze(
+    Object.defineProperty(operation, contractOperationBrand, { value: operation.operationId }),
+  );
+}
+
+/**
  * Every operation of the surface by operationId: its id, surface, permission and cross-tenant flag
  * (read by the API's permission guard, PLAT-10), strict request schemas and response schemas per
- * status. Each entry is frozen: a controller binds it as generated, \`@Operation(operationSchemas.<id>)\`.
+ * status. Each entry is branded and frozen: a controller binds it as generated,
+ * \`@Operation(operationSchemas.<id>)\`.
  */
 export const operationSchemas = {
 ${lines.join('\n')}

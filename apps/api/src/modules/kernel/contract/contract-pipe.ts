@@ -24,6 +24,7 @@ export interface OperationSchemas {
   readonly operationId?: string;
   readonly surface?: string;
   readonly permission?: string;
+  readonly crossTenant?: boolean;
   readonly params?: ZodType;
   readonly query?: ZodType;
   readonly header?: ZodType;
