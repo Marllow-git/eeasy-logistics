@@ -60,6 +60,8 @@ COPY --from=build /repo/packages/contracts/generated ./packages/contracts/genera
 # The reviewed SQL migrations and their journal: --role migrate applies them, /ready reads the
 # expected version from the journal (PLAT-5).
 COPY --from=build /repo/apps/api/drizzle ./apps/api/drizzle
+# Run-time data files: the breached-password digests the sign-in doors read (PLAT-11 plan 2.2).
+COPY --from=build /repo/apps/api/resources/breached-passwords.sha1 ./apps/api/resources/breached-passwords.sha1
 WORKDIR /app/apps/api
 # The base image's unprivileged user "node", by uid so runAsNonRoot can verify it. The files
 # stay root-owned, so the process cannot change them.

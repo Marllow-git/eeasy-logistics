@@ -99,7 +99,8 @@ Member management doors (`inviteMember`, `updateMember`, `revokeMember`, `resetM
 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
-| A | this commit | schema, migrate, rls integration files: red 1 failed / 13 passed (users-class grant test with the `REVOKE` disabled), green 31/31 with `ELX_RLS=off` and 31/31 with `ELX_RLS=on`; migrate job twice on a scratch db (13 applied, then nothing to migrate); psql grants: elx_app none on the five users-class tables, SELECT/INSERT/UPDATE on memberships and invitations; elx_platform all four on all seven | 8.2 #1 to #4 |
+| A | `67d2485` | schema, migrate, rls integration files: red 1 failed / 13 passed (users-class grant test with the `REVOKE` disabled), green 31/31 with `ELX_RLS=off` and 31/31 with `ELX_RLS=on`; migrate job twice on a scratch db (13 applied, then nothing to migrate); psql grants: elx_app none on the five users-class tables, SELECT/INSERT/UPDATE on memberships and invitations; elx_platform all four on all seven | 8.2 #1 to #4 |
+| B | this commit | config `define-config.test.ts`: red 7 failed / 41 passed without the src change, green; config suite 165/165; api unit `passwords.test.ts` 19 + `tokens.test.ts` 13 = 32/32 (mutation red: breached check and constant-time compare removed, 3 failed / 16 passed); RFC 9106 §5.3 vector matched; Argon2id hash 14 to 15 ms on the executor's Mac (darwin-arm64, Node 24.22.2); integration `auth-challenges.test.ts` 5/5; i18n 54/54 | 8.2 #5 to #8 |
 
 ### 8.1 Skills, documents and versions consulted
 

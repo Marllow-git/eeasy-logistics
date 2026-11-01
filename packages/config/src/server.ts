@@ -23,6 +23,8 @@ import {
   releaseExpectation,
   retentionMonths,
   seconds,
+  graceSeconds,
+  totpIssuer,
   mailFrom,
   secret,
   smtpUrl,
@@ -128,6 +130,11 @@ export const serverVariables = {
   AUTH_ACCESS_TOKEN_TTL_SECONDS: seconds().default(900),
   AUTH_STAFF_REFRESH_TTL_SECONDS: seconds().default(2_592_000),
   AUTH_DRIVER_REFRESH_TTL_SECONDS: seconds().default(7_776_000),
+  // PLAT-11 plan 2.14: the platform session's sliding idle expiry (identity §3.3: 12 h), the refresh
+  // reuse grace (Q-23: 30 s, 0 disables) and the issuer authenticator apps show for TOTP.
+  AUTH_PLATFORM_IDLE_TTL_SECONDS: seconds().default(43_200),
+  AUTH_REFRESH_REUSE_GRACE_SECONDS: graceSeconds().default(30),
+  AUTH_TOTP_ISSUER: totpIssuer().default('eeasy-logistics'),
   // messaging
   MESSAGING_PROVIDER: z.enum(messagingProviders).optional(),
   MESSAGING_DISABLED: boolean().default(false),
@@ -206,6 +213,9 @@ export const serverExpectations = {
   AUTH_ACCESS_TOKEN_TTL_SECONDS: seconds1y,
   AUTH_STAFF_REFRESH_TTL_SECONDS: seconds1y,
   AUTH_DRIVER_REFRESH_TTL_SECONDS: seconds1y,
+  AUTH_PLATFORM_IDLE_TTL_SECONDS: seconds1y,
+  AUTH_REFRESH_REUSE_GRACE_SECONDS: 'a number of seconds from 0 (off) to 3600',
+  AUTH_TOTP_ISSUER: 'a name of 1 to 64 letters, digits, space, dot, underscore or dash',
   MESSAGING_PROVIDER: `one of ${messagingProviders.join(', ')}`,
   MESSAGING_DISABLED: 'true or false',
   MESSAGING_STUB_URL: 'an http(s) URL',
@@ -287,6 +297,11 @@ export interface Config {
     readonly accessTokenTtlSeconds: number;
     readonly staffRefreshTtlSeconds: number;
     readonly driverRefreshTtlSeconds: number;
+    /** The platform session's sliding idle expiry (refresh rotation sets now + this). */
+    readonly platformIdleTtlSeconds: number;
+    /** Seconds after a rotation in which the same refresh token is answered again (0: off). */
+    readonly refreshReuseGraceSeconds: number;
+    readonly totpIssuer: string;
   };
   readonly messaging: {
     /** `null` only when no provider is set in staging or production; see `resolveProvider`. */
@@ -462,6 +477,9 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       accessTokenTtlSeconds: v.AUTH_ACCESS_TOKEN_TTL_SECONDS,
       staffRefreshTtlSeconds: v.AUTH_STAFF_REFRESH_TTL_SECONDS,
       driverRefreshTtlSeconds: v.AUTH_DRIVER_REFRESH_TTL_SECONDS,
+      platformIdleTtlSeconds: v.AUTH_PLATFORM_IDLE_TTL_SECONDS,
+      refreshReuseGraceSeconds: v.AUTH_REFRESH_REUSE_GRACE_SECONDS,
+      totpIssuer: v.AUTH_TOTP_ISSUER,
     },
     messaging: {
       provider: resolveProvider(v.MESSAGING_PROVIDER, appEnv),
