@@ -5,8 +5,11 @@ import { surfaceOf } from '../auth/surfaces.js';
 // Trace context across the edge (PLAT-14 plan 2.1; adversary A-6). A caller's `traceparent` is
 // honoured only for a request that came through the trusted ingress (Cloudflare: `trust proxy`
 // hops above 0) on a surface our own clients call (staff, platform, driver); a public or recipient
-// request, or any request when no proxy is trusted, starts a new trace, so a stranger can neither
-// join nor seed our traces. Outbound, `tracestate` is never sent.
+// request, or any request when no proxy is trusted, starts a new trace. The edge does not strip
+// `traceparent`, and extraction runs before authentication, so an unauthenticated client on a
+// staff, platform or driver path can still choose the trace id of its own request span (a 401).
+// Accepted residual (lead ruling, re-check A-6).
+// Outbound, `tracestate` is never sent.
 
 /** The surfaces whose callers may continue a trace. */
 const trustedSurfaces: ReadonlySet<string> = new Set(['staff', 'platform', 'driver']);

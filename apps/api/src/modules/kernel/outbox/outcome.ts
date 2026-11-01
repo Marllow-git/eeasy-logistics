@@ -1,4 +1,4 @@
-import { redactText } from '../telemetry/redact.js';
+import { headOf, redactText } from '../telemetry/redact.js';
 import type { KindOutcome, OutboxRow, OutcomeError } from './kind-handlers.js';
 import { parkedRetryS } from './connection-parker.js';
 import { ProviderFailure } from './provider-failure.js';
@@ -24,8 +24,10 @@ export const minRetryDelayMs = 1_000;
  * to 500 characters. The payload never reaches it: handlers pass the provider's answer only.
  */
 export function redactErrorMessage(message: string): string {
-  // `redactText` cuts its input to 4 kB before any pattern runs (adversary A-1).
-  const clean = redactText(message).trim();
+  // Cut to 4 kB first, then redact (adversary A-1). Only the first 500 code points are kept, so a
+  // run straddling the 4 kB edge never reaches the row; redacting the head whole keeps a long
+  // message without spaces instead of dropping it as a cut tail (re-check A-1b).
+  const clean = redactText(headOf(message)).trim();
   const points = Array.from(clean);
   return points.length <= maxLastErrorLength ? clean : points.slice(0, maxLastErrorLength).join('');
 }
