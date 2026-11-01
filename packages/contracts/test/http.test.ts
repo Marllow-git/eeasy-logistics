@@ -2,7 +2,7 @@
 // environment read, and the call path from a generated function through `apiFetch`.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { platformListAccounts, platformProvisionAccount } from '../generated/platform/client.ts';
-import { ApiError, apiFetch, createFetcher } from '../src/http.ts';
+import { ApiError, apiFetch, createFetcher, defaultRequestId } from '../src/http.ts';
 
 interface Call {
   url: string;
@@ -90,6 +90,22 @@ describe('createFetcher headers', () => {
     expect(calls[1]?.body).toBe(JSON.stringify({ name: 'Acme' }));
   });
 
+  it('marks every non-GET method, HEAD and OPTIONS included', async () => {
+    const { calls, fetch } = fakeFetch(() => new Response(null, { status: 204 }));
+    const fetcher = createFetcher({ baseUrl: '', fetch });
+    for (const method of ['HEAD', 'OPTIONS', 'PUT', 'PATCH', 'DELETE', 'get']) {
+      await apiFetch('/x', { method, fetcher });
+    }
+    expect(calls.map((c) => c.headers.get('x-el-client'))).toEqual([
+      'web',
+      'web',
+      'web',
+      'web',
+      'web',
+      null,
+    ]);
+  });
+
   it('does not mark writes when webClient is false (driver app)', async () => {
     const { calls, fetch } = fakeFetch(() => new Response(null, { status: 204 }));
     const fetcher = createFetcher({ baseUrl: '', fetch, webClient: false, requestId: () => 'r-1' });
@@ -166,6 +182,40 @@ describe('apiFetch responses', () => {
     const fetcher = createFetcher({ baseUrl: '', fetch });
     await expect(apiFetch('/x', { fetcher })).rejects.toBe(failure);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('defaultRequestId', () => {
+  const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  it('uses crypto.randomUUID when present', () => {
+    vi.stubGlobal('crypto', { randomUUID: () => 'from-random-uuid' });
+    expect(defaultRequestId()).toBe('from-random-uuid');
+  });
+
+  it('builds a v4 UUID from crypto.getRandomValues when randomUUID is missing (Hermes)', () => {
+    const getRandomValues = <T extends ArrayBufferView>(array: T): T => {
+      new Uint8Array(array.buffer).fill(0xff);
+      return array;
+    };
+    vi.stubGlobal('crypto', { getRandomValues });
+    const id = defaultRequestId();
+    expect(id).toMatch(uuidV4);
+    expect(id).toBe('ffffffff-ffff-4fff-bfff-ffffffffffff');
+  });
+
+  it('sends the fallback id through createFetcher', async () => {
+    vi.stubGlobal('crypto', {
+      getRandomValues: <T extends ArrayBufferView>(array: T): T => array,
+    });
+    const { calls, fetch } = fakeFetch(() => json(200, page));
+    await platformListAccounts(undefined, { fetcher: createFetcher({ baseUrl: '', fetch }) });
+    expect(calls[0]?.headers.get('x-request-id')).toBe('00000000-0000-4000-8000-000000000000');
+  });
+
+  it('throws an error naming the requestId option when Web Crypto is absent', () => {
+    vi.stubGlobal('crypto', undefined);
+    expect(() => defaultRequestId()).toThrow(/requestId option/);
   });
 });
 

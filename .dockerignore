@@ -22,4 +22,6 @@ node_modules/
 .claude/
 .serena/
 docs/
+# Except the API contracts: packages/contracts generates the web app's clients from them (PLAT-15).
+!docs/contracts/
 adr/
