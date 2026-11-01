@@ -21,7 +21,7 @@ Requirements: Node 22 LTS (`.nvmrc`) and pnpm 10 through Corepack.
 ```sh
 corepack enable          # once per machine; pins pnpm from package.json "packageManager"
 pnpm install
-pnpm turbo run typecheck lint test build   # the local gate (CI wiring is PLAT-3)
+pnpm turbo run typecheck lint test build   # the local gate; CI runs more (section CI)
 ```
 
 | Path | Holds |
@@ -85,7 +85,7 @@ curl -s localhost:8080/sent
 docker compose exec minio-init mc version info local/elx-local
 ```
 
-The smoke workflow `.github/workflows/compose-smoke.yml` runs these checks on every pull request that touches `compose.yaml` or `tools/`. The stub's own tests run with `node --test tools/whatsapp-stub/server.test.mjs`.
+The `api-test` and `web-build-census` CI jobs start the `ci` profile on every pull request (section CI). The stub's own tests run with `node --test tools/whatsapp-stub/server.test.mjs`.
 
 ### Without Docker: the native stack
 
@@ -116,6 +116,57 @@ Images, checked on 2026-10-31 against Docker Hub and GHCR:
 | `pgsty/mc` | `RELEASE.2026-10-26T00-00-00Z` | the `mc` client for the bucket bootstrap, from the same fork |
 | `axllent/mailpit` | `v1.33.0` | latest release |
 | `node` | `22.23.4-alpine` | runs the WhatsApp stub; same major as `.nvmrc` |
+
+## CI
+
+GitHub Actions, two workflows (PLAT-3; platform §4, handbook 03):
+
+| Workflow | Runs on | Jobs |
+|---|---|---|
+| `.github/workflows/pr.yml` | every pull request; called by `main.yml` on every push to `main` | the six required checks below and the advisory `node-24` |
+| `.github/workflows/main.yml` | push to `main`; pull requests as a dry run | `pr.yml` again (push only), then per image: build, run probe, Trivy scan, push to GHCR (push to `main` only) |
+
+| Check | What it runs | Locally |
+|---|---|---|
+| `typecheck-lint` | `pnpm turbo run typecheck lint` (every workspace, contracts Redocly lint included) and `pnpm format:check` | the same commands |
+| `api-test` | the Compose `ci` profile, `pnpm --filter api migrate` (a no-op until PLAT-5), `test:unit`, `test:integration`, `test:architecture`, with `APP_ENV=ci` | `APP_ENV=local pnpm --filter api migrate`, `pnpm --filter api test` against the native stack |
+| `api-test-rls` | the same with `ELX_RLS=on` (A-6; data §4.5) | as above with `ELX_RLS=on` |
+| `web-build-census` | builds the API and the standalone web app, starts both against the `ci` profile, runs Playwright in `ar` and `en`; screenshots and logs are the job's artifact `web-build-census` | `pnpm --filter web build && pnpm --filter web start -p 3001`, then `pnpm --filter web test:smoke` (first time: `pnpm --filter web exec playwright install chromium`) |
+| `driver-test` | typecheck, lint and Jest of `apps/driver`, then `expo-doctor` | `pnpm --filter driver test`, `pnpm --filter driver run doctor` |
+| `gitleaks` | gitleaks over the full history with `.gitleaks.toml` | the pre-commit hook below |
+| `node-24` | advisory: `typecheck lint test` on Node 24 (A-14); not required, its failure does not fail the run | |
+
+Integration tests that need the stack go in `apps/api/test/integration/` (run by `test:integration`); `test:unit` runs the rest. Turborepo's cache is kept in the GitHub Actions cache per job; test runs against the stack never come from that cache. Jobs time out after 20 minutes, `web-build-census` after 30; a newer push to a pull request cancels the older run.
+
+Images (`main.yml`): `apps/api/Dockerfile` (one image, `--role api|worker|migrate`, default `api`) and `apps/web/Dockerfile` (Next.js standalone, `PORT` 3000), both built from the repository root, for example `docker build -f apps/api/Dockerfile .`. On `main` they are pushed to `ghcr.io/marllow-git/eeasy-logistics/api` and `.../web`, tagged `sha-<commit>` and `main`, after a non-root check, a run probe and a Trivy scan that fails on a fixable critical vulnerability. Deployment to staging is OPS-1's.
+
+Secret scanning: `pnpm install` installs a pre-commit hook (simple-git-hooks, root `package.json`) that runs `gitleaks` on the staged changes and blocks the commit on a finding. It needs the gitleaks binary (`brew install gitleaks`). `.gitleaks.toml` excuses only `.env.example`, whose values are local placeholders.
+
+Required checks on `main`: branch protection needs GitHub Pro or Team for a private repository (the API answers 403 on the Free plan, checked 2026-10-31). Once the plan allows it, an admin runs:
+
+```sh
+gh api -X PUT repos/Marllow-git/eeasy-logistics/branches/main/protection --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": false,
+    "checks": [
+      { "context": "typecheck-lint", "app_id": 15368 },
+      { "context": "api-test", "app_id": 15368 },
+      { "context": "api-test-rls", "app_id": 15368 },
+      { "context": "web-build-census", "app_id": 15368 },
+      { "context": "driver-test", "app_id": 15368 },
+      { "context": "gitleaks", "app_id": 15368 }
+    ]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}
+JSON
+gh api repos/Marllow-git/eeasy-logistics/branches/main/protection/required_status_checks   # shows the six
+```
+
+`app_id` 15368 is GitHub Actions, so only an Actions job can satisfy a check of that name. `enforce_admins: false` keeps the owner's merge habit unchanged (decision 2.9).
 
 ## Lineage
 

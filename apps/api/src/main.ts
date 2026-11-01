@@ -11,6 +11,12 @@ async function bootstrap(): Promise<void> {
   // Read and validated once, before anything else starts; exits 78 naming every invalid variable.
   const config = loadConfig({ role });
 
+  if (role === 'migrate') {
+    // The one-shot migration job (data §11 step 5). Migrations and the migrator arrive with PLAT-5.
+    logger.log('Role: migrate. No migrations yet (PLAT-5); exiting.');
+    return;
+  }
+
   if (role === 'worker') {
     // No queue consumers, outbox relay or schedulers exist yet (platform §2); they arrive with later orders.
     const context = await NestFactory.createApplicationContext(AppModule);

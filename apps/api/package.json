@@ -10,7 +10,10 @@
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "migrate": "pnpm run build && node dist/main.js --role migrate",
     "test": "vitest run && pnpm run test:architecture",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts --passWithNoTests",
     "test:architecture": "depcruise src test/architecture --config .dependency-cruiser.cjs"
   },
   "dependencies": {
