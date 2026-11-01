@@ -199,4 +199,26 @@ Adversary pass (on 7dd09dd):
 
 ## 9. Lead review and adversary
 
-Adversary: required (cross-tenant outbox reads and replay, payloads with private data, the relay, dead letters).
+**Lead review (Fable `/code-review`, 2026-11-01), three rounds, all fixed:** leg 1 (lock not released on listener failure; sweeper holding row locks across Redis calls; a trimmed completed job read as lost, ruled: outcome inside the job, retained jobs, sweeper acts only on a job absent in every state; partial index on the relay select); leg 2 (storage audit row not atomic with the outcome; supersede uniqueness global, now per account with `supersede_key IS NOT NULL`; a misleading K-11 comment); leg 3 (park window from the first park, not the first enqueue; a refused replay kept its retained job; parked consumers in a `parked_consumers` column; filters validated before the cursor). Ruling: a suspended account's `internal_event` rows still flow (data §5.2, A-23).
+
+**Adversary pass (Fable, 2026-11-01, on 7dd09dd): CHANGES REQUIRED, no critical or high; mediums and lows fixed or ruled; no re-check (handbook 01 stage 6).**
+
+| Id | Severity | Finding | Status | Lead ruling |
+|---|---|---|---|---|
+| M-1 | medium | bulk replay without `account_id` replayed across all accounts with no door and no account in the audit | fixed: `account_id` required (contract tightened), door with the body reason, row ids in the audit | – |
+| M-2 | medium | in-flight rows of a suspended or closed account kept executing | fixed: processor returns them to `pending` without an attempt; relay releases only provisioned or active accounts | – |
+| M-3 | medium | internal consumers ran on the platform pool with no tenant boundary | fixed: consumers run in a tenant unit of work on `elx_app` with the event's account | – |
+| M-4 | medium | `rate_limited`/`unauthorised` retries unbounded; `retry_after 0` looped | fixed: 1 s floor, age budget on non-consuming retries, cap of 50 | – |
+| L-1 | low | `last_error` redaction gaps | fixed | – |
+| L-2 | low | rows of `closed` accounts flowed | fixed with M-2 | – |
+| L-3 | low | ordering scopes not tied to the account | fixed | – |
+| L-4 | low | concurrent replays could strand a row until the sweeper | accepted | the sweeper recovers within 5 min |
+| L-5 | low | a live dead letter could end as `done` | fixed | – |
+| L-6 | low | lookup audit row without the resource id | fixed | – |
+| L-7 | low | bulk replay reason from the header, body ignored | fixed with M-1 | – |
+
+**Executor deviations accepted:** plain BullMQ workers; retry via `moveToDelayed`; per-consumer gap rule; `withPlatformAccountTransaction` and `listenOnPlatformPool` in `packages/db`; `409 replay_not_allowed` (the contract's code); job data `{ outboxId, parkedSince? }`; decision 2.10 withdrawn by the owner (A-24).
+
+**Identity §9 checklist (lead):** 1 account only from the context or the declared door (row id, path, body); 2 404 versus 200 visible only to platform staff through the audited door; 3 replay is idempotent and refused past the receipt window; 4 not applicable; 5 every door call and replay audited with the account; 6 payloads never listed without the door, `last_error` redacted.
+
+**Verdict for the gate:** no critical or high open. One-way door (migration 0007; the worker gains the relay and the queues); the lead merges under the owner's delegation of 2026-11-01.
