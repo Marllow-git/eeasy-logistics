@@ -1,3 +1,4 @@
+import type { SQL } from 'drizzle-orm';
 import { eq, sql } from 'drizzle-orm';
 import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -49,6 +50,16 @@ class RowRepository extends ScopedRepository<typeof rows> {
   }
   removeAll() {
     return this.deleteWhere();
+  }
+  // Raw conditions, as a repository method could build them; the base must still bracket them.
+  findRaw(condition: SQL) {
+    return this.findMany(condition);
+  }
+  relabelRaw(condition: SQL, to: string) {
+    return this.updateWhere({ label: to }, condition);
+  }
+  removeRaw(condition: SQL) {
+    return this.deleteWhere(condition);
   }
 }
 
@@ -190,6 +201,27 @@ describe('withUnitOfWork on the elx_app pool', () => {
     );
     expect(deletedByB.map((row) => row.label)).toEqual(['b-1']);
 
+    const left = await pool.db.execute<{ label: string }>(
+      sql`SELECT label FROM uow_rows ORDER BY label`,
+    );
+    expect(left.map((row) => row.label)).toEqual(['a-1', 'a-2']);
+  });
+
+  it('keeps the account predicate when a caller condition contains OR (review H-1)', async () => {
+    // Without brackets, `account_id = $1 and label = 'none' OR true` matches every account.
+    const escape = sql`${rows.label} = 'none' OR true`;
+    const read = await withUnitOfWork(pool.db, context(accountB), (uow) =>
+      new RowRepository(uow).findRaw(escape),
+    );
+    expect(read).toEqual([]);
+    const updated = await withUnitOfWork(pool.db, context(accountB), (uow) =>
+      new RowRepository(uow).relabelRaw(escape, 'taken'),
+    );
+    expect(updated).toEqual([]);
+    const deleted = await withUnitOfWork(pool.db, context(accountB), (uow) =>
+      new RowRepository(uow).removeRaw(escape),
+    );
+    expect(deleted).toEqual([]);
     const left = await pool.db.execute<{ label: string }>(
       sql`SELECT label FROM uow_rows ORDER BY label`,
     );
