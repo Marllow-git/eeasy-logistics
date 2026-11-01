@@ -9,6 +9,8 @@ import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { addressKey } from '../rate-limit/rate-limiter.js';
 import type { OtpPurpose } from '../schema/otp-challenges.js';
 import type { BreakerStateStore } from './breaker.js';
+import type { MessageSenders } from './message-sender.js';
+import { MessagingNotConfigured } from './message-sender.js';
 import type { OtpHasher } from './otp-code.js';
 import { generateOtpCode } from './otp-code.js';
 import { normalisePhone, phoneTail } from './phone.js';
@@ -31,18 +33,27 @@ export class MessagingAvailability {
   readonly #logger = new Logger('Messaging');
 
   constructor(
-    private readonly settings: { readonly disabled: boolean; readonly provider: string | null },
+    private readonly disabled: boolean,
+    private readonly senders: Pick<MessageSenders, 'senderFor'>,
     private readonly breakers: BreakerStateStore | null,
   ) {}
 
   /**
-   * False while messaging is paused (`MESSAGING_DISABLED`), when no provider is configured, or while
-   * the provider's breaker is open (the shared state the sending worker publishes). An unreadable
-   * breaker state counts as closed: the door fails open like the rate limiter.
+   * True only when this build has a WhatsApp sender for the platform (review round 1, finding 2: a
+   * configured provider without an adapter, or the stub without its URL, can never send), messaging
+   * is not paused (`MESSAGING_DISABLED`), and that sender's breaker is closed (the shared state the
+   * sending worker publishes). An unreadable breaker state counts as closed: the door fails open
+   * like the rate limiter.
    */
   async whatsappAvailable(): Promise<boolean> {
-    const { disabled, provider } = this.settings;
-    if (disabled || provider === null) return false;
+    if (this.disabled) return false;
+    let provider: string;
+    try {
+      provider = this.senders.senderFor(null, 'whatsapp').provider;
+    } catch (error) {
+      if (error instanceof MessagingNotConfigured) return false;
+      throw error;
+    }
     if (this.breakers === null) return true;
     try {
       return !(await this.breakers.isOpen(provider));
@@ -99,10 +110,12 @@ export class OtpService {
   }
 
   /**
-   * Sends a code: normalise the phone, charge the address and phone budgets, refuse while messaging
-   * is unavailable, then in one platform transaction check the cooldown, write the challenge and its
-   * `message` outbox row (the code encrypted under `core_otp_challenges:<id>`). Resolves the same
-   * way whether or not the phone belongs to anyone (identity and tenancy §8).
+   * Sends a code: normalise the phone, refuse while messaging is unavailable, then in one platform
+   * transaction (under the phone's lock) check the cooldown, charge the address and phone budgets,
+   * write the challenge and its `message` outbox row (the code encrypted under
+   * `core_otp_challenges:<id>`). A refusal for availability or the cooldown charges no budget, so
+   * neither can spend a user's hourly quota (review round 1, finding 1). Resolves the same way
+   * whether or not the phone belongs to anyone (identity and tenancy §8).
    */
   async request(input: OtpRequest): Promise<void> {
     const phone = normalisePhone(input.phone);
@@ -113,8 +126,6 @@ export class OtpService {
     }
     const { store, cipher, hasher } = this.#ready();
     const { limiter, availability, outbox } = this.#deps;
-    await limiter?.charge('otp_request_ip', `ip:${addressKey(input.ip)}`);
-    await limiter?.charge('otp_request_phone', `phone:${hasher.phoneRef(phone)}`);
     if (!(await availability.whatsappAvailable())) throw new ApiException('messaging_unavailable');
 
     const code = generateOtpCode();
@@ -128,6 +139,8 @@ export class OtpService {
           headers: { 'Retry-After': String(wait) },
         });
       }
+      await limiter?.charge('otp_request_ip', `ip:${addressKey(input.ip)}`);
+      await limiter?.charge('otp_request_phone', `phone:${hasher.phoneRef(phone)}`);
       await challenges.insert({
         id,
         phone,
@@ -160,17 +173,15 @@ export class OtpService {
    * Checks a code against the newest challenge of the phone and purpose, under a row lock: right,
    * unexpired, unconsumed and under five wrong attempts consumes it; a wrong code counts an
    * attempt. Every failure, including an unparseable phone or no challenge at all, throws
-   * `401 otp_invalid` and nothing else.
+   * `401 otp_invalid` and nothing else. An unparseable phone is refused before any transaction
+   * (review round 1, finding 3): its format is structural, not a secret to time.
    */
   async verify(input: OtpVerification): Promise<VerifiedPhone> {
     const { store, hasher } = this.#ready();
     const phone = normalisePhone(input.phone);
+    if (phone === undefined) throw new ApiException('otp_invalid');
     const wellFormed = codePattern.test(input.code);
     const verified = await store.run(async ({ challenges }) => {
-      if (phone === undefined) {
-        hasher.matches(absentChallenge.id, input.code, absentChallenge.hash);
-        return false;
-      }
       const challenge = await challenges.lockNewest(phone, input.purpose);
       if (challenge === undefined) {
         hasher.matches(absentChallenge.id, input.code, absentChallenge.hash);
@@ -187,7 +198,7 @@ export class OtpService {
       await challenges.recordFailure(challenge.id);
       return false;
     });
-    if (!verified || phone === undefined) throw new ApiException('otp_invalid');
+    if (!verified) throw new ApiException('otp_invalid');
     return { phone };
   }
 
