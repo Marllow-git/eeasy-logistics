@@ -21,17 +21,13 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| CHORE-1 | #49 | `chore/node-24` → `chore/drop-dotenv` → `chore/nest-swc` (stacked) | harness worktree | executor-api | build, legs 1–3 | native, `elx_chore1` | two-way doors; adversary no; three PRs; PLAT-7 waits for all three (agreed with lead session `eeasy-logistics-b7`) |
 | WEB-19 | #43 | `feat/WEB-19-admin-console-scaffold` | `.claude/worktrees/agent-a52dedd898c533aa7` | executor-web (general-purpose Opus run) | review done, final head on CI | none | two-way door; adversary no; owns `PUBLIC_ADMIN_URL` (PLAT-6 leg 2 consumes it) |
 
 ## Next unblocked (roadmap §1.1)
 
 PLAT-5 (PR #33) and PLAT-15 (PR #36) are merged. WEB-1 (web shell) is unblocked after WEB-19 and touches disjoint paths from PLAT-6. OPS-1 (depends on PLAT-3, Q-10, Q-12) waits on the owner's go as a one-way door.
 
-**Queued chores, briefed the moment PLAT-6 merges and before PLAT-7 is briefed** (owner OK 2026-11-01). One `executor-api` run, three two-way-door PRs in this order, because each touches paths PLAT-6 holds (`apps/api`, `packages/config`, `packages/db`) and every later wave 0 API order holds them again:
-1. `chore/node-24` — roadmap A-14 (due before wave 1 exit): `.nvmrc`, `engines`, `@types/node` 24 in every workspace, both Dockerfiles, CI default Node 24 and the advisory `node-24` job removed.
-2. `chore/drop-dotenv` — `packages/config/src/node.ts` parses the env file with Node's `util.parseEnv`; `dotenv` removed.
-3. `chore/nest-swc` — `apps/api/nest-cli.json` `"builder": "swc"` with `@swc/cli` and `@swc/core` pinned; `tsc --noEmit` stays the type check.
+CHORE-1 closed 2026-11-01: Node 24 (#52, A-14), `util.parseEnv` instead of `dotenv` (#53), SWC builder (#54); trust-policy fix #55. PLAT-7 is unblocked from the chores side.
 
-Then PLAT-7, PLAT-8 and PLAT-10, which follow PLAT-6. PLAT-15 already meets A-17 (strict param, query, header and body schemas with coercion; test-only `mocks` entry points for every surface, the driver included); PLAT-6 item I only adds the `ContractPipe` and the dependency-cruiser rules.
+Next: PLAT-7, PLAT-8 and PLAT-10, which follow PLAT-6. PLAT-15 already meets A-17 (strict param, query, header and body schemas with coercion; test-only `mocks` entry points for every surface, the driver included); PLAT-6 item I only adds the `ContractPipe` and the dependency-cruiser rules.
 
