@@ -24,8 +24,8 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| PLAT-8 | #59 | `feat/PLAT-8-outbox-relay-queues` | `.claude/worktrees/agent-ad40d4c687630541a` | executor-api (Opus) | build, leg 1 (A–C) | native, scratch databases, scratch Redis db index | one-way door (migration 0007); adversary required; three legs |
+| PLAT-10 | #67 | `feat/PLAT-10-roles-permissions` | `.claude/worktrees/agent-a0096210358e25ccd` | executor-api (Opus) | build (A–E) | native, scratch databases | one-way door (migration 0008 seed); adversary required |
 
 ## Next unblocked (roadmap §1.1)
 
-PLAT-10 (roles) follows PLAT-8 on the API side; WEB-2 follows PLAT-11; OPS-1 waits on the owner's go (one-way door; Q-10, Q-12).
+PLAT-9 (messaging port and OTP delivery; Q-27 ruled, A-22) follows PLAT-10 on the API side; PLAT-11 after PLAT-7, PLAT-9, PLAT-10 (Q-7, Q-23); WEB-2 after PLAT-11; OPS-1 waits on the owner's go (Q-10, Q-12).

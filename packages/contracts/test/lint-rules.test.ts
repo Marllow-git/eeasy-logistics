@@ -101,14 +101,22 @@ async function lint(
   name: string,
   doc: Doc,
   apiName = 'staff',
+  rolesFile = join(contractsDir, 'roles.yaml'),
 ): Promise<{ ok: boolean; out: string }> {
   const config = parse(readFileSync(join(contractsDir, 'redocly.yaml'), 'utf8')) as Doc;
   config.plugins = (config.plugins as string[]).map((p) => resolve(contractsDir, p));
   const rules = config.rules as Record<string, Record<string, unknown>>;
   rules['eeasy/permission-in-catalogue']!.catalogue = join(contractsDir, 'permissions.yaml');
-  // Keep the surface's own rule overrides (platform allows x-cross-tenant).
+  // Keep the surface's own rule overrides (platform allows x-cross-tenant; components checks the
+  // role bundles, PLAT-10).
   const apis = config.apis as Record<string, Doc>;
   config.apis = { [apiName]: { ...apis[apiName], root: `${name}.yaml` } };
+  const ownRules = (apis[apiName]?.rules ?? {}) as Record<string, Record<string, unknown>>;
+  const roleRule = ownRules['eeasy/role-permissions-in-catalogue'];
+  if (roleRule !== undefined) {
+    roleRule.roles = rolesFile;
+    roleRule.catalogue = join(contractsDir, 'permissions.yaml');
+  }
   writeFileSync(join(work, `${name}.yaml`), stringify(doc));
   writeFileSync(join(work, `${name}.redocly.yaml`), stringify(config));
   try {
@@ -193,6 +201,29 @@ describe('contract lint rules (document 3 §9)', () => {
     expect(result.ok).toBe(false);
     expect(result.out).toContain('rule/operation-x-cross-tenant-platform-only');
     expect((await lint('cross-tenant-platform', doc, 'platform')).ok).toBe(true);
+  });
+
+  it('checks the role bundles on the components api: the real file passes (PLAT-10 plan 2.1)', async () => {
+    const result = await lint('roles-clean', cleanDoc(), 'components');
+    expect(result.out).not.toContain('eeasy/role-permissions-in-catalogue');
+    expect(result.ok).toBe(true);
+  });
+
+  it('fails a bundle entry outside the catalogue, a door in a bundle and a duplicate', async () => {
+    const roles = parse(readFileSync(join(contractsDir, 'roles.yaml'), 'utf8')) as {
+      roles: Record<string, { permissions: string[] }>;
+    };
+    roles.roles.driver!.permissions.push('delivery.driver.teleport');
+    roles.roles.viewer!.permissions.push('core.auth.self');
+    roles.roles.cashier!.permissions.push('delivery.cash.read');
+    const file = join(work, 'planted-roles.yaml');
+    writeFileSync(file, stringify(roles));
+    const result = await lint('roles-planted', cleanDoc(), 'components', file);
+    expect(result.ok).toBe(false);
+    expect(result.out).toContain('eeasy/role-permissions-in-catalogue');
+    expect(result.out).toContain('"delivery.driver.teleport" is not in permissions.yaml');
+    expect(result.out).toContain('"core.auth.self" is a door');
+    expect(result.out).toContain('"delivery.cash.read" is listed twice');
   });
 
   it('fails a stream without x-sse-events', async () => {

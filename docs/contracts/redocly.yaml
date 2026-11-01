@@ -8,6 +8,11 @@ apis:
     root: openapi/components.yaml
     rules:
       no-unused-components: off
+      # PLAT-10 plan 2.1: the role bundles of roles.yaml, checked once (on this api only).
+      eeasy/role-permissions-in-catalogue:
+        severity: error
+        roles: ../../docs/contracts/roles.yaml
+        catalogue: ../../docs/contracts/permissions.yaml
   staff:
     root: openapi/staff.yaml
   staff-delivery:
