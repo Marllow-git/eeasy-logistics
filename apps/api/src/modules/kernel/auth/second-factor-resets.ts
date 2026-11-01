@@ -1,3 +1,4 @@
+import type { CredentialsCipher } from '@eeasy-logistics/config';
 import { uuidv7 } from '@eeasy-logistics/db';
 import { Logger } from '@nestjs/common';
 import type { AuditSink } from '../audit/audit-sink.js';
@@ -36,6 +37,8 @@ export interface SecondFactorResetsDependencies {
   readonly outbox: Pick<OutboxWriter, 'enqueue'>;
   readonly audit: Pick<AuditSink, 'record'>;
   readonly publicWebUrl: string | undefined;
+  /** Encrypts the link on the mail's outbox row (item J); null without credentials keys. */
+  readonly cipher: CredentialsCipher | null;
 }
 
 export class SecondFactorResets {
@@ -79,15 +82,20 @@ export class SecondFactorResets {
         ttlSeconds: enrolmentLinkTtlSeconds,
         ip: null,
       });
-      await enqueueMail(this.#deps.outbox, tx, {
-        type: 'core.second_factor.reset',
-        aggregate: { type: 'auth_challenge', id },
-        template: 'second_factor_reset',
-        to: user.email,
-        locale: user.locale,
-        params: { link },
-        supersedeKey: `second_factor_reset:${user.id}`,
-      });
+      await enqueueMail(
+        this.#deps.outbox,
+        tx,
+        {
+          type: 'core.second_factor.reset',
+          aggregate: { type: 'auth_challenge', id },
+          template: 'second_factor_reset',
+          to: user.email,
+          locale: user.locale,
+          params: { link },
+          supersedeKey: `second_factor_reset:${user.id}`,
+        },
+        this.#deps.cipher,
+      );
       await this.#deps.audit.record({
         actorType: input.issuedBy === null ? 'system' : 'user',
         actorId: input.issuedBy,

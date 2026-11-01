@@ -399,11 +399,23 @@ describe('staff second factor over HTTP (PLAT-11 item F)', () => {
       requestId: `reset-${runId}-${user.id}`,
     });
     expect(issued.expiresAt.getTime() - Date.now()).toBeGreaterThan(23 * 3600 * 1000);
-    const [mail] = await owner<{ payload: { template_key: string; params: { link: string } } }[]>`
-      SELECT payload FROM core_outbox WHERE kind = 'message' AND payload->>'to' = ${user.email}
+    const [mail] = await owner<
+      {
+        aggregate_id: string;
+        payload: { template_key: string; params: { link: { encrypted: string } } };
+      }[]
+    >`
+      SELECT aggregate_id, payload FROM core_outbox
+      WHERE kind = 'message' AND payload->>'to' = ${user.email}
       ORDER BY id DESC LIMIT 1`;
     expect(mail?.payload.template_key).toBe('second_factor_reset');
-    const link = mail?.payload.params.link ?? '';
+    // Item J: sealed on the row under the challenge it is about; readable only with the key.
+    expect(JSON.stringify(mail?.payload)).not.toContain('second-factor/enrol');
+    expect(mail?.aggregate_id).toBe(issued.challengeId);
+    const link = cipher.decrypt(
+      Buffer.from(mail?.payload.params.link.encrypted ?? '', 'base64'),
+      `core_auth_challenges:${issued.challengeId}`,
+    );
     expect(link).toMatch(
       /^http:\/\/localhost:3001\/second-factor\/enrol\/[\da-f-]{36}\.[\w-]{43}$/,
     );

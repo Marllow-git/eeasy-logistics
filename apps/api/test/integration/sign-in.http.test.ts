@@ -1,4 +1,6 @@
 import { randomBytes, randomInt } from 'node:crypto';
+import { createCredentialsCipher } from '@eeasy-logistics/config';
+import { createPlatformPool } from '@eeasy-logistics/db/platform';
 import type { LoginResponse, Me } from '@eeasy-logistics/contracts/staff/schemas';
 import { schemas } from '@eeasy-logistics/contracts/staff/schemas';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -13,6 +15,14 @@ import { configureHttp, createHttpAdapter, httpAppOptions } from '../../src/http
 import { Invitations } from '../../src/modules/kernel/auth/invitations.js';
 import { PasswordHasher } from '../../src/modules/kernel/auth/passwords.js';
 import { MailSender } from '../../src/modules/kernel/messaging/mail-sender.js';
+import { MessageSenders } from '../../src/modules/kernel/messaging/message-sender.js';
+import {
+  MessageKindHandler,
+  platformOnlyResolver,
+} from '../../src/modules/kernel/messaging/message.handler.js';
+import { KindHandlerRegistry } from '../../src/modules/kernel/outbox/kind-handlers.js';
+import type { OutboxJob } from '../../src/worker/system/outbox-workers.js';
+import { processOutboxJob } from '../../src/worker/system/outbox-workers.js';
 import {
   RATE_LIMITER,
   RateLimiter,
@@ -61,13 +71,31 @@ interface ErrorBody {
 
 interface MailRow {
   id: string;
+  aggregate_id: string;
   payload: {
     to: string;
     locale: 'ar' | 'en';
     template_key: string;
-    params: Record<string, string>;
+    params: Record<string, string | { encrypted: string }>;
   };
   account_id: string | null;
+}
+
+/** Item J: the row holds the link encrypted under `<table>:<aggregate id>`; the test holds the key. */
+const linkTables: Record<string, string> = {
+  invitation: 'core_invitations',
+  platform_invitation: 'core_invitations',
+  password_reset: 'core_password_resets',
+};
+function linkOf(mail: MailRow): string {
+  const sealed = mail.payload.params.link;
+  if (typeof sealed !== 'object' || config.credentials === null) {
+    throw new Error('the link is not sealed');
+  }
+  return createCredentialsCipher(config.credentials).decrypt(
+    Buffer.from(sealed.encrypted, 'base64'),
+    `${linkTables[mail.payload.template_key] ?? ''}:${mail.aggregate_id}`,
+  );
 }
 
 describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
@@ -105,7 +133,7 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
 
   async function mailTo(email: string, template: string): Promise<MailRow> {
     const [row] = await owner<MailRow[]>`
-      SELECT id, payload, account_id FROM core_outbox
+      SELECT id, aggregate_id, payload, account_id FROM core_outbox
       WHERE kind = 'message' AND payload->>'to' = ${email} AND payload->>'template_key' = ${template}
       ORDER BY created_at DESC LIMIT 1`;
     if (row === undefined) throw new Error(`no ${template} mail to ${email}`);
@@ -113,6 +141,48 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
   }
 
   const tokenOf = (link: string | undefined) => (link ?? '').split('/').at(-1) ?? '';
+
+  /** One `message` row through the worker's processor and the real handler with the SMTP sender. */
+  async function sendMailRow(outboxId: string): Promise<void> {
+    const smtpUrl = config.mail.smtpUrl?.reveal();
+    const from = config.mail.from;
+    if (smtpUrl === undefined || from === undefined || config.credentials === null) {
+      throw new Error('MAIL_SMTP_URL, MAIL_FROM and credentials are required');
+    }
+    const mail = new MailSender({ appEnv: config.app.env, smtpUrl, from });
+    const senders = new MessageSenders({ whatsapp: null, mail, platformRoute: null });
+    const handler = new MessageKindHandler({
+      senders,
+      cipher: createCredentialsCipher(config.credentials),
+      resolver: platformOnlyResolver(senders),
+      logger: { log: () => undefined, warn: () => undefined },
+    });
+    const pool = createPlatformPool(config.db, 'sign-in-mail-test');
+    try {
+      const job = {
+        data: { outboxId },
+        moveToDelayed: vi.fn(() => Promise.resolve()),
+        updateData: vi.fn(() => Promise.resolve()),
+      } as unknown as OutboxJob;
+      await processOutboxJob(
+        {
+          db: pool.db,
+          registry: new KindHandlerRegistry([handler]),
+          logger: { log: () => undefined, warn: () => undefined },
+          random: () => 0.5,
+        },
+        'message',
+        job,
+        'token',
+      );
+      const [row] = await owner<{ status: string }[]>`
+        SELECT status FROM core_outbox WHERE id = ${outboxId}`;
+      expect(row?.status).toBe('done');
+    } finally {
+      mail.close();
+      await pool.close();
+    }
+  }
 
   beforeAll(async () => {
     const redisUrl = config.redis.url?.reveal();
@@ -157,7 +227,9 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
       });
       const mail = await mailTo(email, 'invitation');
       expect(mail.account_id).toBeNull();
-      expect(mail.payload.params).toEqual({ account_name: 'Acme Riyadh', link: created.link });
+      expect(mail.payload.params.account_name).toBe('Acme Riyadh');
+      expect(linkOf(mail)).toBe(created.link);
+      expect(JSON.stringify(mail.payload)).not.toContain(tokenOf(created.link));
       expect(created.link).toMatch(/^http:\/\/localhost:3001\/invitations\/[\w-]{43}$/);
 
       const accepted = await write('/v1/staff/auth/invitations/accept')
@@ -454,29 +526,18 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
           .expect(202);
         const mail = await mailTo(user.email, 'password_reset');
         expect(mail.payload.locale).toBe(locale);
-        const link = mail.payload.params.link ?? '';
-        expect(link).toMatch(/^http:\/\/localhost:3001\/password-reset\/[\w-]{43}$/);
+        // Item J: the row holds no readable link, only its sealed form.
+        expect(JSON.stringify(mail.payload)).not.toContain('password-reset/');
+        expect(typeof mail.payload.params.link).toBe('object');
 
-        // What the worker's mail adapter sends for this row (PLAT-9), through the stack's Mailpit.
-        const smtpUrl = config.mail.smtpUrl?.reveal();
-        const from = config.mail.from;
-        if (smtpUrl === undefined || from === undefined)
-          throw new Error('MAIL_SMTP_URL and MAIL_FROM are required');
-        const sender = new MailSender({ appEnv: config.app.env, smtpUrl, from });
-        try {
-          await sender.sendTemplate({
-            to: mail.payload.to,
-            templateKey: 'password_reset',
-            locale: mail.payload.locale,
-            params: { link },
-            idempotencyKey: mail.id,
-          });
-        } finally {
-          sender.close();
-        }
+        // The worker's `message` handler (PLAT-9) decrypts it at send time and mails it through
+        // the stack's Mailpit; the link the person receives is the one that works.
+        await sendMailRow(mail.id);
         const delivered = await mailpitMessage(`${mail.id}@eeasy-logistics`);
         expect(delivered.Subject).toBe(subject);
-        expect(delivered.Text).toContain(link);
+        const link = /http:\/\/localhost:3001\/password-reset\/[\w-]{43}/.exec(delivered.Text)?.[0];
+        expect(link).toBeDefined();
+        expect(link).toBe(linkOf(mail));
 
         const fresh = `new horse battery ${randomBytes(6).toString('hex')}`;
         const confirmed = await write('/v1/staff/auth/password-reset/confirm')
@@ -509,9 +570,9 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
     it('keeps one live token per user and refuses an expired one with token_expired', async () => {
       const user = await member();
       await write('/v1/staff/auth/password-reset/request').send({ email: user.email }).expect(202);
-      const firstLink = (await mailTo(user.email, 'password_reset')).payload.params.link;
+      const firstLink = linkOf(await mailTo(user.email, 'password_reset'));
       await write('/v1/staff/auth/password-reset/request').send({ email: user.email }).expect(202);
-      const secondLink = (await mailTo(user.email, 'password_reset')).payload.params.link;
+      const secondLink = linkOf(await mailTo(user.email, 'password_reset'));
       expect(secondLink).not.toBe(firstLink);
       await write('/v1/staff/auth/password-reset/confirm')
         .send({ token: tokenOf(firstLink), password: `another horse ${runId}` })

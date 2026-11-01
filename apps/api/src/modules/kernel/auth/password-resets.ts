@@ -1,3 +1,4 @@
+import type { CredentialsCipher } from '@eeasy-logistics/config';
 import { uuidv7 } from '@eeasy-logistics/db';
 import { Logger } from '@nestjs/common';
 import type { AuditSink } from '../audit/audit-sink.js';
@@ -31,6 +32,8 @@ export interface PasswordResetsDependencies {
   /** The email pseudonym of the budget key (`StaffSignIn.emailRef`). */
   readonly emailRef: (email: string) => string;
   readonly publicWebUrl: string | undefined;
+  /** Encrypts the link on the mail's outbox row (item J); null without credentials keys. */
+  readonly cipher: CredentialsCipher | null;
 }
 
 export class PasswordResets {
@@ -69,15 +72,20 @@ export class PasswordResets {
         tokenHash: tokenHash(token),
         ttlSeconds: resetTtlSeconds,
       });
-      await enqueueMail(this.#deps.outbox, tx, {
-        type: 'core.password_reset.requested',
-        aggregate: { type: 'password_reset', id: resetId },
-        template: 'password_reset',
-        to: user.email,
-        locale: user.locale,
-        params: { link },
-        supersedeKey: `password_reset:${user.id}`,
-      });
+      await enqueueMail(
+        this.#deps.outbox,
+        tx,
+        {
+          type: 'core.password_reset.requested',
+          aggregate: { type: 'password_reset', id: resetId },
+          template: 'password_reset',
+          to: user.email,
+          locale: user.locale,
+          params: { link },
+          supersedeKey: `password_reset:${user.id}`,
+        },
+        this.#deps.cipher,
+      );
       this.#logger.log(`password reset mailed user_id=${user.id}`);
     });
   }

@@ -70,6 +70,8 @@ export async function bootstrapSuperAdmin(
     resolver: undefined,
     publicWebUrl: config.app.publicWebUrl,
     publicAdminUrl: config.app.publicAdminUrl,
+    // The bootstrap mails nothing (plan 2.12), so no link is ever encrypted here.
+    cipher: null,
   });
   const created = await invitations.bootstrap(args, new AuditWriter(pool), runId);
   return created === undefined
