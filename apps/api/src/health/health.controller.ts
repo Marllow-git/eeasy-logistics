@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 
-/** Liveness probe (platform §5). Readiness (`/ready`) is PLAT-5's. */
+/** Liveness probe (platform §5); it touches no dependency. Readiness is `ReadyController`. */
 @Controller('health')
 export class HealthController {
   @Get()

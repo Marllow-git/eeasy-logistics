@@ -31,7 +31,9 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule.forRoot(config));
+  // SIGTERM and SIGINT run the shutdown hooks, which close the database pool (platform §5).
+  app.enableShutdownHooks();
   await app.listen(config.app.port);
   logger.log(`Role: api. Environment: ${config.app.env}. Listening on port ${config.app.port}.`);
 }
