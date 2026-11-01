@@ -36,7 +36,7 @@ paths:
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Me'}}}}
         '400': {$ref: './components.yaml#/components/responses/BadRequest', description: 'Codes: validation_failed.'}
-        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid.'}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_expired, token_invalid, second_factor_required.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /auth/login:
     post:
