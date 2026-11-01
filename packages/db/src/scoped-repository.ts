@@ -50,9 +50,22 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
     return condition === undefined ? tenant : (and(tenant, sql`(${condition})`) ?? tenant);
   }
 
-  protected async findMany(condition?: SQL): Promise<InferSelectModel<TTable>[]> {
+  /**
+   * Rows of the context's account matching `condition`, optionally ordered and limited (keyset
+   * pages, ADR-0029: the caller puts its cursor predicate in `condition`).
+   */
+  protected async findMany(
+    condition?: SQL,
+    page: { readonly orderBy?: readonly SQL[]; readonly limit?: number } = {},
+  ): Promise<InferSelectModel<TTable>[]> {
     const table: PgTable = this.table;
-    const rows = await this.#tx.select().from(table).where(this.scoped(condition));
+    const query = this.#tx
+      .select()
+      .from(table)
+      .where(this.scoped(condition))
+      .orderBy(...(page.orderBy ?? []))
+      .$dynamic();
+    const rows = page.limit === undefined ? await query : await query.limit(page.limit);
     return rows as InferSelectModel<TTable>[];
   }
 
