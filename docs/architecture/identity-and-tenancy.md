@@ -67,7 +67,7 @@ Public pages open through a signed token in the link (HMAC over order id, purpos
 | Revocation | `token_version` on the user plus refresh-row deletion | same, plus device revocation | key revocation |
 | Claims | `sub`, `acc` (account id or null for platform), `mem` (membership id), `roles`, `scopes` hash, `sites`, `ver` | plus `dev` (device id) | key id, scopes |
 
-Refresh rotation: every refresh returns a new token and marks the old one used; reuse of a used token revokes the whole family (theft detection). Access tokens are verified locally by signature; revocation is checked only on refresh and on sensitive actions (cash, member management), which re-read `token_version`.
+Refresh rotation: every refresh returns a new token and marks the old one used; reuse of a used token revokes the whole family (theft detection). A used token presented again within the reuse grace (30 seconds, `AUTH_REFRESH_REUSE_GRACE_SECONDS`; Q-23 provisional, amended 2026-11-02, roadmap A-3), from the same family and user agent, gets the same successor back with a fresh access token (two tabs refreshing at once); any other reuse revokes the family. Access tokens are verified locally by signature; revocation is checked only on refresh and on sensitive actions (cash, member management), which re-read `token_version`.
 
 ## 5. Tenancy
 

@@ -5,6 +5,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { HealthController } from './health/health.controller.js';
 import { ReadinessModule } from './health/readiness.module.js';
 import { DeliveryModule } from './modules/delivery/delivery.module.js';
+import { AuthModule } from './modules/kernel/auth/auth.module.js';
 import { KernelModule } from './modules/kernel/kernel.module.js';
 import { MessagingModule } from './modules/kernel/messaging/messaging.module.js';
 import { RequestFrameModule } from './modules/kernel/request-frame.module.js';
@@ -29,6 +30,8 @@ export class AppModule {
         RequestFrameModule.forRoot(config),
         // PLAT-9: the OTP service of the sign-in doors and the messaging availability.
         MessagingModule.forRoot(config),
+        // PLAT-11: staff and platform sign-in, sessions and Me.
+        AuthModule.forRoot(config),
         ReadinessModule.forRoot(config),
       ],
       // PLAT-14: flushes the telemetry main.ts started.

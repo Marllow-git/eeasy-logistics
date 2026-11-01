@@ -31,3 +31,5 @@ export type { OutboxKind } from '../schema/outbox.js';
 // Telemetry (PLAT-14): one span per provider call for every adapter, and the metric catalogue.
 export { withPortSpan, type PortCall, type PortSpan } from '../telemetry/port-span.js';
 export { getMetrics, type MetricName } from '../telemetry/metrics.js';
+// Sessions (PLAT-11 plan 2.5): the cookie names, for the web middleware's documentation.
+export { sessionCookieNames } from '../auth/cookies.js';
