@@ -71,7 +71,11 @@ describe('eeasy/no-physical-direction-utilities', () => {
       'border-l-4': 'border-s-4',
       'float-left': 'float-start',
       'scroll-ml-2': 'scroll-ms-2',
-      '!pl-2': 'ps-2',
+      '!pl-2': '!ps-2',
+      '!ml-2': '!ms-2',
+      'ml-2!': 'ms-2!',
+      'md:!-mr-1': 'md:!-me-1',
+      'text-left!': 'text-start!',
       'hover:mr-1': 'hover:me-1',
     };
     for (const [physical, logical] of Object.entries(cases)) {

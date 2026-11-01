@@ -16,6 +16,9 @@ import { gzipSync } from 'node:zlib';
 /** Cap of the shared framework chunk (web §10.2), gzip. */
 export const floorCapKb = 135;
 
+/** Budget of a route outside any route group: the merchant and platform one, with a warning. */
+export const defaultBudgetKb = 180;
+
 /** Route group → budget of the JavaScript above the floor (web §10.2), gzip. */
 export const budgetKbOfGroup: Record<string, number> = {
   recipient: 90,
@@ -36,22 +39,25 @@ export type BuildFacts = {
 
 export type RouteResult = {
   route: string;
-  group: string;
+  /** null: the route sits outside any route group and got the default budget. */
+  group: string | null;
   budgetKb: number;
   totalBytes: number;
   aboveFloorBytes: number;
   ok: boolean;
 };
 
-export type BudgetReport = { floorBytes: number; floorOk: boolean; routes: RouteResult[] };
+export type BudgetReport = {
+  floorBytes: number;
+  floorOk: boolean;
+  routes: RouteResult[];
+  warnings: string[];
+};
 
-/** `/(recipient)/track/[token]/page` → `recipient`; Next's own routes (`/_not-found`) → null. */
+/** `/(recipient)/track/[token]/page` → `recipient`; a route outside any group → null. */
 function groupOf(route: string, appPaths: Record<string, string>): string | null {
-  if (route.startsWith('/_')) return null;
   const entry = Object.entries(appPaths).find(([, url]) => url === route)?.[0];
-  const group = entry ? /^\/\(([^)]+)\)/.exec(entry)?.[1] : undefined;
-  if (!group) throw new Error(`route ${route} is not in a route group (web §1.2)`);
-  return group;
+  return (entry ? /^\/\(([^)]+)\)/.exec(entry)?.[1] : undefined) ?? null;
 }
 
 /** Measures every route against its class budget and the floor against its cap. */
@@ -59,11 +65,22 @@ export function checkBudget({ stats, appPaths, floorChunks, gzipSize }: BuildFac
   const floor = new Set(floorChunks.map((file) => `.next/${file}`));
   const floorBytes = [...floor].reduce((sum, chunk) => sum + gzipSize(chunk), 0);
   const routes: RouteResult[] = [];
+  const warnings: string[] = [];
   for (const { route, firstLoadChunkPaths } of stats) {
+    // Next's own routes (`/_not-found`, `/_global-error`) carry the framework only.
+    if (route.startsWith('/_')) continue;
     const group = groupOf(route, appPaths);
-    if (group === null) continue;
-    const budgetKb = budgetKbOfGroup[group];
-    if (budgetKb === undefined) throw new Error(`route group (${group}) of ${route} has no budget`);
+    let budgetKb: number | undefined;
+    if (group === null) {
+      budgetKb = defaultBudgetKb;
+      warnings.push(
+        `${route} is outside any route group (web §1.2); checked against ${defaultBudgetKb} KB`,
+      );
+    } else {
+      budgetKb = budgetKbOfGroup[group];
+      if (budgetKb === undefined)
+        throw new Error(`route group (${group}) of ${route} has no budget`);
+    }
     const totalBytes = firstLoadChunkPaths.reduce((sum, chunk) => sum + gzipSize(chunk), 0);
     const aboveFloorBytes = firstLoadChunkPaths
       .filter((chunk) => !floor.has(chunk))
@@ -77,7 +94,7 @@ export function checkBudget({ stats, appPaths, floorChunks, gzipSize }: BuildFac
       ok: aboveFloorBytes <= budgetKb * 1024,
     });
   }
-  return { floorBytes, floorOk: floorBytes <= floorCapKb * 1024, routes };
+  return { floorBytes, floorOk: floorBytes <= floorCapKb * 1024, routes, warnings };
 }
 
 /** Reads the facts of a built app from its `.next` directory. */
@@ -118,10 +135,12 @@ export function printReport(report: BudgetReport): number {
   );
   for (const r of report.routes) {
     console.log(
-      `  ${r.ok ? 'ok  ' : 'OVER'} ${r.route} (${r.group}): ${kb(r.aboveFloorBytes)} KB above ` +
+      `  ${r.ok ? 'ok  ' : 'OVER'} ${r.route} (${r.group ?? 'no group'}): ` +
+        `${kb(r.aboveFloorBytes)} KB above ` +
         `the floor, budget ${r.budgetKb} KB [total ${kb(r.totalBytes)} KB]`,
     );
   }
+  for (const warning of report.warnings) console.warn(`  warning: ${warning}`);
   const failures = report.routes.filter((r) => !r.ok).length + (report.floorOk ? 0 : 1);
   if (failures > 0) console.error(`${failures} first-load budget failure(s) (web §10.2)`);
   return failures;

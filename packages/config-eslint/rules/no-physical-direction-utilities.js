@@ -58,16 +58,18 @@ const objectKeyCallees = new Set(['cn', 'clsx']);
 export function logicalReplacement(className) {
   const variants = className.split(':');
   let utility = variants.pop() ?? '';
-  utility = utility.replace(/^!/, '').replace(/!$/, '');
+  // Tailwind's important mark, leading (v3 `!ml-2`) or trailing (v4 `ml-2!`), stays where it was.
+  const leadingBang = utility.startsWith('!') ? '!' : '';
+  const trailingBang = utility.endsWith('!') && utility.length > 1 ? '!' : '';
+  utility = utility.slice(leadingBang.length, utility.length - trailingBang.length);
   const negative = utility.startsWith('-');
   if (negative) utility = utility.slice(1);
-  const sign = negative ? '-' : '';
-  const prefix = variants.length ? `${variants.join(':')}:` : '';
+  const before = `${variants.length ? `${variants.join(':')}:` : ''}${leadingBang}${negative ? '-' : ''}`;
   const whole = exact.get(utility);
-  if (whole) return `${prefix}${sign}${whole}`;
+  if (whole) return `${before}${whole}${trailingBang}`;
   for (const [physical, logical] of replacements) {
     if (utility.startsWith(physical) && utility.length > physical.length) {
-      return `${prefix}${sign}${logical}${utility.slice(physical.length)}`;
+      return `${before}${logical}${utility.slice(physical.length)}${trailingBang}`;
     }
   }
   return undefined;
