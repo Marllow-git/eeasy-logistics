@@ -3,7 +3,7 @@
 - Node 24 LTS (`.nvmrc` `24`; engines `>=24.11.0 <25`; images `node:24.22.2-alpine` by digest; `@types/node` 24.19.2; A-14 done by CHORE-1). pnpm 10.34 via `packageManager`; Turborepo 2.11 (`turbo.json`: typecheck/lint/test depend on `^typecheck`).
 - TypeScript 6.0, `tsconfig.base.json` in `packages/config-ts`: strict, `noUncheckedIndexedAccess`, `moduleResolution: Bundler`, `rewriteRelativeImportExtensions` (packages ship `.ts` source with `.ts` relative imports; API runs them via Node type stripping, `erasableSyntaxOnly`).
 - ESLint 9 flat config from `packages/config-eslint` (`base`, `react`); Prettier 3 at root.
-- API: NestJS 12, `type: module`, Vitest 5 (`vitest.config` unit, `vitest.integration.config.ts` integration), supertest, dependency-cruiser 18; jose 6.2.13 (HS256 access tokens), zod 4.6.7, express 5.3.0 (direct, matches @nestjs/platform-express) with @types/express 5.0.6.
+- API: NestJS 12, `type: module`, `nest build` on SWC (@swc/cli 0.8.2, @swc/core 1.16.20; CHORE-1), Vitest 5 (`vitest.config` unit, `vitest.integration.config.ts` integration), supertest, dependency-cruiser 18; jose 6.2.13 (HS256 access tokens), zod 4.6.7, express 5.3.0 (direct, matches @nestjs/platform-express) with @types/express 5.0.6.
 - Web: Next.js 16.4 App Router, React 19.3, next-intl (`ar` default), Playwright smoke (`tests/`).
 - Driver: Expo SDK 58, Expo Router, Jest.
 - Config: Zod 4; `.env` read with Node's `util.parseEnv` (only when `APP_ENV=local`; no dotenv since CHORE-1; it returns keys in name order, not file order).
