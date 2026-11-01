@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [api, web]
+        app: [api, web, admin]
     env:
       PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       LOCAL_TAG: elx-${{ matrix.app }}:candidate
@@ -116,8 +116,11 @@ jobs:
           echo "::error::the api image did not answer GET /health with 200 within 30 s"
           exit 1
 
-      - name: Probe the web image (GET /)
-        if: matrix.app == 'web'
+      # The web and admin images are both Next.js standalone servers on 3000 (WEB-19 decision 2.8).
+      - name: Probe the ${{ matrix.app }} image (GET /)
+        if: matrix.app == 'web' || matrix.app == 'admin'
+        env:
+          APP: ${{ matrix.app }}
         run: |
           docker run --detach --name probe -p 127.0.0.1::3000 "$LOCAL_TAG"
           url="http://$(docker port probe 3000/tcp | head -n 1)/"
@@ -126,7 +129,7 @@ jobs:
             sleep 1
           done
           docker logs probe
-          echo "::error::the web image did not serve / with 200 within 30 s"
+          echo "::error::the $APP image did not serve / with 200 within 30 s"
           exit 1
 
       - name: Remove the probe container
