@@ -7,6 +7,7 @@
 - API naming (handbook 04): plural kebab-case paths, `snake_case` JSON, ISO 8601 with offset, money as integer halalas + currency, error `{code,message,details?}` with stable codes, `Idempotency-Key` on retryable writes.
 - i18n: keys in `packages/i18n/<locale>/<namespace>.json`; Arabic catalogue is the reference type, parity test fails on a key missing in either locale. Logical CSS properties only in web (RTL).
 - Database: tenant code reads and writes through a `ScopedRepository` subclass in a `*.repository.ts` file inside `withUnitOfWork`; a new table ships `account_id` (FK + leading index), the `tenant_isolation`/`platform_access` policies and, if append-only, `SELECT core_make_append_only('<t>')` in the same migration; hand SQL via `drizzle-kit generate --custom`; never edit an applied migration.
+- Dependencies: pnpm refuses versions younger than 3 days (`minimumReleaseAge: 4320`) and fails on a trust downgrade (`trustPolicy: no-downgrade`); a version needed sooner goes in `minimumReleaseAgeExclude` with a reason. Dependabot (`.github/dependabot.yml`) opens grouped weekly PRs; Expo-pinned packages move only through `npx expo install` in an SDK upgrade, and ESLint 10 / TypeScript 7 majors are held (2026-11-01).
 - Tests: unit next to code (`*.test.ts`); integration against real PostgreSQL; behaviour change = red-then-green shown in PR; never weaken a test.
 
 ## Repo process
