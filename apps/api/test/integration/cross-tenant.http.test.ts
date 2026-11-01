@@ -222,7 +222,10 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
       .set('Cookie', await platform())
       .expect(500);
     expect(codeOf(response)).toBe('internal_error');
-    expect(response.text).not.toContain('b-1');
+    // No tenant row leaks: the body is the bare Error shape, and no quoted row label appears. A bare
+    // 'b-1' would also match inside a random request_id UUID (…afcb-19e9…) about once in 100 runs.
+    expect(Object.keys(response.body).sort()).toEqual(['code', 'message', 'request_id']);
+    expect(response.text).not.toContain('"b-1"');
   });
 
   it('a platform handler runs with the platform context and no account', async () => {
