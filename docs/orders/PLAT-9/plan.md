@@ -1,0 +1,99 @@
+# PLAT-9 · Messaging port and OTP delivery
+
+- **Status:** planned; brief after PLAT-10 closes (both touch `apps/api`, `packages/db`, `packages/config`)
+- **Date:** 2026-11-01
+- **Wave:** 0 (roadmap §1.1). **Depends on:** PLAT-8 (merged, PR #63); Q-27 ruled 2026-11-01 (A-22: eeasynew's verified WhatsApp business and provider on a new number, our own templates and credentials; the provider name is still owed by the owner).
+- **Lead:** architecture lead. **Executor:** `executor-api` (Opus), own worktree, native stack scratch databases, Redis, the `whatsapp-stub` and Mailpit of the native stack. **Adversary:** yes (OTP codes, phone numbers, credentials encryption, rate budgets, opt-out, the provider webhook secret).
+- **Issue:** #72. **Merge danger:** one-way door (migrations 0009 and 0010; a production refusal for the messaging provider). **Legs:** two (A–E, F–I).
+- **Paths:** `apps/api`, `packages/db` (none expected), `packages/config`, `packages/i18n` (template texts), `tools/whatsapp-stub` (if the stub API needs a field), `.env.example`, `docs/contracts/errors.md` (one code if missing), `.serena/memories`. WEB orders in flight touch none of these except `packages/i18n` catalogues (a different namespace file; no conflict expected).
+
+## 0. Goal
+
+Every outbound message leaves the system as a `message` outbox row handled by one `MessageSender` port: OTP codes for drivers and staff second factors reach a phone over WhatsApp with the code encrypted at rest and the row deleted one hour after sending, invitations and password resets reach an inbox through the mail adapter, recipient messages (wave 1) will reuse the same port with quiet hours, caps and opt-out already enforced, and the stub makes all of it testable without a provider, so that PLAT-11 can build sign-in doors on a delivery frame that already meets ADR-0037 and data §10.
+
+## 1. Binding rules and ADRs
+
+- AGENTS.md hard rules: side effects through the outbox; secrets never stored readable; config through `packages/config`; Arabic and English for every string.
+- ADR-0037 "Decision" (templates only, in both languages, parameters from domain data; no SMS before wave 3, a second adapter slot; quiet hours, per-order and per-phone caps, staleness check, opt-out; OTP never delayed, capped by the budget or blocked by opt-out; `messages_per_month` with a usage counter). ADR-0036 "Decision" (one queue per kind; `rate_limited` and `unauthorised` outcomes). ADR-0024, ADR-0027.
+- `docs/architecture/integrations.md` §2.4 "MessageSender" (methods, timeout 5 s, retry per §4.2, idempotency by the outbox row id as the provider client reference, breaker and degraded modes including `503 messaging_unavailable` and `MESSAGING_DISABLED`, the stub, credentials issued for this product only), §4.1 row `message` (supersede key `msg:{order_id}:{template_group}`), §4.2 row `outbox.message` (concurrency 10, 40 per second per provider "to confirm", OTP priority, OTP 3 attempts within 60 s, others 5 attempts), §4.3 "Messages" (staleness at send time; OTP rows older than 4 minutes superseded), §5.1 "Templates by wave" (`auth_otp` in wave 0: category authentication, parameter code encrypted on the row, deleted one hour after sending), §5.2 "Approval" (`elx_` prefix if the namespace is shared; template text in `packages/i18n`), §5.4 "Rates and quiet hours", §5.5 "Opt-out", §5.6 "Cost control", §9 "Environments" (stub locally and in ci), §11 "Security".
+- `docs/architecture/identity-and-tenancy.md` §3.1 (invitation 72 h, reset 30 min by email; second factor phone OTP), §3.2 (E.164 first; OTP six digits, 5 minutes, single use by row lock, resend cooldown 60 s, budgets 5 per phone and 20 per IP per hour, `otp_invalid` for every failure), §8.
+- `docs/architecture/data.md` §2.1 row `core_otp_challenges` (`phone`, `purpose` CHECK driver_login, second_factor; `code_hash`, `expires_at`, `attempts`, `consumed_at`, `ip`; index `(phone, created_at DESC)`), §2.4 (`core_otp_challenges` keyed by phone, no account), §10 rows "Any actor" `core_otp_challenges` (deleted 1 hour after `expires_at`) and the rules (codes hashed; the `message` row carries the code encrypted with the credentials key and is deleted 1 hour after `done`), §5.2.
+- `docs/contracts/openapi/driver.yaml` `driverRequestOtp`, `driverVerifyOtp` (the door handlers are PLAT-11's; this order ships the challenge service they call); `errors.md` §2 `otp_invalid`, §1 `rate_limited`, and `messaging_unavailable` (add to §1 if absent, additive).
+- PLAT-4 `packages/config` messaging group (`MESSAGING_PROVIDER` stub|meta|bsp, `MESSAGING_DISABLED`, `MESSAGING_ACCESS_TOKEN`, `MESSAGING_SENDER_ID`, the stub refusal in production) and credentials encryption (`encrypt`/`decrypt` with key id and context). PLAT-8 `KindHandler`, outcome write-back, `ConnectionParker`, the handler registry, the prune job. PLAT-7 `AuditWriter`. PLAT-6 rate limiter (per-route budgets). PLAT-2 `tools/whatsapp-stub` and Mailpit.
+
+## 2. Decisions (with defaults)
+
+| # | Decision | Default |
+|---|---|---|
+| 2.1 | Port and adapters | `MessageSender` in `modules/kernel/messaging/` per doc 9 §2.4; adapters: `StubMessageSender` (talks to `tools/whatsapp-stub` over HTTP so tests and the census can read the last OTP per phone; refused outside local and ci by the PLAT-4 rule), `MetaCloudMessageSender` (WhatsApp Cloud API `/<phone_number_id>/messages` with template objects, the outbox row id as the client reference where the API allows, 5 s timeout, breaker per provider), `BspMessageSender` as an empty slot that refuses to boot (`MESSAGING_PROVIDER=bsp` is accepted by config but the adapter throws "provider not implemented: owner to name eeasynew's provider") until the owner names the provider; a second adapter slot for SMS stays empty (ADR-0037) |
+| 2.2 | Mail | Mail is not a new outbox kind (ADR-0036 keeps seven): a `message` row carries `channel: 'whatsapp' \| 'mail'` in its payload and the `message` handler dispatches to `MailSender` (SMTP through `nodemailer`, latest stable at least three days old; Mailpit locally and in ci; production SMTP settings `MAIL_SMTP_URL`, `MAIL_FROM` added to `packages/config`, required in production) for `invitation`, `password_reset` and `platform_invitation` templates with `ar` and `en` bodies in `packages/i18n` (`messages` namespace); recorded as an interpretation of doc 9 §2.4 for the lead; no attachments; links are the one-time tokens PLAT-11 issues, passed as parameters |
+| 2.3 | Templates | `packages/i18n/<locale>/messages.json`: `auth_otp` (WhatsApp, category authentication: body with the code parameter and the copy-code button text), `invitation`, `password_reset`, `platform_invitation` (mail: subject and body); a registry `templates.ts` maps keys to channel, category, parameter names and the provider template name (`elx_auth_otp`); the parity test covers the namespace; a unit test asserts every registry parameter appears in both language texts |
+| 2.4 | OTP challenges | Migration `0009_core_otp_challenges` per data §2.1 and §2.4 (no `account_id`; listed as an exemption); `OtpService.request({ phone, purpose, ip, locale })`: E.164 normalisation first (`libphonenumber-js` or a strict regex for Saudi and international formats, recorded in §8.1), resend cooldown 60 s per phone and purpose, budgets 5 per phone and 20 per IP per hour through the PLAT-6 rate limiter with named route budgets, a six-digit code from `crypto.randomInt`, `code_hash` = HMAC-SHA256 under a key derived from the credentials key (HKDF info `elx-otp`), `expires_at` 5 minutes, then one `message` outbox row (channel whatsapp, template `auth_otp`, payload `{ to, locale, params: { code: <ciphertext> } }` with the code encrypted by `packages/config` credentials encryption under context `core_otp_challenges:<id>`, supersede key `otp:<phone>:<purpose>`); `OtpService.verify({ phone, purpose, code })`: `SELECT … FOR UPDATE` on the newest unconsumed challenge, constant-time compare, `attempts` capped at 5 then the challenge is invalid, `consumed_at` set on success; every failure is `otp_invalid` |
+| 2.5 | Message handler | `MessageKindHandler` (PLAT-8 `KindHandler` for kind `message`): decrypts OTP parameters at send time only; staleness per §4.3 (OTP rows older than 4 minutes are `superseded`; recipient templates check the order state through a read port that wave 1 implements, absent in wave 0); quiet hours (22:00 to 08:00 Asia/Riyadh) for templates flagged `deferrable` (none in wave 0), per-order cap 6 and per-phone-per-account cap 10 a day (counters in Redis with daily expiry; OTP exempt); opt-out list `core_messaging_opt_outs` (`account_id`, `phone`, `source` CHECK reply, provider, `created_at`; unique `(account_id, phone)`; migration `0010`) skipped as `done` with reason `opted_out` (OTP exempt); `MESSAGING_DISABLED=true` marks rows `superseded` with reason `disabled`; breaker open: OTP door answers `503 messaging_unavailable`, other rows wait (`retry` without consuming an attempt); outcomes per PLAT-8 (`rate_limited` from the provider reschedules without an attempt) |
+| 2.6 | Deletion of OTP rows | A kernel job (worker, hourly, Redis lock `elx:lock:otp-prune`): delete `message` rows whose template is `auth_otp` and `done_at < now() - 1 h` (also `superseded` and `dead` ones older than 1 h, so a code never lingers), and `core_otp_challenges` rows with `expires_at < now() - 1 h`; both exempt from the PLAT-8 7-day prune by being gone first; the audit of each batch is one row with counts (`core.otp_rows.purged`) |
+| 2.7 | Opt-out intake | Inbound replies and provider status callbacks are doc 9 §3's inbound webhook pattern (INT order); this order ships the `OptOutList.add/remove` service with stop and start words (`STOP`, `إيقاف`, `الغاء`; `START`, `اشتراك`) and a test-only entry, not the webhook |
+| 2.8 | Usage counters | `messages_per_month` lives on the account limits (PLAT-13 provisioning); this order ships `MessagingUsage.increment(accountId)` on a sent row and a check at send time that reads the limit when present and skips recipient messages with reason `budget` at 100 % (OTP counted, never blocked); the 80 % notice is WEB-3's |
+| 2.9 | Config | `MESSAGING_PROVIDER` required in production and not `stub` (exists); new: `MESSAGING_PHONE_NUMBER_ID`, `MESSAGING_WEBHOOK_SECRET` (for the INT order; validated now, unused), `MESSAGING_TEMPLATE_NAMESPACE` (default `elx`), `MAIL_SMTP_URL`, `MAIL_FROM`; all through `packages/config` with tests and `.env.example` lines (local: stub provider, Mailpit SMTP on 1025) |
+| 2.10 | Observability | The breaker state and the counts of sent, skipped (by reason), failed and purged rows are structured log lines and a metric hook (PLAT-14 wires exporters); no code, phone or body in any log line (phone logged as its last two digits only) |
+| 2.11 | Tests | Unit: E.164 normalisation cases (two formats of one Saudi number share a budget), code generation, hashing, encryption round trip with the row context, template registry parity, quiet-hours clock cases, caps; integration on the PLAT-5 harness with the stub and Mailpit: request OTP writes a challenge and one outbox row whose payload holds no plaintext code; the worker sends through the stub and the stub exposes the code; verify succeeds once and fails after (single use, row lock under two concurrent verifies); five wrong codes invalidate; resend inside 60 s refused; budgets 5 per phone and 20 per IP; a 4-minute-old OTP row is superseded, not sent; `MESSAGING_DISABLED` supersedes; a mail row reaches Mailpit in `ar` and `en`; opt-out skips a recipient template and not `auth_otp`; the purge removes rows and challenges one hour after; breaker open answers `503 messaging_unavailable` at the test door |
+
+## 3. Build list
+
+### Leg 1 (port, adapters, templates, OTP challenges)
+
+| Item | Delivers | Verify |
+|---|---|---|
+| A | Templates and registry per 2.3; `messaging` config per 2.9; `messaging_unavailable` in `errors.md` if absent | parity and registry tests; config tests; `.env.example` |
+| B | `MessageSender` port, stub adapter, Meta Cloud adapter, BSP slot, mail adapter per 2.1 and 2.2 | unit tests with a fake HTTP server for the Meta adapter (template payload shape, client reference, 5 s timeout, breaker); stub round trip against `tools/whatsapp-stub`; mail to Mailpit |
+| C | Migration 0009 and `OtpService` per 2.4 | integration per 2.11 (challenge, hashing, single use, attempts, cooldown, budgets); schema test exemption |
+| D | Test-only door routes (request and verify) bound to the real `driverRequestOtp` and `driverVerifyOtp` operations through `ContractPipe` and the PLAT-10 guard (`core.auth.anonymous`), so PLAT-11 replaces the bodies, not the wiring | HTTP tests with the generated schemas; `otp_invalid` for every failure; `503 messaging_unavailable` when the breaker is open |
+| E | Plan §8 for the leg; memories; draft PR | gate green locally and on CI |
+
+### Leg 2 (handler, policies, purge, usage)
+
+| Item | Delivers | Verify |
+|---|---|---|
+| F | `MessageKindHandler` per 2.5 registered in the PLAT-8 registry (the relay starts enqueuing `message` rows) | integration: send through the stub; staleness; disabled; breaker wait; outcomes |
+| G | Migration 0010 opt-out list, `OptOutList` per 2.7, caps and quiet hours per 2.5, usage per 2.8 | integration per 2.11 |
+| H | OTP purge job per 2.6 | integration: rows and challenges gone after one hour (clock advanced), audit row with counts |
+| I | README "Messaging" section; memories; plan §8 complete; PR body | gate green |
+
+## 4. Commit plan
+
+One commit per item `PLAT-9: <letter> <title>` with its §8.0 row; leg 1 opens the draft PR; leg 2 is a fresh executor on the same branch.
+
+## 5. Exit criteria
+
+- An OTP requested at the test door arrives at the stub with the code, is never stored or logged in clear, verifies once, and its row and challenge are gone one hour later.
+- Invitation and reset mails arrive in Mailpit in both languages.
+- Quiet hours, caps, opt-out and the budget skip recipient templates and never OTP; `MESSAGING_DISABLED` and the open breaker behave per doc 9 §2.4.
+- The adversary pass finds no critical or high.
+
+## 6. Not in this order
+
+The sign-in doors, invitation and reset flows (PLAT-11); the inbound webhook for replies and status callbacks (INT order); wave 1 recipient templates and the order read port; SMS; the 80 % budget notice (WEB-3); the `messages_per_month` limit itself (PLAT-13); template submission to the provider (owner action, doc 9 §5.2); Valkey (A-24).
+
+## 7. Owner questions
+
+| # | Question | Provisional default |
+|---|---|---|
+| 1 | Which provider does eeasynew use for WhatsApp (A-22)? | The Meta Cloud API adapter ships now; a BSP adapter is built when the name arrives. |
+| 2 | Production SMTP for invitations and resets? | A plain SMTP URL (`MAIL_SMTP_URL`); the provider is OPS-1's choice. |
+| 3 | Submit `auth_otp` on the new number now (doc 9 §5.2: no later than three weeks before the wave exits)? | Owner action; the template text is in `packages/i18n` after item A. |
+
+## 8. Executor notes (filled by the executor)
+
+### 8.0 Progress
+
+| Item | Commit | Tests (counts) | Interpretation |
+|---|---|---|---|
+
+### 8.1 Skills, documents and versions consulted
+
+### 8.2 Interpretations the lead should check
+
+### 8.3 Not done here
+
+## 9. Lead review and adversary
+
+Adversary: required (OTP codes, phone numbers, credentials encryption, budgets, opt-out).
