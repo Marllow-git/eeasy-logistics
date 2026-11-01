@@ -7,6 +7,7 @@
 - API naming (handbook 04): plural kebab-case paths, `snake_case` JSON, ISO 8601 with offset, money as integer halalas + currency, error `{code,message,details?}` with stable codes, `Idempotency-Key` on retryable writes.
 - i18n: keys in `packages/i18n/<locale>/<namespace>.json`; Arabic catalogue is the reference type, parity test fails on a key missing in either locale. Logical CSS properties only in web (RTL).
 - Tests: unit next to code (`*.test.ts`); integration against real PostgreSQL; behaviour change = red-then-green shown in PR; never weaken a test.
+- Test data from contracts (handbook 03): mock the API with the generated `@eeasy-logistics/contracts/<surface>/mocks` (test-only), overriding only asserted fields; API HTTP tests use generated request types and parse responses with the generated response schema; database fixtures stay Drizzle-typed; never hand-write an object literal for a contract shape.
 
 ## Repo process
 - Branches `docs/…`, `feat/<ORDER-ID>-<slug>`, `fix/…`, `chore/…`; commits `<ID>: <item letter>, <what>`, one per build-list item; co-author trailer supplied by tooling.
