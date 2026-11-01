@@ -12,3 +12,19 @@ ignoredBuiltDependencies:
   - unrs-resolver
   # Its postinstall would write the hook; the root `prepare` script does that explicitly (PLAT-3).
   - simple-git-hooks
+
+# Supply chain: refuse versions published less than three days ago (minutes), and fail an
+# install when a package's publish trust level drops below an earlier release's (for example,
+# provenance disappears). A version needed sooner goes in minimumReleaseAgeExclude, with a reason.
+minimumReleaseAge: 4320
+trustPolicy: no-downgrade
+
+# Accepted advisories, reviewed 2026-11-01. Each sits in build or test tooling (jest, eslint,
+# @expo/cli, drizzle-kit) and never reaches an API image or a web or app bundle. Forcing the
+# patched versions would cross major versions under those tools. Re-review when they update.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-67mh-4wv8-2f99 # esbuild <=0.24.2 dev-server CORS; via drizzle-kit, never serves
+    - GHSA-g3hv-75wg-m249 # minimatch ReDoS; via jest, eslint and @expo/cli, patterns are ours
+    - GHSA-3g3m-2fjr-6pw4 # glob AbortSignal bypass; via jest and @expo/cli, no untrusted input
+    - GHSA-gcqx-w48m-w2h4 # deepmerge prototype poisoning; via jest-config, no fix published
