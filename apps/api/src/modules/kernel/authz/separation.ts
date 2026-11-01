@@ -21,6 +21,8 @@ export const cashHandlingPermissions: ReadonlySet<string> = new Set([
  * Refuses a membership's role list that combines `driver` with any role holding a cash-handling
  * permission: `422 role_combination_forbidden` (M9). `bundles` is the resolver's map
  * (`PermissionResolver.bundles`); a role it does not know is left to the caller's own validation.
+ * PLAT-12 passes the union of the user's roles over every membership in the account, on insert and
+ * on update (adversary A-7), so two memberships cannot split driver and cashier.
  */
 export function assertRoleCombination(
   roles: readonly string[],
@@ -39,7 +41,11 @@ export function assertRoleCombination(
   }
 }
 
-/** The people of one approval: user ids, `null` or absent where the flow has no such step. */
+/**
+ * The people of one approval, as user ids (`core_users.id`, the token's `sub`), never membership
+ * ids: one person with two memberships is still one person (adversary A-7). `null` or absent where
+ * the flow has no such step.
+ */
 export interface ApprovalParties {
   readonly approver: string;
   readonly counter?: string | null;

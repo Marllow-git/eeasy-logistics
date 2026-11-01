@@ -14,7 +14,7 @@ import { IS_PUBLIC, principalOf } from '../tenancy/frame.js';
 import { userAgentOf } from '../tenancy/unit-of-work.interceptor.js';
 import { DenialAuditThrottle } from './denial-throttle.js';
 import type { BoundOperation } from './operation-routes.check.js';
-import { boundOperation } from './operation-routes.check.js';
+import { boundOperation, doorPermissions } from './operation-routes.check.js';
 import type { PermissionResolver } from './permission-resolver.js';
 import { PERMISSION_RESOLVER } from './permission-resolver.js';
 import type { SiteScopedSource } from './site-scope.js';
@@ -24,16 +24,6 @@ import {
   normaliseSiteIds,
   setRequestSiteScope,
 } from './site-scope.js';
-
-/**
- * The doors of contracts README §1: no role check, open to any principal of the operation's surface
- * (sign-in doors are `@Public()` and never reach this guard).
- */
-export const doorPermissions: ReadonlySet<string> = new Set([
-  'core.auth.anonymous',
-  'core.auth.self',
-  'platform.auth.self',
-]);
 
 const actorTypes: Readonly<Record<Principal['kind'], AuditActorType>> = {
   staff: 'user',

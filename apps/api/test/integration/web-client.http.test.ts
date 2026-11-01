@@ -59,6 +59,7 @@ class StaffMarkerProbe {
   @Post('door')
   @Public()
   @HttpCode(200)
+  @Operation(probeOperations.staffDoor)
   door(): { ok: true } {
     handled += 1;
     return { ok: true };

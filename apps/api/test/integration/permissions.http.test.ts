@@ -248,6 +248,34 @@ describe('permission guard (PLAT-10 item C)', () => {
     expect(await auditRowsOf(owner, later.headers['x-request-id'] as string)).toHaveLength(1);
   });
 
+  it('refuses a cross-site or form write before the permission check: no denial row (A-5)', async () => {
+    const cookie = await staff(['viewer']);
+    const noMarker = await http()
+      .post('/v1/staff/authz-probe/sites')
+      .set('Cookie', cookie)
+      .send({})
+      .expect(403);
+    expect(await auditRowsOf(owner, noMarker.headers['x-request-id'] as string)).toHaveLength(0);
+    const otherOrigin = await http()
+      .post('/v1/staff/authz-probe/sites')
+      .set({ 'X-EL-Client': 'web', Origin: 'https://evil.example' })
+      .set('Cookie', cookie)
+      .send({})
+      .expect(403);
+    expect(await auditRowsOf(owner, otherOrigin.headers['x-request-id'] as string)).toHaveLength(0);
+    const form = await http()
+      .post('/v1/staff/authz-probe/sites')
+      .set(webClientHeaders(config, 'staff'))
+      .set('Cookie', cookie)
+      .type('form')
+      .send('name=x');
+    expect(form.status).toBe(400);
+    expect(await auditRowsOf(owner, form.headers['x-request-id'] as string)).toHaveLength(0);
+    // With the marker and JSON, the same viewer is refused by the permission guard and audited.
+    const audited = await staffWrite('/v1/staff/authz-probe/sites', cookie).expect(403);
+    expect(await auditRowsOf(owner, audited.headers['x-request-id'] as string)).toHaveLength(1);
+  });
+
   it('records a platform denial with no account', async () => {
     const sub = uuidv7();
     const refused = await platformWrite(

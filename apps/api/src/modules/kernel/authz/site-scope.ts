@@ -1,5 +1,5 @@
 import type { RequestContext } from '@eeasy-logistics/db';
-import { isUuid } from '@eeasy-logistics/db';
+import { findContext, isUuid } from '@eeasy-logistics/db';
 import { SetMetadata } from '@nestjs/common';
 import type { SQL } from 'drizzle-orm';
 import { inArray, sql } from 'drizzle-orm';
@@ -81,38 +81,34 @@ export function assertSiteInScope(
 
 /** The sites of the request's site-scoped principal, set by the permission guard. */
 const requestScopes = new WeakMap<Request, readonly string[]>();
-/** The same, keyed by the request's tenant context (the unit-of-work interceptor binds it). */
-const contextScopes = new WeakMap<RequestContext, readonly string[]>();
 
 /** Records the request's normalised sites (`normaliseSiteIds`) for its tenant context. */
 export function setRequestSiteScope(request: Request, sites: readonly string[]): void {
   requestScopes.set(request, sites);
 }
 
+/** The sites the unit-of-work interceptor puts on the request's context as `siteIds`. */
 export function requestSiteScope(request: Request): readonly string[] | undefined {
   return requestScopes.get(request);
 }
 
-/** Binds a site scope to the (frozen) tenant context the request's unit of work runs with. */
-export function bindContextSiteScope(context: RequestContext, sites: readonly string[]): void {
-  if (!Object.isFrozen(context)) throw new Error('A site scope binds to a frozen context');
-  contextScopes.set(context, sites);
-}
-
-/** The sites `ctx` is restricted to, or undefined when it is not site-scoped. */
-export function siteIdsOf(ctx: RequestContext): readonly string[] | undefined {
-  return contextScopes.get(ctx);
-}
-
 /**
  * The predicate a repository adds to a list or lookup of site-owned rows (plan 2.6 b):
- * `column IN (sites)` when the request's principal is site-scoped for this operation (nothing at
- * all when its site list is empty), no predicate otherwise. Pass `getContext()` and the table's
- * `site_id` column: `.where(and(eq(t.status, s), siteFilter(getContext(), t.siteId)))`.
+ * `column IN (sites)` when the context carries `siteIds` (a site-scoped principal; nothing at all
+ * when the list is empty), no predicate otherwise. Pass `getContext()` and the table's `site_id`
+ * column: `.where(and(eq(t.status, s), siteFilter(getContext(), t.siteId)))`. The sites are a field
+ * of the context (packages/db), so any copy of it keeps them (adversary A-2); a context without
+ * `siteIds` inside a site-scoped request is a programming error and throws rather than reading
+ * every site.
  */
 export function siteFilter(ctx: RequestContext, column: AnyPgColumn): SQL | undefined {
-  const sites = siteIdsOf(ctx);
-  if (sites === undefined) return undefined;
+  const sites = ctx.siteIds;
+  if (sites === undefined) {
+    if (findContext()?.siteIds !== undefined) {
+      throw new Error('siteFilter in a site-scoped request needs its context (getContext())');
+    }
+    return undefined;
+  }
   if (sites.length === 0) return sql`false`;
   return inArray(column, [...sites]);
 }

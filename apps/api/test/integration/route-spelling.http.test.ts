@@ -9,7 +9,8 @@ import type { App } from 'supertest/types.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { configureHttp, createHttpAdapter, httpAppOptions } from '../../src/http-app.js';
-import { Public } from '../../src/modules/kernel/public/index.js';
+import { Operation, Public } from '../../src/modules/kernel/public/index.js';
+import { probeOperations } from '../support/probe-operations.js';
 import {
   RATE_LIMITER,
   RateLimiter,
@@ -28,6 +29,7 @@ import { integrationConfig } from './support.js';
 class DoorProbe {
   @Post()
   @HttpCode(200)
+  @Operation(probeOperations.staffDoor)
   signIn(): { ok: true } {
     return { ok: true };
   }
