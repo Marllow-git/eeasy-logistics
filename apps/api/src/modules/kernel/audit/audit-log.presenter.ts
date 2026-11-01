@@ -33,14 +33,28 @@ function asObject(value: unknown): Record<string, unknown> | null {
 
 export interface PresentOptions {
   /**
-   * The staff surface: a platform staff member's address and browser are platform data, so a
-   * merchant sees that platform staff acted, why and when, but not from where.
+   * The staff surface: what a platform staff member did on the account is the merchant's to see
+   * (actor type and id, action, target, time, outcome), but not the support reason, the platform's
+   * internal operation name or the caller's own request id, nor the address and browser
+   * (adversary L-3; ruling: merchants never see support reasons).
    */
-  readonly hidePlatformNetwork: boolean;
+  readonly hidePlatformDetail: boolean;
+}
+
+/** `after` of a platform-actor row without the platform's internals (L-3). */
+function withoutPlatformDetail(
+  after: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (after === null) return null;
+  const kept: Record<string, unknown> = { ...after };
+  delete kept.operation;
+  delete kept.client_request_id;
+  return kept;
 }
 
 export function presentAuditEntry(row: AuditRow, options: PresentOptions): AuditLogEntry {
-  const hideNetwork = options.hidePlatformNetwork && row.actorType === 'platform_user';
+  const hide = options.hidePlatformDetail && row.actorType === 'platform_user';
+  const after = asObject(row.after);
   return {
     id: row.id,
     occurred_at: isoFromPostgres(row.occurredAt),
@@ -51,11 +65,11 @@ export function presentAuditEntry(row: AuditRow, options: PresentOptions): Audit
     target_id: row.targetId,
     action: row.action,
     before: asObject(row.before),
-    after: asObject(row.after),
+    after: hide ? withoutPlatformDetail(after) : after,
     request_id: row.requestId,
-    ...(row.ip === null || hideNetwork ? {} : { ip: row.ip }),
-    ...(row.userAgent === null || hideNetwork ? {} : { user_agent: row.userAgent }),
-    reason: row.reason,
+    ...(row.ip === null || hide ? {} : { ip: row.ip }),
+    ...(row.userAgent === null || hide ? {} : { user_agent: row.userAgent }),
+    reason: hide ? null : row.reason,
   };
 }
 
@@ -66,7 +80,7 @@ export interface AuditPage {
 
 export function presentStaffAuditPage(page: AuditPage): ListAuditLog200 {
   return {
-    data: page.rows.map((row) => presentAuditEntry(row, { hidePlatformNetwork: true })),
+    data: page.rows.map((row) => presentAuditEntry(row, { hidePlatformDetail: true })),
     next_cursor: page.nextCursor,
   };
 }
@@ -75,7 +89,7 @@ export function presentPlatformAuditPage(
   page: AuditPage,
 ): PlatformListAudit200 & PlatformListAccountAudit200 {
   const data: PlatformAuditLogEntry[] = page.rows.map((row) =>
-    presentAuditEntry(row, { hidePlatformNetwork: false }),
+    presentAuditEntry(row, { hidePlatformDetail: false }),
   );
   return { data, next_cursor: page.nextCursor };
 }

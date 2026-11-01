@@ -45,4 +45,10 @@ describe('auditRow', () => {
     expect(row.userAgent).toHaveLength(512);
     expect(row.reason).toHaveLength(2_000);
   });
+
+  it('stores only a real IP address (adversary L-2)', () => {
+    expect(auditRow({ ...event, ip: 'not-an-ip' }).ip).toBeNull();
+    expect(auditRow({ ...event, ip: '203.0.113.7' }).ip).toBe('203.0.113.7');
+    expect(auditRow({ ...event, ip: '2001:db8::1' }).ip).toBe('2001:db8::1');
+  });
 });

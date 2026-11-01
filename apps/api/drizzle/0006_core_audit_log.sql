@@ -19,8 +19,9 @@
 --      would see that partition's policies, of which there are none). The default privileges of
 --      0001 would grant DML on each new partition; core_ensure_audit_partitions revokes it at once,
 --      and so does this migration for the DEFAULT partition at the end.
---   3. Only elx_owner can detach or drop a partition, and core_drop_audit_partitions_before refuses
---      any partition newer than 24 months.
+--   3. Only elx_owner (the migration job) can detach or drop a partition, and
+--      core_drop_audit_partitions_before refuses any partition newer than 24 months and writes the
+--      audit row of each drop in the same transaction, before the DROP (adversary M-1).
 CREATE TABLE "core_audit_log" (
 	"id" uuid DEFAULT core_uuidv7() NOT NULL,
 	"occurred_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -59,6 +60,8 @@ COMMENT ON COLUMN core_audit_log.before IS 'pii:any';
 --> statement-breakpoint
 COMMENT ON COLUMN core_audit_log.after IS 'pii:any';
 --> statement-breakpoint
+COMMENT ON COLUMN core_audit_log.reason IS 'pii:any';
+--> statement-breakpoint
 SELECT core_make_append_only('core_audit_log');
 --> statement-breakpoint
 -- The template policies of data §4.3 (0003). tenant_isolation keeps the template's USING and WITH
@@ -72,7 +75,7 @@ CREATE POLICY tenant_isolation ON core_audit_log TO elx_app
 CREATE POLICY platform_access ON core_audit_log TO elx_platform USING (true) WITH CHECK (true);
 --> statement-breakpoint
 -- core_audit_log_YYYYMM for the current UTC month and the next `months_ahead` months, when missing
--- (data §11.5: the migration job keeps three months ahead; the worker's partition job daily).
+-- (data §11.5: the migration job keeps three months ahead on every run; OPS-1 runs it daily).
 -- Bounds are UTC month starts. Each new partition loses every runtime grant at once. Returns how
 -- many partitions it created. Owner only: EXECUTE is not granted to anyone.
 CREATE FUNCTION core_ensure_audit_partitions(months_ahead integer) RETURNS integer
@@ -86,7 +89,7 @@ BEGIN
   IF months_ahead IS NULL OR months_ahead < 0 OR months_ahead > 24 THEN
     RAISE EXCEPTION 'months_ahead must be from 0 to 24' USING ERRCODE = '22023';
   END IF;
-  -- The migration job and the worker's partition job may run at once: one at a time.
+  -- Two migration job runs (a deploy and the daily run) may overlap: one at a time.
   PERFORM pg_advisory_xact_lock(hashtext('core_audit_partitions'));
   FOR step IN 0..months_ahead LOOP
     lower_bound := (first_month + make_interval(months => step))::date;
@@ -107,16 +110,23 @@ END $$;
 REVOKE EXECUTE ON FUNCTION core_ensure_audit_partitions(integer) FROM PUBLIC;
 --> statement-breakpoint
 -- Detaches and drops every partition of core_audit_log whose upper bound is on or before `cutoff`
--- (data §3.1: the only lawful removal), and returns each one's name and upper bound so the caller
--- audits the drop. Refuses a cutoff later than the first day of the month 24 months ago, so no
--- caller can shorten the retention below two years (identity and tenancy §7). Owner only.
-CREATE FUNCTION core_drop_audit_partitions_before(cutoff date)
+-- (data §3.1: the only lawful removal). Before each DROP it inserts the drop's own audit row
+-- (`platform.audit_partition.dropped`, actor system, `after: { partition, upper_bound }`,
+-- request_id `run_id`) in the same transaction, so a drop can never commit unaudited (adversary
+-- M-1); returns each name and upper bound for the caller's log. Refuses a cutoff later than the
+-- first day of the month 24 months ago, so no caller can shorten the retention below two years
+-- (identity and tenancy §7). Owner only (the owner is not subject to RLS: ENABLE, not FORCE).
+CREATE FUNCTION core_drop_audit_partitions_before(cutoff date, run_id text)
   RETURNS TABLE (partition_name text, upper_bound timestamptz)
   LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE
   earliest_allowed date := (date_trunc('month', now() AT TIME ZONE 'UTC') - interval '24 months')::date;
   candidate record;
 BEGIN
+  IF run_id IS NULL OR run_id = '' THEN
+    RAISE EXCEPTION 'run_id is required: it is the request_id of the drop audit rows'
+      USING ERRCODE = '22023';
+  END IF;
   IF cutoff IS NULL OR cutoff > earliest_allowed THEN
     RAISE EXCEPTION 'cutoff % is inside the 24-month audit retention', cutoff
       USING ERRCODE = '22023';
@@ -133,6 +143,14 @@ BEGIN
     -- A DEFAULT partition has no upper bound and is never dropped here.
     CONTINUE WHEN candidate.bound IS NULL
       OR candidate.bound > (cutoff::timestamp AT TIME ZONE 'UTC');
+    INSERT INTO public.core_audit_log
+      (actor_type, actor_id, account_id, target_type, target_id, action, after, request_id)
+    VALUES
+      ('system', NULL, NULL, 'audit_partition', candidate.name, 'platform.audit_partition.dropped',
+       jsonb_build_object(
+         'partition', candidate.name,
+         'upper_bound', to_char(candidate.bound AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')),
+       run_id);
     EXECUTE format('ALTER TABLE public.core_audit_log DETACH PARTITION public.%I', candidate.name);
     EXECUTE format('DROP TABLE public.%I', candidate.name);
     partition_name := candidate.name;
@@ -141,11 +159,11 @@ BEGIN
   END LOOP;
 END $$;
 --> statement-breakpoint
-REVOKE EXECUTE ON FUNCTION core_drop_audit_partitions_before(date) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION core_drop_audit_partitions_before(date, text) FROM PUBLIC;
 --> statement-breakpoint
 -- A safety net (lead review round 1): a row whose month has no partition lands here instead of
--- failing its insert. It should stay empty while the three-month window is kept; the worker's
--- partition job warns with the count when it is not. Rows here are not dropped by retention
+-- failing its insert. It should stay empty while the three-month window is kept; the migration
+-- job warns with the count when it is not. Rows here are not dropped by retention
 -- until moved into a monthly partition (a manual chore). No runtime grant, like every partition.
 CREATE TABLE core_audit_log_default PARTITION OF core_audit_log DEFAULT;
 --> statement-breakpoint

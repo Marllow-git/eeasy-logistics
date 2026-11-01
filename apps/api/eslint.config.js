@@ -102,29 +102,27 @@ const elx = {
 };
 
 /**
- * PLAT-7 plan 2.8 (ADR-0031): the elx_owner URL reaches application code in two places only: the
- * migration job (src/migrate/, and the local seed tool) and the worker's audit partition job
- * (src/worker/system/audit-partitions.ts), which hands it to the partition functions and nothing
- * else. Reading `config.db.urls.owner` anywhere else in src/ is refused.
+ * PLAT-7 (ADR-0031; adversary M-3, L-1): the elx_owner URL reaches application code only in the
+ * migration job (src/migrate/, which also keeps the audit partitions) and the local seed tool.
+ * Reading `config.db.urls.owner` anywhere else in src/ is refused, by dot, by computed name or by
+ * destructuring.
  */
 const ownerUrlMessage =
-  'The elx_owner URL is for the migration job and the audit partition job only (ADR-0031, PLAT-7).';
+  'The elx_owner URL is for the migration job only (ADR-0031, PLAT-7 adversary M-3).';
 const ownerUrlRestrictions = [
   {
     selector: "MemberExpression[property.name='owner'][object.property.name='urls']",
     message: ownerUrlMessage,
   },
   {
-    selector: "ObjectPattern > Property[key.name='owner']",
+    selector: "MemberExpression[computed=true] > Literal[value='owner']",
     message: ownerUrlMessage,
   },
+  { selector: "ObjectPattern > Property[key.name='owner']", message: ownerUrlMessage },
+  { selector: "ObjectPattern > Property[key.value='owner']", message: ownerUrlMessage },
 ];
 // The seed tool (local and ci only; staging and production refuse its admin URL) migrates too.
-const ownerUrlJobs = [
-  'src/migrate/**/*.ts',
-  'src/worker/system/audit-partitions.ts',
-  'src/seed/**/*.ts',
-];
+const ownerUrlJobs = ['src/migrate/**/*.ts', 'src/seed/**/*.ts'];
 
 /** The violation fixtures of the lint rules, linted only by test/architecture-violations.test.ts. */
 const lintFixtures = 'test/architecture/violations/lint';

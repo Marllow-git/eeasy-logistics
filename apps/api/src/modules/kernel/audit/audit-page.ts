@@ -10,6 +10,8 @@ import type { CursorCodec } from './cursor.js';
 export interface AuditPageRequest {
   /** The operation id; a cursor never continues another operation's list. */
   readonly operation: string;
+  /** Who reads: `account:<id>` (staff) or `platform:<user id>` (platform); bound into the cursor. */
+  readonly principal: string;
   /** The filters as the contract names them, bound into the cursor. */
   readonly filters: Readonly<Record<string, string | undefined>>;
   /** The same filters for the repository. */
@@ -39,7 +41,12 @@ export function planAuditPage(codec: CursorCodec, request: AuditPageRequest): Au
       fields: [{ pointer: '/query/sort', code: 'invalid' }],
     });
   }
-  const binding = { operation: request.operation, filters: request.filters, sort };
+  const binding = {
+    operation: request.operation,
+    principal: request.principal,
+    filters: request.filters,
+    sort,
+  };
   const after = request.cursor === undefined ? undefined : codec.decode(request.cursor, binding);
   const size = request.limit;
   return {

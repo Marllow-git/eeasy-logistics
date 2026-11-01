@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { findContext, getUnitOfWork } from '@eeasy-logistics/db';
 import type { PlatformDatabase, Pool } from '@eeasy-logistics/db/committed';
 import { withCommittedSideEffect } from '@eeasy-logistics/db/committed';
@@ -36,7 +37,8 @@ export function auditRow(event: AuditEvent): AuditInsert {
     after,
     reason: redactText(event.reason),
     requestId: event.requestId,
-    ip: event.ip ?? null,
+    // `inet` refuses anything else; a forged forwarded value is stored as unknown (adversary L-2).
+    ip: event.ip !== undefined && event.ip !== null && isIP(event.ip) !== 0 ? event.ip : null,
     userAgent:
       event.userAgent === undefined || event.userAgent === null
         ? null

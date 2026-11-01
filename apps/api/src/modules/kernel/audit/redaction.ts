@@ -7,7 +7,9 @@
  * tokens on `_`, `-`, `.` and camelCase boundaries, lower-cased, and redacted when any token is in
  * this set. Tokens, not substrings: `shipping_fee` stays (`pin` is not a token of it), while
  * `private_key`, `accessKey`, `signing-key` and `credentials` go. `key_id` and `idempotency_key`
- * are redacted too (harmless).
+ * are redacted too (harmless). Adversary M-2 extends the words and also compares the key with its
+ * separators removed and each pair of adjacent tokens joined, so `api_key`, `apiKey`, `x-api-key`
+ * and `apikey` all hit `apikey`.
  */
 export const secretKeyTokens: ReadonlySet<string> = new Set([
   'password',
@@ -26,6 +28,18 @@ export const secretKeyTokens: ReadonlySet<string> = new Set([
   'cookies',
   'credential',
   'credentials',
+  // Adversary M-2.
+  'apikey',
+  'keyid',
+  'privatekey',
+  'passcode',
+  'session',
+  'jwt',
+  'bearer',
+  'signature',
+  'salt',
+  'cvv',
+  'iban',
 ]);
 
 /** The lower-cased tokens of a key: split on `_`, `-`, `.` and camelCase (`APIKey` → api, key). */
@@ -36,9 +50,28 @@ export function keyTokens(key: string): string[] {
     .map((token) => token.toLowerCase());
 }
 
-/** Whether `key` names a secret (any of its tokens is in `secretKeyTokens`). */
+/**
+ * Whether `key` names a secret: any token, any two adjacent tokens joined, or the whole key with
+ * its separators removed is in `secretKeyTokens`.
+ */
 export function isSecretKey(key: string): boolean {
-  return keyTokens(key).some((token) => secretKeyTokens.has(token));
+  const tokens = keyTokens(key);
+  const candidates = [
+    ...tokens,
+    ...tokens.slice(1).map((token, index) => `${tokens[index] ?? ''}${token}`),
+    tokens.join(''),
+  ];
+  return candidates.some((candidate) => secretKeyTokens.has(candidate));
+}
+
+/** A bearer credential or a JWT (three base64url parts, the header starting `eyJ`) (M-2). */
+const bearerValue = /^bearer\s/i;
+const jwtValue = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
+
+/** Whether a string value is itself a credential, whatever its key. */
+export function isSecretValue(value: string): boolean {
+  const trimmed = value.trim();
+  return bearerValue.test(trimmed) || jwtValue.test(trimmed);
 }
 export const redacted = '[redacted]';
 export const maxStringLength = 2_000;
@@ -60,7 +93,7 @@ function redactValue(value: unknown, depth: number, seen: Set<object>): AuditJso
   if (value === null) return null;
   switch (typeof value) {
     case 'string':
-      return capString(value);
+      return isSecretValue(value) ? redacted : capString(value);
     case 'number':
       return Number.isFinite(value) ? value : null;
     case 'boolean':
@@ -109,5 +142,6 @@ export function redactForAudit(value: unknown): AuditJson {
 
 /** A free-text field (the support reason): capped, never a secret key to match. */
 export function redactText(value: string | null | undefined): string | null {
-  return value === null || value === undefined ? null : capString(value);
+  if (value === null || value === undefined) return null;
+  return isSecretValue(value) ? redacted : capString(value);
 }

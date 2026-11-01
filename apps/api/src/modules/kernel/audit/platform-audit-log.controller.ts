@@ -3,7 +3,7 @@ import type {
   PlatformListAudit200,
 } from '@eeasy-logistics/contracts/platform/schemas';
 import { operationSchemas } from '@eeasy-logistics/contracts/platform/schemas';
-import { getContext, getUnitOfWork } from '@eeasy-logistics/db';
+import { findPlatformContext, getContext, getUnitOfWork } from '@eeasy-logistics/db';
 import { Controller, Get, Inject, Optional } from '@nestjs/common';
 import type { ContractInput } from '../contract/contract-pipe.js';
 import { Input, Operation } from '../contract/contract-pipe.js';
@@ -18,6 +18,13 @@ import { CURSOR_CODEC, CursorCodec } from './cursor.js';
 // door (`@CrossTenant()`, `X-Support-Reason`, one committed audit row per call); the platform's own
 // rows (no account) without it. `x-permission` (`platform.tenants.read`, `platform.audit.read`) is
 // enforced by PLAT-10.
+
+/** The platform user of the request: the door's context, or the plain platform frame's. */
+function platformUserId(doorAccount: string | undefined): string {
+  const userId = doorAccount === undefined ? findPlatformContext()?.userId : getContext().userId;
+  if (userId === undefined || userId === null) throw new Error('No platform user on this request');
+  return userId;
+}
 
 const accountAudit = operationSchemas.platformListAccountAudit;
 const platformAudit = operationSchemas.platformListAudit;
@@ -40,6 +47,7 @@ export class PlatformAuditLogController {
     const { query } = input;
     const plan = planAuditPage(this.cursors, {
       operation: 'platformListAccountAudit',
+      principal: `platform:${getContext().userId ?? ''}`,
       filters: {
         account_id: input.params.account_id,
         created_from: query.created_from,
@@ -66,6 +74,7 @@ export class PlatformAuditLogController {
     const { query } = input;
     const plan = planAuditPage(this.cursors, {
       operation: 'platformListAudit',
+      principal: `platform:${platformUserId(query.account_id)}`,
       filters: {
         account_id: query.account_id,
         actor_id: query.actor_id,

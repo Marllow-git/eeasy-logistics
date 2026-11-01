@@ -141,6 +141,7 @@ describe('A-17 ESLint rules fail on their violation fixtures (adversary M-6)', (
       expect(await rulesOf('owner-url.ts')).toEqual([
         'no-restricted-syntax',
         'no-restricted-syntax',
+        'no-restricted-syntax',
       ]);
     },
   );

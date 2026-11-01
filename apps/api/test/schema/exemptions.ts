@@ -46,3 +46,12 @@ export const globalUniqueIndexes: Readonly<Record<string, readonly (readonly str
  * grant the runtime roles nothing (PLAT-5 plan §6, PLAT-7).
  */
 export const appendOnlyTables: readonly string[] = ['core_audit_log'];
+
+/**
+ * Personal-data columns (data §10 inventory), each tagged `COMMENT ON COLUMN … IS 'pii:<actor>'`
+ * in its migration. The schema test fails when a listed column lacks the tag; an order adding a
+ * personal-data column lists it here (the staging anonymiser, OPS-1, reads the same tags).
+ */
+export const piiColumns: Readonly<Record<string, readonly string[]>> = {
+  core_audit_log: ['actor_id', 'ip', 'user_agent', 'before', 'after', 'reason'],
+};

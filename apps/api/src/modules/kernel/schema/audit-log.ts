@@ -21,8 +21,8 @@ export type AuditActorType = (typeof auditActorTypes)[number];
  * which Drizzle cannot express, so migration 0006 creates it by hand (with the partitions, the
  * append-only triggers, the policies and the `pii:` comments). A nullable-account table (data
  * §2.4): platform actors write rows with no account. Rows are never updated or deleted; the only
- * lawful removal is dropping a monthly partition past the retention (24 months) in the worker's
- * partition job.
+ * lawful removal is dropping a monthly partition past the retention (24 months) in the migration
+ * job.
  */
 export const coreAuditLog = pgTable(
   'core_audit_log',

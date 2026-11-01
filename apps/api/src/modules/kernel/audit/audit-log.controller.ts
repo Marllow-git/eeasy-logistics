@@ -1,6 +1,6 @@
 import type { ListAuditLog200 } from '@eeasy-logistics/contracts/staff/schemas';
 import { operationSchemas } from '@eeasy-logistics/contracts/staff/schemas';
-import { getUnitOfWork } from '@eeasy-logistics/db';
+import { getContext, getUnitOfWork } from '@eeasy-logistics/db';
 import { Controller, Get, Inject, Optional } from '@nestjs/common';
 import type { ContractInput } from '../contract/contract-pipe.js';
 import { Input, Operation } from '../contract/contract-pipe.js';
@@ -29,6 +29,7 @@ export class AuditLogController {
     const { query } = input;
     const plan = planAuditPage(this.cursors, {
       operation: 'listAuditLog',
+      principal: `account:${getContext().accountId}`,
       filters: {
         target_type: query.target_type,
         target_id: query.target_id,
