@@ -11,6 +11,7 @@ type Locale = keyof typeof expectedDir;
 const routes = [
   { name: 'platform', path: '/' },
   { name: 'sign-in', path: '/sign-in' },
+  { name: 'sign-in-totp', path: '/sign-in/totp' },
 ] as const;
 
 test.beforeEach(async ({ context, baseURL }, testInfo) => {
