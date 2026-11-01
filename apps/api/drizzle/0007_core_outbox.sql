@@ -19,6 +19,8 @@
 --
 -- core_outbox_pending_id_idx serves the relay's batch, ORDER BY id over pending rows (data §5.2;
 -- PLAT-8 lead review round 1); core_outbox_pending_due_idx serves the oldest-due-row alert query.
+-- core_outbox_finished_idx and core_consumer_receipts_processed_idx serve the daily pruning job
+-- across accounts (plan 2.8) and the platform list of dead rows (PLAT-8 item G).
 --
 -- The pending supersede_key is unique per account, (account_id, supersede_key) NULLS NOT DISTINCT
 -- (hand-added: the Drizzle index builder cannot say it), so two accounts may share a key and the
@@ -84,6 +86,8 @@ CREATE INDEX "core_outbox_pending_id_idx" ON "core_outbox" USING btree ("id") WH
 CREATE INDEX "core_outbox_enqueued_idx" ON "core_outbox" USING btree ("enqueued_at") WHERE "core_outbox"."status" = 'enqueued';--> statement-breakpoint
 CREATE INDEX "core_outbox_account_idx" ON "core_outbox" USING btree ("account_id","status","created_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "core_outbox_aggregate_idx" ON "core_outbox" USING btree ("aggregate_id","sequence");--> statement-breakpoint
+CREATE INDEX "core_outbox_finished_idx" ON "core_outbox" USING btree ("status","created_at") WHERE "core_outbox"."status" IN ('done', 'superseded', 'dead');--> statement-breakpoint
+CREATE INDEX "core_consumer_receipts_processed_idx" ON "core_consumer_receipts" USING btree ("processed_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "core_outbox_supersede_key_pending_idx" ON "core_outbox" USING btree ("account_id","supersede_key") NULLS NOT DISTINCT WHERE "core_outbox"."status" = 'pending' AND "core_outbox"."supersede_key" IS NOT NULL;
 --> statement-breakpoint
 -- Personal data inventory (data §10): a payload may carry recipient data (document 2 §6.3) and a

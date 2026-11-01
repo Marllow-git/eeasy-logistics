@@ -70,7 +70,7 @@
     "verification_token_invalid": "The verification token is invalid.",
     "reason_required": "Enter a support reason.",
     "rollout_change_forbidden": "Only a super admin can change the rollout mode.",
-    "replay_not_allowed": "Only failed events can be replayed.",
+    "replay_not_allowed": "This event cannot be replayed: only a failed event from the last 35 days that is not running can be.",
     "fix_not_whitelisted": "This fix is not allowed for your role."
   },
   "fields": {

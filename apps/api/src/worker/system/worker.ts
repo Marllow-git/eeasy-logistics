@@ -11,6 +11,8 @@ import { KindHandlerRegistry } from '../../modules/kernel/outbox/kind-handlers.j
 import { OutboxQueues } from '../../modules/kernel/outbox/queues.js';
 import { purgeIntervalMs, runIdempotencyPurge } from './idempotency-purge.js';
 import { buildKindHandlers } from './kind-handlers.js';
+import type { PruneRun } from './outbox-prune.js';
+import { pruneIntervalMs, runOutboxPrune } from './outbox-prune.js';
 import { OutboxRelay } from './outbox-relay.js';
 import { OutboxWorkers } from './outbox-workers.js';
 
@@ -18,7 +20,7 @@ import { OutboxWorkers } from './outbox-workers.js';
 // (PLAT-6 plan 2.9) and the single-leader outbox relay (PLAT-8 plan 2.3); the outbox queue
 // workers (PLAT-8 plan 2.4) consume the queues of the kinds with a handler.
 
-export type WorkerJob = 'idempotency-purge' | 'outbox-relay' | 'outbox-queues';
+export type WorkerJob = 'idempotency-purge' | 'outbox-prune' | 'outbox-relay' | 'outbox-queues';
 
 /** A started background job: stopped on shutdown. */
 export interface StartedJob {
@@ -53,6 +55,8 @@ export interface WorkerDependencies {
     pool: Pool<PlatformDatabase>,
     registry: KindHandlerRegistry,
   ) => Promise<StartedJob>;
+  /** One daily outbox pruning run under its Redis lock (OUTBOX_PRUNE=on, plan 2.8). */
+  readonly outboxPrune: (db: PlatformDatabase, redis: PurgeRedis) => Promise<PruneRun>;
   readonly logger: Pick<Logger, 'log' | 'warn'>;
 }
 
@@ -130,6 +134,7 @@ const defaults: WorkerDependencies = {
   kindHandlers: buildKindHandlers,
   outboxRelay: startOutboxRelay,
   outboxWorkers: startOutboxWorkers,
+  outboxPrune: (db, redis) => runOutboxPrune(db, redis),
   logger: new Logger('Worker'),
 };
 
@@ -162,9 +167,12 @@ export async function startWorker(
     ...(pool === undefined ? ['DATABASE_URL_PLATFORM'] : []),
   ];
   if (pool === undefined || missing.length > 0) {
-    const disabled = config.outbox.relay
-      ? 'idempotency purge, outbox relay and outbox queues'
-      : 'idempotency purge and outbox queues';
+    const names = [
+      'idempotency purge',
+      ...(config.outbox.relay ? ['outbox relay'] : []),
+      ...(config.outbox.prune ? ['outbox prune'] : []),
+    ];
+    const disabled = `${names.join(', ')} and outbox queues`;
     deps.logger.warn(`${disabled} disabled: ${missing.join(' and ')} not configured`);
     await pool?.close();
     return { jobs: [], stop: () => Promise.resolve() };
@@ -186,6 +194,33 @@ export async function startWorker(
   const timer = setInterval(() => void tick(), purgeIntervalMs);
   deps.logger.log('Idempotency purge scheduled hourly');
   const jobs: WorkerJob[] = ['idempotency-purge'];
+  let pruneTimer: NodeJS.Timeout | undefined;
+  if (config.outbox.prune) {
+    // Daily (plan 2.8): at boot, then every 24 h; the 23 h lock lets one worker a day run it.
+    const prune = async () => {
+      try {
+        if (redis.status === 'wait') await redis.connect();
+        const run = await deps.outboxPrune(pool.db, redis);
+        if (run.ran) {
+          const c = run.counts;
+          deps.logger.log(
+            `Outbox prune: ${c.finished} done or superseded rows, ${c.dead} dead rows, ` +
+              `${c.receipts} receipts, ${c.deadLetters} dead letters deleted`,
+          );
+        }
+      } catch (error) {
+        deps.logger.warn(
+          `Outbox prune skipped: ${error instanceof Error ? error.name : 'unknown error'}`,
+        );
+      }
+    };
+    await prune();
+    pruneTimer = setInterval(() => void prune(), pruneIntervalMs);
+    jobs.push('outbox-prune');
+    deps.logger.log('Outbox prune scheduled daily');
+  } else {
+    deps.logger.log('Outbox prune off (OUTBOX_PRUNE=off)');
+  }
   const registry = new KindHandlerRegistry(deps.kindHandlers(config, pool));
   let relay: StartedJob | undefined;
   if (config.outbox.relay) {
@@ -203,6 +238,7 @@ export async function startWorker(
     jobs,
     stop: async () => {
       clearInterval(timer);
+      clearInterval(pruneTimer);
       // The relay first (no new jobs), then the workers drain (platform §5), then the clients.
       await relay?.stop();
       await queues.stop();
