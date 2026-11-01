@@ -6,8 +6,10 @@
 // driver app with its API host) and passes it on each call as `{ fetcher }`, so concurrent server
 // requests never share headers. Nothing here reads the environment, retries or refreshes; the
 // single-flight refresh of web §3.2 wraps this fetcher (WEB-1).
+import type { ErrorCode } from '../generated/unions.ts';
+
 /** Codes the server can send (`errors.md`), plus the client's own for a body that is not an `Error`. */
-export type ApiErrorCode = string;
+export type ApiErrorCode = ErrorCode | 'unexpected_response';
 
 /** A non-2xx answer, parsed from the `Error` body (document 3 §4). Branch on `code`, never `message`. */
 export class ApiError extends Error {
@@ -123,7 +125,7 @@ function toApiError(response: Response, body: unknown): ApiError {
     return new ApiError({
       status: response.status,
       // The server's code is trusted to be in errors.md; the contract tests fail it otherwise.
-      code: body.code,
+      code: body.code as ErrorCode,
       message: body.message,
       details: isRecord(body.details) ? body.details : undefined,
       requestId: typeof body.request_id === 'string' ? body.request_id : headerRequestId,
