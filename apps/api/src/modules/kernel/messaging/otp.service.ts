@@ -111,7 +111,7 @@ export class OtpService {
 
   /**
    * Sends a code: normalise the phone, refuse while messaging is unavailable, then in one platform
-   * transaction (under the phone's lock) check the cooldown, charge the address and phone budgets,
+   * transaction (under the phone's lock) check the cooldown, charge the phone and address budgets,
    * write the challenge and its `message` outbox row (the code encrypted under
    * `core_otp_challenges:<id>`). A refusal for availability or the cooldown charges no budget, so
    * neither can spend a user's hourly quota (review round 1, finding 1). Resolves the same way
@@ -139,8 +139,11 @@ export class OtpService {
           headers: { 'Retry-After': String(wait) },
         });
       }
-      await limiter?.charge('otp_request_ip', `ip:${addressKey(input.ip)}`);
+      // The phone first: a phone out of budget never charges the address (review round 2,
+      // finding 2). The Redis counters are not transactional with the insert below; a rolled-back
+      // request keeps its charges (both budgets are protective and answer 429 either way).
       await limiter?.charge('otp_request_phone', `phone:${hasher.phoneRef(phone)}`);
+      await limiter?.charge('otp_request_ip', `ip:${addressKey(input.ip)}`);
       await challenges.insert({
         id,
         phone,

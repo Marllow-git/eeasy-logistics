@@ -69,6 +69,47 @@ describe('MessagingAvailability (review round 1, finding 2)', () => {
   );
 });
 
+describe('OtpService.request budgets (review round 2, finding 2)', () => {
+  it('charges the phone budget first, so a phone out of budget never charges the address', async () => {
+    const charged: string[] = [];
+    const charge = vi.fn((name: string) => {
+      charged.push(name);
+      return name === 'otp_request_phone'
+        ? Promise.reject(new ApiException('rate_limited'))
+        : Promise.resolve();
+    });
+    const challenges = {
+      lockPhone: vi.fn(() => Promise.resolve()),
+      cooldownLeft: vi.fn(() => Promise.resolve(0)),
+      insert: vi.fn(() => Promise.resolve()),
+    };
+    const key = otpHmacKey(Buffer.alloc(32, 7).toString('base64'));
+    const service = new OtpService({
+      store: {
+        run: ((fn: (tx: unknown) => Promise<unknown>) =>
+          fn({ challenges, uow: {} })) as OtpStore['run'],
+      },
+      cipher: { activeKeyId: 'k', encrypt: vi.fn(), decrypt: vi.fn(), rotate: vi.fn() },
+      hasher: new OtpHasher(key, [key]),
+      outbox: { enqueue: vi.fn() },
+      limiter: { charge },
+      availability: { whatsappAvailable: () => Promise.resolve(true) },
+      logger: quiet,
+    });
+    const failure = await service
+      .request({
+        phone: '+966500000123',
+        purpose: 'driver_login',
+        ip: '198.51.100.1',
+        locale: 'ar',
+      })
+      .catch((error: unknown) => error);
+    expect((failure as ApiException).code).toBe('rate_limited');
+    expect(charged).toEqual(['otp_request_phone']);
+    expect(challenges.insert).not.toHaveBeenCalled();
+  });
+});
+
 describe('OtpService.verify (review round 1, finding 3)', () => {
   it('refuses a malformed phone with otp_invalid without opening a transaction', async () => {
     const run = vi.fn();

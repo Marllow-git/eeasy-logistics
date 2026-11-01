@@ -8,9 +8,11 @@ import {
   memoryBreakerStateStore,
   redisBreakerStateStore,
 } from '../../modules/kernel/messaging/breaker.js';
-import { redisCapCounter } from '../../modules/kernel/messaging/message-policies.js';
+import {
+  recipientLedger,
+  redisCapCounter,
+} from '../../modules/kernel/messaging/message-policies.js';
 import { MessageKindHandler } from '../../modules/kernel/messaging/message.handler.js';
-import { OptOutList } from '../../modules/kernel/messaging/opt-out-list.js';
 import { accountSenderResolver } from '../../modules/kernel/messaging/sender-resolver.js';
 import { createMessageSenders } from '../../modules/kernel/messaging/senders.js';
 import { messagingStore } from '../../modules/kernel/platform/messaging.repository.js';
@@ -73,16 +75,11 @@ export function messageKindHandlerFor(
     resolver: accountSenderResolver(store, senders.platformRoute),
     policies: {
       disabled: config.messaging.disabled,
-      optOuts: new OptOutList(store),
+      // `messages_per_month` arrives with the provisioning door (PLAT-13): no limit until then.
+      ledger: recipientLedger(store),
       ...(redis === null || activeKey === undefined
         ? {}
         : { caps: { counter: redisCapCounter(redis), pseudonymKey: capPseudonymKey(activeKey) } }),
-      budget: {
-        sentThisMonth: (accountId) => store.run((repo) => repo.sentThisMonth(accountId)),
-        countSent: (accountId) => store.run((repo) => repo.countSent(accountId)),
-        // `messages_per_month` arrives with the provisioning door (PLAT-13): no limit until then.
-        limitOf: () => Promise.resolve(undefined),
-      },
     },
     logger: log,
     onClose: () => {

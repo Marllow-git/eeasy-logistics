@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ProviderFailure } from '../../outbox/provider-failure.js';
+import { BreakerSender, memoryBreakerStateStore } from '../breaker.js';
 import type { SendTemplateInput } from '../message-sender.js';
 import { EngineMessageSender, StubRefused, engineUnavailable } from './engine-message-sender.js';
 import {
@@ -66,6 +67,11 @@ function fakeEngine(...replies: (Response | Error | ((seen: Seen) => Response))[
 
 function ok(result: Record<string, unknown>): Response {
   return Response.json({ ok: true, command: 'x', result, engine_build_sha: 's', server_time: 't' });
+}
+
+/** A 200 answer whose envelope says `ok: false`. */
+function refusedOk(code: string, retryable: boolean): Response {
+  return Response.json({ ok: false, error: { code, message: 'refused', retryable } });
 }
 
 function refused(status: number, code: string, retryable = false): Response {
@@ -167,11 +173,25 @@ describe('EngineMessageSender (plan 2A.1)', () => {
     [refused(502, 'ENGINE_UNAVAILABLE'), 'transient', engineUnavailable],
     [new Response('down', { status: 500 }), 'transient', engineUnavailable],
     [new TypeError('fetch failed'), 'transient', engineUnavailable],
+    // A 2xx without `ok: true` (lead review round 2, finding 4).
+    [refusedOk('SENDER_UNAVAILABLE', false), 'permanent', 'SENDER_UNAVAILABLE'],
+    [refusedOk('BUSY', true), 'transient', 'BUSY'],
+    [Response.json({ ok: false }), 'transient', engineUnavailable],
   ] as const)('maps an engine answer to the outbox (%#)', async (reply, reason, status) => {
     const { sender } = fakeEngine(reply);
     const failure = await sender.sendTemplate(otp).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ProviderFailure);
     expect(failure).toMatchObject({ reason, status });
+  });
+
+  it('does not count a final refusal in a 2xx answer against the breaker', async () => {
+    const { sender } = fakeEngine(refusedOk('SENDER_UNAVAILABLE', false));
+    const guarded = new BreakerSender(sender, memoryBreakerStateStore(), {
+      threshold: 1,
+      logger: { warn: () => undefined, log: () => undefined },
+    });
+    await expect(guarded.sendTemplate(otp)).rejects.toMatchObject({ reason: 'permanent' });
+    expect(guarded.state).toBe('closed');
   });
 
   it('refuses a send without an engine sender, before any request', async () => {

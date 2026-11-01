@@ -312,12 +312,21 @@ export class EngineMessageSender implements MessageSender {
         }
         span.setHttpStatus(response.status);
         const answer = (await response.json().catch(() => null)) as EngineAnswer | null;
-        if (!response.ok || answer?.ok !== true) {
-          throw engineFailure(
-            response.ok ? 502 : response.status,
-            answer,
-            response.headers.get('retry-after'),
-          );
+        if (!response.ok) {
+          throw engineFailure(response.status, answer, response.headers.get('retry-after'));
+        }
+        if (answer?.ok !== true) {
+          // A 2xx without `ok: true`: a refusal the engine marks final (`retryable: false`) is dead,
+          // not an outage (no retry, no breaker count); anything else is treated as one (lead
+          // review round 2, finding 4).
+          if (answer?.error?.retryable === false) {
+            const code =
+              typeof answer.error.code === 'string' ? answer.error.code.slice(0, 64) : 502;
+            throw new ProviderFailure('permanent', 'the engine refused the command', {
+              status: code,
+            });
+          }
+          throw engineFailure(502, answer, null);
         }
         const result = answer.result;
         return result !== null && typeof result === 'object'
