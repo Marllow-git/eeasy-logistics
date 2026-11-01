@@ -20,6 +20,7 @@ Every API request on a tenant surface runs with a request context resolved once 
 - `docs/contracts/README.md` §1 "Surfaces and base paths" (credential per surface; `x-cross-tenant` and `X-Support-Reason`), §3 "Conventions" rows Idempotency, Web client marker, Request ids, Language; §4 "Error model"; §7 "Rate limits by surface"; `docs/contracts/errors.md` §1 "Common".
 - PLAT-5 code this order builds on: `packages/db` `RequestContext`, `runWithContext`, `withUnitOfWork`, `withPlatformUnitOfWork`, `createPlatformPool`, `verifyPoolRole`; PLAT-5 plan §9 rulings M-1 (the structural fix for the raw `tx` lands here) and M-6 (the platform pool calls `verifyPoolRole(…, 'elx_platform')` at boot).
 - PLAT-4 `packages/config` `auth` group (`AUTH_SIGNING_KEY_ID`, `AUTH_SIGNING_KEY`), public URLs.
+- Roadmap A-17 (2026-11-01) and `docs/contracts/README.md` §9 bullets "Generation", "API input", "API output", "Contract code stops at the edge", "Enforcement"; `docs/handbook/03-testing.md` "Test data comes from the contracts". Leg 2 depends on PLAT-15 merging (the generated per-operation schemas and `mocks` entry points).
 
 ## 2. Decisions (with defaults)
 
@@ -58,6 +59,7 @@ Every API request on a tenant surface runs with a request context resolved once 
 | F | Rate limits per 2.10 | integration with Redis: budget, headers, 429 body, fail-open when Redis is down (logged) |
 | G | Web client marker per 2.11; `PUBLIC_ADMIN_URL` in config and `.env.example` | HTTP tests per 2.13; config tests for the new variable and its production requirement |
 | H | README "Request pipeline" section (order of middleware, guard, interceptors), ADR citations in code comments, Serena memories per `memory_upkeep`, plan §8 complete | `pnpm turbo run typecheck lint test` green; `test:integration` green with `ELX_RLS` off and on |
+| I | `ContractPipe` in the kernel: parses every controller input (path, query, declared headers, body) with the operation's generated strict schema imported from the controller's surface entry point; `400 validation_failed` with `details.fields[]` JSON pointers on failure; the `apps/api` dependency-cruiser rules of doc 3 §9 (forbid `class-validator`, `class-transformer`, `nestjs-zod`, `@nestjs/swagger`, `*.dto.ts`; `@eeasy-logistics/contracts/*` only from `*.controller.ts` and `*.presenter.ts`) with violation fixtures per handbook 03; one sample controller under test using a real operation (`platformListAccounts` is the simplest) returning the generated response type | pipe rejects an undeclared field and coerces query numbers; each fixture red then green; the sample controller's response parses with the generated response schema |
 
 ## 4. Commit plan
 
