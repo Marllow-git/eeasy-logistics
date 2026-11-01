@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Redis } from 'ioredis';
 import type { Principal } from '../auth/principal.js';
-import { surfaceOf } from '../auth/surfaces.js';
+import { requestSurface } from '../auth/surfaces.js';
 import { ApiException } from '../errors/api-exception.js';
 import type { Budgets } from './budgets.js';
 import { budgetFor, defaultBudgets, windowMs } from './budgets.js';
@@ -137,7 +137,7 @@ export class RateLimiter implements OnModuleInit, OnApplicationShutdown {
    * `429 rate_limited` with `Retry-After` and `details.retry_after_s` when over the budget.
    */
   async enforce(request: Request, response: Response, identity: string): Promise<void> {
-    const surface = surfaceOf(request.path);
+    const surface = requestSurface(request);
     const budget = budgetFor(surface, routeKey(request), this.#budgets);
     if (budget === undefined) return;
     const key = `${this.#prefix}:${surface ?? 'none'}:${budget.bucket}:${identity}`;

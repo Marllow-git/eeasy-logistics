@@ -1,7 +1,7 @@
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { Request } from 'express';
-import { surfaceOf } from '../auth/surfaces.js';
+import { requestSurface } from '../auth/surfaces.js';
 import { ApiException } from '../errors/api-exception.js';
 
 // The web client marker (PLAT-6 plan 2.11; ADR-0032 Decision bullets 1 and 4; ADR-0038 Decision
@@ -40,11 +40,11 @@ const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
  * configured origin (allowed outside production only) every such write is refused: fail closed.
  */
 export function passesWebClientMarker(
-  request: Pick<Request, 'method' | 'path' | 'headers'>,
+  request: Pick<Request, 'method' | 'path' | 'headers' | 'route'>,
   origins: WebOrigins | undefined,
 ): boolean {
   if (safeMethods.has(request.method)) return true;
-  const surface = surfaceOf(request.path);
+  const surface = requestSurface(request);
   if (surface !== 'staff' && surface !== 'platform') return true;
   if (request.headers[clientMarkerHeader] !== 'web') return false;
   const expected = origins?.[surface];

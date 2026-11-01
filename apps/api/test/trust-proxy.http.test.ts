@@ -5,7 +5,7 @@ import { Test } from '@nestjs/testing';
 import type { Request } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { configureHttp } from '../src/http-app.js';
+import { configureHttp, createHttpAdapter } from '../src/http-app.js';
 import { Public } from '../src/modules/kernel/public/index.js';
 
 // PLAT-6 review round 2, finding 1: `X-Forwarded-For` is believed only to the configured depth
@@ -23,8 +23,11 @@ class IpProbe {
 
 async function ipSeen(hops: string, forwardedFor?: string): Promise<string | undefined> {
   const moduleRef = await Test.createTestingModule({ controllers: [IpProbe] }).compile();
-  const app = moduleRef.createNestApplication<NestExpressApplication>({ logger: false });
-  configureHttp(app, defineConfig({ APP_ENV: 'local', TRUST_PROXY_HOPS: hops }));
+  const config = defineConfig({ APP_ENV: 'local', TRUST_PROXY_HOPS: hops });
+  const app = moduleRef.createNestApplication<NestExpressApplication>(createHttpAdapter(config), {
+    logger: false,
+  });
+  configureHttp(app);
   await app.init();
   try {
     const call = request(app.getHttpServer()).get('/probe/ip');
