@@ -22,7 +22,9 @@ export const coreAccounts = pgTable(
     engineAccountId: bigint('engine_account_id', { mode: 'number' }).unique(),
     // AccountSettings (components.yaml; data §2.1), from PLAT-11 migration 0012: sign-in reads
     // `second_factor_required` (plan 2.7, Q-7); PLAT-12 and PLAT-13 write the rest.
-    settings: jsonb('settings').notNull().default(sql`'{}'::jsonb`),
+    settings: jsonb('settings')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

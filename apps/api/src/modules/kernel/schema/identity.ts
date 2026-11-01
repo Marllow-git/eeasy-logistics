@@ -128,8 +128,14 @@ export const coreMemberships = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => coreUsers.id),
-    roles: text('roles').array().notNull().default(sql`'{}'::text[]`),
-    siteIds: uuid('site_ids').array().notNull().default(sql`'{}'::uuid[]`),
+    roles: text('roles')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    siteIds: uuid('site_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     status: text('status', { enum: membershipStatuses }).notNull().default('invited'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -220,7 +226,10 @@ export const coreRefreshTokens = pgTable(
     familyId: uuid('family_id').notNull(),
     tokenHash: bytea('token_hash').notNull(),
     tokenVersion: integer('token_version').notNull(),
-    amr: text('amr').array().notNull().default(sql`'{}'::text[]`),
+    amr: text('amr')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     userAgentHash: bytea('user_agent_hash'),
     successorCiphertext: bytea('successor_ciphertext'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -297,7 +306,10 @@ export const coreAuthChallenges = pgTable(
       .notNull()
       .references(() => coreUsers.id),
     secretHash: bytea('secret_hash').notNull(),
-    amr: text('amr').array().notNull().default(sql`'{}'::text[]`),
+    amr: text('amr')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     membershipIds: uuid('membership_ids').array(),
     pendingPhone: text('pending_phone'),
     pendingSecretCiphertext: bytea('pending_secret_ciphertext'),
