@@ -75,6 +75,7 @@ Producers of `push` rows (DEL-2 offers, DEL-6 assignments, DEL-8 cash notices, D
 | Item | Commit | Tests (red, then green) | Interpretation |
 |---|---|---|---|
 | A | `INT-4: A migration, config, catalogue` | config `vitest`: red 11 failed of 178 (the new `push.test.ts` and `.env.example`), green 178 of 178 in 9 files; i18n `vitest`: red `push.test.ts` fails to load without `src/push.ts`, green 62 of 62 in 6 files; integration `test/schema/tenancy.test.ts` + `migrate.test.ts` (migrates twice, the second run applies nothing): red 1 of 14 (`core_push_tickets_ticket_id_idx omits account_id` without the exemption), green 23 of 23 with `ELX_RLS=off` and `on`; `turbo typecheck lint` config, i18n, api 9 of 9 | migration **0014** (highest on `origin/main` at generation: 0013); the push refusal binds the worker role only (§8.2 #1); `order_number` is a reference, `expires_in_min` a count (§8.2 #3) |
+| B | `INT-4: B port, Expo adapter, recorder, invalidations` | api `vitest src/modules/kernel/push`: red 3 of 3 files fail without the module, green 29 of 29 in 3 files (Expo adapter on a local `node:http` server: headers and field mapping, no bearer without a token, per-message `DeviceNotRegistered`, short answer, 429 with and without `Retry-After`, 500, 400, 401, 403, timeout, unreachable, the 100 and 1,000 caps; receipts mapping; recorder; `createPushSender`; registry); api `typecheck`, `eslint` clean | a failing invalidation handler is logged and does not fail the push (§8.2 #4); receipts with no answer are left out, as Expo does |
 
 ### 8.1 Deviations
 
