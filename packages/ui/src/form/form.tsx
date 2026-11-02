@@ -161,12 +161,15 @@ export function Form<Values extends FieldValues, Output extends FieldValues>({
   onSubmit,
   children,
   className,
+  describeError,
   'aria-labelledby': labelledBy,
 }: {
   form: UseFormReturn<Values, unknown, Output>;
   onSubmit: (values: Output, context: SubmitContext<Output>) => Promise<unknown>;
   children: ReactNode;
   className?: string;
+  /** A page's own text for some refusals (`limit_exceeded` with the limit); the catalogue otherwise. */
+  describeError?: (error: unknown) => string | undefined;
   'aria-labelledby'?: string;
 }) {
   const intent = useIntentKey();
@@ -197,7 +200,11 @@ export function Form<Values extends FieldValues, Output extends FieldValues>({
         return;
       }
       const wait = error instanceof ApiError ? retryAfterSeconds(error) : undefined;
-      setStatus({ failure: errorMessage(error), blocked: wait !== undefined, saved: false });
+      setStatus({
+        failure: describeError?.(error) ?? errorMessage(error),
+        blocked: wait !== undefined,
+        saved: false,
+      });
       if (wait !== undefined) {
         window.setTimeout(
           () => setStatus((current) => ({ ...current, blocked: false })),

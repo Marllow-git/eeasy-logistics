@@ -20,7 +20,7 @@ export const reasonCodePattern = /^[a-z0-9_]{2,40}$/;
 export const maxReasonCodes = 100;
 const maxLabelLength = 80;
 /** No line break of any kind (CR, LF, NEL, U+2028, U+2029) in a label. */
-const oneLine = /^[^\r\n\u0085\u2028\u2029]*$/;
+export const oneLine = /^[^\r\n\u0085\u2028\u2029]*$/;
 
 const label = z
   .string()

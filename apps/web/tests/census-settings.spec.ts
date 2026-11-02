@@ -17,6 +17,7 @@ import {
   censusPassword,
   censusPendingName,
   censusSettingsAccounts,
+  censusSiteNames,
   expiredCopy,
   mailedLink,
   origin,
@@ -393,4 +394,132 @@ test('members: invite, accept from the mail, a roles change ends the session, re
   await expect(confirm).toHaveCount(0);
   await expect(page.getByRole('status').first()).toHaveText(t(locale, 'members.revoke.done'));
   await expect(page.getByText(t(locale, 'members.detail.revoked_banner'))).toBeVisible();
+});
+
+// Sites (WEB-3 leg 2, item E; plan 2.8, 2.11). The seed leaves a branch and a warehouse on the
+// project's account and deletes the sites the last run created; the reads come first.
+
+const siteName = (locale: Locale, site: keyof typeof censusSiteNames) =>
+  censusSiteNames[site][locale];
+
+test('sites: the owner sees the sites by name, filters by kind, and has the new-site control', async ({
+  page,
+  locale,
+}) => {
+  await signIn(page, 'settings', project());
+  const response = await page.goto('/settings/sites');
+  expect(response?.status()).toBe(200);
+  expectSecurityHeaders(response, 'merchant');
+  const table = page.getByRole('table', { name: t(locale, 'sites.table_label') });
+  const rows = table.getByRole('row');
+  await expect(rows).toHaveCount(3);
+  // Sorted by the name in the reader's language: "Al Sulay" before "Olaya"; "فرع" before "مستودع".
+  const first = locale === 'en' ? 'warehouse' : 'branch';
+  await expect(rows.nth(1)).toContainText(siteName(locale, first));
+  await expect(rows.nth(1)).toContainText(censusSiteNames[first][locale === 'ar' ? 'en' : 'ar']);
+  await expect(table.getByText('RRRD2929')).toBeVisible();
+  await expect(page.getByRole('link', { name: t(locale, 'sites.new') })).toBeVisible();
+  await expectScreen(page, locale, 'sites', message(locale, 'nav', 'settings_sites'), [
+    table.locator('time'),
+  ]);
+  await page.getByRole('combobox', { name: t(locale, 'sites.filters.kind') }).click();
+  await page.getByRole('option', { name: t(locale, 'sites.kinds.warehouse'), exact: true }).click();
+  await expect(page).toHaveURL(/[?&]kind=warehouse/);
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(1)).toContainText(siteName(locale, 'warehouse'));
+});
+
+test('sites: the viewer reads a site with every field disabled and cannot open the new form', async ({
+  page,
+  locale,
+}) => {
+  await signIn(page, 'viewer', project());
+  await page.goto('/settings/sites');
+  await expect(page.getByRole('link', { name: t(locale, 'sites.new') })).toHaveCount(0);
+  await page
+    .getByRole('row')
+    .filter({ hasText: siteName(locale, 'branch') })
+    .click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(siteName(locale, 'branch'));
+  await expect(page.getByLabel(t(locale, 'sites.form.short_code'))).toBeDisabled();
+  await expect(page.getByLabel(t(locale, 'sites.form.short_code'))).toHaveValue('RRRD2929');
+  for (const control of [
+    'sites.deactivate.action',
+    'sites.form.save',
+    'sites.form.same_every_day',
+  ]) {
+    await expect(page.getByRole('button', { name: t(locale, control) })).toHaveCount(0);
+  }
+  await expectScreen(page, locale, 'site-viewer', siteName(locale, 'branch'));
+  const denied = await page.goto('/settings/sites/new');
+  expect(denied?.status()).toBe(403);
+});
+
+test('sites: create one with bilingual names and hours, deactivate, then activate it', async ({
+  page,
+  locale,
+}) => {
+  const names = { ar: 'مستودع النسيم', en: 'Al Naseem warehouse' };
+  await signIn(page, 'settings', project());
+  await page.goto('/settings/sites');
+  await page.getByRole('link', { name: t(locale, 'sites.new') }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(t(locale, 'sites.new_title'));
+  // A save with nothing typed shows the names' errors and sends nothing.
+  await page.getByRole('button', { name: t(locale, 'sites.form.create') }).click();
+  await expect(page.getByText(message(locale, 'errors', 'fields.required')).first()).toBeVisible();
+  await page.getByRole('radio', { name: t(locale, 'sites.kinds.both') }).click();
+  const main = page.getByRole('main');
+  await main.getByLabel(message(locale, 'common', 'locale.ar')).fill(names.ar);
+  await main.getByLabel(message(locale, 'common', 'locale.en')).fill(names.en);
+  await page.getByLabel(t(locale, 'sites.form.address'), { exact: true }).fill('حي النسيم، الرياض');
+  const code = page.getByLabel(t(locale, 'sites.form.short_code'));
+  await code.fill('rnsa7788');
+  await code.blur();
+  await expect(code).toHaveValue('RNSA7788');
+  await page.getByLabel(t(locale, 'sites.form.lat')).fill('24.73311');
+  await page.getByLabel(t(locale, 'sites.form.lng')).fill('46.82901');
+  await expect(
+    page.getByRole('link', { name: new RegExp(t(locale, 'sites.form.open_in_maps')) }),
+  ).toHaveAttribute('href', 'https://www.google.com/maps?q=24.73311,46.82901');
+  const sunday = page.getByRole('group', { name: t(locale, 'sites.weekdays.0') });
+  await sunday.getByRole('switch').click();
+  const [opens, closes] = [sunday.getByRole('textbox').first(), sunday.getByRole('textbox').last()];
+  await opens.fill('08:00');
+  await closes.fill('20:00');
+  await page.getByRole('button', { name: t(locale, 'sites.form.same_every_day') }).click();
+  await expect(
+    page
+      .getByRole('group', { name: t(locale, 'sites.weekdays.5') })
+      .getByRole('textbox')
+      .first(),
+  ).toHaveValue('08:00');
+  await expectScreen(page, locale, 'site-new', t(locale, 'sites.new_title'));
+  await page.getByRole('button', { name: t(locale, 'sites.form.create') }).click();
+  await expect(page).toHaveURL(/\/settings\/sites\/[0-9a-f-]{36}\?created=1$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(names[locale]);
+  await expect(page.getByRole('status').first()).toHaveText(t(locale, 'sites.created'));
+
+  // Deactivate through the confirmation, then activate again.
+  await page.getByRole('button', { name: t(locale, 'sites.deactivate.action') }).click();
+  const deactivate = page.getByRole('alertdialog', {
+    name: t(locale, 'sites.deactivate.title', { name: names[locale] }),
+  });
+  await expect(deactivate.getByRole('listitem')).toHaveCount(2);
+  await deactivate.getByRole('button', { name: t(locale, 'sites.deactivate.confirm') }).click();
+  await expect(deactivate).toHaveCount(0);
+  await expect(page.getByRole('status').first()).toHaveText(t(locale, 'sites.deactivate.done'));
+  await expect(page.getByText(t(locale, 'sites.state.inactive_banner'))).toBeVisible();
+  await page.getByRole('button', { name: t(locale, 'sites.activate.action') }).click();
+  const activate = page.getByRole('alertdialog', {
+    name: t(locale, 'sites.activate.title', { name: names[locale] }),
+  });
+  await activate.getByRole('button', { name: t(locale, 'sites.activate.confirm') }).click();
+  await expect(page.getByRole('status').first()).toHaveText(t(locale, 'sites.activate.done'));
+  await expect(page.getByText(t(locale, 'sites.state.inactive_banner'))).toHaveCount(0);
+
+  // The list shows it with both names.
+  await page.goto('/settings/sites');
+  const row = page.getByRole('row').filter({ hasText: names[locale] });
+  await expect(row).toContainText(names[locale === 'ar' ? 'en' : 'ar']);
+  await expect(row).toContainText('RNSA7788');
 });

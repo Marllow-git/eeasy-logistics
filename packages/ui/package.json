@@ -35,7 +35,8 @@
     "./table/cursor-list": "./src/table/cursor-list.ts",
     "./table/filters": "./src/table/filters.tsx",
     "./settings/reason-codes": "./src/settings/reason-codes.tsx",
-    "./settings/status-chips": "./src/settings/status-chips.tsx"
+    "./settings/status-chips": "./src/settings/status-chips.tsx",
+    "./settings/site-form": "./src/settings/site-form.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
