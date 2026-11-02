@@ -1,0 +1,82 @@
+# INT-2 · Geocoder and short codes
+
+- **Status:** registered 2026-11-02; brief at once (third executor under the owner ruling of 2026-11-02: no dependency in flight, files disjoint from PLAT-13 and WEB-2).
+- **Date:** 2026-11-02
+- **Wave:** 1 (roadmap §1.2). **Depends on:** PLAT-8 (merged, PR #63); Q-28 (Hudhud commercial terms, open: built on the public documentation with the stub as the default outside staging and production). **Unblocks:** DEL-2 (geocode at intake), the site geocode step (integrations §6.2, a later small order or PLAT-13's `platformProvisionSite`), WEB-6.
+- **Lead:** architecture lead. **Executor:** `executor-api` (Opus), own worktree, native stack scratch databases, Redis. **Adversary:** no (roadmap row; no auth, no private data beyond address text sent to the provider, which integrations §6.1 already bounds).
+- **Issue:** #98. **Merge danger:** one-way door (one migration: `core_geocode_cache`). Blast radius: none until DEL-2 calls the port; production refuses to start without a geocoder decision (2.7).
+- **Paths:** `apps/api` (`modules/kernel/geocoding/` new; `modules/kernel/platform/geocode-cache.repository.ts` new; `modules/kernel/public/index.ts` one export block; `modules/kernel/telemetry/metrics.ts` one counter; `apps/api/resources/geocode-fixture.json` new; `apps/api/drizzle` one migration; `modules/kernel/schema/geocode-cache.ts`), `packages/config` (`GEOCODER_PROVIDER`, `HUDHUD_API_URL`), `.env.example`, `docs/architecture/data.md` (one catalogue row, A-26), `docs/architecture/integrations.md` §2.2 (two sentences, A-26), `.serena/memories`. Not touched: `packages/contracts`, `packages/db`, the web apps, `modules/kernel/provisioning`, `features`, `platform-staff` (PLAT-13), `push`, `accounts`, `sites`, `members`.
+- **Research:** `docs/research/hudhud-geocoding-2026-11.md` (PR #97): endpoints, shapes, errors, the missing confidence and terms.
+
+## 0. Goal
+
+Any kernel or Delivery service turns an address text, a National Address short code or a point into a located answer through one `Geocoder` port, with the Hudhud adapter in staging and production and a fixture stub everywhere else, results cached for 30 days in a kernel table with Redis in front, a derived confidence the callers can threshold, no account id or person's name ever sent to the provider, and `not_found` instead of a failure when nothing matches, so that DEL-2's intake and the site geocode step only call the port (integrations §2.2, §6.1, §6.2).
+
+## 1. Binding rules and ADRs
+
+- AGENTS.md hard rules: config through `packages/config` (the Hudhud key is a secret, `HUDHUD_API_KEY` exists); secrets never in code; no raw environment reads; Arabic and English for every string (the fixture carries both names).
+- ADR-0010 (Hudhud as the first adapter of the geo ports; the key is a prerequisite). ADR-0025 (nothing here carries an account: the cache is keyed by text, not tenant; see 2.4). ADR-0024 (the port is synchronous and read-only: no outbox).
+- `docs/architecture/integrations.md` §2.2 `Geocoder` (methods, owner kernel, adapters, timeouts 2 s, one retry on a network error, 30-day cache in a kernel table with Redis in front, degraded behaviour: intake never fails because geocoding failed, stub fixture of Riyadh and Jeddah districts, credentials), §6.1 "Hudhud provisioning" (one key per environment class; address text and city only, never account ids or recipient names), §6.2 "Geocode at intake" (the order of lookups: short code first, confidence 1.0; then text with a stored confidence; below the account threshold 0.6 "needs location"; sites geocode the same way), §4.4 outcomes (for the failure classes).
+- `docs/architecture/data.md` §1.3 (hashes as `bytea`), `del_orders` columns `national_address_short_code`, `address_point`, `pin_source`, `geocode_confidence real` (DEL-2 writes them from this port's answer), `core_sites.national_address_short_code` CHECK `^[A-Z]{4}[0-9]{4}$`; the geocode cache row is new (A-26: integrations §2.2 says "document 5 names it", data.md does not yet).
+- The research note (every endpoint fact below cites it): `POST https://b.hudhud.sa/v1/geocoding/search` `{ query }` → `data.results[] { name, display_name, lat, lon, place_id, category, type, address_type, bounding_box }`; `POST …/geocoding/lookup_shortcode` `{ shortcode }` → `data { shortcode, address_en, address_ar, location { lat, lon } }`, 404 "Shortcode not found"; `POST …/geocoding/reverse` `{ lat, lon }` → `data { address { city, country, country_code, municipality, neighbourhood, postcode, province, road, suburb }, display_name, lat, lon (strings), … }`; envelope `{ ok, data, error }`; `Authorization: Bearer <secret key>`; errors 400, 401, 403 (key lacks the service), 404, 500, no documented 429; no confidence, score or language field anywhere; no published rate limit, quota, price or caching term.
+- Kernel in place: PLAT-8 `ProviderFailure` (`rate_limited`, `unauthorised`, `permanent`, `transient`); PLAT-14 `withPortSpan` (port `geocoder`, provider `hudhud` or `stub`), the metrics catalogue, the redacting logger; PLAT-4 config `secret()`, `httpUrl()`, the `MESSAGING_PROVIDER` and (INT-4) `PUSH_PROVIDER` selector pattern with `adapterSelectors` and the production refusals; INT-4's `expo-push-sender.ts` as the pattern for a fetch adapter with a timeout, the failure mapping and a local HTTP server in tests; PLAT-9 `phone.ts` as the pattern for a normaliser with tests.
+
+## 2. Decisions (with defaults)
+
+| # | Decision | Default |
+|---|---|---|
+| 2.1 | Port | `modules/kernel/geocoding/geocoder.ts`: `Geocoder.geocode({ text, city?, locale }) → GeocodeResult \| NotFound`, `lookupShortCode(code) → ShortCodeResult \| NotFound`, `reverse({ lat, lng }) → ReverseResult \| NotFound`; `GeocodeResult { point: { lat, lng }, confidence: number (0..1), formatted: string, district?: string, city?: string, provider: 'hudhud' \| 'stub' }`; `ShortCodeResult { point, confidence: 1, addressAr: string, addressEn: string, shortCode: string }`; `ReverseResult { formatted: string, district?: string, city?: string, postcode?: string }`; `NotFound { kind: 'not_found' }` is a value, never an exception; provider failures as PLAT-8's `ProviderFailure`; exported through `modules/kernel/public` with the result types and `normaliseShortCode` |
+| 2.2 | Hudhud adapter | `modules/kernel/geocoding/hudhud-geocoder.ts`: `fetch` with `AbortSignal.timeout(2000)`, `Authorization: Bearer <HUDHUD_API_KEY>`, base URL `HUDHUD_API_URL` (config, default `https://b.hudhud.sa`, refused in production when not that value); one retry on a network error or timeout only (never on an answer); `geocode`: `query` = `text` with `city` appended as `, <city>` when given and not already contained (case-insensitive), `locale` unused (no field; recorded); the answer's `results[0]` is the result, an empty `results` is `not_found`; `confidence` derived (the research note: Hudhud publishes none): 0.9 for a single result, 0.7 for the first of several, lowered by 0.2 when `address_type` is one of `city`, `region`, `country`, `state` (a settlement match, not a building), floored at 0.1; `formatted` = `display_name`, `city` and `district` absent (search returns none); `lookupShortCode`: the code normalised (2.3), 404 is `not_found`, `confidence` 1; `reverse`: `formatted` = `display_name`, `district` = `address.neighbourhood ?? address.suburb`, `city` = `address.city`, `postcode`; `lat`/`lon` parsed from strings there and numbers in search (one parser per endpoint); failures: 400 → `permanent` (a malformed request: the port's own validation should have caught it; logged), 401 and 403 → `unauthorised`, 404 outside the shortcode call → `permanent`, 429 (undocumented, handled anyway) → `rate_limited` at `Retry-After` or 10 s, 5xx, network, timeout → `transient`; an envelope with `ok: false` and a 200 → `transient` with the `error` string's first 120 characters as the message; every call under `withPortSpan({ port: 'geocoder', method, provider: 'hudhud' })`; nothing but the query text, the short code or the point leaves the process (no account id, name or phone; integrations §6.1), and no address text is logged |
+| 2.3 | Short-code normalisation | `normaliseShortCode(input)`: trim, remove internal spaces and hyphens, upper-case ASCII letters, map Arabic-Indic and Eastern Arabic-Indic digits to Western, then match `^[A-Z]{4}[0-9]{4}$`; anything else is `undefined` (the caller answers `validation_failed`); unit-tested with the research note's examples |
+| 2.4 | Cache | Migration (the next free number after the highest on `origin/main` at generation; the lead renumbers the plans that follow): `core_geocode_cache` (`key bytea PK` = SHA-256 of `<method>\n<normalised input>` (text lower-cased and whitespace-collapsed with the city appended as the adapter does; the short code normalised; the point rounded to 5 decimals), `method` CHECK geocode, shortcode, reverse, `provider` CHECK hudhud, `result jsonb` (the port result, or `{ "kind": "not_found" }`), `created_at`, `expires_at`; index `(expires_at)`; a platform table with no `account_id` (the result of an address text is the same for every tenant and carries no tenant data; listed in the exemptions with that reason, class "platform tables"); grants: `elx_app` SELECT, INSERT, UPDATE (the port runs inside tenant requests; `elx_platform` the same); 30 days for a hit, 24 hours for a `not_found` (plan §7 #2: Hudhud's terms unknown, Google's rule is 30 days, Q-28 decides); Redis in front keyed `elx:geocode:<key hex>` with the same TTL, read before the table, written after; the stub is not cached (the fixture is the cache); a purge of expired rows joins the hourly system job of the worker (the OTP purge's lock, one statement, counts in its audit row) |
+| 2.5 | Stub | `StubGeocoder` on `apps/api/resources/geocode-fixture.json`: districts of Riyadh and Jeddah, each `{ name_ar, name_en, city_ar, city_en, lat, lng }`, authored by hand for this repository (approximate centroids, no copied dataset: the research note found no licence-clean district extract; the file's header says so and gives the licence as the repository's), about 25 per city, plus a `short_codes` map of six fixture codes (`RRHC2680`, `REMA7572` from the note's examples and four more) to districts; `geocode` matches the normalised text against the district names in either language (contains, after stripping `حي` and "district"), the city narrowing the set; `lookupShortCode` reads the map; `reverse` answers the nearest fixture district within 15 km, else `not_found`; unknown text is `not_found`; a test seam `failNext(ProviderFailure)` as INT-4's recorder has |
+| 2.6 | Service and degraded path | `GeocoderService` (the port the callers inject, `GEOCODER` token through `KernelModule`): validates inputs (text 1 to 500 characters one line, city at most 120, the point in range), normalises, consults Redis then the table, calls the adapter on a miss, writes the cache, and never throws a `ProviderFailure` to a caller that asks for `degraded: true` (DEL-2's intake): it returns `{ kind: 'unavailable', reason }` instead, counted, so the order is stored with no point (§2.2 "intake never fails"); a caller that omits `degraded` gets the failure (a site creation may show it); no breaker (the 2 s timeout and the one retry bound the cost; a breaker joins with the matrix port in INT-5) |
+| 2.7 | Config | `GEOCODER_PROVIDER` `z.enum(['stub', 'hudhud']).optional()` resolved like `PUSH_PROVIDER` (`local` and `ci` default `stub`; staging and production refuse the api and worker roles without `hudhud` plus `HUDHUD_API_KEY`, or with `GEOCODER_DISABLED=true` as the explicit decision, under which the service answers `unavailable` everywhere); `HUDHUD_API_URL` default `https://b.hudhud.sa`; `.env.example` lines; config tests for the refusals |
+| 2.8 | Observability | Counter `geocoder_calls_total{method,outcome}` (`hit`, `miss`, `not_found`, `rate_limited`, `unauthorised`, `permanent`, `transient`, `unavailable`) in the PLAT-14 catalogue; the port span records the provider status; logs carry the method, the outcome and the cache key's first 8 hex characters, never the text, the code or the point |
+| 2.9 | Documents | `docs/architecture/data.md` gains the `core_geocode_cache` row and the exemption line (A-26); `docs/architecture/integrations.md` §2.2 gains two sentences: the confidence is derived by the adapter (Hudhud publishes none; the rule of 2.2) and the cache table is `core_geocode_cache` with its two TTLs; §6.2's 0.6 threshold stays as the account default DEL-2 reads |
+| 2.10 | Tests | Unit: the normaliser (every case of 2.3 including Arabic-Indic digits), the confidence rule, the query composition with `city`, each response parser against the research note's example shapes, the failure mapping against a local `node:http` server (200 envelope, `ok: false`, 400, 401, 403, 404 on the shortcode call, 429 with `Retry-After`, 500, timeout, a network error with the one retry), the stub (both languages, the city filter, reverse within 15 km, `not_found`), the cache key derivation (two spellings of one address collapse; the point rounding). Integration on the PLAT-5 harness with Redis: a miss calls the adapter once and the second call is a Redis hit, a third after Redis is flushed is a table hit; a `not_found` is cached 24 hours; an expired row is purged by the system job with its count audited; `degraded: true` turns a planted `transient` into `unavailable`; the production refusals; both RLS lanes (the table is a platform table: the schema test lists it) |
+
+## 3. Build list
+
+| Item | Delivers | Verify |
+|---|---|---|
+| A | Migration and schema for `core_geocode_cache`, exemption, grants, config per 2.4, 2.7; the fixture file per 2.5 | migrate twice; schema test; config tests |
+| B | Port, normaliser, Hudhud adapter, stub per 2.1, 2.2, 2.3, 2.5 | unit tests with the local server |
+| C | `GeocoderService` with the cache, the purge statement, metrics, kernel wiring and public export per 2.4, 2.6, 2.8 | integration per 2.10 |
+| D | data.md and integrations.md amendments per 2.9; plan §8; memories; draft PR | full local gate; counts in §8.0 |
+
+## 4. Commit plan
+
+One commit per item `INT-2: <letter> <title>` with its §8.0 row; draft PR from the template with `Release note: none (technical PR; geocoding becomes visible with DEL-2)` and the `Memories:` line; the migration named in the merge-danger line.
+
+## 5. Exit criteria
+
+- One port answers forward, short-code and reverse lookups from Hudhud (staging and production) or the fixture (local, CI), with a derived confidence and `not_found` as a value.
+- A repeated lookup within the TTL never reaches the provider; expired rows are purged.
+- A caller asking for the degraded path never sees a provider failure.
+- No account id, name, phone or address text appears in any log, span or metric label; the secret key leaves only in the `Authorization` header to `HUDHUD_API_URL`.
+- Production refuses to start without an explicit geocoder decision.
+
+## 6. Not in this order
+
+Callers: DEL-2's intake (writes `address_point`, `pin_source`, `geocode_confidence`, the "needs location" view), the site geocode step (integrations §6.2 "sites geocode the same way": a later small order or PLAT-13's `platformProvisionSite`); the distance matrix and routing (INT-5, INT-6, A-24: last); the SPL National Address API adapter (only if Hudhud's package excludes short codes, Q-28); a breaker; `reverse_with_shortcode` (a code from a pin: a provisioning feature for the owner to ask for); the licence-clean district dataset for a richer fixture; the Saudi PDPL review of location data (counsel).
+
+## 7. Owner questions
+
+| # | Question | Provisional default |
+|---|---|---|
+| 1 | Q-28: Hudhud agreement (signer, quota, price, whether short-code lookup is in the package) | Built on the public documentation; the stub everywhere but staging and production; the key arrives with OPS-1 |
+| 2 | Caching results for 30 days without a Hudhud term that allows it | 30 days for hits and 24 hours for `not_found` as integrations §2.2 says, until Q-28's contract states a rule; a one-line change in `geocoder.service.ts` |
+| 3 | Confidence rule (2.2) | 0.9 single result, 0.7 first of several, minus 0.2 for a settlement-level match; DEL-2 thresholds at the account's 0.6 |
+
+## 8. Executor notes (filled by the executor)
+
+### 8.0 Counts
+
+### 8.1 Deviations
+
+### 8.2 Notes
+
+### 8.3 Not done here
+
+## 9. Lead review
