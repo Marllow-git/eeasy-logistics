@@ -212,7 +212,7 @@ Append-only `del_order_events`: `order_id`, `type` (transition or note), `from_s
 
 | Aggregate | Attributes |
 |---|---|
-| Driver | `user_id`, home `site_id`, status `∈ {active, suspended, archived}`, `cash_blocked_at` and `cash_blocked_reason` (D-11), capacity limit |
+| Driver | `user_id`, the account's own name for the driver (`del_drivers.name`, not the person's: a person may drive for several accounts, DEL-4 adversary H-3), home `site_id`, status `∈ {active, suspended, archived}`, `cash_blocked_at` and `cash_blocked_reason` (D-11), capacity limit |
 | Vehicle | plate, kind (car, van, motorbike), capacity in parcels, active |
 | DriverDevice | device id, platform, app version, Expo push token, `revoked_at`; at most two active per driver (document 4 §3.2) |
 

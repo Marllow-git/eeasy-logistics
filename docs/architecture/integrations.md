@@ -265,6 +265,7 @@ Every template exists in Arabic and English (ADR-0016) and is chosen by the reci
 | Wave | Template key | Category | Recipient | Triggered by | Parameters |
 |---|---|---|---|---|---|
 | 0 | `auth_otp` | authentication (copy-code button) | staff second factor and drivers | document 4 §3 | code, encrypted with the credentials key on the outbox row, which is deleted one hour after sending (data §5.2, §10) (amended 2026-10-31, roadmap A-5) |
+| 1 | `driver_invitation` | utility (engine type `shipment_issued`, deferrable) | a driver a dispatcher created, from the account's own sender | `createDriver` (DEL-4 plan 2.3; amended 2026-11-02, roadmap A-26) | account name (at most 80 characters, from provisioning), app link (`DRIVER_APP_URL`, a placeholder landing until DRV-6 names the store listing) |
 | 1 | `order_assigned` | utility | recipient | `delivery.order.assigned` | merchant name, order number |
 | 1 | `order_out_for_delivery` | utility | recipient | `delivery.order.out_for_delivery` | merchant name, driver first name, ETA window, tracking link (purpose `track`) |
 | 1 | `order_attempted` | utility | recipient | `delivery.order.attempted` | merchant name, reason (localised label), reschedule link from wave 2 |
