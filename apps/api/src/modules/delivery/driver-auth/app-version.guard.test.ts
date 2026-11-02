@@ -1,5 +1,12 @@
+import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
-import { compareAppVersions, parseAppVersion, versionShortfall } from './app-version.guard.js';
+import {
+  AppVersionGuard,
+  compareAppVersions,
+  parseAppVersion,
+  versionShortfall,
+} from './app-version.guard.js';
 
 describe('the driver app version check (DEL-4 plan 2.10)', () => {
   it('parses major.minor.patch only', () => {
@@ -31,5 +38,31 @@ describe('the driver app version check (DEL-4 plan 2.10)', () => {
     expect(versionShortfall(minimums, 'ios', undefined)).toBeUndefined();
     expect(versionShortfall(minimums, 'ios', 'garbage')).toBeUndefined();
     expect(versionShortfall(minimums, 'web', '0.0.1')).toBeUndefined();
+  });
+
+  it('checks the driver surface by the matched route, whatever the path spelling (adversary L-1)', () => {
+    const guard = new AppVersionGuard(new Reflector(), { ios: '1.4.0' });
+    const call = (path: string, route?: string) =>
+      guard.canActivate({
+        switchToHttp: () => ({
+          getRequest: () => ({
+            path,
+            ...(route === undefined ? {} : { route: { path: route } }),
+            headers: { 'x-app-version': '1.3.9', 'x-app-platform': 'ios' },
+          }),
+        }),
+        getHandler: () => () => undefined,
+        getClass: () => class {},
+      } as unknown as ExecutionContext);
+    for (const [path, route] of [
+      ['/V1/DRIVER/me', '/v1/driver/me'],
+      ['/V1/DRIVER/me', undefined],
+      ['/v1/driver/me', '/v1/driver/me'],
+    ] as const) {
+      expect(() => call(path, route)).toThrow(
+        expect.objectContaining({ code: 'app_update_required' }),
+      );
+    }
+    expect(call('/v1/staff/me', '/v1/staff/me')).toBe(true);
   });
 });

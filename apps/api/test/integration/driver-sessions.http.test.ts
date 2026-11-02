@@ -115,7 +115,7 @@ describe('driver sessions over HTTP (DEL-4 item E)', () => {
     ]);
   });
 
-  it("answers device_revoked after a dispatcher revokes the device, and the other device's session lives", async () => {
+  it("answers token_invalid after a dispatcher revokes the device (its families went first, adversary L-2), and the other device's session lives", async () => {
     const driver = await plantDriver(owner);
     const lost = await signedIn(driver.phone);
     const kept = await signedIn(driver.phone);
@@ -130,7 +130,7 @@ describe('driver sessions over HTTP (DEL-4 item E)', () => {
       lost.session.tokens?.refresh_token ?? '',
       lost.device.device_id,
     ).expect(401);
-    expect(errorOf(refused.body).code).toBe('device_revoked');
+    expect(errorOf(refused.body).code).toBe('token_invalid');
     await refresh(kept.session.tokens?.refresh_token ?? '', kept.device.device_id).expect(200);
   });
 

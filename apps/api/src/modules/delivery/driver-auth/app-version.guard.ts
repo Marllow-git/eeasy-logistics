@@ -3,7 +3,7 @@ import { Inject, Injectable, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import type { DevicePlatform } from '../../kernel/public/index.js';
-import { ApiException, devicePlatforms } from '../../kernel/public/index.js';
+import { ApiException, devicePlatforms, requestSurface } from '../../kernel/public/index.js';
 import { DRIVER_MIN_APP_VERSION } from '../delivery.tokens.js';
 
 // The minimum driver app version (DEL-4 plan 2.10; driver app §13.5; Q-24 provisional; contracts
@@ -55,8 +55,6 @@ export function versionShortfall(
   return compareAppVersions(presented, lowest) < 0 ? minimum : undefined;
 }
 
-const driverPath = /^\/v1\/driver(?:\/|$)/;
-
 function header(request: Request, name: string): string | undefined {
   const value = request.headers[name];
   return typeof value === 'string' ? value : undefined;
@@ -71,7 +69,8 @@ export class AppVersionGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
-    if (!driverPath.test(request.path)) return true;
+    // The surface the router matched (adversary L-1): `/V1/DRIVER/me` reaches the driver handler.
+    if (requestSurface(request) !== 'driver') return true;
     const replay = this.reflector.getAllAndOverride<boolean | undefined>(REPLAY_ROUTE, [
       context.getHandler(),
       context.getClass(),

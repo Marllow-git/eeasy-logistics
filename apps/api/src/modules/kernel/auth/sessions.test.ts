@@ -195,14 +195,19 @@ describe('refreshVerdict', () => {
       });
     });
 
-    it('answers device_revoked for a revoked or vanished device, before the row revocation', () => {
+    it('answers device_revoked for a revoked or vanished device, after the row revocation and reuse (adversary L-2)', () => {
       const revoked = { status: 'active' as const, device: { ...device, revoked: true } };
       expect(verdict(driverRow({ driver: revoked }), presented)).toEqual({
         kind: 'device_revoked',
       });
       expect(verdict(driverRow({ driver: revoked, revoked: true }), presented)).toEqual({
-        kind: 'device_revoked',
+        kind: 'refuse',
+        code: 'token_invalid',
       });
+      const used = driverRow({ driver: revoked });
+      expect(
+        verdict({ ...used, usedAt: new Date(used.now.getTime() - 3_600_000) }, presented),
+      ).toEqual({ kind: 'reuse' });
       expect(verdict(driverRow({ driver: { status: null, device: null } }), presented)).toEqual({
         kind: 'device_revoked',
       });
