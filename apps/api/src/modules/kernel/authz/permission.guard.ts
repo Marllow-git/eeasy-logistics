@@ -32,6 +32,17 @@ const actorTypes: Readonly<Record<Principal['kind'], AuditActorType>> = {
 };
 
 /**
+ * The denials a contract answers with a code of their own instead of `forbidden` (PLAT-13 plan
+ * 2.6): a caller who manages feature flags but may not change a rollout mode (a platform admin) is
+ * told `rollout_change_forbidden`, so the console can explain; anyone else gets `forbidden`.
+ */
+const explainedDenials: Readonly<
+  Record<string, { readonly holder: string; readonly code: 'rollout_change_forbidden' }>
+> = {
+  'platform.rollout.manage': { holder: 'platform.flags.manage', code: 'rollout_change_forbidden' },
+};
+
+/**
  * The global permission guard (PLAT-10 plan 2.5; identity and tenancy §2; contracts README §1),
  * after `TenancyGuard`. The permission an operation requires comes only from its contract: the
  * `x-permission` of the generated `operationSchemas` entry the handler binds with `@Operation()`
@@ -87,10 +98,14 @@ export class PermissionGuard implements CanActivate {
     if (doorPermissions.has(operation.permission)) return true;
     const resolver = this.resolver;
     if (resolver === undefined) throw new ApiException('internal_error');
-    const grant = resolver.grantsOf(principal).get(operation.permission);
+    const grants = resolver.grantsOf(principal);
+    const grant = grants.get(operation.permission);
     if (grant === undefined) {
       await this.recordDenial(request, principal, operation);
-      throw new ApiException('forbidden');
+      const explained = explainedDenials[operation.permission];
+      throw new ApiException(
+        explained !== undefined && grants.has(explained.holder) ? explained.code : 'forbidden',
+      );
     }
     if (grant === 'sites') {
       // Held only through site-scoped bundles (plan 2.6): the declared site must be one of the
