@@ -33,3 +33,9 @@ export {
   type UnitOfWork,
 } from './unit-of-work.ts';
 export { isUuid, uuidv7 } from './uuid.ts';
+export {
+  multiPolygon,
+  multiPolygonFromWkbHex,
+  type MultiPolygonGeoJson,
+  type Position,
+} from './geometry.ts';
