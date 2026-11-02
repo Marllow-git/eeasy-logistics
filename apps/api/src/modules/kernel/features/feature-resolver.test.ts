@@ -172,6 +172,15 @@ describe('rollout inputs', () => {
     expect(rolloutReasonProblem('تجربة الموجة الأولى')).toBeUndefined();
   });
 
+  it('allows the Arabic letter mark, the directional marks and the zero-width joiners in a body reason', () => {
+    // Lead ruling, WEB-4 round 2: Arabic and Persian keyboards insert these in ordinary text.
+    expect(rolloutReasonProblem('تجربة‏ الموجة 42')).toBeUndefined();
+    for (const mark of ['؜', '‌', '‍', '‎', '‏']) {
+      expect(rolloutReasonProblem(`pilot${mark}wave`)).toBeUndefined();
+    }
+    expect(rolloutReasonProblem('تجربة‏ ‮الموجة')).toBe('invalid');
+  });
+
   it('names an aggregate with a stable version 5 UUID', () => {
     const id = nameAggregateId('rollout:wms');
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);

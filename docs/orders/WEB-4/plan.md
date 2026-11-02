@@ -161,6 +161,7 @@ Fix round 1 beyond the console's paths, from the lead's rulings: `packages/ui/sr
 25. **Fix round item 2 (L).** `\p{Cf}` is refused with `\p{Cc}` as `invalid` on header and body reasons at the cross-tenant door and in `rolloutReasonProblem` (rollout, flags, staff TOTP reset). This also refuses U+200E/U+200F and U+061C (direction marks some Arabic keyboards insert); the console does not strip them before sending, so such a reason gets the API's field error.
 26. **Fix round item 3 (L).** The platform-wide dialog (outbox and audit lists without an account) now says the reason is required by the console and kept for this tab only, not recorded; the per-account copy is unchanged.
 27. **Fix round item 4 (L).** Accepted as ruled: a duplicated tab inherits the tab's reasons (the browser copies `sessionStorage`); web §3.5 says so.
+28. **Round 2 (lead ruling).** `refusedReasonCharacter` now allows exactly U+061C, U+200C, U+200D, U+200E and U+200F as text (a negative lookahead before `[\p{Cc}\p{Cf}]`), header and body; every other `Cf` (U+202A to U+202E, U+2066 to U+2069, U+200B, U+2060, U+FEFF) stays `invalid`. Red 2 failed / 19 passed, green 21/21 in the two unit suites; `errors.md` names the five marks.
 
 ### 8.3 Not done here
 
@@ -171,6 +172,6 @@ Fix round 1 beyond the console's paths, from the lead's rulings: `packages/ui/sr
 5. **Linux baselines** for leg 1's and leg 2's console captures (9 new per project in leg 2; `console-home` and `platform` regenerated) come from CI's first run (`admin-build-census` artifact).
 6. **The platform-wide reason (8.2 #15, #26)** is a lead or contract decision: the console asks one and, since the fix round, says it is not recorded; a contract change making `X-Support-Reason` optional without `account_id` on `platformListOutbox` and `platformListAudit` removes the prompt later (outside this order).
 7. **Not reproduced in the census:** an expired re-enrolment link (24 hours; the same branch as an expired invitation), `job_active` (needs a running BullMQ job), the last-super-admin lock (the census always has several super admins; the rule is the API's `staff-rules.ts` and its tests).
-8. **Direction marks in a reason (8.2 #25):** the console sends what was typed; stripping U+200E/U+200F/U+061C client-side before sending, or a friendlier message than the field error, is not done here.
+8. ~~**Direction marks in a reason (8.2 #25)**~~ allowed by the API since 8.2 #28; nothing to strip client-side.
 
 ## 9. Lead review and adversary
