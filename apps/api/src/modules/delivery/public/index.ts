@@ -16,3 +16,18 @@ export {
 // DEL-5: `ShiftQuery` (plan 2.2): the driver's live shift for DEL-6's offers (D-12) and DEL-7's
 // driver transitions (D-6), in the caller's unit of work.
 export { ShiftQuery, type LiveShift } from '../shifts/shift-query.js';
+// DEL-5 leg 2: what the worker runs per account on elx_app (plan 2.5, 2.8): the shift sweep, the
+// trail append per driver and the telemetry retention per account.
+export { noShowGraceMs } from '../shifts/shift-input.js';
+export {
+  sweepAccountShifts,
+  type ShiftSweep,
+  type SystemShiftDependencies,
+} from '../shifts/shift-system.js';
+export {
+  appendDriverTrail,
+  purgeAccountTelemetry,
+  retentionCutoff,
+  type TelemetryPurge,
+  type TrailAppend,
+} from '../locations/telemetry-jobs.js';

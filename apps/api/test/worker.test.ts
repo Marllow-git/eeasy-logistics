@@ -8,6 +8,9 @@ import { PushTokenInvalidations } from '../src/modules/kernel/push/invalidations
 import { PushKindHandler } from '../src/modules/kernel/push/push.handler.js';
 import { RecorderPushSender } from '../src/modules/kernel/push/recorder-push-sender.js';
 import { pushReceiptsIntervalMs } from '../src/worker/system/push-receipts.js';
+import { shiftSweeperIntervalMs } from '../src/worker/system/shift-sweeper.js';
+import { retentionTickMs } from '../src/worker/system/telemetry-retention.js';
+import { trailAppenderIntervalMs } from '../src/worker/system/trail-appender.js';
 import type { WorkerDependencies } from '../src/worker/system/worker.js';
 import { startWorker } from '../src/worker/system/worker.js';
 
@@ -186,6 +189,61 @@ describe('worker startup', () => {
     await worker.stop();
     await vi.advanceTimersByTimeAsync(pushReceiptsIntervalMs);
     expect(pushReceipts).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs the DEL-5 jobs on their intervals only with the elx_app pool (plan 2.5, 2.8)', async () => {
+    vi.useFakeTimers();
+    const { deps, log, warn } = doubles();
+    const appClosed = vi.fn(() => Promise.resolve());
+    const trailAppender = vi.fn<WorkerDependencies['trailAppender']>(() =>
+      Promise.resolve({ ran: true as const, counts: { drivers: 2, points: 30, failed: 0 } }),
+    );
+    const telemetryRetention = vi.fn<WorkerDependencies['telemetryRetention']>(() =>
+      Promise.resolve({ ran: false as const }),
+    );
+    const shiftSweeper = vi.fn<WorkerDependencies['shiftSweeper']>(() =>
+      Promise.reject(new TypeError('boom')),
+    );
+    const jobs = { ...deps, trailAppender, telemetryRetention, shiftSweeper };
+    const without = await startWorker(
+      config({ DATABASE_URL_PLATFORM: platformUrl, REDIS_URL: redisUrl }),
+      jobs,
+    );
+    expect(without.jobs).not.toContain('trail-appender');
+    expect(trailAppender).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      'Trail appender, telemetry retention and shift sweeper off: DATABASE_URL_APP not configured',
+    );
+    await without.stop();
+
+    const worker = await startWorker(
+      config({
+        DATABASE_URL_PLATFORM: platformUrl,
+        DATABASE_URL_APP: 'postgres://elx_app:x@127.0.0.1:5432/elx',
+        REDIS_URL: redisUrl,
+      }),
+      { ...jobs, appPool: () => ({ db: {} as never, close: appClosed }) },
+    );
+    expect(worker.jobs).toEqual(
+      expect.arrayContaining(['trail-appender', 'telemetry-retention', 'shift-sweeper']),
+    );
+    expect(trailAppender).toHaveBeenCalledTimes(1);
+    expect(telemetryRetention).toHaveBeenCalledTimes(1);
+    expect(shiftSweeper).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith('Trail appender: 30 points of 2 drivers appended, 0 failed');
+    // A failed sweep is one warning; the worker stays up and the next run comes.
+    expect(warn).toHaveBeenCalledWith('Shift sweeper skipped: TypeError');
+    await vi.advanceTimersByTimeAsync(trailAppenderIntervalMs);
+    expect(trailAppender).toHaveBeenCalledTimes(2);
+    expect(shiftSweeper).toHaveBeenCalledTimes(2);
+    expect(telemetryRetention).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(retentionTickMs - trailAppenderIntervalMs);
+    expect(telemetryRetention).toHaveBeenCalledTimes(2);
+    expect(shiftSweeper).toHaveBeenCalledTimes(4);
+    await worker.stop();
+    expect(appClosed).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(shiftSweeperIntervalMs);
+    expect(shiftSweeper).toHaveBeenCalledTimes(4);
   });
 
   it('runs no receipts job without a push handler', async () => {

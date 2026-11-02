@@ -31,6 +31,8 @@ export const domainEventTypes = [
   // ids and times only, never a position (ADR-0028).
   'delivery.shift.started',
   'delivery.shift.ended',
+  // DEL-5 plan 2.8: the stale-tracking alert (a board event and the driver's `push` row).
+  'delivery.shift.tracking_stale',
 ] as const;
 export type DomainEventType = (typeof domainEventTypes)[number];
 

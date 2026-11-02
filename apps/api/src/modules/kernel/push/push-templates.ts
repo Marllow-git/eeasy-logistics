@@ -44,6 +44,8 @@ export const pushTemplates = {
   },
   cash_block_notice: { params: {}, channelId: 'cash', priority: 'high', sound: true },
   sync_needed: { params: {}, channelId: 'run', priority: 'default', sound: false },
+  // DEL-5 plan 2.8: an active shift sent no position for 5 minutes (at most one per 15 minutes).
+  stale_tracking: { params: {}, channelId: 'run', priority: 'high', sound: true },
 } as const satisfies Record<PushTemplateKey, PushTemplateDefinition>;
 
 export type { PushTemplateKey };

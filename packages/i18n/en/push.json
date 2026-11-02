@@ -18,5 +18,9 @@
   "sync_needed": {
     "title": "Sync needed",
     "body": "Open the app to sync your data."
+  },
+  "stale_tracking": {
+    "title": "We are not receiving your location",
+    "body": "Your location has not reached us for a few minutes. Open the app to resume tracking."
   }
 }
