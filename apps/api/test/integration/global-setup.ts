@@ -3,6 +3,9 @@
 //     created from template1, migrated from zero with ELX_RLS respected, and dropped afterwards;
 //   - without it, in ci only: the configured database itself (the `migrate` step has run; this
 //     run is then a no-op apart from the RLS switch).
+// Then the `delivery` rollout mode is `all` (DEL-1 plan 2.9): the Delivery staff doors are gated by
+// the module, and every suite but the gate's own (which overrides the resolver) acts on accounts
+// with no flag. One row; `features.http.test.ts` owns the `wms` row.
 // The development database is never migrated by the suite (data §11.7).
 import { randomBytes } from 'node:crypto';
 import { defineConfig } from '@eeasy-logistics/config';
@@ -14,6 +17,7 @@ import {
   withDatabase,
 } from '@eeasy-logistics/db/admin';
 import { runMigrations } from '@eeasy-logistics/db/migrate';
+import postgres from 'postgres';
 import type { TestProject } from 'vitest/node';
 import { migrationsFolder } from '../../src/migrate/run.js';
 
@@ -52,6 +56,12 @@ export default async function setup(project: TestProject): Promise<() => Promise
       folder: migrationsFolder,
       rls: config.db.rls,
     });
+    const sql = postgres(withDatabase(owner, database).reveal(), { max: 1, onnotice: () => {} });
+    try {
+      await sql`UPDATE core_rollout_modes SET mode = 'all' WHERE feature_key = 'delivery'`;
+    } finally {
+      await sql.end();
+    }
   } catch (error) {
     await cleanup();
     throw error;

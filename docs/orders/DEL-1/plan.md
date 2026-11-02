@@ -84,14 +84,35 @@ Official city boundary imports (§7 #1); the zones screens (WEB-6) and the map p
 
 | Item | Commit | Tests (red, then green) | Interpretation |
 |---|---|---|---|
-| A | see `git log` (`DEL-1: A`) | `packages/db` `geometry.test.ts` 3/3 (new); integration `ELX_RLS=on` `zones-table` + `sample`: red 3 failed / 3 passed with the migration as drizzle-kit generated it (no CHECK, no grants, no policies); green with `tenancy` + `drivers-table`: 5 files, 32/32; `drizzle-kit generate` twice: second "No schema changes"; `migrate` twice on `elx_del1_scratch` (`ELX_RLS=on`): applied 20, then "Nothing to migrate" | 8.2 #1 (pool and grants), #2 (EWKB read) |
-| B | see `git log` (`DEL-1: B`) | unit `zone-input.test.ts` 5/5 (new); integration `ELX_RLS=on` `zones.http`: red 6 failed / 6 with the two controllers unregistered, green 6/6 | 8.2 #3 (list omits `boundary`), #4 (inactive site, foreign ids) |
-| C | see `git log` (`DEL-1: C`) | unit `coverage-query.test.ts` 2/2 (new; zones unit 7/7); integration `ELX_RLS=on` `coverage-check.http`: red 4 failed / 1 passed with item B's two controllers and module restored (the port case passes: the port file stayed), green 5/5; with `zones.http`, `sites.http`, `provisioning.http`: 4 files, 34/34 once a Mailpit of my own ran on 1025/8025 (3 PLAT-13 mail cases need it; 31/34 without) | 8.2 #1, #5 (check semantics), #6 (geocoder locale, unavailable) |
+| A | b63a510 | `packages/db` `geometry.test.ts` 3/3 (new); integration `ELX_RLS=on` `zones-table` + `sample`: red 3 failed / 3 passed with the migration as drizzle-kit generated it (no CHECK, no grants, no policies); green with `tenancy` + `drivers-table`: 5 files, 32/32; `drizzle-kit generate` twice: second "No schema changes"; `migrate` twice on `elx_del1_scratch` (`ELX_RLS=on`): applied 20, then "Nothing to migrate" | 8.2 #1 (pool and grants), #2 (EWKB read) |
+| B | faa198b | unit `zone-input.test.ts` 5/5 (new); integration `ELX_RLS=on` `zones.http`: red 6 failed / 6 with the two controllers unregistered, green 6/6 | 8.2 #3 (list omits `boundary`), #4 (inactive site, foreign ids) |
+| C | a141b6e | unit `coverage-query.test.ts` 2/2 (new; zones unit 7/7); integration `ELX_RLS=on` `coverage-check.http`: red 4 failed / 1 passed with item B's two controllers and module restored (the port case passes: the port file stayed), green 5/5; with `zones.http`, `sites.http`, `provisioning.http`: 4 files, 34/34 once a Mailpit of my own ran on 1025/8025 (3 PLAT-13 mail cases need it; 31/34 without) | 8.2 #1, #5 (check semantics), #6 (geocoder locale, unavailable) |
+| D | see `git log` (`DEL-1: D`) | integration `ELX_RLS=on` `delivery-gate.http` (new): red 1 failed / 1 with the four controllers ungated, green 1/1; with `zones*`, `coverage-check`, `drivers*`, `vehicles`, `driver-*`, `features.http`: 12 files, 75/75 (WhatsApp stub of my own on 8080 for `drivers.http` createDriver, Mailpit for `features.http`); api unit 92 files, 1023/1023; api architecture clean (1115 modules); `packages/db` 22/22 + architecture clean; typecheck and lint of api, db, contracts clean; Prettier over every changed file | 8.2 #7 (harness row and `features.http`), #8 (audit catalogue) |
 
 ### 8.1 Deviations
 
+- Consulted (2026-11-02): Context7 `/drizzle-team/drizzle-orm-docs` (custom types; the codec layer it documents is newer than the pinned drizzle-orm 0.45.4, whose `customType` has `dataType`/`toDriver`/`fromDriver` only); local drizzle-kit 0.31.11, @nestjs/common 12.3.2, postgres.js 3.4.9, PostgreSQL 17.9 with PostGIS 3.7.0. No NestJS, BullMQ or Zod docs needed.
+- 2.1 grants: `elx_platform` is not "none". It keeps SELECT and INSERT on `del_zones`, SELECT, INSERT and DELETE on `del_coverage`, and gains INSERT on `core_sites` (8.2 #1).
+- 2.1 geometry type: reads decode EWKB in JS, not `ST_AsGeoJSON` (8.2 #2).
+- No contract change.
+
 ### 8.2 Notes
 
+1. **Pool of the provisioning doors (2.6).** A `@CrossTenant()` door's unit of work runs on the platform pool with `elx.account_id` set (`unit-of-work.interceptor.ts`, `withCrossTenantUnitOfWork`), as `platformUpdateAccount` does. The trio therefore writes on elx_platform, so the migration grants it INSERT on `del_zones` and `core_sites` (0014 had revoked it) and INSERT, DELETE on `del_coverage`, with no UPDATE or DELETE on zones and sites. The door's audit row commits in the same transaction. The alternative was a second, app-pool transaction per door, which would split the door row from the write.
+2. **GeoJSON read.** drizzle-orm 0.45 cannot wrap a selected column in SQL. `multiPolygon.fromDriver` decodes the hex EWKB PostgreSQL sends: exact doubles, Polygon wrapped, any other type throws. Writes go through `ST_SetSRID(ST_GeomFromGeoJSON(...), 4326)`.
+3. **2.3, the list and `boundary`.** The generated `Zone` schema makes every field optional, so `listZones` leaves `boundary` out and keeps the default limit. `selectWhere` is the new scoped column read in `packages/db`. `evaluate` runs `ST_IsValidReason` before the write, so the CHECK never fires on a door.
+4. **2.4, coverage refusals.** An inactive branch answers `409 invalid_transition` (`details.current_status`). A warehouse answers `422 site_kind_mismatch`. A foreign zone answers `400` at `/body/zone_ids/<i>` on the staff door and `404` on the platform door, as `platform.yaml` says. Sets over 200 zones (or over 100 entries on the platform door) are `400 too_long`. An unchanged set writes no audit row.
+5. **2.5, check semantics (D-3).** Candidate zones are the active zones covering the point that some site covers (only that site when `site_id` is sent). With no candidate the answer is `zone_id: null, site_ids: []`, even when an uncovered zone contains the point. `covered` means `site_ids` is not empty. `checkCoverage` is not site-scoped.
+6. **2.5, geocoder.** The text is geocoded with `locale: 'ar'`: the contract carries no locale, and the lint rule bans raw header decorators. A geocoder that is `unavailable` (`degraded: true`) is treated like not found: `covered: false` with no point. `GeocoderInputError` is `400` at the address field.
+7. **2.9, harness row.** `global-setup.ts` sets `delivery` to `all`, so `Me.features` lists `delivery` for every account in a run. `features.http.test.ts` had five expectations changed to match: four `Me.features` lists now include `delivery`, and the rollout list shows `delivery: all`. Its gate checks still run on `wms`; nothing was removed. The new gate suite overrides the resolver's mode to `allowlist`.
+8. **2.7, audit catalogue.** Domain model §6.3 lists events only, and no audit-action catalogue exists in the docs, so the three actions are recorded here and in the code only. No outbox event.
+9. **2.8, fixtures.** The fixtures had no sites yet. Each fixture account gets a Riyadh and a Jeddah branch, a drawn rectangle zone around each, and the matching coverage. All have fixed ids and are written on the seed's platform pool.
+10. **Tables.** `del_coverage` has an `id` primary key (data §1.3) besides the unique `(account_id, site_id, zone_id)`. Names are CHECKed with `char_length` 1 to 120.
+
 ### 8.3 Not done here
+
+- Contract scenarios for the ten operations were added (401 without a session) but not run against a booted API locally; CI's contract lane runs them.
+- `ELX_RLS=off` lane, the full integration suite and Compose: CI only (token budget). The RLS-on lane ran the suites listed in §8.0.
+- Official boundaries (§7 #1), a zones key in `AccountLimits` (§7 #2) and gating the driver surface: out of scope (§6).
 
 ## 9. Lead review
