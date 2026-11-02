@@ -9,9 +9,11 @@ export type { IdempotentOptions } from '../idempotency/idempotency.js';
 export {
   Input,
   Operation,
+  sentBodyFields,
   type ContractInput,
   type OperationSchemas,
 } from '../contract/contract-pipe.js';
+export { assertVersion, entityTag, ifMatchVersion } from '../contract/if-match.js';
 // Authorization (PLAT-10): site scoping for handlers and repositories, the separation-of-duties
 // checks for membership writes (PLAT-12) and approvals (WMS), and the role bundles they read.
 export { SiteScoped, siteFilter, type SiteScopedSource } from '../authz/site-scope.js';
@@ -137,7 +139,7 @@ export { featureKeys, type FeatureKey } from '../features/feature-keys.js';
 // Zones and coverage (DEL-1 plan 2.1, 2.4, 2.6): the tables (kernel-owned schema files), the kind
 // and status of the sites a coverage door names, the provisioning doors' account check and door.
 export { delCoverage, delZones, zoneSources, type ZoneSource } from '../schema/zones.js';
-export { siteSummaries, type SiteSummary } from '../sites/sites.repository.js';
+export { holdSites, siteSummaries, type SiteSummary } from '../sites/sites.repository.js';
 export { assertProvisionable } from '../provisioning/provisioning-door.js';
 export { optionalReason } from '../tenancy/cross-tenant.js';
 // Orders (DEL-2 plan 2.1, 2.2): the order tables (kernel-owned schema files) and the human number

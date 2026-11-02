@@ -10,7 +10,7 @@ import type {
   RequestFacts,
   SequenceAllocator,
 } from '../../kernel/public/index.js';
-import { ApiException, siteSummaries } from '../../kernel/public/index.js';
+import { ApiException, holdSites, siteSummaries } from '../../kernel/public/index.js';
 import type { CoverageQuery } from '../zones/coverage-query.js';
 import type { Located } from './intake.js';
 import { intakeOutcome, locate } from './intake.js';
@@ -68,6 +68,10 @@ export class OrderIntake {
         ? null
         : (await this.deps.coverage.coverage(located.point, { siteId: fields.siteId, uow })).zoneId;
     const outcome = intakeOutcome(account.intakeRule, located !== undefined, zoneId);
+    // The site lock shared, then the site again: a deactivation (which holds it exclusively through
+    // its `open_orders` check) either sees this order or runs after it (leg 2, PLAT-12 K-5).
+    await holdSites(uow);
+    await this.assertDispatchSite(uow, fields.siteId);
 
     await this.deps.accounts.chargeOrder(uow, account.ordersPerMonth);
     const number = await this.deps.sequences.next(uow, 'delivery_order');

@@ -5,6 +5,7 @@ import type { Request } from 'express';
 import type { ZodType, core, output } from 'zod';
 import type { FieldProblem } from '../errors/api-exception.js';
 import { ApiException } from '../errors/api-exception.js';
+import { ifMatchHeader } from './if-match.js';
 
 // API input comes only through the contract (PLAT-6 item I; roadmap A-17; contracts README §9
 // "API input", §4 "Error model"). A controller names its operation's generated schemas with
@@ -147,8 +148,11 @@ export function fieldProblems(
  * names; the generated schema keeps the YAML spelling, `Idempotency-Key`). Undeclared headers are
  * never passed on.
  */
+const headerShape = (schema: ZodType): Record<string, unknown> =>
+  (schema as { shape?: Record<string, unknown> }).shape ?? {};
+
 function declaredHeaders(schema: ZodType, headers: Request['headers']): Record<string, unknown> {
-  const shape = (schema as { shape?: Record<string, unknown> }).shape ?? {};
+  const shape = headerShape(schema);
   const picked: Record<string, unknown> = {};
   for (const name of Object.keys(shape)) {
     const value = headers[name.toLowerCase()];
@@ -165,6 +169,14 @@ function isEmpty(value: unknown): boolean {
 /** Parses every part of a raw input; throws `400 validation_failed` with every field at fault. */
 export function parseContractInput(raw: RawInput): ContractInput<OperationSchemas> {
   const { schemas } = raw;
+  // A dispatcher write without the version it read is `428`, not a field problem (D-22, DEL-2).
+  if (
+    schemas.header !== undefined &&
+    Object.hasOwn(headerShape(schemas.header), ifMatchHeader) &&
+    raw.headers[ifMatchHeader.toLowerCase()] === undefined
+  ) {
+    throw new ApiException('version_required');
+  }
   const problems: FieldProblem[] = [];
   const parse = (prefix: string, schema: ZodType | undefined, value: unknown): unknown => {
     if (schema === undefined) {

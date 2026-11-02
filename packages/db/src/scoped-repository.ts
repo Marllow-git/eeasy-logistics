@@ -52,20 +52,27 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
 
   /**
    * Rows of the context's account matching `condition`, optionally ordered and limited (keyset
-   * pages, ADR-0029: the caller puts its cursor predicate in `condition`).
+   * pages, ADR-0029: the caller puts its cursor predicate in `condition`). `forUpdate` locks the
+   * rows read `FOR UPDATE` until the transaction ends (DEL-2: an order's transition and edit).
    */
   protected async findMany(
     condition?: SQL,
-    page: { readonly orderBy?: readonly SQL[]; readonly limit?: number } = {},
+    page: {
+      readonly orderBy?: readonly SQL[];
+      readonly limit?: number;
+      readonly forUpdate?: boolean;
+    } = {},
   ): Promise<InferSelectModel<TTable>[]> {
     const table: PgTable = this.table;
-    const query = this.#tx
+    let query = this.#tx
       .select()
       .from(table)
       .where(this.scoped(condition))
       .orderBy(...(page.orderBy ?? []))
       .$dynamic();
-    const rows = page.limit === undefined ? await query : await query.limit(page.limit);
+    if (page.limit !== undefined) query = query.limit(page.limit);
+    if (page.forUpdate === true) query = query.for('update');
+    const rows = await query;
     return rows as InferSelectModel<TTable>[];
   }
 
@@ -159,6 +166,17 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
       .onConflictDoUpdate({ target: [...target], set: set as never })
       .returning();
     return written as InferSelectModel<TTable>;
+  }
+
+  /**
+   * Takes the shared form of `transactionLock(name)`: any number of transactions hold it together,
+   * and it waits for (and holds off) the exclusive one (DEL-2: an order's create holds `core_sites`
+   * shared, so a site deactivation's in-use check sees every order created on it).
+   */
+  protected async sharedTransactionLock(name: string): Promise<void> {
+    await this.#tx.execute(
+      sql`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`${this.accountId}/${name}`}, 0))`,
+    );
   }
 
   /**
