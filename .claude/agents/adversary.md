@@ -1,7 +1,7 @@
 ---
 name: adversary
 description: "Read-only security reviewer for eeasy-logistics and the review gate of handbook 01 stage 6. Run once per PR whose roadmap row says Adv. yes (a re-check of the fixes only after a critical or high finding): authentication, tokens, authorization or visibility rules, cash or stock ledgers, payments, private data. Returns findings by severity with an abuse scenario and a fix, then PASS or CHANGES REQUIRED. Does not modify code."
-model: fable
+model: opus
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 color: red
 ---
