@@ -22,7 +22,9 @@ import { accountNameProblem, moduleKeys, ownerNameMaxLength } from './account-in
 // platform transaction with its limits, its first feature flags, its owner's invitation, the
 // `core.account.provisioned` event and its audit row. The other doors run inside the cross-tenant
 // door of the account they name (`getContext()` is that account), whose `core_accounts` row they
-// change on a platform transaction of their own with its audit row (PLAT-12 8.2 #3, `recordIn`).
+// change on the door's own transaction with its audit row (`recordIn`): the store the controller
+// gives is `doorAccountStore()`, so no door holds a second platform connection (lead ruling on
+// 8.2 #11).
 
 /** `ProvisionAccountRequest` as the controller hands it over (contract types stay there, A-17). */
 export interface ProvisionInput {
@@ -251,9 +253,9 @@ export class ProvisioningService {
   /**
    * `platformInviteOwner` (plan 2.4, §7 #3), inside the account's door: PLAT-11's `createStaff` with
    * `roles: ['owner']` in the account's language (an `active` membership of that email is `409
-   * invalid_transition` from the service; another email adds an owner), then the door's
-   * `core.member.invited` row, committed after the invitation committed (as PLAT-12's
-   * `inviteMember`). Answers the membership id.
+   * invalid_transition` from the service; another email adds an owner) and the door's
+   * `core.member.invited` row, both in the store's transaction (the door's own). Answers the
+   * membership id.
    */
   async inviteOwner(
     input: { readonly email: string; readonly name: string },
@@ -262,34 +264,39 @@ export class ProvisioningService {
     validationFailed([oneLineTextProblem('/body/name', input.name, ownerNameMaxLength)]);
     const caller = platformCaller();
     const accountId = getContext().accountId;
-    const account = await this.store().run((accounts) => accounts.find(accountId));
-    if (account === undefined) throw new ApiException('not_found');
     const email = input.email.toLowerCase();
-    const created = await this.deps.invitations.createStaff({
-      accountId,
-      email,
-      name: input.name,
-      roles: ['owner'],
-      siteIds: [],
-      invitedBy: caller,
-      locale: account.defaultLocale,
+    return this.store().run(async (accounts, uow) => {
+      const account = await accounts.find(accountId);
+      if (account === undefined) throw new ApiException('not_found');
+      const created = await this.deps.invitations.createStaff(
+        {
+          accountId,
+          email,
+          name: input.name,
+          roles: ['owner'],
+          siteIds: [],
+          invitedBy: caller,
+          locale: account.defaultLocale,
+        },
+        identityTransactionOf(uow),
+      );
+      const membershipId = created.membershipId;
+      if (membershipId === null) throw new Error('A staff invitation has a membership');
+      await this.deps.audit.recordIn(uow, {
+        actorType: 'platform_user',
+        actorId: caller,
+        accountId,
+        targetType: 'membership',
+        targetId: membershipId,
+        action: 'core.member.invited',
+        after: { roles: ['owner'], site_ids: [], email },
+        requestId: facts.requestId,
+        clientRequestId: facts.clientRequestId,
+        ip: facts.ip,
+        userAgent: facts.userAgent,
+      });
+      return membershipId;
     });
-    const membershipId = created.membershipId;
-    if (membershipId === null) throw new Error('A staff invitation has a membership');
-    await this.deps.audit.recordCommitted({
-      actorType: 'platform_user',
-      actorId: caller,
-      accountId,
-      targetType: 'membership',
-      targetId: membershipId,
-      action: 'core.member.invited',
-      after: { roles: ['owner'], site_ids: [], email },
-      requestId: facts.requestId,
-      clientRequestId: facts.clientRequestId,
-      ip: facts.ip,
-      userAgent: facts.userAgent,
-    });
-    return membershipId;
   }
 
   /** `platformListAccounts` (plan 2.4): one page of accounts on the platform pool, no usage. */

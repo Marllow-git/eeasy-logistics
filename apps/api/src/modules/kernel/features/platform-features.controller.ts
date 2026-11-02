@@ -14,7 +14,7 @@ import type { ContractInput } from '../contract/contract-pipe.js';
 import { Input, Operation } from '../contract/contract-pipe.js';
 import { Idempotent } from '../idempotency/idempotency.interceptor.js';
 import { OutboxWriter } from '../outbox/outbox-writer.js';
-import { CrossTenant, accountIdParam } from '../tenancy/cross-tenant.js';
+import { CrossTenant, accountIdParam, optionalReason } from '../tenancy/cross-tenant.js';
 import { FEATURE_RESOLVER } from './feature-gate.js';
 import type { FeatureResolver } from './feature-resolver.js';
 import type { FlagView, RolloutView } from './features.service.js';
@@ -24,7 +24,8 @@ import { FeaturesService } from './features.service.js';
 // (platform rows; setting one is `platform.rollout.manage`, super admins only by roles.yaml, and a
 // holder of `platform.flags.manage` alone is answered `rollout_change_forbidden` by the permission
 // guard) and an account's feature flags through the account's cross-tenant door (the flag change
-// carries its reason in the body, the list the `X-Support-Reason` header).
+// carries its reason in the body; the list takes an optional `X-Support-Reason`, lead ruling on
+// 8.2 #8).
 
 const listModesOp = operationSchemas.platformListRolloutModes;
 const setModeOp = operationSchemas.platformSetRolloutMode;
@@ -82,7 +83,7 @@ export class PlatformFeaturesController {
   }
 
   @Get('accounts/:account_id/feature-flags')
-  @CrossTenant()
+  @CrossTenant(optionalReason)
   @Operation(listFlagsOp)
   async listFlags(@Input() _input: ContractInput<typeof listFlagsOp>): Promise<FeatureFlagList> {
     return { data: (await this.features.flags()).map(presentFeatureFlag) };
