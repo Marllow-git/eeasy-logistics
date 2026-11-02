@@ -63,6 +63,11 @@ export const namedBudgets = {
   // before the write.
   member_invite_account: { limit: 30, windowMs: hourMs },
   member_reset_account: { limit: 10, windowMs: hourMs },
+  // The driver doors (DEL-4 plan 2.12): code verifications per client address (the OTP's five
+  // attempts bound each phone), and cash PIN checks and sets per address (the five-failure lock
+  // bounds each driver).
+  driver_verify_ip: { limit: 20, windowMs: hourMs },
+  driver_pin_ip: { limit: 30, windowMs: hourMs },
 } as const satisfies Record<string, NamedBudget>;
 
 /** The named budgets with the configured global OTP budget (`OTP_GLOBAL_HOURLY_BUDGET`). */

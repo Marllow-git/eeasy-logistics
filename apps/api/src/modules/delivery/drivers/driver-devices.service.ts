@@ -54,6 +54,7 @@ export class DriverDevicesService {
     const uow = getUnitOfWork();
     const drivers = new DriversRepository(uow);
     await drivers.lockWrites();
+    await drivers.lockDriver(driverId);
     const driver = await drivers.find(driverId);
     if (driver === undefined) throw new ApiException('not_found');
     const devices = new DriverDevicesRepository(uow);
@@ -94,6 +95,7 @@ export class DriverDevicesService {
   async resetCashPin(driverId: string, facts: AuditFacts): Promise<void> {
     const drivers = new DriversRepository(getUnitOfWork());
     await drivers.lockWrites();
+    await drivers.lockDriver(driverId);
     const driver = await drivers.find(driverId);
     if (driver === undefined) throw new ApiException('not_found');
     await drivers.resetCashPin(driver.id);

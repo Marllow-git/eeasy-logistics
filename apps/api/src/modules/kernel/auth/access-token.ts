@@ -162,6 +162,18 @@ export type SessionClaims =
       readonly roles: readonly string[];
       readonly tokenVersion: number;
       readonly amr: readonly AuthenticationMethod[];
+    }
+  | {
+      /** A driver (DEL-4 plan 2.7): the membership's account and the device row (`dev`). */
+      readonly surface: 'driver';
+      readonly userId: string;
+      readonly accountId: string;
+      readonly membershipId: string;
+      readonly deviceId: string;
+      readonly roles: readonly string[];
+      readonly sites: readonly string[];
+      readonly tokenVersion: number;
+      readonly amr: readonly AuthenticationMethod[];
     };
 
 /**
@@ -196,7 +208,14 @@ export class AccessTokenIssuer {
     const tenant =
       claims.surface === 'staff'
         ? { acc: claims.accountId, mem: claims.membershipId, sites: [...claims.sites] }
-        : { acc: null, mem: null, sites: [] };
+        : claims.surface === 'driver'
+          ? {
+              acc: claims.accountId,
+              mem: claims.membershipId,
+              dev: claims.deviceId,
+              sites: [...claims.sites],
+            }
+          : { acc: null, mem: null, sites: [] };
     return new SignJWT({
       sub: claims.userId,
       ...tenant,

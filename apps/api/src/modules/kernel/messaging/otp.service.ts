@@ -74,6 +74,13 @@ export interface OtpRequest {
   /** The client address (`request.ip`), for the per-address budget and the row. */
   readonly ip: string | undefined;
   readonly locale: Locale;
+  /**
+   * False when the phone belongs to no one who may sign in with it (DEL-4 plan 2.7, identity §8):
+   * every step runs (availability, the phone lock, the cooldown, the budgets, the challenge row)
+   * except the `message` row, so the door answers and costs the same and no code is sent.
+   * Default true.
+   */
+  readonly deliver?: boolean;
 }
 
 export interface OtpVerification {
@@ -185,6 +192,7 @@ export class OtpService {
         ip: input.ip === undefined || input.ip === '' ? null : input.ip,
       });
       const encrypted = cipher.encrypt(code, `core_otp_challenges:${id}`);
+      if (input.deliver === false) return;
       await outbox.enqueue(uow, {
         type: 'core.otp_challenge.created',
         version: 1,
@@ -201,6 +209,7 @@ export class OtpService {
         },
       });
     });
+    // The same line either way: the log does not tell whether the phone is anyone's.
     this.#logger.log(`otp challenge created purpose=${input.purpose} phone=${phoneTail(phone)}`);
   }
 

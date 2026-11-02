@@ -216,6 +216,7 @@ export class DriversService {
     const uow = getUnitOfWork();
     const drivers = new DriversRepository(uow);
     await drivers.lockWrites();
+    await drivers.lockDriver(id);
     const current = await drivers.find(id);
     if (current === undefined) throw new ApiException('not_found');
     const before = await this.driverOf(current);
