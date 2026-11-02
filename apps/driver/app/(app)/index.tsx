@@ -1,20 +1,13 @@
-import { defaultLocale, dir, t } from '@eeasy-logistics/i18n';
-import { StyleSheet, Text, View } from 'react-native';
+import { t as common } from '@eeasy-logistics/i18n';
+import { appLocale, t } from '../../src/i18n';
+import { Body, Screen, Title } from '../../src/ui/kit';
 
-// Arabic is the default on first launch (driver app §10); the language setting arrives with DRV work.
-const locale = defaultLocale;
-
+// The shell lands here until DRV-1 leg 2 adds the run, sync and cash tabs (plan 2.8).
 export default function PlaceholderScreen() {
-  const textStyle = { writingDirection: dir(locale) } as const;
   return (
-    <View style={styles.container}>
-      <Text style={[styles.title, textStyle]}>{t(locale, 'app.name')}</Text>
-      <Text style={textStyle}>{t(locale, 'placeholder.driver')}</Text>
-    </View>
+    <Screen>
+      <Title>{t('app.name')}</Title>
+      <Body testID="shell-placeholder">{common(appLocale(), 'placeholder.driver')}</Body>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
-  title: { fontSize: 24, fontWeight: '600' },
-});

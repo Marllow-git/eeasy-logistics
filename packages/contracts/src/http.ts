@@ -292,8 +292,10 @@ export function createSessionFetcher(options: SessionFetcherOptions): Fetcher {
   const baseUrl = (options.baseUrl ?? '').replace(/\/+$/, '');
   const lockName = options.lockName ?? refreshLockNames[options.surface];
   const newKey = options.idempotencyKey ?? (() => uuidv7());
-  const doFetch = (...args: Parameters<typeof globalThis.fetch>) =>
-    (options.fetch ?? globalThis.fetch)(...args);
+  // Cast: React Native's `fetch` has two overloads and `Parameters` takes the narrower one, so the
+  // driver app's typecheck (which compiles this file) refuses the plain arrow (DRV-1 §8.1).
+  const doFetch = ((...args: Parameters<typeof globalThis.fetch>) =>
+    (options.fetch ?? globalThis.fetch)(...args)) as typeof globalThis.fetch;
   const base = createFetcher({ ...options, baseUrl, fetch: doFetch, webClient: true });
   const send: Fetcher = (path, init) => base(path, { ...init, credentials: 'same-origin' });
 

@@ -1,7 +1,7 @@
 {
   "extends": ["@eeasy-logistics/config-ts/tsconfig.base.json", "expo/tsconfig.base"],
   "compilerOptions": {
-    "types": ["jest"]
+    "types": ["jest", "node"]
   },
-  "include": ["app", "test", "expo-env.d.ts", ".expo/types/**/*.ts"]
+  "include": ["app", "src", "test", "expo-env.d.ts", ".expo/types/**/*.ts"]
 }
