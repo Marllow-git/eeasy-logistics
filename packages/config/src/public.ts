@@ -18,6 +18,9 @@ export const webPublicVariables = {
   NEXT_PUBLIC_RELEASE: release().default('dev'),
   // PostHog ingestion host the /ingest route forwards to (web §10.4); the browser never calls it.
   NEXT_PUBLIC_POSTHOG_HOST: httpUrl().default('https://eu.i.posthog.com'),
+  // The object store's public origin the pages load images from and upload to (web §3.6, WEB-2
+  // plan 2.6): it joins img-src and connect-src of the CSP. Absent means no storage source.
+  NEXT_PUBLIC_STORAGE_ORIGIN: httpUrl().optional(),
 };
 
 const webExpectations = {
@@ -26,6 +29,7 @@ const webExpectations = {
   NEXT_PUBLIC_POSTHOG_KEY: 'a PostHog project API key',
   NEXT_PUBLIC_RELEASE: releaseExpectation,
   NEXT_PUBLIC_POSTHOG_HOST: 'an http(s) URL without credentials',
+  NEXT_PUBLIC_STORAGE_ORIGIN: 'an http(s) URL of the object store (origin only)',
 } satisfies Record<keyof typeof webPublicVariables, string>;
 
 export interface WebPublicConfig {
@@ -36,6 +40,8 @@ export interface WebPublicConfig {
   readonly release: string;
   /** Where /ingest forwards PostHog requests (`NEXT_PUBLIC_POSTHOG_HOST`). */
   readonly posthogHost: string;
+  /** The storage origin of the CSP (`NEXT_PUBLIC_STORAGE_ORIGIN`), or undefined. */
+  readonly storageOrigin: string | undefined;
 }
 
 export function parseWebPublicConfig(env: EnvRecord): WebPublicConfig {
@@ -47,6 +53,10 @@ export function parseWebPublicConfig(env: EnvRecord): WebPublicConfig {
     posthogKey: values.NEXT_PUBLIC_POSTHOG_KEY,
     release: values.NEXT_PUBLIC_RELEASE,
     posthogHost: values.NEXT_PUBLIC_POSTHOG_HOST,
+    storageOrigin:
+      values.NEXT_PUBLIC_STORAGE_ORIGIN === undefined
+        ? undefined
+        : new URL(values.NEXT_PUBLIC_STORAGE_ORIGIN).origin,
   });
 }
 

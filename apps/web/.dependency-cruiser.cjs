@@ -47,7 +47,25 @@ module.exports = {
       from: {},
       to: { path: ['(?:^|/)apps/admin/', '^\\.\\./admin/'] },
     },
-    ...environmentRules({ configEntry: 'web.ts' }),
+    {
+      name: 'web-server-config-on-the-server-only',
+      comment:
+        'WEB-2 plan 2.5, 2.13: API_INTERNAL_URL and the public URLs are read by next.config.ts, the ' +
+        'proxy and the server API client only; a client component would see them undefined.',
+      severity: 'error',
+      from: { pathNot: ['^next\\.config\\.ts$', '^src/proxy\\.ts$', '^src/server/'] },
+      to: { path: '(?:^|/)packages/config/src/web-server\\.ts$' },
+    },
+    {
+      name: 'web-server-client-not-in-recipient',
+      comment:
+        'web §1.2, WEB-2 plan 2.5: the recipient pages forward no session, so they never reach the ' +
+        'server API client that forwards the staff cookie (server-only keeps client components out).',
+      severity: 'error',
+      from: { path: '^src/app/\\(recipient\\)/' },
+      to: { path: '^src/server/' },
+    },
+    ...environmentRules({ configEntry: ['web.ts', 'web-server.ts'] }),
     noUnresolvable,
   ],
   options,

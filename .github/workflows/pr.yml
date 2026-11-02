@@ -224,6 +224,11 @@ jobs:
       # The ports of .env.example; tests/census.config.ts expects the web app on 3001.
       API_PORT: '3000'
       WEB_PORT: '3001'
+      # WEB-2 plan 2.1, 2.13: next build writes the /v1/staff and /v1/recipient rewrites to this
+      # origin, and the server (proxy, server components) calls it; PUBLIC_WEB_URL is the Origin of
+      # the proxy's refresh call, the same value the API compares (.env.example).
+      API_INTERNAL_URL: http://127.0.0.1:3000
+      PUBLIC_WEB_URL: http://localhost:3001
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -353,6 +358,10 @@ jobs:
       # The ports of .env.example; tests/census.config.ts expects the admin app on 3002.
       API_PORT: '3000'
       ADMIN_PORT: '3002'
+      # WEB-2 plan 2.1, 2.13: the /v1/platform rewrite and the server's API origin; the admin
+      # origin is the Origin of the proxy's refresh call (.env.example).
+      API_INTERNAL_URL: http://127.0.0.1:3000
+      PUBLIC_ADMIN_URL: http://localhost:3002
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
