@@ -7,6 +7,7 @@ import {
   plantedPhone,
   test,
 } from './census/helpers';
+import { projectOf, signIn } from './census/session';
 
 // Census of product analytics (PLAT-14 plan 2.8, 2.9; web §9, §10.4): PostHog events leave
 // through /ingest with ids and enums only; a recipient page sends one page view with the token
@@ -26,7 +27,7 @@ test('a recipient page view carries no token, phone, name or person profile', as
   expect(views).toHaveLength(1);
   expect(views[0]!.properties).toMatchObject({
     token: censusBuild.posthogKey,
-    $current_url: 'http://127.0.0.1:3001/track/:token',
+    $current_url: 'http://localhost:3001/track/:token',
     $pathname: '/track/:token',
     $process_person_profile: false,
   });
@@ -39,6 +40,8 @@ test('a recipient page view carries no token, phone, name or person profile', as
 
 test('a merchant page view and an error page send catalogue events only', async ({ page }) => {
   const captured = await captureAnalytics(page);
+  // WEB-2: the merchant area needs a session (the layout reads getMe).
+  await signIn(page, 'staff', projectOf(test.info().project.name));
   await page.goto('/');
   await expect.poll(() => captured.events.some((e) => e.event === '$pageview')).toBe(true);
   await page.goto('/census-fault');

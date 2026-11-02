@@ -15,11 +15,6 @@
     "audit": "Audit log"
   },
   "placeholder": {
-    "console": "The platform console is under construction.",
-    "sign_in": "The platform staff sign-in page is under construction.",
-    "totp": "The verification code step is under construction."
-  },
-  "sign_in": {
-    "totp_title": "Verification code"
+    "console": "The platform console is under construction."
   }
 }

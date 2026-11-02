@@ -27,7 +27,8 @@
     "next-intl": "4.14.9",
     "posthog-js": "1.442.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "server-only": "0.0.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

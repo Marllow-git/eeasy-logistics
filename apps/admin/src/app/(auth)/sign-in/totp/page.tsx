@@ -1,8 +1,10 @@
-import { PageHeader } from '@eeasy-logistics/ui/components/page-header';
-import { getTranslations } from 'next-intl/server';
+import { TotpDoor } from '../../../../auth/totp-door';
 
-/** The second step of platform sign-in (web §1); WEB-2 builds the form. */
-export default async function TotpPage() {
-  const t = await getTranslations('platform');
-  return <PageHeader title={t('sign_in.totp_title')} description={t('placeholder.totp')} />;
+/**
+ * `/sign-in/totp` (web §1; WEB-2 plan 2.9): the authenticator code of a console sign-in, or the
+ * enrolment view on first use. The step comes from `sessionStorage`, so the card renders in the
+ * browser; a page opened without a sign-in in progress goes back to `/sign-in`.
+ */
+export default function TotpPage() {
+  return <TotpDoor />;
 }

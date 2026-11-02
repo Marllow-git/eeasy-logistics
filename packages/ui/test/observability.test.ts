@@ -31,6 +31,12 @@ describe('redaction', () => {
     expect(scrubPath(`/reschedule/${token}`)).toBe('/reschedule/:token');
     expect(scrubPath(`/pin/${token}`)).toBe('/pin/:token');
     expect(scrubPath(`/invitations/${token}`)).toBe('/invitations/:token');
+    expect(scrubPath('/second-factor/enrol/short.x')).toBe('/second-factor/enrol/:token');
+    expect(scrubPath('/sign-in/second-factor/enrol')).toBe('/sign-in/second-factor/enrol');
+    expect(isSecretKey('challenge_id')).toBe(true);
+    expect(isSecretKey('otpauth_uri')).toBe(true);
+    expect(isSecretKey('selection_token')).toBe(true);
+    expect(isSecretKey('code')).toBe(false);
     expect(scrubPath(`/orders/${token}`)).toBe('/orders/:token');
     expect(scrubPath('/track/[token]/census-fault')).toBe('/track/[token]/census-fault');
     expect(scrubPath('/orders/3f2b8c1e-9d4a-4b7e-8f1a-2c3d4e5f6a7b')).toBe(
