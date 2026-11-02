@@ -114,8 +114,8 @@ export const maxActiveDevices = 2;
 
 /**
  * `del_driver_devices` (DriverDevice, domain model §3.5): `device_id` is the app's own random id
- * (at most 200 characters); a revoked row keeps `revoked_at` and is reactivated by a new sign-in on
- * the same id. The two-device cap is counted under the driver row lock (data §2.2), not by an index.
+ * (at most 200 characters); a revoked row keeps `revoked_at` for good: a sign-in on the same id is
+ * `401 device_revoked` (DEL-4 adversary M-1). The two-device cap is counted under the driver row lock (data §2.2), not by an index.
  * `core_refresh_tokens.device_id` holds this row's `id`.
  */
 export const delDriverDevices = pgTable(

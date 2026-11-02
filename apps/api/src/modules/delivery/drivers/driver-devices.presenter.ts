@@ -3,15 +3,15 @@ import type { DriverDeviceRow } from './drivers.repository.js';
 
 /**
  * `DriverDevice` (components.yaml; domain model §3.5) as the staff surface shows it: the push token
- * is left out (data §10: a dispatcher needs whether a device is live, not its push address; the
- * field is optional in the contract).
+ * and the app's device id are left out (data §10: a dispatcher needs whether a device is live, not
+ * its push address or the app's install id, adversary M-3; both fields are optional in the
+ * contract). The driver's own answer keeps both (`presentOwnDevice`).
  */
 export function presentDriverDevice(row: DriverDeviceRow): DriverDevice {
   return {
     id: row.id,
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
-    device_id: row.deviceId,
     platform: row.platform,
     app_version: row.appVersion,
     revoked_at: row.revokedAt?.toISOString() ?? null,

@@ -225,6 +225,26 @@ describe('driver sessions over HTTP (DEL-4 item E)', () => {
     });
   });
 
+  it('refuses a live access token once the driver is suspended or the device revoked (adversary M-2)', async () => {
+    const driver = await plantDriver(owner);
+    const { session } = await signedIn(driver.phone);
+    const me = () => http().get('/v1/driver/me').set('Authorization', bearer(session));
+    const pin = () =>
+      http()
+        .post('/v1/driver/cash-pin/verify')
+        .set('Authorization', bearer(session))
+        .set('X-Forwarded-For', driverAddress())
+        .send({ cash_pin: '1234' });
+    await me().expect(200);
+    await owner`UPDATE del_drivers SET status = 'suspended' WHERE id = ${driver.driverId}`;
+    expect(errorOf((await me().expect(401)).body).code).toBe('token_invalid');
+    expect(errorOf((await pin().expect(401)).body).code).toBe('token_invalid');
+    await owner`UPDATE del_drivers SET status = 'active' WHERE id = ${driver.driverId}`;
+    await owner`UPDATE del_driver_devices SET revoked_at = now() WHERE id = ${session.device?.id ?? ''}`;
+    expect(errorOf((await me().expect(401)).body).code).toBe('device_revoked');
+    expect(errorOf((await pin().expect(401)).body).code).toBe('device_revoked');
+  });
+
   it('answers 426 app_update_required below the platform minimum, and passes without headers', async () => {
     const driver = await plantDriver(owner);
     const { session } = await signedIn(driver.phone);

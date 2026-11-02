@@ -179,6 +179,21 @@ export class DriverSignIn {
   }
 
   /**
+   * Ends the families a sign-in just started on `deviceRowId` (adversary M-2: the driver or the
+   * device changed between the bind and the session), reason `revoked`; the `core.session.started`
+   * row stays, true of the moment it was written.
+   */
+  async abandon(driver: SignedInDriver, deviceRowId: string): Promise<void> {
+    await this.#deps.sessions.store.run((tx) =>
+      tx.refreshTokens.revokeAll(driver.userId, 'revoked', {
+        surface: 'driver',
+        membershipId: driver.membershipId,
+        deviceId: deviceRowId,
+      }),
+    );
+  }
+
+  /**
    * A fresh code for the signed-in driver's own phone (plan 2.9: the first cash PIN, or one after a
    * dispatcher's reset): PLAT-9's verification for the person's phone and `driver_login`, single
    * use; anything else is `401 otp_invalid`.

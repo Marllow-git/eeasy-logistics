@@ -3,6 +3,7 @@ import { operationSchemas, schemas } from '@eeasy-logistics/contracts/driver/sch
 import { decodeJwt } from 'jose';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { DriverSignIn } from '../../src/modules/kernel/auth/driver-sign-in.js';
 import { OtpService } from '../../src/modules/kernel/messaging/otp.service.js';
 import { testSigningKey } from '../support/access-tokens.js';
 import { auditRowsOf } from './audit-rows.js';
@@ -123,13 +124,65 @@ describe('driver sign-in over HTTP (DEL-4 item D)', () => {
     expect(active).toBe(2);
   });
 
-  it('brings a revoked device of the same id back when a place is free', async () => {
+  it('never brings a revoked app id back (401 device_revoked); new ids register up to the cap (adversary M-1)', async () => {
     const driver = await plantDriver(owner);
     const device = newDevice();
     const session = await signIn(http, owner, config, driver.phone, device);
     await owner`UPDATE del_driver_devices SET revoked_at = now() WHERE id = ${session.device?.id ?? ''}`;
-    const again = await signIn(http, owner, config, driver.phone, device);
-    expect(again.device).toMatchObject({ id: session.device?.id, revoked_at: null });
+    const again = await verifyOn(http, owner, config, driver.phone, device);
+    expect(again.status).toBe(401);
+    expect(errorOf(again.body).code).toBe('device_revoked');
+    const [row] = await owner<{ revoked: boolean }[]>`
+      SELECT revoked_at IS NOT NULL AS revoked FROM del_driver_devices
+      WHERE id = ${session.device?.id ?? ''}`;
+    expect(row?.revoked).toBe(true);
+    // The revoked row does not count: two new app ids fit, a third does not.
+    await signIn(http, owner, config, driver.phone, newDevice());
+    await signIn(http, owner, config, driver.phone, newDevice());
+    const third = await verifyOn(http, owner, config, driver.phone, newDevice());
+    expect(third.status).toBe(409);
+  });
+
+  it('withdraws a session when the driver is suspended or the device revoked during the sign-in (adversary M-2)', async () => {
+    // The original, called with the instance the app built (`apply` below).
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const start = DriverSignIn.prototype.start;
+    const liveFamilies = async (deviceRowId: string) =>
+      (
+        await owner<{ live: number }[]>`
+          SELECT count(*) FILTER (WHERE revoked_at IS NULL)::int AS live FROM core_refresh_tokens
+          WHERE device_id = ${deviceRowId}`
+      )[0]?.live;
+    const cases = [
+      { change: 'suspended', code: 'otp_invalid' },
+      { change: 'revoked', code: 'device_revoked' },
+    ] as const;
+    for (const { change, code } of cases) {
+      const driver = await plantDriver(owner);
+      let deviceRowId = '';
+      const spy = vi.spyOn(DriverSignIn.prototype, 'start').mockImplementationOnce(async function (
+        this: DriverSignIn,
+        ...args
+      ) {
+        const issued = await start.apply(this, args);
+        deviceRowId = args[1];
+        if (change === 'suspended') {
+          await owner`UPDATE del_drivers SET status = 'suspended' WHERE id = ${driver.driverId}`;
+        } else {
+          await owner`UPDATE del_driver_devices SET revoked_at = now() WHERE id = ${deviceRowId}`;
+        }
+        return issued;
+      });
+      try {
+        const response = await verifyOn(http, owner, config, driver.phone, newDevice());
+        expect(response.status).toBe(401);
+        expect(errorOf(response.body).code).toBe(code);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(deviceRowId).not.toBe('');
+      expect(await liveFamilies(deviceRowId)).toBe(0);
+    }
   });
 
   it('asks a phone that drives for two accounts to choose, without spending the code (adversary H-2)', async () => {

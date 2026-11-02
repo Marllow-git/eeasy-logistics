@@ -67,6 +67,22 @@ export class DriverSessionsService {
       this.bind(signedIn, input.device, facts),
     );
     const session = await this.deps.signIn.start(signedIn, bound.device.id, facts);
+    // A dispatcher may suspend the driver or revoke the device between the bind and the session
+    // (adversary M-2): both are read again; if either changed, the family just started ends.
+    const refusal = await this.deps.signIn.inAccount(signedIn, facts.requestId, async () => {
+      const uow = getUnitOfWork();
+      const driver = await new DriversRepository(uow).find(signedIn.driverId);
+      if (driver?.status !== 'active') return 'otp_invalid' as const;
+      const device = await new DriverDevicesRepository(uow).find(driver.id, bound.device.id);
+      return device === undefined || device.revokedAt !== null
+        ? ('device_revoked' as const)
+        : undefined;
+    });
+    if (refusal !== undefined) {
+      await this.deps.signIn.abandon(signedIn, bound.device.id);
+      this.#logger.log(`driver sign-in withdrawn: ${refusal} driver_id=${signedIn.driverId}`);
+      throw new ApiException(refusal);
+    }
     const people = await this.deps.identities.people([signedIn.userId]);
     const person = people.get(signedIn.userId);
     if (person === undefined) throw new Error('The person of a signed-in driver has no row');
@@ -82,8 +98,8 @@ export class DriverSessionsService {
   /**
    * The device of a sign-in (plan 2.7), in the driver's account under the driver row lock: the
    * driver still `active` (else `otp_invalid`, as at the code check), the device found by the app's
-   * id or created, a revoked row of that id active again, and at most `maxActiveDevices` active
-   * devices counting this one. A device row that is new, or active again, is audited
+   * id or created, a revoked row of that id refused (`401 device_revoked`, adversary M-1), and at
+   * most `maxActiveDevices` active devices counting this one. A new device row is audited
    * `delivery.driver_device.registered`.
    */
   private async bind(
@@ -100,6 +116,14 @@ export class DriverSessionsService {
     }
     const devices = new DriverDevicesRepository(uow);
     const known = await devices.findByAppId(driver.id, input.device_id);
+    // A dispatcher's revocation is final for that app id (adversary M-1): a code never brings it
+    // back; a lost phone means suspending the driver (8.2 #39).
+    if (known !== undefined && known.revokedAt !== null) {
+      this.#logger.log(
+        `driver device refused: revoked driver_id=${driver.id} device_id=${known.id}`,
+      );
+      throw new ApiException('device_revoked');
+    }
     const others = (await devices.active(driver.id)).filter((device) => device.id !== known?.id);
     if (others.length >= maxActiveDevices) {
       this.#logger.log(`driver device refused: limit reached driver_id=${driver.id}`);
@@ -120,8 +144,7 @@ export class DriverSessionsService {
             pushToken: input.push_token ?? null,
           })
         : await devices.rebind(known.id, fields);
-    const registered = known === undefined || known.revokedAt !== null;
-    if (registered) {
+    if (known === undefined) {
       await this.deps.audit.record({
         actorType: 'user',
         actorId: signedIn.userId,
@@ -133,7 +156,6 @@ export class DriverSessionsService {
           driver_id: driver.id,
           platform: device.platform,
           app_version: device.appVersion,
-          reactivated: known !== undefined,
         },
         requestId: facts.requestId,
         clientRequestId: facts.clientRequestId,

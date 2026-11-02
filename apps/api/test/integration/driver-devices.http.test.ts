@@ -127,6 +127,8 @@ describe('driver devices and the cash PIN reset over HTTP (DEL-4 item C)', () =>
     expect(items.map((device) => device.id)).toEqual([newest, middle]);
     expect(items[0]).toMatchObject({ platform: 'ios', app_version: '1.2.0', revoked_at: null });
     expect(JSON.stringify(first)).not.toContain('ExponentPushToken');
+    // Nor the app's own install id (adversary M-3).
+    for (const item of items) expect(item).not.toHaveProperty('device_id');
     const second = devicesOp.responses['200'].parse(
       (
         await get(
@@ -155,6 +157,7 @@ describe('driver devices and the cash PIN reset over HTTP (DEL-4 item C)', () =>
     const device = revokeOp.responses['200'].parse(response.body);
     expect(device.id).toBe(lost);
     expect(device.revoked_at).not.toBeNull();
+    expect(device).not.toHaveProperty('device_id');
     expect(await revoked(lostSession)).toBe(true);
     expect(await revoked(keptSession)).toBe(false);
     const [stored] = await owner<{ push_token: string | null; version: number }[]>`

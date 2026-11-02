@@ -209,8 +209,8 @@ export class DriverDevicesRepository extends ScopedRepository<typeof delDriverDe
   }
 
   /**
-   * A known device signing in again (plan 2.7): its platform and app version, the push token when
-   * the app sent one, `last_seen_at`, a revoked row active again; `version + 1`.
+   * A known, live device signing in again (plan 2.7): its platform and app version, the push token
+   * when the app sent one, `last_seen_at`; `version + 1`. A revoked row is never rebound (M-1).
    */
   async rebind(
     id: string,
@@ -224,7 +224,6 @@ export class DriverDevicesRepository extends ScopedRepository<typeof delDriverDe
       platform: values.platform,
       appVersion: values.appVersion,
       ...(values.pushToken === undefined ? {} : { pushToken: values.pushToken }),
-      revokedAt: null,
       lastSeenAt: sql`now()` as unknown as Date,
     });
   }
