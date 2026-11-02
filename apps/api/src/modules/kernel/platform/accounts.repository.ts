@@ -1,6 +1,10 @@
 import type { Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase, PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
-import { PlatformRepository, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
+import {
+  PlatformRepository,
+  getCrossTenantPlatformUnitOfWork,
+  withPlatformUnitOfWork,
+} from '@eeasy-logistics/db/platform';
 import { eq, sql } from 'drizzle-orm';
 import type { AccountLocale, AccountStatus } from '../schema/accounts.js';
 import { coreAccounts } from '../schema/accounts.js';
@@ -40,7 +44,8 @@ export interface AccountRecord {
   readonly updatedAt: Date;
 }
 
-const recordColumns = {
+/** The columns of an `AccountRecord` (PLAT-13's provisioning repository selects the same). */
+export const recordColumns = {
   id: coreAccounts.id,
   name: coreAccounts.name,
   status: coreAccounts.status,
@@ -111,6 +116,20 @@ export class AccountRecords extends PlatformRepository<typeof coreAccounts> {
  */
 export interface AccountStore {
   run<T>(fn: (accounts: AccountRecords, uow: PlatformUnitOfWork) => Promise<T>): Promise<T>;
+}
+
+/**
+ * The account repository on the current cross-tenant door's own transaction (PLAT-13 lead ruling
+ * on 8.2 #11): the platform account doors read and change the row they name without a second
+ * platform connection; `uow` is the door's platform unit of work, for `AuditSink.recordIn`.
+ */
+export function doorAccountStore(): AccountStore {
+  return {
+    run: (fn) => {
+      const uow = getCrossTenantPlatformUnitOfWork();
+      return fn(new AccountRecords(uow), uow);
+    },
+  };
 }
 
 /** The store on the API's platform pool, or null without one (`DATABASE_URL_PLATFORM` unset). */

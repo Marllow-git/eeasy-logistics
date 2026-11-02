@@ -8,6 +8,9 @@
 export const domainEventTypes = [
   'core.account.provisioned',
   'core.account.suspended',
+  // PLAT-13 plan 2.7: the rest of the platform's account lifecycle (domain model §6.3, A-26 rows).
+  'core.account.reactivated',
+  'core.account.closed',
   'core.feature_flag.changed',
   'core.site.updated',
   'core.channel_order.received',
@@ -19,6 +22,8 @@ export const domainEventTypes = [
   'core.invitation.created',
   'core.password_reset.requested',
   'core.second_factor.reset',
+  // PLAT-13: the notice mail of a platform user's TOTP reset (a kernel effect, no link).
+  'core.platform_staff.totp_reset',
 ] as const;
 export type DomainEventType = (typeof domainEventTypes)[number];
 
