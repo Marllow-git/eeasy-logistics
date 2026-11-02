@@ -28,6 +28,7 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 |---|---|---|---|---|---|---|---|
 | PLAT-13 | #95 | `feat/PLAT-13-provisioning-rollout` | executor worktree | executor-api (Opus) | build, leg 1 (A–D) | native, scratch databases, Redis, Mailpit | one-way door (migration for the rollout tables; the provisioning door); adversary required (Opus); two legs; plan pushed 2026-11-02 |
 | WEB-2 | #87 | `feat/WEB-2-browser-sessions` | executor worktree | executor-web (Opus) | build, leg 1 (A–D) | native stack with the API on 3000, Mailpit, WhatsApp stub | two-way door; adversary required; two legs; design references `docs/references/design/WEB-2.md` (PR #85); Next 16 `proxy.ts` |
+| INT-2 | #98 | `feat/INT-2-geocoder` | executor worktree | executor-api (Opus) | build (A–D) | native, scratch databases, Redis, the fixture stub | one-way door (one migration, `core_geocode_cache`); adversary no; third executor under the ruling of 2026-11-02; files disjoint from PLAT-13 and WEB-2; research `docs/research/hudhud-geocoding-2026-11.md` (PR #97) |
 
 ## Next unblocked (roadmap §1.1)
 
