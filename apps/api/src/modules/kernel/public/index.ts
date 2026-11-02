@@ -116,3 +116,6 @@ export {
 export { oneLineTextProblem } from '../contract/text-rules.js';
 export { normalisePhone, phoneTail } from '../messaging/phone.js';
 export { templateParamsProblem } from '../messaging/templates.js';
+// Feature gate (PLAT-13 plan 2.5): DEL and WMS routes carry `@Feature('delivery' | 'wms')`.
+export { Feature, FeatureGate } from '../features/feature-gate.js';
+export { featureKeys, type FeatureKey } from '../features/feature-keys.js';

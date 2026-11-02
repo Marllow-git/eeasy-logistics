@@ -25,6 +25,7 @@ import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import type { ProbeRow } from './probe-table.js';
 import { ProbeRepository, createProbeTable, dropProbeTable, probeLabels } from './probe-table.js';
 import { webClientHeaders } from '../support/web-client.js';
+import { insertPlatformSubject } from './identity-fixtures.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-6 item E on the real database: idempotent writes (plan 2.8) and the purge (plan 2.9). The
@@ -153,6 +154,7 @@ describe('idempotent writes (PLAT-6 item E)', () => {
 
   beforeAll(async () => {
     owner = connectAs('owner', config);
+    await insertPlatformSubject(owner, 'super_admin', platformUser);
     await owner`INSERT INTO core_accounts (id, name) VALUES (${account}, 'Idempotency account')`;
     await createProbeTable(owner, config);
     const moduleRef = await Test.createTestingModule({

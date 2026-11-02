@@ -24,6 +24,7 @@ export default defineConfig({
     'census-errors.spec.ts',
     'census-analytics.spec.ts',
     'census-auth.spec.ts',
+    'census-settings.spec.ts',
   ],
   outputDir: '../test-results',
   forbidOnly: true,

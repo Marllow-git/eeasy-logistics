@@ -1,7 +1,12 @@
 import type { Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase, PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
-import { PlatformRepository, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  PlatformRepository,
+  getCrossTenantPlatformUnitOfWork,
+  getPlatformUnitOfWork,
+  withPlatformUnitOfWork,
+} from '@eeasy-logistics/db/platform';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { coreAccounts } from '../schema/accounts.js';
 import { delDriverDevices, delDrivers } from '../schema/drivers.js';
 import type { DriverStatus } from '../schema/drivers.js';
@@ -203,6 +208,14 @@ export class UsersRepository extends PlatformRepository<typeof coreUsers> {
         tokenVersion: sql`${coreUsers.tokenVersion} + 1`,
         updatedAt: sql`now()`,
       })
+      .where(eq(coreUsers.id, id));
+  }
+
+  /** Moves `token_version`: every session of the user ends at its next refresh (PLAT-13 plan 2.9). */
+  async endSessions(id: string): Promise<void> {
+    await this.unscoped()
+      .update(coreUsers)
+      .set({ tokenVersion: sql`${coreUsers.tokenVersion} + 1`, updatedAt: sql`now()` })
       .where(eq(coreUsers.id, id));
   }
 
@@ -679,6 +692,34 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
     return [...new Set(rows.map((row) => row.familyId))];
   }
 
+  /**
+   * Revokes every live row of `surfaces` whose membership belongs to the account (PLAT-13 plan 2.7:
+   * the staff sessions of a suspended account, every session of a closed one); returns the distinct
+   * families revoked.
+   */
+  async revokeAccount(
+    accountId: string,
+    reason: RevocationReason,
+    surfaces: readonly SessionSurface[],
+  ): Promise<string[]> {
+    const memberships = this.unscoped()
+      .select({ id: coreMemberships.id })
+      .from(coreMemberships)
+      .where(eq(coreMemberships.accountId, accountId));
+    const rows = await this.unscoped()
+      .update(coreRefreshTokens)
+      .set({ revokedAt: sql`now()`, revokedReason: reason, updatedAt: sql`now()` })
+      .where(
+        and(
+          isNull(coreRefreshTokens.revokedAt),
+          inArray(coreRefreshTokens.surface, [...surfaces]),
+          inArray(coreRefreshTokens.membershipId, memberships),
+        ),
+      )
+      .returning({ familyId: coreRefreshTokens.familyId });
+    return [...new Set(rows.map((row) => row.familyId))];
+  }
+
   /** The family and user of a token hash, unlocked, or undefined (logout). */
   async familyOf(tokenHash: Buffer): Promise<{ familyId: string; userId: string } | undefined> {
     const [row] = await this.unscoped()
@@ -694,7 +735,14 @@ export interface PlatformStaffRow {
   readonly role: PlatformStaffRole;
   readonly totpEnrolled: boolean;
   readonly revoked: boolean;
+  /**
+   * A reset TOTP (PLAT-13 adversary M-2): no secret, and the replay guard kept as the marker that
+   * only the emailed re-enrolment link may enrol again (as a staff reset keeps the phone).
+   */
+  readonly enrolmentLinkRequired: boolean;
 }
+
+const enrolmentLinkRequired = sql<boolean>`(${corePlatformStaff.totpSecretCiphertext} IS NULL AND ${corePlatformStaff.totpLastStep} IS NOT NULL)`;
 
 export class PlatformStaffRepository extends PlatformRepository<typeof corePlatformStaff> {
   constructor(uow: PlatformUnitOfWork) {
@@ -708,8 +756,29 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
         role: corePlatformStaff.role,
         totpEnrolled: sql<boolean>`${corePlatformStaff.totpSecretCiphertext} IS NOT NULL`,
         revoked: sql<boolean>`${corePlatformStaff.revokedAt} IS NOT NULL`,
+        enrolmentLinkRequired,
       })
       .from(corePlatformStaff)
+      .where(eq(corePlatformStaff.userId, userId));
+    return row;
+  }
+
+  /**
+   * The staff row's role and revocation with the user's `token_version`, in one read (a join on the
+   * user's primary key): what the permission guard compares with a platform access token
+   * (PLAT-13 adversary M-1 and round 2).
+   */
+  async findCurrent(
+    userId: string,
+  ): Promise<{ role: PlatformStaffRole; revoked: boolean; tokenVersion: number } | undefined> {
+    const [row] = await this.unscoped()
+      .select({
+        role: corePlatformStaff.role,
+        revoked: sql<boolean>`${corePlatformStaff.revokedAt} IS NOT NULL`,
+        tokenVersion: coreUsers.tokenVersion,
+      })
+      .from(corePlatformStaff)
+      .innerJoin(coreUsers, eq(coreUsers.id, corePlatformStaff.userId))
       .where(eq(corePlatformStaff.userId, userId));
     return row;
   }
@@ -722,6 +791,7 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
         role: corePlatformStaff.role,
         totpEnrolled: sql<boolean>`${corePlatformStaff.totpSecretCiphertext} IS NOT NULL`,
         revoked: sql<boolean>`${corePlatformStaff.revokedAt} IS NOT NULL`,
+        enrolmentLinkRequired,
         secretCiphertext: corePlatformStaff.totpSecretCiphertext,
         lastStep: corePlatformStaff.totpLastStep,
       })
@@ -754,7 +824,9 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
 
   /**
    * An accepted platform invitation (plan 2.10): the staff row with the invited role. A revoked row
-   * comes back with its TOTP cleared (enrol again); a live one only takes the role.
+   * comes back with its TOTP cleared (enrol again; the emailed invitation link is the possession
+   * proof, as the re-enrolment link is after a reset); a live one only takes the role. A role
+   * change restoring a revoked row is `restore`, which keeps the TOTP.
    */
   async grant(userId: string, role: PlatformStaffRole, grantedBy: string | null): Promise<void> {
     await this.unscoped()
@@ -772,6 +844,74 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
           updatedAt: sql`now()`,
         },
       });
+  }
+
+  /**
+   * Restores a revoked row with `role` (`platformSetStaffRoles`, PLAT-13 adversary round 2): only
+   * the role and the revocation change; the TOTP stays, so the password alone still meets the
+   * `totp` challenge. A lost device is `platformResetStaffTotp` (the emailed re-enrolment link).
+   */
+  async restore(userId: string, role: PlatformStaffRole, grantedBy: string): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({ role, grantedBy, revokedAt: null, updatedAt: sql`now()` })
+      .where(and(eq(corePlatformStaff.userId, userId), isNotNull(corePlatformStaff.revokedAt)));
+  }
+
+  /**
+   * Serialises the staff doors' role changes (PLAT-13 plan 2.9), so two super admins demoting each
+   * other at once cannot both pass the last-super-admin check (a transaction-scoped advisory lock).
+   */
+  async lockRoles(): Promise<void> {
+    await this.unscoped().execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('elx:platform-staff-roles'))`,
+    );
+  }
+
+  /** How many staff rows hold `super_admin` and are not revoked. */
+  async liveSuperAdmins(): Promise<number> {
+    const rows = await this.unscoped()
+      .select({ count: sql<number>`count(*)::int` })
+      .from(corePlatformStaff)
+      .where(and(eq(corePlatformStaff.role, 'super_admin'), isNull(corePlatformStaff.revokedAt)));
+    return rows[0]?.count ?? 0;
+  }
+
+  /** A live row's new role (plan 2.9), granted by `grantedBy`. */
+  async setRole(userId: string, role: PlatformStaffRole, grantedBy: string): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({ role, grantedBy, updatedAt: sql`now()` })
+      .where(and(eq(corePlatformStaff.userId, userId), isNull(corePlatformStaff.revokedAt)));
+  }
+
+  /**
+   * Revokes the row (`roles: []`, plan 2.9): the role and the TOTP stay; `restore` brings the row
+   * back with them, an accepted invitation (`grant`) clears the TOTP and enrols again.
+   */
+  async revoke(userId: string): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({ revokedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(and(eq(corePlatformStaff.userId, userId), isNull(corePlatformStaff.revokedAt)));
+  }
+
+  /**
+   * Clears the TOTP secret and its key id (plan 2.9, `platformResetStaffTotp`): the next
+   * `platformLogin` asks for an enrolment. The replay guard stays (0 when none was kept) as the
+   * marker that only the emailed re-enrolment link may enrol again (adversary M-2,
+   * `enrolmentLinkRequired`); `enrolTotp` replaces it with the new secret's first step.
+   */
+  async resetTotp(userId: string): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpLastStep: sql`coalesce(${corePlatformStaff.totpLastStep}, 0)`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(corePlatformStaff.userId, userId));
   }
 
   /** Serialises bootstrap runs (a transaction-scoped advisory lock). */
@@ -865,6 +1005,53 @@ export class InvitationsRepository extends PlatformRepository<typeof coreInvitat
       .where(eq(coreInvitations.id, id));
   }
 
+  /** Ends every open staff invitation of the account (a closed account, plan 2.7); how many. */
+  async expireOpenOfAccount(accountId: string): Promise<number> {
+    const rows = await this.unscoped()
+      .update(coreInvitations)
+      .set({ expiresAt: sql`now()`, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(coreInvitations.accountId, accountId),
+          isNull(coreInvitations.acceptedAt),
+          sql`${coreInvitations.expiresAt} > now()`,
+        ),
+      )
+      .returning({ id: coreInvitations.id });
+    return rows.length;
+  }
+
+  /**
+   * Ends every open `platform` invitation of an email (PLAT-13 adversary H-1): a new invitation or
+   * a role change makes the earlier links stale; how many.
+   */
+  async expireOpenPlatform(email: string): Promise<number> {
+    const rows = await this.unscoped()
+      .update(coreInvitations)
+      .set({ expiresAt: sql`now()`, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(coreInvitations.kind, 'platform'),
+          eq(coreInvitations.email, email),
+          isNull(coreInvitations.acceptedAt),
+          sql`${coreInvitations.expiresAt} > now()`,
+        ),
+      )
+      .returning({ id: coreInvitations.id });
+    return rows.length;
+  }
+
+  /** Whether a later `platform` invitation of the same email exists (this one is superseded). */
+  async platformSuperseded(id: string, email: string): Promise<boolean> {
+    const rows = await this.unscoped().execute<{ found: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM core_invitations later
+        WHERE later.kind = 'platform' AND later.email = ${email} AND later.id <> ${id}
+          AND later.created_at > (SELECT created_at FROM core_invitations WHERE id = ${id})
+      ) AS found`);
+    return rows[0]?.found === true;
+  }
+
   /** Ends the open invitations of a membership (a new one replaces them). */
   async expireOpenOf(membershipId: string): Promise<void> {
     await this.unscoped()
@@ -939,6 +1126,21 @@ export class InvitingAccounts extends PlatformRepository<typeof coreAccounts> {
       .where(eq(coreAccounts.id, id));
     return row;
   }
+
+  /**
+   * The account's status, read again under `FOR SHARE` (PLAT-13 adversary L-2): a session start
+   * re-reads it after its refresh row is written, and a suspension (which locks the row `FOR
+   * UPDATE` before revoking the account's families) either committed first and is seen here, or
+   * waits for this transaction and then revokes the new family with the others.
+   */
+  async lockStatus(id: string): Promise<string | undefined> {
+    const [row] = await this.unscoped()
+      .select({ status: coreAccounts.status })
+      .from(coreAccounts)
+      .where(eq(coreAccounts.id, id))
+      .for('share');
+    return row?.status;
+  }
 }
 
 /** What one auth purge removed (plan 2.13). */
@@ -1009,24 +1211,43 @@ export interface IdentityStore {
   run<T>(fn: (tx: IdentityTransaction) => Promise<T>): Promise<T>;
 }
 
+/**
+ * The identity repositories on `uow`: the store's own transaction, or a platform request's (PLAT-13
+ * plan 2.2: the provisioning door writes the account and its owner's invitation in one).
+ */
+export function identityTransactionOf(uow: PlatformUnitOfWork): IdentityTransaction {
+  return {
+    uow,
+    users: new UsersRepository(uow),
+    memberships: new MembershipsRepository(uow),
+    refreshTokens: new RefreshTokensRepository(uow),
+    challenges: new AuthChallengesRepository(uow),
+    platformStaff: new PlatformStaffRepository(uow),
+    invitations: new InvitationsRepository(uow),
+    resets: new PasswordResetsRepository(uow),
+    accounts: new InvitingAccounts(uow),
+  };
+}
+
+/** The identity repositories on the current platform request's transaction (PLAT-13 plan 2.9). */
+export function currentIdentity(): IdentityTransaction {
+  return identityTransactionOf(getPlatformUnitOfWork());
+}
+
 /** One platform transaction per call, with no platform user (the doors are anonymous). */
 export function identityStore(db: PlatformDatabase): IdentityStore {
   return {
-    run: (fn) =>
-      withPlatformUnitOfWork(db, (uow) =>
-        fn({
-          uow,
-          users: new UsersRepository(uow),
-          memberships: new MembershipsRepository(uow),
-          refreshTokens: new RefreshTokensRepository(uow),
-          challenges: new AuthChallengesRepository(uow),
-          platformStaff: new PlatformStaffRepository(uow),
-          invitations: new InvitationsRepository(uow),
-          resets: new PasswordResetsRepository(uow),
-          accounts: new InvitingAccounts(uow),
-        }),
-      ),
+    run: (fn) => withPlatformUnitOfWork(db, (uow) => fn(identityTransactionOf(uow))),
   };
+}
+
+/**
+ * The identity repositories on the current cross-tenant door's own transaction (PLAT-13 lead
+ * ruling on 8.2 #11): a door never holds a second platform connection. `run` is not a transaction
+ * of its own here: what `fn` writes commits or rolls back with the door.
+ */
+export function doorIdentityStore(): IdentityStore {
+  return { run: (fn) => fn(identityTransactionOf(getCrossTenantPlatformUnitOfWork())) };
 }
 
 /** The store on the API's platform pool, or null without one (`DATABASE_URL_PLATFORM` unset). */

@@ -79,7 +79,10 @@ export function withPlatformUnitOfWork<T>(
  * work); then `elx.account_id` is set to the target, so tenant repositories (`ScopedRepository`,
  * predicate) see that account only. `context.actingCrossTenant` must be true and `context.userId`
  * names the platform staff member. The caller (the `@CrossTenant()` interceptor) has checked the
- * support reason and emits the audit event.
+ * support reason and emits the audit event. The same platform unit of work stays open beside the
+ * tenant one for the whole door (`getCrossTenantPlatformUnitOfWork`), so a door that writes a
+ * platform table (the account row, an invitation) does it in this transaction and never holds a
+ * second platform connection (PLAT-13 lead ruling on 8.2 #11).
  */
 export async function withCrossTenantUnitOfWork<T>(
   db: PlatformDatabase,
@@ -88,21 +91,39 @@ export async function withCrossTenantUnitOfWork<T>(
   precheck?: (uow: PlatformUnitOfWork) => Promise<void>,
 ): Promise<T> {
   const checked = checkContext(context);
-  if (!checked.actingCrossTenant || checked.userId === null) {
+  const userId = checked.userId;
+  if (!checked.actingCrossTenant || userId === null) {
     throw new Error('The cross-tenant door needs actingCrossTenant and the platform user');
   }
-  return db.transaction(async (tx) => {
-    if (precheck !== undefined) {
-      const uow: PlatformUnitOfWork = Object.freeze({ context: null });
-      transactions.set(uow, tx);
-      try {
-        await precheck(uow);
-      } finally {
-        retire(uow, transactions);
-      }
-    }
-    return runTenantTransaction(tx, checked, fn);
+  const platform = checkPlatformContext({
+    userId,
+    ...(checked.requestId === undefined ? {} : { requestId: checked.requestId }),
   });
+  return db.transaction(async (tx) => {
+    const door: PlatformUnitOfWork = Object.freeze({ context: platform });
+    transactions.set(door, tx);
+    try {
+      if (precheck !== undefined) await precheck(door);
+      return await runTenantTransaction(tx, checked, fn, { doorUnitOfWork: door });
+    } finally {
+      retire(door, transactions);
+    }
+  });
+}
+
+/**
+ * The platform unit of work of the current cross-tenant door, on the door's own transaction (the
+ * one its tenant unit of work runs in); throws outside a door. Only platform code may import this
+ * entry (the apps/api architecture test), so no tenant handler reaches it.
+ */
+export function getCrossTenantPlatformUnitOfWork(): PlatformUnitOfWork {
+  const frame = currentFrame();
+  const uow = frame?.doorUnitOfWork;
+  if (uow === undefined || frame?.context?.actingCrossTenant !== true) {
+    throw new Error('No cross-tenant door: its platform unit of work exists only inside one');
+  }
+  openTransaction(uow, transactions, 'No cross-tenant door'); // closed → UnitOfWorkClosedError
+  return uow as PlatformUnitOfWork;
 }
 
 /**

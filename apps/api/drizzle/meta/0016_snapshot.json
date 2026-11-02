@@ -1,5 +1,5 @@
 {
-  "id": "c5d74fa4-c952-4395-ad8c-58833bdb79b1",
+  "id": "0e6bee35-39bb-4510-a532-f03494e53814",
   "prevId": "de846a9b-6d84-4a3d-ba3e-df5dda27dd47",
   "version": "7",
   "dialect": "postgresql",
@@ -379,564 +379,6 @@
         "core_audit_log_action_check": {
           "name": "core_audit_log_action_check",
           "value": "\"core_audit_log\".\"action\" ~ '^[a-z]+\\.[a-z_]+\\.[a-z_]+$'"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.del_driver_devices": {
-      "name": "del_driver_devices",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "account_id": {
-          "name": "account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "driver_id": {
-          "name": "driver_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "device_id": {
-          "name": "device_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "platform": {
-          "name": "platform",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "app_version": {
-          "name": "app_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "push_token": {
-          "name": "push_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revoked_at": {
-          "name": "revoked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_seen_at": {
-          "name": "last_seen_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "del_driver_devices_account_driver_device_key": {
-          "name": "del_driver_devices_account_driver_device_key",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "driver_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "device_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "del_driver_devices_active_idx": {
-          "name": "del_driver_devices_active_idx",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "driver_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"del_driver_devices\".\"revoked_at\" IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "del_driver_devices_account_id_core_accounts_id_fk": {
-          "name": "del_driver_devices_account_id_core_accounts_id_fk",
-          "tableFrom": "del_driver_devices",
-          "tableTo": "core_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "del_driver_devices_driver_id_del_drivers_id_fk": {
-          "name": "del_driver_devices_driver_id_del_drivers_id_fk",
-          "tableFrom": "del_driver_devices",
-          "tableTo": "del_drivers",
-          "columnsFrom": [
-            "driver_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "del_driver_devices_platform_check": {
-          "name": "del_driver_devices_platform_check",
-          "value": "\"del_driver_devices\".\"platform\" IN ('ios', 'android')"
-        },
-        "del_driver_devices_device_id_check": {
-          "name": "del_driver_devices_device_id_check",
-          "value": "length(\"del_driver_devices\".\"device_id\") BETWEEN 1 AND 200"
-        },
-        "del_driver_devices_app_version_check": {
-          "name": "del_driver_devices_app_version_check",
-          "value": "length(\"del_driver_devices\".\"app_version\") BETWEEN 1 AND 64"
-        },
-        "del_driver_devices_push_token_check": {
-          "name": "del_driver_devices_push_token_check",
-          "value": "length(\"del_driver_devices\".\"push_token\") <= 4096"
-        },
-        "del_driver_devices_version_check": {
-          "name": "del_driver_devices_version_check",
-          "value": "\"del_driver_devices\".\"version\" >= 1"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.del_drivers": {
-      "name": "del_drivers",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "account_id": {
-          "name": "account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "membership_id": {
-          "name": "membership_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "home_site_id": {
-          "name": "home_site_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'active'"
-        },
-        "cash_blocked_at": {
-          "name": "cash_blocked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cash_blocked_reason": {
-          "name": "cash_blocked_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "capacity_limit": {
-          "name": "capacity_limit",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 30
-        },
-        "cash_pin_hash": {
-          "name": "cash_pin_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cash_pin_failures": {
-          "name": "cash_pin_failures",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "cash_pin_locked_at": {
-          "name": "cash_pin_locked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "del_drivers_account_user_key": {
-          "name": "del_drivers_account_user_key",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "del_drivers_account_status_idx": {
-          "name": "del_drivers_account_status_idx",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "del_drivers_cash_blocked_idx": {
-          "name": "del_drivers_cash_blocked_idx",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"del_drivers\".\"cash_blocked_at\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "del_drivers_account_id_core_accounts_id_fk": {
-          "name": "del_drivers_account_id_core_accounts_id_fk",
-          "tableFrom": "del_drivers",
-          "tableTo": "core_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "del_drivers_user_id_core_users_id_fk": {
-          "name": "del_drivers_user_id_core_users_id_fk",
-          "tableFrom": "del_drivers",
-          "tableTo": "core_users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "del_drivers_membership_id_core_memberships_id_fk": {
-          "name": "del_drivers_membership_id_core_memberships_id_fk",
-          "tableFrom": "del_drivers",
-          "tableTo": "core_memberships",
-          "columnsFrom": [
-            "membership_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "del_drivers_home_site_id_core_sites_id_fk": {
-          "name": "del_drivers_home_site_id_core_sites_id_fk",
-          "tableFrom": "del_drivers",
-          "tableTo": "core_sites",
-          "columnsFrom": [
-            "home_site_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "del_drivers_name_check": {
-          "name": "del_drivers_name_check",
-          "value": "length(\"del_drivers\".\"name\") BETWEEN 1 AND 120"
-        },
-        "del_drivers_status_check": {
-          "name": "del_drivers_status_check",
-          "value": "\"del_drivers\".\"status\" IN ('active', 'suspended', 'archived')"
-        },
-        "del_drivers_capacity_limit_check": {
-          "name": "del_drivers_capacity_limit_check",
-          "value": "\"del_drivers\".\"capacity_limit\" >= 0"
-        },
-        "del_drivers_cash_pin_failures_check": {
-          "name": "del_drivers_cash_pin_failures_check",
-          "value": "\"del_drivers\".\"cash_pin_failures\" BETWEEN 0 AND 5"
-        },
-        "del_drivers_version_check": {
-          "name": "del_drivers_version_check",
-          "value": "\"del_drivers\".\"version\" >= 1"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.del_vehicles": {
-      "name": "del_vehicles",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "account_id": {
-          "name": "account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "plate": {
-          "name": "plate",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "capacity_parcels": {
-          "name": "capacity_parcels",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "active": {
-          "name": "active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "del_vehicles_account_plate_key": {
-          "name": "del_vehicles_account_plate_key",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "plate",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "del_vehicles_account_id_core_accounts_id_fk": {
-          "name": "del_vehicles_account_id_core_accounts_id_fk",
-          "tableFrom": "del_vehicles",
-          "tableTo": "core_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "del_vehicles_kind_check": {
-          "name": "del_vehicles_kind_check",
-          "value": "\"del_vehicles\".\"kind\" IN ('car', 'van', 'motorbike')"
-        },
-        "del_vehicles_capacity_parcels_check": {
-          "name": "del_vehicles_capacity_parcels_check",
-          "value": "\"del_vehicles\".\"capacity_parcels\" >= 0"
-        },
-        "del_vehicles_plate_check": {
-          "name": "del_vehicles_plate_check",
-          "value": "length(\"del_vehicles\".\"plate\") BETWEEN 1 AND 20"
-        },
-        "del_vehicles_version_check": {
-          "name": "del_vehicles_version_check",
-          "value": "\"del_vehicles\".\"version\" >= 1"
         }
       },
       "isRLSEnabled": false
@@ -3393,6 +2835,186 @@
         "core_roles_surface_check": {
           "name": "core_roles_surface_check",
           "value": "\"core_roles\".\"surface\" IN ('staff', 'driver', 'platform')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.core_feature_flags": {
+      "name": "core_feature_flags",
+      "schema": "",
+      "columns": {
+        "account_id": {
+          "name": "account_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feature_key": {
+          "name": "feature_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "provisioned_by": {
+          "name": "provisioned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enabled_at": {
+          "name": "enabled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "core_feature_flags_account_id_core_accounts_id_fk": {
+          "name": "core_feature_flags_account_id_core_accounts_id_fk",
+          "tableFrom": "core_feature_flags",
+          "tableTo": "core_accounts",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "core_feature_flags_provisioned_by_core_users_id_fk": {
+          "name": "core_feature_flags_provisioned_by_core_users_id_fk",
+          "tableFrom": "core_feature_flags",
+          "tableTo": "core_users",
+          "columnsFrom": [
+            "provisioned_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "core_feature_flags_feature_key_fk": {
+          "name": "core_feature_flags_feature_key_fk",
+          "tableFrom": "core_feature_flags",
+          "tableTo": "core_rollout_modes",
+          "columnsFrom": [
+            "feature_key"
+          ],
+          "columnsTo": [
+            "feature_key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "core_feature_flags_pkey": {
+          "name": "core_feature_flags_pkey",
+          "columns": [
+            "account_id",
+            "feature_key"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "core_feature_flags_provisioned_check": {
+          "name": "core_feature_flags_provisioned_check",
+          "value": "NOT \"core_feature_flags\".\"enabled\" OR \"core_feature_flags\".\"provisioned_by\" IS NOT NULL"
+        },
+        "core_feature_flags_version_check": {
+          "name": "core_feature_flags_version_check",
+          "value": "\"core_feature_flags\".\"version\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.core_rollout_modes": {
+      "name": "core_rollout_modes",
+      "schema": "",
+      "columns": {
+        "feature_key": {
+          "name": "feature_key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'allowlist'"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "core_rollout_modes_updated_by_core_users_id_fk": {
+          "name": "core_rollout_modes_updated_by_core_users_id_fk",
+          "tableFrom": "core_rollout_modes",
+          "tableTo": "core_users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "core_rollout_modes_mode_check": {
+          "name": "core_rollout_modes_mode_check",
+          "value": "\"core_rollout_modes\".\"mode\" IN ('off', 'allowlist', 'all')"
         }
       },
       "isRLSEnabled": false

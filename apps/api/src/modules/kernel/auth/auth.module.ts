@@ -14,6 +14,9 @@ import { PLATFORM_POOL } from '../platform/tokens.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { RATE_LIMITER } from '../rate-limit/rate-limiter.js';
 import { MembersController } from '../members/members.controller.js';
+import { PlatformStaffController } from '../platform-staff/platform-staff.controller.js';
+import { PlatformStaffService } from '../platform-staff/platform-staff.service.js';
+import { PlatformAccountsController } from '../provisioning/platform-accounts.controller.js';
 import { AccessTokenIssuer } from './access-token.js';
 import { Invitations } from './invitations.js';
 import { PasswordResets } from './password-resets.js';
@@ -39,8 +42,16 @@ export class AuthModule {
       module: AuthModule,
       imports: [KernelModule],
       // PLAT-12: the staff surface's member doors, here because they delegate to `Invitations` and
-      // `SecondFactorResets` (plan 2.9).
-      controllers: [StaffAuthController, PlatformAuthController, MembersController],
+      // `SecondFactorResets` (plan 2.9). PLAT-13: the platform account doors, here because the
+      // provisioning door and `platformInviteOwner` delegate the owner's invitation to `Invitations`,
+      // and the platform staff doors (leg 2) delegate `platformInviteStaff` to it.
+      controllers: [
+        StaffAuthController,
+        PlatformAuthController,
+        MembersController,
+        PlatformAccountsController,
+        PlatformStaffController,
+      ],
       providers: [
         { provide: PasswordHasher, useFactory: () => new PasswordHasher() },
         // Read once at boot; a missing or malformed list stops the boot (plan 2.2).
@@ -200,6 +211,20 @@ export class AuthModule {
               outbox,
               resolver,
               publicWebUrl: config.app.publicWebUrl,
+              publicAdminUrl: config.app.publicAdminUrl,
+              cipher:
+                config.credentials === null ? null : createCredentialsCipher(config.credentials),
+            }),
+        },
+        {
+          // PLAT-13 plan 2.9: the platform staff doors (the reset mails a console link, M-2).
+          provide: PlatformStaffService,
+          inject: [Invitations, AUDIT_SINK, OutboxWriter],
+          useFactory: (invitations: Invitations, audit: AuditSink, outbox: OutboxWriter) =>
+            new PlatformStaffService({
+              invitations,
+              audit,
+              outbox,
               publicAdminUrl: config.app.publicAdminUrl,
               cipher:
                 config.credentials === null ? null : createCredentialsCipher(config.credentials),

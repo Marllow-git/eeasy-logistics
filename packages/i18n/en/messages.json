@@ -24,5 +24,9 @@
     "body": "You have been added as a driver at {account_name}. Install the Eeasy Driver app and sign in with this phone number: {app_link}",
     "footer": "If you do not drive for {account_name}, you can ignore this message.",
     "button": "Install the app"
+  },
+  "platform_totp_reset": {
+    "subject": "Your Eeasy Logistics console authenticator was reset",
+    "body": "Your authenticator for the Eeasy Logistics platform console was reset by an administrator.\n\nSet up your authenticator app again within 24 hours (you will need your password):\n{link}\n\nIf you did not expect this, contact a platform super admin."
   }
 }

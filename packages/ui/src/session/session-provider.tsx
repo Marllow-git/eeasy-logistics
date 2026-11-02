@@ -39,6 +39,7 @@ interface SessionContextValue {
   readonly fetcher: Fetcher;
   readonly signOut: () => Promise<void>;
   readonly registerUnsaved: () => () => void;
+  readonly registerSignOutCleanup: (cleanup: () => void) => () => void;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -96,6 +97,7 @@ class SessionController {
   #pending: { promise: Promise<boolean>; resolve: (value: boolean) => void } | null = null;
   #listeners = new Set<() => void>();
   #reported: ((reason: SessionEndReason) => void) | undefined;
+  #signOutCleanups = new Set<() => void>();
 
   constructor(readonly surface: SessionSurface) {
     this.fetcher = createSessionFetcher({
@@ -156,6 +158,14 @@ class SessionController {
     };
   };
 
+  /** What a sign-out must forget besides `sessionStorage`: the query cache (WEB-3). */
+  readonly registerSignOutCleanup = (cleanup: () => void) => {
+    this.#signOutCleanups.add(cleanup);
+    return () => {
+      this.#signOutCleanups.delete(cleanup);
+    };
+  };
+
   readonly signOut = async () => {
     try {
       await this.fetcher(sessionPaths[this.surface].logout, { method: 'POST' });
@@ -163,7 +173,8 @@ class SessionController {
       // The cookies end with the page either way: the API clears them, and an unreachable API
       // leaves a session that ends at its own expiry.
     }
-    // No query cache or event stream exists yet (WEB-3, WEB-5 add them and clear them here).
+    // The query cache registers its clear here (WEB-3); the event stream will too (WEB-5).
+    for (const cleanup of this.#signOutCleanups) cleanup();
     window.sessionStorage.clear();
     hardNavigate(signedOutPath);
   };
@@ -189,6 +200,7 @@ export function SessionProvider<Me extends SessionMe>({
       fetcher: controller.fetcher,
       signOut: controller.signOut,
       registerUnsaved: controller.registerUnsaved,
+      registerSignOutCleanup: controller.registerSignOutCleanup,
     }),
     [me, controller],
   );
@@ -222,7 +234,7 @@ export function useSession<Me extends SessionMe = SessionMe>(): Me {
   return useSessionContext().me as Me;
 }
 
-/** The session's permissions; `Can` and the route manifest are WEB-3's (web §4). */
+/** The session's permissions; `Can` (`../authz/can`) and the route manifest build on it (web §4). */
 export function usePermissions(): { readonly has: (permission: string) => boolean } {
   const { me } = useSessionContext();
   return useMemo(() => {
@@ -248,4 +260,10 @@ export function useSignOut(): () => Promise<void> {
 export function useUnsavedState(active: boolean): void {
   const { registerUnsaved } = useSessionContext();
   useEffect(() => (active ? registerUnsaved() : undefined), [active, registerUnsaved]);
+}
+
+/** Runs `cleanup` when the user signs out, before the page leaves (WEB-2 plan §8.2 #16). */
+export function useSignOutCleanup(cleanup: () => void): void {
+  const { registerSignOutCleanup } = useSessionContext();
+  useEffect(() => registerSignOutCleanup(cleanup), [registerSignOutCleanup, cleanup]);
 }

@@ -41,6 +41,15 @@ import { base32, fromBase32, matchingStep, otpauthUri, totpSecret } from './totp
 
 export const totpChallengeTtlSeconds = 300;
 const maxAttempts = 5;
+
+/**
+ * On the `amr` of a platform re-enrolment link (PLAT-13 adversary M-2): an `enrolment_link` challenge
+ * of `platformResetStaffTotp`, told apart from a staff second-factor link (which never carries it,
+ * and whose door refuses one that does).
+ */
+export const platformLinkMarker = 'platform_totp_link';
+/** On the `totp` challenge a redeemed link yields: after a reset, the only one that may enrol. */
+const linkRedeemed = 'enrolment_link';
 /** Looked up when no user has the email: a well-formed id no row carries (UUIDv7 never has 0 ms). */
 const absentUserId = '00000000-0000-7000-8000-000000000000';
 
@@ -61,8 +70,14 @@ export interface PlatformSession {
 
 /** A refusal that must commit first (a counted attempt). */
 class Refused {
-  readonly code = 'otp_invalid';
+  constructor(
+    readonly code: 'otp_invalid' | 'token_invalid' | 'invalid_credentials' = 'otp_invalid',
+  ) {}
 }
+
+/** `401 reauthentication_required` for an enrolment a reset reserves for the emailed link (M-2). */
+const linkRequired = () =>
+  new ApiException('reauthentication_required', { details: { enrolment_link_required: true } });
 
 export interface PlatformSignInDependencies {
   readonly sessions: SessionService;
@@ -183,8 +198,11 @@ export class PlatformSignIn {
   /**
    * `platformEnrolTotp`: only on a live `totp` challenge from the password step or an accepted
    * invitation (`401 reauthentication_required` without the password), for a user with no secret
-   * (`409 second_factor_already_enrolled`). A new 20-byte secret is kept encrypted on the challenge
-   * until a code confirms it; the otpauth URI is answered once (a second call replaces the secret).
+   * (`409 second_factor_already_enrolled`). After a super admin's reset only the challenge of a
+   * redeemed re-enrolment link may enrol (adversary M-2): the password alone is `401
+   * reauthentication_required` with `details.enrolment_link_required`. A new 20-byte secret is kept
+   * encrypted on the challenge until a code confirms it; the otpauth URI is answered once (a second
+   * call replaces the secret).
    */
   async enrol(input: { challengeId: string }): Promise<{ challengeId: string; uri: string }> {
     const cipher = this.#cipher();
@@ -202,6 +220,9 @@ export class PlatformSignIn {
         throw new ApiException('token_invalid');
       }
       if (subject.staff.totpEnrolled) throw new ApiException('second_factor_already_enrolled');
+      if (subject.staff.enrolmentLinkRequired && !challenge.amr.includes(linkRedeemed)) {
+        throw linkRequired();
+      }
       const secret = totpSecret();
       const sealed = cipher.encrypt(base32(secret), pendingContext(challenge.id));
       await tx.challenges.setPendingSecret(challenge.id, sealed.blob, sealed.keyId);
@@ -244,6 +265,7 @@ export class PlatformSignIn {
       if (
         subject === undefined ||
         subject.staff.totpEnrolled ||
+        (subject.staff.enrolmentLinkRequired && !challenge.amr.includes(linkRedeemed)) ||
         secret === undefined ||
         step === undefined
       ) {
@@ -276,7 +298,10 @@ export class PlatformSignIn {
    * `platformAcceptInvitation`: a live `platform` invitation sets the password (the rules of 2.2)
    * and the name, grants the staff row with the invited role (audited `core.invitation.accepted`)
    * and answers a `totp` challenge; no session until TOTP is enrolled and verified. Budget: 20 an
-   * hour per address (plan 2.11).
+   * hour per address (plan 2.11). Under the staff doors' role lock (PLAT-13 adversary H-1), a link
+   * that a later invitation of the email superseded, or one whose user is live staff already, is
+   * `401 token_invalid`: an invitation never changes a live member's role (that is
+   * `platformSetStaffRoles`, under its rules), and an old link never outlives a newer one.
    */
   async acceptInvitation(
     input: { token: string; name: string; password: string },
@@ -294,14 +319,20 @@ export class PlatformSignIn {
     if (!isOpaqueToken(input.token)) throw new ApiException('token_invalid');
     const passwordHash = await this.#deps.passwords.hash(input.password);
     return this.#deps.sessions.store.run(async (tx) => {
+      await tx.platformStaff.lockRoles();
       const invitation = await tx.invitations.lockByHash(tokenHash(input.token), 'platform');
       if (invitation === undefined || invitation.accepted || invitation.platformRole === null) {
         throw new ApiException('token_invalid');
       }
-      if (invitation.expired) throw new ApiException('token_expired');
+      if (await tx.invitations.platformSuperseded(invitation.id, invitation.email)) {
+        throw new ApiException('token_invalid');
+      }
       const found = await tx.users.findByEmail(invitation.email);
       const user = found === undefined ? undefined : await tx.users.lock(found.id);
       if (user === undefined || user.disabled) throw new ApiException('token_invalid');
+      const current = await tx.platformStaff.find(user.id);
+      if (current !== undefined && !current.revoked) throw new ApiException('token_invalid');
+      if (invitation.expired) throw new ApiException('token_expired');
       const hadPassword = user.passwordHash !== null;
       await tx.users.setPassword(user.id, passwordHash, { name, endSessions: hadPassword });
       if (hadPassword)
@@ -327,7 +358,57 @@ export class PlatformSignIn {
     });
   }
 
-  async #challenge(tx: IdentityTransaction, userId: string, facts: RequestFacts): Promise<string> {
+  /**
+   * `platformRedeemEnrolmentLink` (PLAT-13 adversary M-2, mirroring staff's `redeemEnrolmentLink`):
+   * the link `platformResetStaffTotp` mailed (24 hours) plus the user's password yield a `totp`
+   * challenge (5 minutes) on which `platformEnrolTotp` and `platformConfirmTotp` work; neither alone
+   * is enough. The link is spent; a wrong password counts an attempt on it (five end it) and
+   * answers `401 invalid_credentials`. Budget: 20 an hour per address (plan 2.11).
+   */
+  async redeemEnrolmentLink(
+    input: { token: string; password: string },
+    facts: RequestFacts,
+  ): Promise<TotpChallengeStep> {
+    await this.#deps.limiter?.charge('auth_token_ip', `ip:${addressKey(facts.ip ?? undefined)}`);
+    const token = parseCompoundToken(input.token);
+    if (token === undefined) throw new ApiException('token_invalid');
+    const result = await this.#deps.sessions.store.run(async (tx) => {
+      const link = await tx.challenges.lock(token.id, tokenHash(token.secret), 'enrolment_link');
+      const usable =
+        link !== undefined &&
+        !link.consumed &&
+        link.amr.includes(platformLinkMarker) &&
+        link.attempts < maxAttempts;
+      if (!usable) return new Refused('token_invalid');
+      if (link.expired) throw new ApiException('token_expired');
+      const user = await tx.users.find(link.userId);
+      const staff = await tx.platformStaff.find(link.userId);
+      const hash =
+        user !== undefined && !user.disabled && staff !== undefined && !staff.revoked
+          ? user.passwordHash
+          : null;
+      const check = await this.#deps.passwords.verify(
+        input.password,
+        hash ?? this.#deps.passwords.dummyHash,
+      );
+      if (hash === null || staff === undefined || !check.ok) {
+        await tx.challenges.recordFailure(link.id);
+        return new Refused(hash === null ? 'token_invalid' : 'invalid_credentials');
+      }
+      await tx.challenges.consume(link.id);
+      const challengeId = await this.#challenge(tx, link.userId, facts, ['pwd', linkRedeemed]);
+      return { challengeId, totpEnrolmentRequired: !staff.totpEnrolled };
+    });
+    if (result instanceof Refused) throw new ApiException(result.code);
+    return result;
+  }
+
+  async #challenge(
+    tx: IdentityTransaction,
+    userId: string,
+    facts: RequestFacts,
+    amr: readonly string[] = ['pwd'],
+  ): Promise<string> {
     const id = uuidv7();
     const secret = opaqueToken();
     await tx.challenges.insert({
@@ -335,7 +416,7 @@ export class PlatformSignIn {
       kind: 'totp',
       userId,
       secretHash: tokenHash(secret),
-      amr: ['pwd'],
+      amr,
       membershipIds: null,
       ttlSeconds: totpChallengeTtlSeconds,
       ip: facts.ip,

@@ -18,7 +18,7 @@ import { coreSites } from './sites.js';
 // The driver tables (DEL-4 plan 2.1; domain model §3.5; data §2.2, §10; identity and tenancy §3.2;
 // ADR-0025, ADR-0031, ADR-0034). Delivery's (`del_`) tables, declared in the kernel's schema folder
 // as the plan rules; Delivery reads them through the kernel's public surface. Tenant tables: the
-// template policies, elx_app CRUD, elx_platform SELECT (migration 0016).
+// template policies, elx_app CRUD, elx_platform SELECT (migration 20261102121942_del_drivers).
 
 export const driverStatuses = ['active', 'suspended', 'archived'] as const;
 export type DriverStatus = (typeof driverStatuses)[number];

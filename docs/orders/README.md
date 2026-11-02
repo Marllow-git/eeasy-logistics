@@ -26,12 +26,12 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| PLAT-13 | #95 | `feat/PLAT-13-provisioning-rollout` | executor worktree | executor-api (Opus) | build, leg 1 (A–D) | native, scratch databases, Redis, Mailpit | one-way door (migration for the rollout tables; the provisioning door); adversary required (Opus); two legs; plan pushed 2026-11-02 |
 | INT-2 | #98 | `feat/INT-2-geocoder` | executor worktree | executor-api (Opus) | build (A–D) | native, scratch databases, Redis, the fixture stub | one-way door (one migration, `core_geocode_cache`); adversary no; third executor under the ruling of 2026-11-02; files disjoint from PLAT-13 and WEB-2; research `docs/research/hudhud-geocoding-2026-11.md` (PR #97) |
-| WEB-3 | #102 | `feat/WEB-3-merchant-settings` | executor worktree | executor-web (Opus) | build, leg 1 (A–C) | native stack with the API on 3000, the worker, Mailpit, the WhatsApp stub, `seed:census` | two-way door; adversary no; two legs; third executor under the ruling of 2026-11-02 (files disjoint from PLAT-13 and INT-2); design references `docs/references/design/WEB-3.md` |
+| WEB-4 | #121 | `feat/WEB-4-platform-console` | executor worktree | executor-web (Opus) | build, leg 1 (A–C) | native stack with the API on a scratch port (PLAT-13 doors), the worker, Mailpit, `seed:census` | two-way door; adversary required (Opus); two legs; plan `docs/orders/WEB-4/plan.md` (PR #119); design references `docs/references/design/WEB-4.md` (PR #118); registered 2026-11-02 after PLAT-13 (#104) and WEB-3 (#109) merged |
 | DEL-4 | #106 | `feat/DEL-4-drivers-devices-auth` | executor worktree | executor-api (Opus) | build, leg 1 (A–C) | native, scratch databases, Redis, the WhatsApp stub, Mailpit | one-way door (one migration: drivers, vehicles, devices); adversary required (Opus); two legs; third executor under the ruling of 2026-11-02 (files disjoint from PLAT-13 leg 2 and WEB-3); the first wave 1 order |
-| CHORE-3 | #112 | `chore/timestamp-migrations` | executor worktree | executor-api (Opus) | build (A–B) | native, scratch databases | two-way door (tooling, the runner); adversary no; owner ruling 2026-11-02 (timestamp migration names); files disjoint from the three orders in flight |
 
 ## Next unblocked (roadmap §1.1)
 
-WEB-4 after WEB-19, WEB-2, PLAT-13, PLAT-8; WEB-4 after WEB-19, WEB-2, PLAT-13, PLAT-8; DEL-5 after DEL-4 (in flight); DRV-5 after DRV-4 (INT-4 merged, PR #93); OPS-1 waits on the owner\'s go (Q-10, Q-12).
+WEB-5 and WEB-6 after WEB-3 (merged) and their DEL orders; DEL-5 after DEL-4 (in flight); DRV-5 after DRV-4 (INT-4 merged, PR #93); OPS-1 waits on the owner\'s go (Q-10, Q-12).
+
+Proposed chores awaiting the owner's go (2026-11-02): gate flakes (`redact.test.ts` timing, the admin census analytics event and single-flight count); a scratch-stack helper (`tools/native-stack.sh scratch <name>`); idle-in-transaction and statement timeouts on the pools (raised by the PLAT-13 and DEL-4 adversary runs); the global error document importing the whole i18n catalogue (WEB-3 8.3 #2); a weekly digest of open owner questions.
