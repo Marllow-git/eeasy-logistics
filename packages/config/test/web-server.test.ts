@@ -75,16 +75,19 @@ describe('census config (WEB-2 plan 2.14)', () => {
       mailpitUrl: 'http://127.0.0.1:8025',
       whatsappStubUrl: 'http://127.0.0.1:8080',
       signingKey: undefined,
+      apiUrl: 'http://127.0.0.1:3000',
     });
     expect(
       parseCensusConfig({
         CENSUS_MAILPIT_URL: 'http://127.0.0.1:49152/',
         CENSUS_WHATSAPP_STUB_URL: 'http://127.0.0.1:49153',
+        CENSUS_API_URL: 'http://127.0.0.1:3074/',
       }),
     ).toEqual({
       mailpitUrl: 'http://127.0.0.1:49152',
       whatsappStubUrl: 'http://127.0.0.1:49153',
       signingKey: undefined,
+      apiUrl: 'http://127.0.0.1:3074',
     });
     expect(issuesOf(() => parseCensusConfig({ CENSUS_AUTH_SIGNING_KEY: 'short' }))).toEqual([
       'CENSUS_AUTH_SIGNING_KEY',

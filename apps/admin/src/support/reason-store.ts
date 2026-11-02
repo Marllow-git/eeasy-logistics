@@ -46,7 +46,7 @@ export function keepOnly(storage: ReasonStorage, keep: string | undefined): void
  * it as sent until it decodes the header; §8.3).
  */
 export function headerReason(reason: string): string {
-  return /[^ -ÿ]/u.test(reason) ? encodeURIComponent(reason) : reason;
+  return /[^\u0020-\u00ff]/u.test(reason) ? encodeURIComponent(reason) : reason;
 }
 
 /** The header's length as the API counts it: the code points of what is sent. */

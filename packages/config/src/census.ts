@@ -16,18 +16,23 @@ export const censusVariables = {
   // The stack API's AUTH_SIGNING_KEY (a throwaway key of the census stack): the census re-signs a
   // session's access token with a past `exp` to get a genuine `401 token_expired` (plan 2.14).
   CENSUS_AUTH_SIGNING_KEY: z.string().min(32).optional(),
+  // The stack API itself (WEB-4): the console census accepts a merchant owner's invitation on the
+  // staff surface, which the admin app does not rewrite.
+  CENSUS_API_URL: httpUrl().default('http://127.0.0.1:3000'),
 };
 
 const expectations = {
   CENSUS_MAILPIT_URL: 'an http(s) URL of the stack Mailpit API',
   CENSUS_WHATSAPP_STUB_URL: 'an http(s) URL of the stack WhatsApp stub',
   CENSUS_AUTH_SIGNING_KEY: 'the stack API signing key (AUTH_SIGNING_KEY), 32 characters or more',
+  CENSUS_API_URL: 'an http(s) URL of the stack API',
 } satisfies Record<keyof typeof censusVariables, string>;
 
 export interface CensusConfig {
   readonly mailpitUrl: string;
   readonly whatsappStubUrl: string;
   readonly signingKey: string | undefined;
+  readonly apiUrl: string;
 }
 
 /** Validates the census variables; throws `ConfigError` naming every invalid one. */
@@ -38,6 +43,7 @@ export function parseCensusConfig(env: EnvRecord): CensusConfig {
     mailpitUrl: new URL(values.CENSUS_MAILPIT_URL).origin,
     whatsappStubUrl: new URL(values.CENSUS_WHATSAPP_STUB_URL).origin,
     signingKey: values.CENSUS_AUTH_SIGNING_KEY,
+    apiUrl: new URL(values.CENSUS_API_URL).origin,
   });
 }
 
@@ -47,5 +53,6 @@ export function censusConfig(): CensusConfig {
     CENSUS_MAILPIT_URL: process.env.CENSUS_MAILPIT_URL,
     CENSUS_WHATSAPP_STUB_URL: process.env.CENSUS_WHATSAPP_STUB_URL,
     CENSUS_AUTH_SIGNING_KEY: process.env.CENSUS_AUTH_SIGNING_KEY,
+    CENSUS_API_URL: process.env.CENSUS_API_URL,
   });
 }
