@@ -104,10 +104,12 @@ const liveAccountStatuses = new Set(['provisioned', 'active']);
  * membership, account, platform staff row); a used row inside the grace answers the same successor;
  * an expired row is `token_expired`; else the row rotates.
  *
- * A driver row (DEL-4 plan 2.8) first needs the app's own device id (`request.deviceId`) to be the
- * one of the row's device, else `token_invalid`; a revoked or vanished device is `device_revoked`
- * before the row's own revocation (revoking a device revoked its families too, and the app must
- * learn why); after the subject checks, a driver who is not `active` is `token_invalid`.
+ * A driver row (DEL-4 plan 2.8), once the row is neither revoked nor reused (adversary L-2), needs
+ * the app's own device id (`request.deviceId`) to be the one of the row's device, else
+ * `token_invalid`; a revoked or vanished device is `device_revoked`; after the subject checks, a
+ * driver who is not `active` is `token_invalid`. A dispatcher's revocation revokes the device's
+ * families first, so its refresh answers `token_invalid`; the app learns `device_revoked` at its
+ * next sign-in on that app id (M-1) or from a live access token (M-2).
  */
 export function refreshVerdict(
   row: RefreshState,
@@ -120,13 +122,6 @@ export function refreshVerdict(
   graceSeconds: number,
 ): RefreshVerdict {
   if (row.surface !== request.surface) return { kind: 'refuse', code: 'token_invalid' };
-  if (row.surface === 'driver') {
-    const device = row.driver?.device ?? null;
-    if (device !== null && device.appDeviceId !== request.deviceId) {
-      return { kind: 'refuse', code: 'token_invalid' };
-    }
-    if (device === null || device.revoked) return { kind: 'device_revoked' };
-  }
   if (row.revoked) return { kind: 'refuse', code: 'token_invalid' };
   if (row.usedAt !== null) {
     const age = row.now.getTime() - row.usedAt.getTime();
@@ -141,6 +136,15 @@ export function refreshVerdict(
       sameAgent &&
       row.successorCiphertext !== null;
     if (!inGrace) return { kind: 'reuse' };
+  }
+  if (row.surface === 'driver') {
+    // After the row's own state (adversary L-2): a revoked row stays `token_invalid` and a reuse
+    // still ends the family, whatever became of the device.
+    const device = row.driver?.device ?? null;
+    if (device !== null && device.appDeviceId !== request.deviceId) {
+      return { kind: 'refuse', code: 'token_invalid' };
+    }
+    if (device === null || device.revoked) return { kind: 'device_revoked' };
   }
   if (row.user.disabled || row.user.tokenVersion !== row.tokenVersion) {
     return { kind: 'refuse', code: 'token_invalid' };
