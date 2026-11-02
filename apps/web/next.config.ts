@@ -26,6 +26,9 @@ const nextConfig: NextConfig = {
   // event would first get a 308 to the slashless path (PLAT-14 plan 2.8, PostHog's Next.js
   // proxy guide). Pages still match without the redirect.
   skipTrailingSlashRedirect: true,
+  // WEB-3 plan 2.2: `forbidden()` renders `(merchant)/forbidden.tsx` with status 403 when a member
+  // lacks a settings segment's permission (web §4). Experimental in Next 16.4.
+  experimental: { authInterrupts: true },
   rewrites: () =>
     Promise.resolve(
       apiInternalUrl === undefined

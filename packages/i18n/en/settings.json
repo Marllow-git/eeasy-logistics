@@ -1,0 +1,405 @@
+{
+  "title": "Settings",
+  "sections": {
+    "account": "Account settings",
+    "members": "Members",
+    "sites": "Sites",
+    "audit": "Audit log"
+  },
+  "roles": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "dispatcher": "Dispatcher",
+    "site_staff": "Site staff",
+    "warehouse_staff": "Warehouse staff",
+    "cashier": "Cashier",
+    "viewer": "Viewer",
+    "driver": "Driver"
+  },
+  "home": {
+    "greeting": "Welcome, {name}",
+    "account_line": "You are working on {account}.",
+    "modules_title": "Modules",
+    "modules_empty": "No modules are enabled for this account yet. The platform team enables them when your account is set up.",
+    "settings_card_title": "Settings",
+    "settings_card_body": "The rules for orders, delivery and cash on delivery on this account.",
+    "settings_card_open": "Open settings",
+    "facts_title": "Account limits"
+  },
+  "usage": {
+    "sites": "Sites",
+    "drivers": "Drivers",
+    "of": "{used} of {limit}",
+    "unlimited": "{used}, no limit"
+  },
+  "account": {
+    "description": "The rules for taking in orders, delivery and cash on delivery on this account. Each section saves on its own.",
+    "read_only": "You can view these settings only; the account owner or an admin changes them.",
+    "limits_title": "Limits and usage",
+    "limits_description": "The platform team sets these limits when it sets up the account.",
+    "intake": {
+      "title": "Order intake",
+      "rule": "When a new order arrives",
+      "receive_as_pending": "It waits until your team accepts it",
+      "receive_as_pending_hint": "New orders are reviewed before they reach dispatch.",
+      "auto_accept": "It is accepted at once",
+      "auto_accept_hint": "New orders go straight to dispatch.",
+      "max_attempts": "Maximum delivery attempts",
+      "max_attempts_hint": "From 1 to 10 attempts before the order is returned."
+    },
+    "proof": {
+      "title": "Proof of delivery",
+      "delivery": "On every delivery",
+      "cod": "On cash on delivery",
+      "hint": "What the driver collects before the delivery closes.",
+      "kinds": {
+        "photo": "Photo",
+        "signature": "Recipient's signature",
+        "recipient_otp": "Code sent to the recipient",
+        "id_check": "ID check"
+      }
+    },
+    "reason_codes": {
+      "title": "Reason codes",
+      "description": "The reasons a driver picks when a delivery fails, in Arabic and English. Up to 100 reasons.",
+      "code": "Code",
+      "code_hint": "Lowercase English letters, digits and underscores, 2 to 40 characters.",
+      "label": "Label",
+      "active": "Active",
+      "add": "Add reason",
+      "remove": "Remove reason {number}",
+      "row": "Reason {number}",
+      "empty": "No reason codes yet.",
+      "limit": "You have reached the limit of 100 reasons."
+    },
+    "dispatch": {
+      "title": "Auto-dispatch",
+      "enabled": "Offer orders to drivers automatically",
+      "enabled_hint": "Each ready order is offered to available drivers in waves.",
+      "offer_ttl": "Offer time in seconds",
+      "offer_ttl_hint": "At least 30 seconds.",
+      "drivers_per_wave": "Drivers per wave",
+      "drivers_per_wave_hint": "At least one driver."
+    },
+    "security": {
+      "title": "Security",
+      "second_factor": "Require a second factor from every member",
+      "second_factor_hint": "Members who enrolled a phone are always asked for a code. When this is on, the others enrol a phone at their next sign-in."
+    },
+    "cod": {
+      "title": "Cash on delivery",
+      "methods": "Accepted payment methods",
+      "kinds": {
+        "cash": "Cash",
+        "card": "Card",
+        "mada": "mada",
+        "wallet": "Digital wallet"
+      }
+    },
+    "drivers": {
+      "title": "Driver app",
+      "offline_window": "Offline window in hours",
+      "offline_window_hint": "From 1 to 48 hours after a run ends during which the app accepts what the driver recorded offline."
+    },
+    "warehouse": {
+      "title": "Warehouse",
+      "receipt_tolerance": "Receipt tolerance (%)",
+      "receipt_tolerance_hint": "The difference between ordered and received quantity accepted without review.",
+      "adjustment_threshold": "Stock adjustment approval threshold",
+      "adjustment_threshold_hint": "An adjustment above this quantity needs a second person's approval."
+    }
+  },
+  "members": {
+    "description": "The people who work on this account, their roles and the sites they work at.",
+    "table_label": "Members of this account",
+    "invite": "Invite member",
+    "invited_notice": "Invitation sent to {email}.",
+    "you": "You",
+    "columns": {
+      "name": "Name",
+      "roles": "Roles",
+      "sites": "Sites",
+      "status": "Status",
+      "joined": "Added"
+    },
+    "status": {
+      "active": "Active",
+      "invited": "Invitation sent",
+      "revoked": "Revoked"
+    },
+    "filters": {
+      "status": "Status",
+      "all": "All",
+      "site": "Site",
+      "all_sites": "All sites",
+      "search": "Search by name or email"
+    },
+    "sites_all": "All sites",
+    "sites_none": "No sites",
+    "sites_count": "{count, plural, one {{value} site} other {{value} sites}}",
+    "empty": "No members yet.",
+    "empty_hint": "Invite the people who run deliveries, sites and cash with you.",
+    "empty_filtered": "No members match these filters.",
+    "clear_filters": "Clear filters",
+    "invite_dialog": {
+      "title": "Invite a member",
+      "description": "We email a link to set a password. The link is valid for 72 hours.",
+      "email": "Email",
+      "name": "Name",
+      "roles": "Roles",
+      "roles_hint": "One role or more.",
+      "sites": "Sites",
+      "sites_hint": "Site staff, warehouse staff and cashiers work only at the sites ticked here; the other roles see every site.",
+      "no_sites": "This account has no sites yet.",
+      "submit": "Send invitation"
+    },
+    "detail": {
+      "back": "All members",
+      "invitation_banner": "The invitation was sent to {email}. It is waiting to be accepted.",
+      "revoked_banner": "This membership is revoked. It comes back only through a new invitation.",
+      "profile_title": "Member",
+      "email": "Email",
+      "joined": "Added on",
+      "second_factor": "Second factor",
+      "second_factor_on": "Phone enrolled",
+      "second_factor_off": "Not enrolled",
+      "access_title": "Roles and sites",
+      "access_description": "A change signs the member out; the new access applies at their next sign-in.",
+      "roles": "Roles",
+      "sites": "Sites",
+      "driver_kept": "The driver role is managed with the drivers and stays as it is.",
+      "actions_title": "Access",
+      "saved": "Roles and sites saved.",
+      "save": "Save roles and sites"
+    },
+    "locks": {
+      "self": "You cannot change your own membership.",
+      "owner_only": "Only an owner can change an owner's membership.",
+      "owner_grant": "Only an owner can grant or remove the owner role.",
+      "last_owner": "This is the account's only owner; the owner role stays."
+    },
+    "revoke": {
+      "action": "Revoke access",
+      "title": "Revoke {name}'s access?",
+      "consequence_sessions": "They are signed out everywhere within a few minutes and can no longer open this account.",
+      "consequence_audit": "What they did stays in the audit log.",
+      "consequence_return": "They come back only through a new invitation.",
+      "confirm": "Revoke access",
+      "done": "Access revoked.",
+      "withdraw_action": "Withdraw invitation",
+      "withdraw_title": "Withdraw the invitation to {name}?",
+      "withdraw_consequence": "The link in the email stops working.",
+      "withdraw_confirm": "Withdraw invitation",
+      "withdrawn": "Invitation withdrawn."
+    },
+    "reset": {
+      "action": "Reset second factor",
+      "title": "Reset {name}'s second factor?",
+      "description": "For a member who lost the phone they enrolled.",
+      "consequence_phone": "The enrolled phone is removed and they are signed out everywhere.",
+      "consequence_link": "They get an email with a link to enrol a phone again; the password alone cannot enrol.",
+      "reason": "Reason",
+      "reason_hint": "From 5 to 500 characters. Kept in the audit log.",
+      "submit": "Reset second factor",
+      "done": "Second factor reset. The member gets an email with a link to enrol again."
+    }
+  },
+  "sites": {
+    "description": "The branches and warehouses of this account: their names, address, location and opening hours.",
+    "table_label": "Sites of this account",
+    "new": "New site",
+    "columns": {
+      "name": "Name",
+      "kind": "Kind",
+      "status": "Status",
+      "address": "Address",
+      "created": "Added"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "kinds": {
+      "branch": "Branch",
+      "warehouse": "Warehouse",
+      "both": "Branch and warehouse"
+    },
+    "kind_hints": {
+      "branch": "Dispatches orders to drivers and holds their cash.",
+      "warehouse": "Holds stock: receiving, storage and packing.",
+      "both": "Does both from the same address."
+    },
+    "filters": {
+      "status": "Status",
+      "all": "All",
+      "kind": "Kind",
+      "all_kinds": "All kinds"
+    },
+    "empty": "No sites yet.",
+    "empty_hint": "Add the branches and warehouses your team works from.",
+    "empty_filtered": "No sites match these filters.",
+    "clear_filters": "Clear filters",
+    "back": "All sites",
+    "new_title": "New site",
+    "new_description": "A branch dispatches orders, a warehouse holds stock. You can change the details later.",
+    "created": "Site created.",
+    "saved": "Site saved.",
+    "form": {
+      "details_title": "Site details",
+      "kind": "Kind",
+      "names": "Name",
+      "names_hint": "In Arabic and English, up to 120 characters each.",
+      "address": "Address",
+      "address_hint": "Up to 500 characters.",
+      "short_code": "National Address short code",
+      "short_code_hint": "Four letters and four digits, for example RRRD2929.",
+      "location_title": "Location",
+      "lat": "Latitude",
+      "lng": "Longitude",
+      "location_hint": "Copy the coordinates of the short code from the National Address, with up to 5 decimals. A map arrives in a later release.",
+      "open_in_maps": "Open in maps",
+      "hours_title": "Opening hours",
+      "hours_hint": "Times in 24-hour HH:MM, for example 09:00. A closing time before the opening time runs past midnight.",
+      "open_on": "Open on {day}",
+      "opens": "Opens",
+      "closes": "Closes",
+      "closed": "Closed",
+      "same_every_day": "Same every day",
+      "save": "Save site",
+      "create": "Create site"
+    },
+    "weekdays": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "state": {
+      "title": "Status",
+      "active_line": "This site takes new work.",
+      "inactive_banner": "This site is inactive: it takes no new work. Activate it to use it again."
+    },
+    "deactivate": {
+      "action": "Deactivate site",
+      "title": "Deactivate {name}?",
+      "consequence_work": "It takes no new orders, cash or stock.",
+      "consequence_keep": "Its history stays, and you can activate it again at any time.",
+      "confirm": "Deactivate",
+      "done": "Site deactivated.",
+      "in_use": "The site is still in use:"
+    },
+    "activate": {
+      "action": "Activate site",
+      "title": "Activate {name}?",
+      "consequence": "It takes new work again and counts toward the account's site limit.",
+      "confirm": "Activate",
+      "done": "Site activated."
+    },
+    "limit_reached": "Your account has reached its limit of {limit} active sites. Deactivate a site or ask the platform team for a higher limit.",
+    "in_use_reasons": {
+      "open_orders": "Orders that are not finished yet",
+      "unsettled_cash": "Cash that is not settled yet",
+      "stock_on_hand": "Stock still on hand"
+    }
+  },
+  "audit": {
+    "description": "Who changed what on this account, and when.",
+    "notice": "Every change to the settings, members and sites of this account is recorded here. Entries cannot be changed or deleted.",
+    "table_label": "Audit log of this account",
+    "columns": {
+      "time": "Time",
+      "action": "Action",
+      "actor": "By",
+      "target": "On",
+      "changes": "Changes"
+    },
+    "filters": {
+      "from": "From",
+      "to": "To",
+      "target_type": "Object",
+      "all_targets": "All objects",
+      "target_id": "Object ID",
+      "actor_id": "Person ID",
+      "invalid_id": "Enter a full ID."
+    },
+    "empty": "Nothing recorded yet.",
+    "empty_filtered": "No entries match these filters.",
+    "clear_filters": "Clear filters",
+    "show_changes": "Show changes",
+    "no_changes": "No details",
+    "field": "Field",
+    "before": "Before",
+    "after": "After",
+    "none": "—",
+    "yes": "Yes",
+    "no": "No",
+    "system": "The platform",
+    "unknown_person": "Someone no longer listed",
+    "actor_types": {
+      "user": "Member",
+      "api_key": "API key",
+      "driver": "Driver",
+      "system": "The platform",
+      "platform_user": "Platform team"
+    },
+    "target_types": {
+      "account": "Account",
+      "membership": "Member",
+      "site": "Site",
+      "invitation": "Invitation",
+      "user": "User",
+      "session_family": "Session",
+      "operation": "Request"
+    },
+    "actions": {
+      "core_account_settings_updated": "Account settings changed",
+      "core_account_provisioned": "Account set up",
+      "core_account_suspended": "Account suspended",
+      "core_member_invited": "Member invited",
+      "core_member_updated": "Member roles or sites changed",
+      "core_member_revoked": "Member access revoked",
+      "core_member_second_factor_reset": "Member's second factor reset",
+      "core_invitation_created": "Invitation sent",
+      "core_invitation_accepted": "Invitation accepted",
+      "core_site_created": "Site created",
+      "core_site_updated": "Site changed",
+      "core_site_activated": "Site activated",
+      "core_site_deactivated": "Site deactivated",
+      "core_auth_password_reset": "Password reset",
+      "core_auth_second_factor_enrolled": "Second factor enrolled",
+      "core_auth_second_factor_reset": "Second factor cleared",
+      "core_auth_totp_enrolled": "Authenticator enrolled",
+      "core_session_ended": "Signed out",
+      "core_session_family_revoked": "Sessions ended",
+      "core_authorization_denied": "Access refused"
+    },
+    "fields": {
+      "roles": "Roles",
+      "site_ids": "Sites",
+      "email": "Email",
+      "name": "Name",
+      "kind": "Kind",
+      "name_ar": "Arabic name",
+      "name_en": "English name",
+      "address_text": "Address",
+      "national_address_short_code": "Short code",
+      "point": "Coordinates",
+      "opening_hours": "Opening hours",
+      "status": "Status",
+      "intake_rule": "Intake rule",
+      "max_attempts": "Maximum delivery attempts",
+      "proof_policy": "Proof of delivery",
+      "reason_codes": "Reason codes",
+      "auto_dispatch": "Auto-dispatch",
+      "second_factor_required": "Second factor required",
+      "allowed_cod_methods": "Cash on delivery methods",
+      "offline_window_hours": "Offline window in hours",
+      "receipt_tolerance_pct": "Receipt tolerance (%)",
+      "adjustment_approval_threshold": "Adjustment approval threshold",
+      "reason": "Reason"
+    }
+  }
+}

@@ -7,6 +7,13 @@ import { DirectionProvider } from '../src/components/direction-provider/directio
 
 afterEach(cleanup);
 
+// jsdom has no ResizeObserver; Radix Switch and Checkbox measure themselves with one (WEB-3).
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 /** Both reading directions: Arabic right to left, English left to right (web §6.3, plan 2.6). */
 export const directions = [
   { locale: 'ar', dir: 'rtl' },

@@ -16,7 +16,21 @@ export type CensusProject = 'ar' | 'ar-390' | 'en';
 export const censusPassword = ['census', 'harbour', 'lantern', 'meadow'].join(' ');
 
 export type CensusRole =
-  'staff' | 'session' | 'owner' | 'factor' | 'enrol' | 'reset' | 'relink' | 'invitee';
+  | 'staff'
+  | 'session'
+  | 'owner'
+  | 'factor'
+  | 'enrol'
+  | 'reset'
+  | 'relink'
+  | 'invitee'
+  // WEB-3: the owner, a viewer and a site-scoped member of the project's own settings account.
+  | 'settings'
+  | 'viewer'
+  | 'sitestaff'
+  // WEB-3 leg 2: the member the census invites and the one the seed leaves invited.
+  | 'member'
+  | 'pending';
 
 export function censusEmail(role: CensusRole, project: CensusProject): string {
   return `census-${role}-${project.replace('-', '')}@census.test`;
@@ -30,6 +44,22 @@ export function censusPhone(purpose: 1 | 2 | 3 | 4, project: CensusProject): str
 }
 
 export const censusAccountNames = { one: 'متجر الرياض', two: 'سوق جدة' } as const;
+
+/** The settings account of each project (WEB-3), so the projects' writes never meet. */
+export const censusSettingsAccounts = {
+  ar: 'متجر الخبر',
+  'ar-390': 'متجر الطائف',
+  en: 'متجر أبها',
+} as const satisfies Record<CensusProject, string>;
+
+/** The invited name of the seed's pending member (apps/api/src/seed/census.ts). */
+export const censusPendingName = 'ليلى الحربي';
+
+/** The seeded sites of each settings account (apps/api/src/seed/census.ts `censusSites`). */
+export const censusSiteNames = {
+  branch: { ar: 'فرع العليا', en: 'Olaya branch' },
+  warehouse: { ar: 'مستودع السلي', en: 'Al Sulay warehouse' },
+} as const;
 
 export function projectOf(name: string): CensusProject {
   if (name !== 'ar' && name !== 'ar-390' && name !== 'en') throw new Error(`project ${name}`);

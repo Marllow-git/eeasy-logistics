@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Config } from '@eeasy-logistics/config';
 import { createCredentialsCipher } from '@eeasy-logistics/config';
-import { verifyPoolRole } from '@eeasy-logistics/db';
+import { createAppPool, verifyPoolRole, withUnitOfWork } from '@eeasy-logistics/db';
 import { createPlatformPool, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { AuditWriter } from '../modules/kernel/audit/audit-writer.js';
 import { Invitations } from '../modules/kernel/auth/invitations.js';
@@ -10,7 +10,7 @@ import { SecondFactorResets } from '../modules/kernel/auth/second-factor-resets.
 import { OutboxWriter } from '../modules/kernel/outbox/outbox-writer.js';
 import { identityStore } from '../modules/kernel/platform/identity.repository.js';
 import { loadPermissionResolver } from '../modules/kernel/platform/roles.repository.js';
-import { CensusIdentitiesRepository } from './census.repository.js';
+import { CensusIdentitiesRepository, CensusSitesRepository } from './census.repository.js';
 
 // The identities of the web census (WEB-2 plan 2.14): `seed:census` writes them into the stack's
 // database through the API's own pieces (the password hasher, the credentials cipher, the
@@ -59,6 +59,10 @@ export const censusAccounts = {
   one: { id: censusId('account-one'), name: 'متجر الرياض', factor: false },
   two: { id: censusId('account-two'), name: 'سوق جدة', factor: false },
   factor: { id: censusId('account-factor'), name: 'بضائع الدمام', factor: true },
+  // WEB-3: one account per project for the settings screens, so the projects' writes never meet.
+  settingsar: { id: censusId('account-settings-ar'), name: 'متجر الخبر', factor: false },
+  settingsar390: { id: censusId('account-settings-ar390'), name: 'متجر الطائف', factor: false },
+  settingsen: { id: censusId('account-settings-en'), name: 'متجر أبها', factor: false },
 } as const;
 
 export type CensusAccountKey = keyof typeof censusAccounts;
@@ -76,6 +80,7 @@ export interface CensusUser {
 /** The users of one project (plan 2.14). */
 export function censusUsers(project: CensusProject): CensusUser[] {
   const locale = project === 'en' ? 'en' : 'ar';
+  const settings = `settings${slug(project)}` as `settings${'ar' | 'ar390' | 'en'}`;
   const user = (
     role: string,
     name: string,
@@ -111,11 +116,68 @@ export function censusUsers(project: CensusProject): CensusUser[] {
     user('relink', 'خالد الزهراني', censusPhone(2, project), [
       { account: 'factor', roles: ['cashier'] },
     ]),
+    // WEB-3: the settings screens on the project's own account: its owner, a viewer (reads the
+    // settings, changes nothing) and a site-scoped member (no settings at all: the 403 page).
+    user('settings', 'عبدالله الشمري', null, [{ account: settings, roles: ['owner'] }]),
+    user('viewer', 'سارة الغامدي', null, [{ account: settings, roles: ['viewer'] }]),
+    user('sitestaff', 'ماجد العنزي', null, [{ account: settings, roles: ['site_staff'] }]),
   ];
 }
 
 /** The email the census invitation goes to (accepted through its Mailpit link). */
 export const censusInvitee = (project: CensusProject) => censusEmail('invitee', project);
+
+/** The settings account of a project (WEB-3). */
+export const censusSettingsAccount = (project: CensusProject): CensusAccountKey =>
+  `settings${slug(project)}` as CensusAccountKey;
+
+/**
+ * WEB-3 leg 2: the member the settings census invites from the members page and who accepts the
+ * mail (`member`), and the member the seed leaves invited for the list's "invitation sent" row
+ * (`pending`, its invitation mailed again on every run).
+ */
+export const censusMemberInvitee = (project: CensusProject) => censusEmail('member', project);
+export const censusPendingMember = (project: CensusProject) => censusEmail('pending', project);
+export const censusPendingName = 'ليلى الحربي';
+
+/** A site of a census settings account (WEB-3 leg 2); `point` latitude and longitude. */
+export interface CensusSite {
+  readonly id: string;
+  readonly kind: 'branch' | 'warehouse' | 'both';
+  readonly nameAr: string;
+  readonly nameEn: string;
+  readonly addressText: string;
+  readonly shortCode: string;
+  readonly point: { readonly lat: number; readonly lng: number } | null;
+  readonly openingHours: readonly { weekday: number; opens: string; closes: string }[];
+}
+
+/** The two sites of a project's settings account: a branch with hours and a point, a warehouse. */
+export function censusSites(project: CensusProject): CensusSite[] {
+  const weekdays = [0, 1, 2, 3, 4];
+  return [
+    {
+      id: censusId(`site-branch-${project}`),
+      kind: 'branch',
+      nameAr: 'فرع العليا',
+      nameEn: 'Olaya branch',
+      addressText: 'طريق العليا، حي العليا، الرياض',
+      shortCode: 'RRRD2929',
+      point: { lat: 24.69384, lng: 46.68512 },
+      openingHours: weekdays.map((weekday) => ({ weekday, opens: '09:00', closes: '21:00' })),
+    },
+    {
+      id: censusId(`site-warehouse-${project}`),
+      kind: 'warehouse',
+      nameAr: 'مستودع السلي',
+      nameEn: 'Al Sulay warehouse',
+      addressText: 'المنطقة الصناعية، حي السلي، الرياض',
+      shortCode: 'RSLA4512',
+      point: null,
+      openingHours: [],
+    },
+  ];
+}
 
 /**
  * The console's census staff (WEB-2 leg 2), one set per project. Each role serves one census check,
@@ -183,6 +245,34 @@ export interface CensusSeedSummary {
   readonly links: number;
 }
 
+/**
+ * The sites of each settings account back to `censusSites` (WEB-3 leg 2), in a tenant unit of
+ * work per account on the elx_app pool (elx_platform may not write core_sites).
+ */
+async function resetCensusSites(config: Config): Promise<void> {
+  const app = createAppPool(
+    { ...config.db, poolSize: { ...config.db.poolSize, app: 1 } },
+    'elx-seed-census-sites',
+  );
+  try {
+    await verifyPoolRole(app.db, 'elx_app');
+    for (const project of censusProjects) {
+      const context = {
+        accountId: censusAccounts[censusSettingsAccount(project)].id,
+        membershipId: null,
+        userId: null,
+        deviceId: null,
+        actingCrossTenant: false,
+      };
+      await withUnitOfWork(app.db, context, (uow) =>
+        new CensusSitesRepository(uow).reset(censusSites(project)),
+      );
+    }
+  } finally {
+    await app.close();
+  }
+}
+
 /** Writes the census identities (see the top of this file). */
 export async function seedCensus(config: Config): Promise<CensusSeedSummary> {
   // The guard holds whoever calls the seed, not only `census-main.ts` (adversary L-4).
@@ -211,6 +301,13 @@ export async function seedCensus(config: Config): Promise<CensusSeedSummary> {
         await repository.putUser(user, passwordHash, censusAccounts);
       }
       await repository.revokeInvitees(invitees, censusAccounts.one.id);
+      // WEB-3 leg 2: the members census invites `member` again; `pending` is invited below.
+      for (const project of censusProjects) {
+        await repository.revokeInvitees(
+          [censusMemberInvitee(project), censusPendingMember(project)],
+          censusAccounts[censusSettingsAccount(project)].id,
+        );
+      }
       await repository.forgetPhones(phones);
       for (const member of staff) {
         // Sealed under the staff row's context, as `platformConfirmTotp` stores a secret.
@@ -246,6 +343,18 @@ export async function seedCensus(config: Config): Promise<CensusSeedSummary> {
         locale: censusProjects[index] === 'en' ? 'en' : 'ar',
       });
     }
+    for (const project of censusProjects) {
+      await invitations.createStaff({
+        accountId: censusAccounts[censusSettingsAccount(project)].id,
+        email: censusPendingMember(project),
+        name: censusPendingName,
+        roles: ['dispatcher'],
+        siteIds: [],
+        invitedBy: null,
+        locale: project === 'en' ? 'en' : 'ar',
+      });
+    }
+    await resetCensusSites(config);
     const resets = new SecondFactorResets({
       store,
       outbox,
@@ -273,7 +382,7 @@ export async function seedCensus(config: Config): Promise<CensusSeedSummary> {
     }
     return {
       users: users.length + staff.length,
-      invitations: invitees.length + platformInvitees.length,
+      invitations: invitees.length + censusProjects.length + platformInvitees.length,
       links: relinks.length,
     };
   } finally {
