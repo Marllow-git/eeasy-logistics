@@ -125,8 +125,17 @@ describe('the location doors over HTTP (DEL-5 item C)', () => {
       FROM del_driver_locations WHERE driver_id = ${driverId}`;
   const headOf = async (driverId: string) =>
     (
-      await owner<{ last_seq: number; lat: number; lng: number; last_client_ts: Date }[]>`
-        SELECT last_seq::int, ST_Y(last_point) AS lat, ST_X(last_point) AS lng, last_client_ts
+      await owner<
+        {
+          last_seq: number;
+          lat: number;
+          lng: number;
+          last_client_ts: Date;
+          last_server_ts: Date;
+        }[]
+      >`
+        SELECT last_seq::int, ST_Y(last_point) AS lat, ST_X(last_point) AS lng, last_client_ts,
+               last_server_ts
         FROM del_driver_location_heads WHERE driver_id = ${driverId}`
     )[0];
 
@@ -169,6 +178,8 @@ describe('the location doors over HTTP (DEL-5 item C)', () => {
       client_ts: newest?.client_ts,
       shift_status: 'active',
     });
+    // The head's state as committed (adversary F3): its database time, not the API's clock.
+    expect(hash.server_ts).toBe(head?.last_server_ts.toISOString());
     const ttl = await redis.ttl(`elx:loc:latest:${driver.accountId}:${driver.driverId}`);
     expect(ttl).toBeGreaterThan(590);
     for (let wait = 0; received.length < 20 && wait < 50; wait += 1) {
@@ -246,6 +257,41 @@ describe('the location doors over HTTP (DEL-5 item C)', () => {
     expect(errorOf((await post(staff, session, pointsEnding(1, 1)).expect(409)).body).code).toBe(
       'shift_not_active',
     );
+  });
+
+  it('keeps the newer latest point when two batches’ Redis writes overtake each other (F3)', async () => {
+    // A client with the offline queue, so the first write waits for the connection.
+    const fanout = new RedisLocationFanout(new Redis(redisUrl));
+    const accountId = uuidv7();
+    const driverId = uuidv7();
+    const key = `elx:loc:latest:${accountId}:${driverId}`;
+    const at = (seconds: number) => new Date(Date.UTC(2026, 10, 2, 8, 0, seconds)).toISOString();
+    const write = (seconds: number, lat: number) =>
+      fanout.publish(
+        accountId,
+        {
+          driverId,
+          lat,
+          lng: 46.6,
+          clientTs: at(seconds),
+          serverTs: at(seconds + 1),
+          shiftStatus: 'active',
+        },
+        [],
+      );
+    try {
+      await write(30, 24.73); // the later batch's write lands first
+      await write(10, 24.71); // the earlier batch's write arrives late: kept out
+      expect(await redis.hgetall(key)).toMatchObject({ client_ts: at(30), lat: '24.73' });
+      await write(30, 24.79); // the same device time: kept out too
+      expect(await redis.hget(key, 'lat')).toBe('24.73');
+      await write(40, 24.74);
+      expect(await redis.hgetall(key)).toMatchObject({ client_ts: at(40), lat: '24.74' });
+      expect(await redis.ttl(key)).toBeGreaterThan(590);
+    } finally {
+      await redis.del(key);
+      fanout.onApplicationShutdown();
+    }
   });
 
   it('accepts a batch with 202 when Redis is down; the head keeps the point', async () => {
