@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { getRelativeURL } from 'next/dist/shared/lib/router/utils/relativize-url';
 import { NextRequest } from 'next/server';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -407,5 +408,25 @@ describe('createSessionProxy (web §3.2)', () => {
     const live = `el_staff_at=${jwt({ exp: now + 600 })}`;
     const signedIn = await proxy(foreign('/sign-in?next=%2Forders', live));
     expect(signedIn.headers.get('location')).toBe('http://localhost:3001/orders');
+  });
+
+  it('reaches the browser as a relative Location on its own host, never on a foreign one', async () => {
+    // Adversary L-2. Next 16.4.3's proxy adapter (`dist/server/web/adapter.js`) parses the proxy's
+    // `Location` with `new NextURL(location)`, which throws on a relative one, and then rewrites a
+    // same-host target with `getRelativeURL(target, requestURL)`: what the browser gets is that.
+    const { proxy } = setup(() => new Response(null, { status: 401 }));
+    const sent = async (host: string) => {
+      const url = `http://${host}/orders`;
+      const response = await proxy(
+        new NextRequest(url, {
+          headers: { 'sec-fetch-dest': 'document', cookie: 'el_staff_rt=r' },
+        }),
+      );
+      return getRelativeURL(response.headers.get('location') ?? '', url);
+    };
+    expect(await sent('localhost:3001')).toBe('/sign-in?next=%2Forders&reason=ended');
+    expect(await sent('evil.example')).toBe(
+      'http://localhost:3001/sign-in?next=%2Forders&reason=ended',
+    );
   });
 });
