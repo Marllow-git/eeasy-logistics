@@ -97,11 +97,38 @@ The outbox, the sync screen and the local read model (DRV-2); the run list, offe
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
 | A | `DRV-1: A foundations` | Jest 51/51 in 7 suites (`session` 10, `api` 7, `domain` 29 incl. the gate table of 11 rows, `scrub` 1, wiring 4 kept; red: the session case "without the lease, the same race revokes the family" shows the failure the lease prevents, green with it); architecture 0 violations (232 modules, four new layer rules plus `driver-pin-never-in-sqlite`); typecheck and lint clean; `packages/i18n` Vitest 70/70 (parity covers `driver`, new `driver.test.ts` 2) | Both languages render: see B (Maestro) |
+| B | `DRV-1: B sign-in, code and account picker` | Maestro on the iOS simulator (iPhone 17, iOS 27.1) and the Android emulator (API 36), dev client against the scratch API (DEL-4 doors, stub OTP): `sign-in` ar 2/2 platforms, en 2/2; `account-picker` ar 2/2 (Android after one re-run: the dev launcher was not ready), en 2/2. Red first: the first device runs failed on "Unmatched route" (protected `/`), a Fabric crash on the immediate RTL reload (iOS), Hermes without `crypto.getRandomValues` and the code input untappable at alpha 0 (iOS); all fixed in this item. Arabic screenshots reviewed: sign-in, code, picker sheet, RTL mirrored, numbers isolated left to right. Jest 51/51, typecheck, lint, architecture clean | 8.2 #2, #3, #9, #10 |
+| C | `DRV-1: C PIN setup, verifier and permissions` | Jest 57/57 (`pin-verifier` 6 new: ADR-0034 parameters, unarmed until armed, fresh salt, lock at five, reset and re-arm, wipe); architecture rule `driver-pin-never-in-sqlite`. Maestro `pin-setup` ar 2/2 (Android after one re-run, launcher), en 2/2; `permissions` ar 2/2, en 2/2 (iOS after the flow asked only when the OS still asks). Red first: the first PIN OTP met the 60 s cooldown (`429`), fixed by the wait-and-send step. Arabic screenshots reviewed: permissions, shell; the PIN screens are black by design (8.3) | 8.2 #4 to #7 |
 
 ### 8.1 Deviations
 
+- **Skills and documents (2026-11-02):** Expo plugin 1.13.9 skills `expo-overview`, `expo-router`, `expo-native-ui`, `expo-ui`, `expo-data-fetching`, `expo-dev-client`; SDK 58 (`expo` 58.0.22, RN 0.88.1, managed, dev client); the SDK 58 pages were not fetched beyond the skills (the installed packages' types were the reference). Context7 `/margelo/react-native-quick-crypto` (argon2 API, Expo plugin) on 2026-11-02.
+- **Argon2 module (§7 #2):** `react-native-quick-crypto` 1.1.9 (Margelo, Nitro module, published 2026-10-26, OpenSSL's Argon2 with Node's `crypto.argon2` signature, Expo config plugin) with `react-native-nitro-modules` 0.37.1 and `react-native-quick-base64` 3.0.1. Not an Expo Modules API wrapper of libsodium as 2.6 expected; chosen because it is maintained for this RN line and lets Jest run the identical call on Node 24's `crypto.argon2Sync`. `react-native-libsodium` 1.7.0 (last release 2026-02) was the alternative.
+- **Shared seams:** `packages/contracts/src/http.ts` one cast in `createSessionFetcher` (React Native's two `fetch` overloads made the driver typecheck fail on it; no behaviour change). `packages/i18n` gains the `./driver` entry (`src/driver.ts`, `{ar,en}/driver.json`, Vitest `driver.test.ts`); `messages.ts` untouched, so the web bundles never load the namespace. `packages/config`: nothing (no PostHog host variable for the driver; 8.2).
+- **Root files:** `pnpm-workspace.yaml` `minimumReleaseAgeExclude` for the Expo 58 patch train of 2026-10-31 the lockfile already pinned (expo, expo-router, @expo/*, expo-sqlite 58.0.15, expo-dev-client/-launcher 58.0.18, expo-updates 58.0.20: a JS/native skew of expo-sqlite crashed the app at start); remove after 2026-11-04. `.gitignore` ignores `apps/driver/{ios,android}/` (prebuild output, managed app).
+- **API seed:** not changed. The two drivers (one phone on Seed Account A and B, one on A) are planted by `apps/driver/maestro/fixtures/plant-drivers.sql` on the scratch database after `seed`, as `apps/api/test/integration/driver-fixtures.ts` plants them; no API file touched.
+- **Device tools:** the session had no device tools (`device_list` was not available), so the iOS simulator (own `drv1-iphone-17`) and the Android emulator were booted with `simctl boot`/`emulator`, the builds installed with `simctl install`/`adb install`, `adb reverse` for the ports, and every interaction ran through Maestro, the project's test runner.
+
 ### 8.2 Notes
 
+1. **Layers and the UI exception:** UI may import `src/platform/permissions.ts` only (an OS prompt is UI); `expo-screen-capture` is called from the PIN screen directly. Rules in `.dependency-cruiser.cjs` (`driver-ui-not-on-adapters`, `-platform-…`, `-sync-below-ui`, `-domain-is-pure`, `driver-pin-never-in-sqlite`).
+2. **Entry route:** `app/index.tsx` (unprotected) redirects to the gate's group; the old `(app)/index` became `(app)/home` (a protected `/` rendered "Unmatched route").
+3. **Account picker** is a `formSheet` route `(auth)/account`, not a kit `Sheet` component; the kit has no `Sheet` yet.
+4. **Permissions step done** is kept in plain storage (`setup.permissions_done`) so "later" on every permission can leave the step; the choices stay in the OS. Cleared on any session end.
+5. **Locked PIN at arming:** `423` wipes the verifier and shows the notice; the gate moves on only after "continue without cash".
+6. **First PIN OTP:** the sign-in code went out seconds before, so the server's 60 s cooldown answers `429`; the OTP step shows the wait and a "send the code" button. A server-side exemption for this purpose is the lead's call.
+7. **Push token:** `getExpoPushTokenAsync` needs `extra.eas.projectId`; none exists in wave 1, so registration is wired and skips until an EAS project is linked (OPS).
+8. **PostHog host** is the EU constant the web uses; the driver's public config has no host variable (a PLAT-4 addition if the lead wants one).
+9. **Language for Maestro:** flows set `en` through the in-app switch, not a launch argument (reading launch arguments needs native code).
+10. **iOS dev build quirks:** an immediate reload in the first effect crashed Fabric (reload delayed 300 ms); the first JS touch after the direction reload is dropped (the flow taps the switch twice when needed). Both to recheck on a release build.
+11. **Scrubbing:** any run of four or more digits in a Sentry message becomes `[number]` (phones, codes, PINs), which also hides digit runs inside ids in free text; ids in tags and `user.id` stay.
+12. **Version:** `app.json` keeps `0.0.0`; the soft notice compares `x.y.z` and ignores anything else.
+
 ### 8.3 Not done here
+
+- Leg 2 (items D, E): tabs, settings, change PIN, sign-out and clearing UI, the suspended banner and forced sign-out notice, driver-app §7.1/§13 amendments, the release note.
+- **Android keyboard:** under edge-to-edge the footer button stays under the keyboard (the Android inset listener did not lift it); the flows hide the keyboard first. A driver must close the keyboard to reach "send code" or "verify" (the phone field also submits from the keyboard). Needs `react-native-keyboard-controller` (the skill's pick), a new native module: proposed for leg 2.
+- Screenshots of the PIN screens (enter, confirm, code) are black on both platforms because `expo-screen-capture` blocks them (the §5.2 rule working); those screens were checked through Maestro's assertions only, not by eye.
+- Not run: a second phone binding and the third-device refusal on devices (the door behaviour is DEL-4's, tested there; the screen's message is covered by `verifyErrorMessage`), offline cold start, a release build.
 
 ## 9. Lead review and adversary
