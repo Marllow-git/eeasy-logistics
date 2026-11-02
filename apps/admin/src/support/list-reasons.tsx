@@ -10,7 +10,8 @@ import { headerReasonLength, headerReasonMax, supportHeaders } from './reason-st
 // that account's data through the door, so they ask the reason first, keyed to the account. The
 // contract also requires `X-Support-Reason` on both lists without an account (8.2: no door, no
 // audit row then, but the header is declared required), so the platform-wide view asks once too,
-// keyed `platform`. Held in this tab's memory only (§3.5's letter): kept while the tab moves
+// keyed `platform`, and its dialog says the reason is not recorded (plan 8.3: a contract change
+// making the header optional without `account_id` removes this prompt). Held in this tab's memory only (§3.5's letter): kept while the tab moves
 // between the outbox and the audit log, gone on a reload and on sign-out (`clearListReasons`,
 // called by the janitor). The account routes keep theirs in `sessionStorage` (support-reason.tsx).
 
@@ -93,7 +94,9 @@ export function AccountReasonDialog({
         if (!open && !confirmed.current) onCancel();
       }}
       title={t('title', { name: accountId === undefined ? t('all_accounts') : accountLabel })}
-      description={t('description')}
+      // The platform-wide lists send the header but no door runs, so nothing records the reason
+      // (adversary fix round 1, L): the copy says so.
+      description={t(accountId === undefined ? 'description_platform' : 'description')}
       label={t('label')}
       tone="primary"
       confirmLabel={t('confirm')}

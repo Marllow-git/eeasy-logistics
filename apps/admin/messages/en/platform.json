@@ -255,6 +255,7 @@
   "filter_gate": {
     "title": "Why are you reading the data of {name}?",
     "description": "Every read of this account's data is recorded with this reason in the audit log. It stays with this tab until you reload the page or sign out.",
+    "description_platform": "The platform console requires a reason to list every account. This reason is not recorded in the audit log; it is kept for this tab only, until you reload the page or sign out.",
     "label": "Support reason",
     "confirm": "Read the account's data",
     "all_accounts": "every account"
