@@ -3,7 +3,7 @@ import type { DynamicModule, OnApplicationShutdown } from '@nestjs/common';
 import { Global, Logger, Module } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { OUTBOX_QUEUES, OutboxQueues } from './outbox/queues.js';
-import { CURSOR_CODEC, CursorCodec, cursorHmacKey } from './audit/cursor.js';
+import { CURSOR_CODEC, CursorCodec, cursorHmacKey } from './contract/list-page.js';
 import { AccessTokenVerifier } from './auth/access-token.js';
 import { PrincipalResolver } from './auth/principal.js';
 import { IDEMPOTENCY_HMAC_KEY } from './idempotency/idempotency.interceptor.js';

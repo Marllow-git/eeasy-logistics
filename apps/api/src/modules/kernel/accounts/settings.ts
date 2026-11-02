@@ -1,3 +1,4 @@
+import { oneLineTextProblem } from '../contract/text-rules.js';
 import type { FieldProblem } from '../errors/api-exception.js';
 import { canonicalJson } from '../idempotency/request-hash.js';
 
@@ -45,17 +46,6 @@ export function effectiveSettings(stored: unknown): Record<string, unknown> {
 export const maxReasonCodes = 100;
 const reasonCodePattern = /^[a-z0-9_]{2,40}$/;
 const maxLabelLength = 80;
-/** CR, LF, NEL, LINE SEPARATOR, PARAGRAPH SEPARATOR: a label stays on one line. */
-const lineBreak = new RegExp(`[\r\n${String.fromCodePoint(0x85, 0x2028, 0x2029)}]`);
-
-function labelProblem(pointer: string, value: unknown): FieldProblem | undefined {
-  if (typeof value !== 'string') return { pointer, code: 'invalid' };
-  const length = Array.from(value).length;
-  if (length === 0) return { pointer, code: 'too_short' };
-  if (length > maxLabelLength) return { pointer, code: 'too_long' };
-  if (lineBreak.test(value)) return { pointer, code: 'invalid' };
-  return undefined;
-}
 
 /**
  * The rules of plan 2.3 beyond the contract's schema, for the fields of `patch`: at most 100 reason
@@ -79,7 +69,7 @@ export function settingsProblems(patch: SettingsDocument): FieldProblem[] {
       }
       if (typeof code === 'string') seen.add(code);
       for (const label of ['label_ar', 'label_en'] as const) {
-        const problem = labelProblem(`${at}/${label}`, reason[label]);
+        const problem = oneLineTextProblem(`${at}/${label}`, reason[label], maxLabelLength);
         if (problem !== undefined) problems.push(problem);
       }
     });

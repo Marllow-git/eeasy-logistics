@@ -15,6 +15,8 @@ import { ApiExceptionFilter } from './errors/exception.filter.js';
 import { OutboxWriter } from './outbox/outbox-writer.js';
 import { PlatformOutboxController } from './outbox/platform-outbox.controller.js';
 import { RequestIdMiddleware } from './request/request-id.js';
+import { SiteUseChecks } from './sites/site-use.js';
+import { SitesController } from './sites/sites.controller.js';
 import { ContentTypeGuard } from './request/content-type.guard.js';
 import { WebClientGuard } from './request/web-client.guard.js';
 import { RequestTelemetryInterceptor } from './telemetry/request-telemetry.interceptor.js';
@@ -34,12 +36,14 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
   // The audit log reads (PLAT-7): listAuditLog, platformListAccountAudit, platformListAudit; the
   // platform outbox operations (PLAT-8): list, read and replay rows, list the consumers.
   // PLAT-12: the staff surface's account doors (getAccount, getAccountSettings,
-  // updateAccountSettings).
+  // updateAccountSettings) and site doors (listSites, createSite, getSite, updateSite,
+  // deactivateSite, activateSite).
   controllers: [
     AuditLogController,
     PlatformAuditLogController,
     PlatformOutboxController,
     AccountController,
+    SitesController,
   ],
   providers: [
     IdempotentRoutesCheck,
@@ -66,8 +70,10 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
     { provide: AUDIT_SINK, useClass: AuditWriter },
     // core_outbox (PLAT-8): every side effect leaves the business transaction as a row.
     OutboxWriter,
+    // PLAT-12 plan 2.6: the site in-use checks DEL and WMS register at module init (none in wave 0).
+    { provide: SiteUseChecks, useValue: new SiteUseChecks() },
   ],
-  exports: [AUDIT_SINK, OutboxWriter],
+  exports: [AUDIT_SINK, OutboxWriter, SiteUseChecks],
 })
 export class KernelModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

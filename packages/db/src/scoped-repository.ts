@@ -119,6 +119,17 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
     return rows[0]?.locked === true;
   }
 
+  /**
+   * Takes a transaction-scoped advisory lock on `<account>/<name>`, waiting for the transaction
+   * that holds it: writes of one account that check a count before they insert (a limit) run one
+   * after the other, each seeing the rows the previous one committed.
+   */
+  protected async transactionLock(name: string): Promise<void> {
+    await this.#tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${this.accountId}/${name}`}, 0))`,
+    );
+  }
+
   protected async updateWhere(
     values: TenantUpdate<TTable>,
     condition?: SQL,

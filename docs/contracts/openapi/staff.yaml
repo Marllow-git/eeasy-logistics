@@ -438,7 +438,7 @@ paths:
       parameters: [{name: site_id, in: path, required: true, schema: {type: string, format: uuid}}, {$ref: './components.yaml#/components/parameters/IdempotencyKey'}, {$ref: './components.yaml#/components/parameters/ElClient'}]
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: './components.yaml#/components/schemas/Site'}}}}
-        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: idempotency_key_reused.'}
+        '422': {$ref: './components.yaml#/components/responses/Unprocessable', description: 'Codes: limit_exceeded, idempotency_key_reused.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /audit-log:
     get:

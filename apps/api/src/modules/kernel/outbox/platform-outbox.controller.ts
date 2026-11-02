@@ -9,7 +9,7 @@ import { findContext, findPlatformContext, getContext, getUnitOfWork } from '@ee
 import { Controller, Get, HttpCode, Inject, Logger, Optional, Post } from '@nestjs/common';
 import type { AuditSink } from '../audit/audit-sink.js';
 import { AUDIT_SINK } from '../audit/audit-sink.js';
-import { CURSOR_CODEC, CursorCodec } from '../audit/cursor.js';
+import { CURSOR_CODEC, CursorCodec } from '../contract/list-page.js';
 import type { ContractInput } from '../contract/contract-pipe.js';
 import { Input, Operation } from '../contract/contract-pipe.js';
 import { ApiException } from '../errors/api-exception.js';

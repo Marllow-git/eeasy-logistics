@@ -1,6 +1,10 @@
 // Strict operation schemas, the operationId map and the seeded mocks (PLAT-15 plan 2.12, A-17).
 import { describe, expect, it } from 'vitest';
-import { bundleOperationIds, mapOperationSchemas } from '../scripts/operations.ts';
+import {
+  bundleOperationIds,
+  inheritedReadOnlyBodyFields,
+  mapOperationSchemas,
+} from '../scripts/operations.ts';
 import { surfaces } from '../scripts/paths.ts';
 import * as driverMocks from '../src/mocks/driver.ts';
 import * as recipientMocks from '../src/mocks/recipient.ts';
@@ -17,6 +21,8 @@ const bySurface = {
   driver: driverOperations,
   recipient: recipientOperations,
 };
+
+const uuid = '0193a5c4-7e1f-7c3a-9b2d-4f6e8a1c2d3e';
 
 const provision = {
   name: 'Acme Riyadh',
@@ -48,6 +54,26 @@ describe('operationSchemas', () => {
     expect(body.safeParse({ ...provision, owner: { ...provision.owner, role: 'x' } }).success).toBe(
       false,
     );
+  });
+
+  it('takes no read-only field in a body, also those inherited through allOf (PLAT-12 plan 2.5)', () => {
+    const { body } = staffOperations.createSite;
+    const site = { kind: 'branch', name_ar: 'فرع العليا', name_en: 'Olaya branch' };
+    expect(body.safeParse(site).success).toBe(true);
+    for (const field of ['id', 'created_at', 'updated_at', 'status']) {
+      const value = field === 'status' ? 'active' : field === 'id' ? uuid : '2026-11-02T10:00:00Z';
+      const result = body.safeParse({ ...site, [field]: value });
+      expect(result.success, field).toBe(false);
+      expect(result.error?.issues[0]?.code, field).toBe('unrecognized_keys');
+    }
+    // The response still carries them.
+    const created = { ...site, id: uuid, created_at: '2026-11-02T10:00:00Z', status: 'active' };
+    expect(staffOperations.createSite.responses['201'].safeParse(created).success).toBe(true);
+    expect(inheritedReadOnlyBodyFields('staff').createSite).toEqual([
+      'created_at',
+      'id',
+      'updated_at',
+    ]);
   });
 
   it('does not coerce the body', () => {
