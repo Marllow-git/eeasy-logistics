@@ -42,16 +42,27 @@ export class DriverSessionsService {
 
   /**
    * `driverVerifyOtp` (plan 2.7): the device's fields checked (`400`), the code and the driver
-   * (`401 otp_invalid`), the device bound in the driver's account (`409 device_limit_reached`), then
+   * (`401 otp_invalid`; `409 account_choice_required` when the phone drives for several accounts
+   * and the body names none, adversary H-2), the device bound in the driver's account (`409 device_limit_reached`), then
    * the session on the device row.
    */
   async signIn(
-    input: { readonly phone: string; readonly code: string; readonly device: DeviceInput },
+    input: {
+      readonly phone: string;
+      readonly code: string;
+      readonly device: DeviceInput;
+      /** The account chosen after `409 account_choice_required` (adversary H-2). */
+      readonly account_id?: string | undefined;
+    },
     facts: RequestFacts,
   ): Promise<DriverSessionStarted> {
     const problems = deviceProblems(input.device);
     if (problems.length > 0) throw new ApiException('validation_failed', { fields: problems });
-    const signedIn = await this.deps.signIn.verifyCode(input, facts);
+    const { phone, code, account_id: accountId } = input;
+    const signedIn = await this.deps.signIn.verifyCode(
+      accountId === undefined ? { phone, code } : { phone, code, accountId },
+      facts,
+    );
     const bound = await this.deps.signIn.inAccount(signedIn, facts.requestId, () =>
       this.bind(signedIn, input.device, facts),
     );

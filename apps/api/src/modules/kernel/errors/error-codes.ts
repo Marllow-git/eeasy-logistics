@@ -32,6 +32,7 @@ export const errorStatus = {
   second_factor_already_enrolled: 409,
   otp_invalid: 401,
   device_limit_reached: 409,
+  account_choice_required: 409,
   device_revoked: 401,
   app_update_required: 426,
   cash_pin_invalid: 403,

@@ -53,9 +53,9 @@ describe('driver sessions over HTTP (DEL-4 item E)', () => {
       .set('Accept-Language', 'en')
       .send({ refresh_token: refreshToken, device_id: deviceId });
   const bearer = (session: DriverSession) => `Bearer ${session.tokens?.access_token ?? ''}`;
-  const signedIn = async (phone: string, device: DeviceBody = newDevice()) => ({
+  const signedIn = async (phone: string, device: DeviceBody = newDevice(), accountId?: string) => ({
     device,
-    session: await signIn(http, owner, config, phone, device),
+    session: await signIn(http, owner, config, phone, device, accountId),
   });
   const familyRevoked = async (session: DriverSession) =>
     (
@@ -153,11 +153,10 @@ describe('driver sessions over HTTP (DEL-4 item E)', () => {
   it("suspends a driver in one account without ending the person's session in another (ruling 8.2 #23)", async () => {
     const inA = await plantDriver(owner);
     const inB = await plantDriver(owner, { userId: inA.userId, phone: inA.phone });
-    // The newest changed driver row signs in first: B, then A once it is touched.
-    const b = await signedIn(inA.phone);
+    // The phone drives for two accounts: each sign-in names its account (adversary H-2).
+    const b = await signedIn(inA.phone, newDevice(), inB.accountId);
     expect(b.session.driver?.id).toBe(inB.driverId);
-    await owner`UPDATE del_drivers SET updated_at = now() WHERE id = ${inA.driverId}`;
-    const a = await signedIn(inA.phone);
+    const a = await signedIn(inA.phone, newDevice(), inA.accountId);
     expect(a.session.driver?.id).toBe(inA.driverId);
     const [before] = await owner<{ v: number }[]>`
       SELECT token_version AS v FROM core_users WHERE id = ${inA.userId}`;

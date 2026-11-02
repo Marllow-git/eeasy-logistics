@@ -123,6 +123,7 @@ export async function verifyOn(
   config: Config,
   phone: string,
   device: DeviceBody,
+  accountId?: string,
 ): Promise<request.Response> {
   await requestCode(http, owner, phone);
   const code = await codeOf(owner, config, phone);
@@ -130,7 +131,7 @@ export async function verifyOn(
     .post('/v1/driver/auth/otp/verify')
     .set('X-Forwarded-For', driverAddress())
     .set('Accept-Language', 'en')
-    .send({ phone, code, device });
+    .send({ phone, code, device, ...(accountId === undefined ? {} : { account_id: accountId }) });
 }
 
 /** A signed-in driver session on `device` (`200` expected). */
@@ -140,8 +141,9 @@ export async function signIn(
   config: Config,
   phone: string,
   device: DeviceBody = newDevice(),
+  accountId?: string,
 ): Promise<DriverSession> {
-  const response = await verifyOn(http, owner, config, phone, device);
+  const response = await verifyOn(http, owner, config, phone, device, accountId);
   if (response.status !== 200) {
     throw new Error(`verify answered ${response.status}: ${JSON.stringify(response.body)}`);
   }

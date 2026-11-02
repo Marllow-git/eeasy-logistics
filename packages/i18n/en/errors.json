@@ -25,6 +25,7 @@
     "reauthentication_required": "Confirm your password to continue.",
     "second_factor_already_enrolled": "A second factor is already set up.",
     "otp_invalid": "The code is incorrect or has expired.",
+    "account_choice_required": "Choose the account to sign in to.",
     "device_limit_reached": "The maximum number of devices is already in use.",
     "device_revoked": "This device has been signed out.",
     "app_update_required": "Update the app to continue.",
