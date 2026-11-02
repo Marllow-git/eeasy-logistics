@@ -126,8 +126,15 @@ describe('the driver cash PIN over HTTP (DEL-4 item F)', () => {
     const wrong = await setPin(session, { pin: '2222', current_pin: '9999' }).expect(403);
     expect(errorOf(wrong.body).code).toBe('cash_pin_invalid');
     expect((await pinState(driver.driverId))?.failures).toBe(1);
-    // A code does not stand in for the current PIN once one is set.
+    // A code does not stand in for the current PIN once one is set (not counted: no PIN sent).
     await setPin(session, { pin: '2222', otp_code: '123456' }).expect(403);
+    expect((await pinState(driver.driverId))?.failures).toBe(1);
+    // The refusal committed the count and gave the key up (adversary H-1): the same key and body
+    // run again (counted again), never a stored replay or `409 idempotency_in_progress`.
+    const key = nextKey();
+    await setPin(session, { pin: '2222', current_pin: '8888' }, key).expect(403);
+    await setPin(session, { pin: '2222', current_pin: '8888' }, key).expect(403);
+    expect((await pinState(driver.driverId))?.failures).toBe(3);
     await setPin(session, { pin: '2222', current_pin: '1111' }).expect(204);
     expect((await pinState(driver.driverId))?.failures).toBe(0);
     await verifyPin(session, '2222').expect(204);
@@ -214,5 +221,85 @@ describe('the driver cash PIN over HTTP (DEL-4 item F)', () => {
     const [kept] = await owner<{ push_token: string | null }[]>`
       SELECT push_token FROM del_driver_devices WHERE id = ${session.device?.id ?? ''}`;
     expect(kept?.push_token).toBe('ExponentPushToken[kept]');
+  });
+});
+
+// Adversary H-1: a PIN call holds at most one app connection. With a pool of four, six parallel
+// calls on one token complete; before the fix each request's unit of work held a connection while
+// `PinCheck` waited for a second, and the pool starved (every tenant's requests hung).
+describe('the cash PIN doors under a small app pool (DEL-4 adversary H-1)', () => {
+  const poolSize = 4;
+  const small = integrationConfig({
+    AUTH_SIGNING_KEY_ID: signing.keyId,
+    AUTH_SIGNING_KEY: signing.key,
+    CREDENTIALS_KEYS: `cash-pin-pool:${randomBytes(32).toString('base64')}`,
+    CREDENTIALS_ACTIVE_KEY_ID: 'cash-pin-pool',
+    TRUST_PROXY_HOPS: '1',
+    DATABASE_POOL_SIZE_APP: String(poolSize),
+  });
+  let staff: StaffApp;
+  let owner: postgres.Sql;
+  const http = () => staff.http();
+  const bearer = (session: DriverSession) => `Bearer ${session.tokens?.access_token ?? ''}`;
+
+  beforeAll(async () => {
+    owner = connectAs('owner', small);
+    staff = await startStaffApp(small, owner);
+  });
+
+  afterAll(async () => {
+    await staff?.close();
+    await owner.end();
+  });
+
+  const withPin = async (pin: string) => {
+    const driver = await plantDriver(owner);
+    const session = await signIn(http, owner, small, driver.phone, newDevice());
+    await requestCode(http, owner, driver.phone);
+    await http()
+      .put('/v1/driver/cash-pin')
+      .set('Authorization', bearer(session))
+      .set('X-Forwarded-For', driverAddress())
+      .set('Idempotency-Key', nextKey())
+      .send({ pin, otp_code: await codeOf(owner, small, driver.phone) })
+      .expect(204);
+    return { driver, session };
+  };
+  const failuresOf = async (driverId: string) =>
+    (
+      await owner<{ failures: number; locked: boolean }[]>`
+        SELECT cash_pin_failures AS failures, cash_pin_locked_at IS NOT NULL AS locked
+        FROM del_drivers WHERE id = ${driverId}`
+    )[0];
+
+  it(`answers ${poolSize + 2} parallel PIN checks on one token`, { timeout: 20_000 }, async () => {
+    const { driver, session } = await withPin('4821');
+    const calls = Array.from({ length: poolSize + 2 }, () =>
+      http()
+        .post('/v1/driver/cash-pin/verify')
+        .set('Authorization', bearer(session))
+        .set('X-Forwarded-For', driverAddress())
+        .send({ cash_pin: '0000' })
+        .then((response) => response.status),
+    );
+    const statuses = (await Promise.all(calls)).sort();
+    expect(statuses).toEqual([403, 403, 403, 403, 403, 423]);
+    expect(await failuresOf(driver.driverId)).toEqual({ failures: 5, locked: true });
+  });
+
+  it(`answers ${poolSize + 2} parallel PIN changes on one token`, { timeout: 20_000 }, async () => {
+    const { driver, session } = await withPin('4821');
+    const calls = Array.from({ length: poolSize + 2 }, () =>
+      http()
+        .put('/v1/driver/cash-pin')
+        .set('Authorization', bearer(session))
+        .set('X-Forwarded-For', driverAddress())
+        .set('Idempotency-Key', nextKey())
+        .send({ pin: '1357', current_pin: '0000' })
+        .then((response) => response.status),
+    );
+    const statuses = (await Promise.all(calls)).sort();
+    expect(statuses).toEqual([403, 403, 403, 403, 403, 423]);
+    expect(await failuresOf(driver.driverId)).toEqual({ failures: 5, locked: true });
   });
 });
