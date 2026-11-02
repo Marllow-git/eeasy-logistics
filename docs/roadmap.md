@@ -27,7 +27,7 @@ Updated by the lead at every order close (handbook 01 stage 9) and read with the
 | CHORE-3 timestamp migration names and parallel-order migrations | merged | #116 | 2026-11-02 |
 | PLAT-13 provisioning, rollout and suspension | merged (two adversary runs, fixes in) | #104 | 2026-11-02 |
 | WEB-3 merchant settings screens | merged | #109 | 2026-11-02 |
-| DEL-4 drivers, devices and driver auth | built; adversary fix round 1 (three highs) in progress | #114 | 2026-11-02 |
+| DEL-4 drivers, devices and driver auth | merged (two adversary runs, three fix rounds; migration `20261102122929_del_drivers`; `driverVerifyOtp` gains `account_id`) | #114 | 2026-11-02 |
 | OPS-1 host, registry and staging | waits on the owner's go (Q-10, Q-12); the wave 0 exit criteria need it | – | – |
 | WEB-4 platform console screens | registered (#121); leg 1 building | – | 2026-11-02 |
 
