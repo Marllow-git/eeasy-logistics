@@ -9,6 +9,8 @@ import { ApiException } from '../../kernel/public/index.js';
 import type { DriverDeviceRow, DriverRow } from '../drivers/drivers.repository.js';
 import { DriverDevicesRepository, DriversRepository } from '../drivers/drivers.repository.js';
 import { tokenDriver } from '../drivers/token-driver.js';
+import type { ShiftRow } from '../shifts/shifts.repository.js';
+import { ShiftsRepository } from '../shifts/shifts.repository.js';
 import type { MinAppVersions } from './app-version.guard.js';
 import { pushTokenProblem } from './device-input.js';
 
@@ -20,6 +22,8 @@ export interface DriverSelf {
   readonly driver: DriverRow;
   readonly person: DriverPerson;
   readonly device: DriverDeviceRow;
+  /** The driver's live shift (DEL-5 plan 2.4), or undefined off shift. */
+  readonly currentShift: ShiftRow | undefined;
   readonly proofPolicy: Readonly<Record<string, unknown>>;
   readonly minAppVersion: MinAppVersions;
 }
@@ -35,7 +39,7 @@ export class DriverSelfService {
 
   /**
    * `driverGetMe` (plan 2.8): the token's driver, this device, the account's proof policy and the
-   * minimum app versions. The current shift and the cash figures are DEL-5's and DEL-8's.
+   * minimum app versions, the live shift (DEL-5). The cash figures are DEL-8's.
    */
   async me(): Promise<DriverSelf> {
     const { driver, device } = await this.current();
@@ -48,6 +52,7 @@ export class DriverSelfService {
       driver,
       person,
       device,
+      currentShift: await new ShiftsRepository(getUnitOfWork()).live(driver.id),
       proofPolicy: account.proofPolicy,
       minAppVersion: this.deps.minAppVersion,
     };

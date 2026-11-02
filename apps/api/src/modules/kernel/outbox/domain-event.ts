@@ -27,6 +27,10 @@ export const domainEventTypes = [
   'delivery.driver.created',
   // PLAT-13: the notice mail of a platform user's TOTP reset (a kernel effect, no link).
   'core.platform_staff.totp_reset',
+  // DEL-5 plan 2.9: shift events for the dispatch board (contracts README §6) and DEL-6's offers;
+  // ids and times only, never a position (ADR-0028).
+  'delivery.shift.started',
+  'delivery.shift.ended',
 ] as const;
 export type DomainEventType = (typeof domainEventTypes)[number];
 

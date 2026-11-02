@@ -96,6 +96,7 @@ The SSE streams and the polling twins' event framing (DEL-6, which subscribes to
 | Item | Commit | Tests (red, then green) | Interpretation |
 |---|---|---|---|
 | A | see `git log` (`DEL-5: A`) | unit `shift-machine.test.ts` 4/4 (new module; red = module absent); integration `ELX_RLS=on` `tenancy` + `shifts-locations-table` (new): red `tenancy` 1 failed / 14 without the three `globalUniqueIndexes` rows, green 2 files 18/18; `drizzle-kit generate` twice: second "No schema changes"; `migrate` twice on `elx_del5_scratch` (`ELX_RLS=on`): applied 21, then "Nothing to migrate"; typecheck, eslint, Prettier clean | 8.2 #1 (grants), #2 (globally unique keys) |
+| B | see `git log` (`DEL-5: B`) | unit `shift-input.test.ts` 5/5 (new; shifts unit 9/9); integration `ELX_RLS=on` `shifts.http` (new): red 7 failed / 7 with the two shift controllers unregistered, green 7/7; baseline `tenancy`, `shifts-locations-table`, `shifts.http`, `drivers.http`, `driver-auth.http`, `features.http`: 6 files 57/57 (own WhatsApp stub on 8080 and Mailpit on 1025/8025); typecheck, eslint, Prettier clean | 8.2 #3 (refusal codes), #4 (audit actor, events) |
 
 ### 8.1 Deviations
 
@@ -103,6 +104,8 @@ The SSE streams and the polling twins' event framing (DEL-6, which subscribes to
 
 1. **Grants (2.1).** All four tables: elx_app CRUD, elx_platform SELECT only (the plan names shifts; I applied the same to the ring, heads and trails). Leg 2's jobs therefore scan on the platform pool and write per account in elx_app transactions (the worker's app pool, as the internal-event consumers do); a job that must write cross-tenant needs a grant in its own migration.
 2. **Keys without `account_id`.** `globalUniqueIndexes` gains `del_driver_shifts (driver_id)` (the live partial index), `del_driver_locations (driver_id, slot)` and `del_driver_location_heads (driver_id)`: a driver id belongs to one account. `pii:driver` on `point`, `last_point`, `path`. The shift table adds `stale_alerted_at` (2.8) and CHECKs `started_at` set once started, `ended_at` set iff `ended`.
+3. **Refusal codes (2.3, 2.4).** A body id not of the account is `400` at its pointer (`invalid`, DEL-1 8.2 #4); an inactive site `409 invalid_transition`; a non-`active` driver or an inactive vehicle on `planShift` `422 driver_not_eligible` with the reason; an overlap `409` with `shift_id`, `current_status`, `version` and the window. On the driver doors `driver_suspended` is shadowed by `tokenDriver()`'s `401 token_invalid` (DEL-4 M-2 runs first); the reason stays in the typed list and its unit test.
+4. **Audit and events (2.9).** Driver starts and ends are audited with `actor_type driver`, `actor_id` = the driver row id (DEL-4's driver doors used `user` + person id); pause and resume write no audit row and no event (2.9 names neither). `delivery.shift.started` carries `shift_id`, `driver_id`, `site_id`, `vehicle_id`, `started_at`, `ad_hoc`; `.ended` `ended_at`, `ended_by`, optional `reason`; aggregate `driver_shift`.
 
 ### 8.3 Not done here
 
