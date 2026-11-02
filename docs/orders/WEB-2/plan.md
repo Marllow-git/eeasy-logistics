@@ -89,11 +89,31 @@ Edge routing in production (OPS-1); the `Can` component and route manifest (WEB-
 
 ## 8. Executor notes (filled by the executor)
 
-### 8.0 Counts
+### 8.0 Progress
 
-### 8.1 Deviations
+| Item | Commit | Tests (counts) | Interpretation |
+|---|---|---|---|
+| A | this commit (`WEB-2: A config, rewrites, server client, proxy and headers`) | config Vitest 9 files 172 tests (new `web-server.test.ts`, public and env-example extended); ui Vitest 146 (new `session-proxy.test.ts`: 20, exp decoder, `next` validator, CSP, report reducer, the proxy against a fake API); web and admin `test:architecture` green (two new web rules, one admin rule); census build with `API_INTERNAL_URL`: `curl` shows the CSP with a nonce, `Reporting-Endpoints`, `X-Frame-Options`, `Permissions-Policy`, `Referrer-Policy` (`no-referrer` on `/track/*`), `/v1/platform/*` 404 from apps/web; the existing census (39 tests: 35 passed, 4 skipped as before) green under the CSP | 8.2 #1 to #10 |
 
-### 8.2 Notes
+### 8.1 Skills, documents and versions consulted
+
+- Vercel plugin 0.50.0, loaded 2026-11-02: `vercel:knowledge-update` (document dated 2026-09-18), `vercel:nextjs` (file conventions: Middleware renamed Proxy in v16), `vercel:react-best-practices`, `vercel:shadcn`.
+- Next.js 16.4.3 as installed, its bundled documentation under `node_modules/next/dist/docs/` read 2026-11-02: `03-api-reference/03-file-conventions/proxy.md` (the matcher export is `config`; Node.js runtime by default) and `02-guides/content-security-policy.md` (nonce in the request's `Content-Security-Policy` and `x-nonce` headers; dynamic rendering needed). `dist/build/analysis/get-page-static-info.js` confirms the build reads `config` from `proxy.ts`.
+- Documents: AGENTS.md; `docs/orders/README.md`; this plan; `docs/references/design/WEB-2.md`; `docs/architecture/web.md` §1, §2.2, §3 (all), §4, §5, §11; root `README.md` "Authentication"; `apps/api/README.md`; PLAT-11 plan 2.5 to 2.8, 8.2 #20 to #39; memories `core`, `web/core`, `admin/core`, `ui/core`, `suggested_commands`, `task_completion`, `memory_upkeep`.
+
+### 8.2 Interpretations and deviations the lead should check
+
+1. **`proxy.ts` exports `config`, not `proxyConfig`** (plan 2.2 and §1 quote the skill): Next.js 16.4.3's bundled `proxy.md` and its build (`get-page-static-info.js`, `extractExportedConstValue(ast, 'config')`) read `config`; a `proxyConfig` export would be ignored and the proxy would run on every path, assets included.
+2. **The proxy also refreshes on App Router navigations** (a request with the `RSC` header and no `Next-Router-Prefetch`), not only on `Sec-Fetch-Dest: document`: a `<Link>` navigation after 15 idle minutes would otherwise reach the `(merchant)` layout's `getMe` with an expired token and send a user with a valid refresh cookie to sign-in. Prefetches never refresh. The two-tab race web §3.2 names is covered by the API's 30 s reuse grace (PLAT-11 2.6). Deviation from 2.2's "not an RSC fetch"; the lead may prefer the plan's narrower rule.
+3. **No refresh cookie, no redirect in the proxy**: 2.2 refreshes only when the refresh cookie is present; without it the request passes and the layout's `getMe` 401 sends the user to sign-in (2.3). A signed-in user on `/sign-in` is judged by the unverified `exp` of the access cookie; `/sign-in?reason=ended` clears both cookies (`Max-Age=0`, the API's attributes) so a token the API refuses cannot bounce the user between `/sign-in` and a page.
+4. **`403 account_suspended` on refresh redirects to `/account-suspended`** (an `(auth)` page, item D) instead of rendering in place: a rewrite across root layouts forces a full load anyway, and the redirect works for RSC navigations too. The admin proxy passes `/sign-in` (platform staff have no account to suspend).
+5. **Rewrites are written into the build** (Next stores them in `routes-manifest.json`): the build needs `API_INTERNAL_URL` (declared in `apps/{web,admin}/turbo.json` `build.env`, set in both CI census lanes); the Dockerfiles build without it, so the images carry no rewrite and production relies on the edge (2.1).
+6. **Config entry `@eeasy-logistics/config/web-server`** (`webServerConfig('web' | 'admin')`): `API_INTERNAL_URL` plus `PUBLIC_WEB_URL` or `PUBLIC_ADMIN_URL` (the API's own variable names) as the `Origin` of the proxy's refresh call, which the API's marker compares with the same value; the incoming `Host` is not trusted behind the edge. Both are required when `NEXT_PUBLIC_APP_ENV` is staging or production; a build or image without `NEXT_PUBLIC_APP_ENV` requires nothing (the web Dockerfiles set none today). `NEXT_PUBLIC_STORAGE_ORIGIN` joined `publicConfig()` (origin only). `dependency-cruiser.shared.cjs` `environmentRules` takes a list of entries; new rules keep `web-server.ts` to `next.config.ts`, `src/proxy.ts` and `src/server/` in both apps and `src/server/` out of `(recipient)`.
+7. **Shared proxy code** lives in `packages/ui/src/session/` (`proxy.ts`, `tokens.ts`, `headers.ts`, entry points `./session/proxy`, `./session/tokens`, `./session/headers`), each app's `src/proxy.ts` passing its surface, cookies and route groups (web §1.1 "the session and refresh helpers both apps use"). `'unsafe-eval'` joins `script-src` only under `next dev` (`isDevelopmentServer()` in `config/web.ts`, `NODE_ENV` inlined by Next).
+8. **CSP reports** (`/monitoring/csp`, both apps): one `console.warn` JSON line per violation with `directive` and `blocked_origin` (origin or CSP keyword); the web servers have no logger of their own from PLAT-14, so "a count through PLAT-14's logger" became a structured line the log pipeline counts. Bodies capped at 64 kB with PLAT-14's `readCappedBody`.
+9. **`/_not-found` is prerendered** by Next (static): no nonce reaches it, so its framework scripts are blocked by the CSP; the 404 HTML still renders. The proxy forwards `User-Agent` (the reuse grace compares it), `Accept-Language` and the incoming `X-Forwarded-For` on the refresh call; the hop count behind the edge is OPS-1's to set (`TRUST_PROXY_HOPS`).
+10. **No Compose `web` or `admin` service exists** in `compose.yaml`, so 2.13's Compose half has nothing to change; the CI lanes carry `API_INTERNAL_URL` and the app's public URL as job variables.
+11. Plan §8's headings follow the executor template (8.0 progress, 8.1 skills and documents, 8.2 interpretations, 8.3 not done).
 
 ### 8.3 Not done here
 

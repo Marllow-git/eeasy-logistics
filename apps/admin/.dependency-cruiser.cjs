@@ -51,7 +51,16 @@ module.exports = {
       from: { pathNot: ['(?:^|/)packages/contracts/', '(?:^|/)tests/'] },
       to: { path: '(?:^|/)packages/contracts/src/mocks/' },
     },
-    ...environmentRules({ configEntry: 'web.ts' }),
+    {
+      name: 'admin-server-config-on-the-server-only',
+      comment:
+        'WEB-2 plan 2.5, 2.13: API_INTERNAL_URL and the public URLs are read by next.config.ts, the ' +
+        'proxy and the server API client only; a client component would see them undefined.',
+      severity: 'error',
+      from: { pathNot: ['^next\\.config\\.ts$', '^src/proxy\\.ts$', '^src/server/'] },
+      to: { path: '(?:^|/)packages/config/src/web-server\\.ts$' },
+    },
+    ...environmentRules({ configEntry: ['web.ts', 'web-server.ts'] }),
     noUnresolvable,
   ],
   options,
