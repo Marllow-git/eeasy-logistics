@@ -95,6 +95,17 @@ export const messageTemplates = {
     secretContext: 'core_auth_challenges',
     deferrable: false,
   },
+  // DEL-4 plan 2.3: the driver app invitation, from the account's own sender, a utility message
+  // (`shipment_issued`, the type PLAT-9 8.2 #21 names for utility templates) that waits out the
+  // quiet hours. `app_link` is `DRIVER_APP_URL`, never a value from a request.
+  driver_invitation: {
+    channel: 'whatsapp',
+    category: 'utility',
+    params: ['account_name', 'app_link'],
+    secretParams: [],
+    deferrable: true,
+    engineMessageType: 'shipment_issued',
+  },
 } as const satisfies Record<MessageTemplateKey, TemplateDefinition>;
 
 export type TemplateKey = keyof typeof messageTemplates;

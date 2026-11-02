@@ -65,3 +65,47 @@ export {
 } from '../auth/second-factor-resets.js';
 // Sites (PLAT-12 plan 2.6): DEL-2, DEL-8 and WMS-2 register what keeps a site in use.
 export { SiteUseChecks, type SiteRole, type SiteUseCheck } from '../sites/site-use.js';
+// Drivers (DEL-4 plan 2.1 to 2.6): the module Delivery's driver doors import (the audit sink, the
+// outbox writer), the driver tables (kernel-owned schema files), the driver's person and membership
+// (`DriverIdentities`), the request facts of the audit rows, the list-page helpers, the text and
+// phone rules, and the template check of the WhatsApp app invitation.
+export { KernelModule } from '../kernel.module.js';
+export {
+  defaultDriverCapacity,
+  delDriverDevices,
+  delDrivers,
+  delVehicles,
+  devicePlatforms,
+  driverStatuses,
+  maxActiveDevices,
+  vehicleKinds,
+  type DevicePlatform,
+  type DriverStatus,
+  type VehicleKind,
+} from '../schema/drivers.js';
+export {
+  DriverIdentities,
+  driverIdentitiesProvider,
+  type DriverAccount,
+  type DriverPerson,
+  type DriverSite,
+} from '../auth/driver-identities.js';
+export { AuthRequest, type RequestFacts } from '../auth/request-facts.js';
+export {
+  CURSOR_CODEC,
+  CursorCodec,
+  enumListFilter,
+  keysetAfter,
+  keysetOrder,
+  keysetSlice,
+  planListPage,
+  presentPage,
+  textQuery,
+  type ListPage,
+  type ListPagePlan,
+  type ListSorts,
+  type PageKey,
+} from '../contract/list-page.js';
+export { oneLineTextProblem } from '../contract/text-rules.js';
+export { normalisePhone, phoneTail } from '../messaging/phone.js';
+export { templateParamsProblem } from '../messaging/templates.js';
