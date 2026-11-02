@@ -24,9 +24,12 @@ import { compoundToken, opaqueToken, parseCompoundToken, tokenHash } from './tok
 
 // The staff second factor (PLAT-11 plan 2.8; identity and tenancy §3.1; staff.yaml
 // `requestSecondFactor`, `verifySecondFactor`, `enrolSecondFactor`, `confirmSecondFactor`,
-// `redeemEnrolmentLink`; PLAT-9 `OtpService`, purpose `second_factor`). The code goes only to the
-// phone stored on the user (or, while enrolling, the phone the enrolment holds), never to a phone
-// from the request of a sign-in (PLAT-9 adversary M-1). Every challenge counts its own attempts
+// `redeemEnrolmentLink`; PLAT-9 `OtpService`, purpose `second_factor`, and `second_factor_enrol`
+// while enrolling). The code goes only to the phone stored on the user (or, while enrolling, the
+// phone the enrolment holds), never to a phone from the request of a sign-in (PLAT-9 adversary
+// M-1). An enrolment's codes have their own purpose (PLAT-11 adversary M-1): the phone it names may
+// be anyone's, and under the sign-in purpose it would supersede, cool down and spend the attempts of
+// that phone's live sign-in code. Every challenge counts its own attempts
 // before the code is checked, so five tries end it whatever the OTP's own count says; a check runs
 // in three steps (the challenge charged and committed, the code verified in PLAT-9's transaction,
 // the challenge consumed), so no request holds two platform connections at once.
@@ -174,7 +177,7 @@ export class StaffSecondFactor {
     });
     await this.#deps.otp.request({
       phone,
-      purpose: 'second_factor',
+      purpose: 'second_factor_enrol',
       ip: facts.ip ?? undefined,
       locale: pending.locale,
     });
@@ -215,7 +218,11 @@ export class StaffSecondFactor {
       return challenge.pendingPhone;
     });
     if (charged instanceof Refused) throw new ApiException(charged.code);
-    await this.#deps.otp.verify({ phone: charged, purpose: 'second_factor', code: input.code });
+    await this.#deps.otp.verify({
+      phone: charged,
+      purpose: 'second_factor_enrol',
+      code: input.code,
+    });
     await store.run(async (tx) => {
       const challenge = await this.#enrolment(tx, token.id, secretHash);
       if (challenge.pendingPhone !== charged) throw new ApiException('otp_invalid');

@@ -192,7 +192,9 @@ export class StaffSignIn {
 
   /**
    * `switchAccount` (plan 2.7): another active membership of the same user on an account that is
-   * not suspended; the current family is revoked and a new session starts with the same `amr`.
+   * not suspended; the current family is revoked and a new session starts with the same `amr`, or,
+   * when the target needs a factor the session lacks, `401 second_factor_required` (the family is
+   * revoked all the same).
    */
   async switchAccount(
     principal: Principal,
@@ -212,8 +214,8 @@ export class StaffSignIn {
       if (membership.account.status === 'suspended') throw new ApiException('account_suspended');
       if (!signInMembership(membership)) throw new ApiException('not_found');
       const amr = knownMethods(principal.amr ?? []);
-      const factor = await this.#factorFor(tx, user, membership, amr, facts);
-      if (factor !== undefined) return factor;
+      // The current family ends first, also when a factor is due (adversary L-3): the old
+      // account's session never outlives a switch; `verifySecondFactor` starts the new one.
       await this.#deps.sessions.endCurrent(
         tx,
         {
@@ -225,6 +227,8 @@ export class StaffSignIn {
         facts,
         'switch_account',
       );
+      const factor = await this.#factorFor(tx, user, membership, amr, facts);
+      if (factor !== undefined) return factor;
       return this.#start(tx, user, membership, amr, facts);
     });
     return this.#settle(result);
@@ -336,7 +340,9 @@ export class StaffSignIn {
   /**
    * The factor a set of memberships requires (N1, N2; identity and tenancy §3.1): an enrolled
    * factor is always asked for until it has passed; a factor an account requires but the user has
-   * not enrolled asks for enrolment. Undefined when nothing more is due.
+   * not enrolled asks for enrolment, and so does a reset factor on every membership (PLAT-11
+   * adversary M-2: a reset in one account must not drop the factor of the user's other accounts;
+   * only the emailed link enrols again). Undefined when nothing more is due.
    */
   async #factorStep(
     tx: IdentityTransaction,
@@ -358,7 +364,7 @@ export class StaffSignIn {
       );
       return { kind: 'second_factor', challengeId };
     }
-    if (required) {
+    if (required || factorReset(user)) {
       const enrolmentToken = await this.#challenge(
         tx,
         'enrolment',
@@ -380,7 +386,8 @@ export class StaffSignIn {
     amr: readonly AuthenticationMethod[],
     facts: RequestFacts,
   ): Promise<FactorRequired | undefined> {
-    if (amr.includes('otp') || !membership.account.secondFactorRequired) return undefined;
+    if (amr.includes('otp')) return undefined;
+    if (!membership.account.secondFactorRequired && !factorReset(user)) return undefined;
     const kind = user.secondFactorEnabled ? 'second_factor' : 'enrolment';
     const token = await this.#challenge(tx, kind, user.id, amr, facts, [membership]);
     return new FactorRequired(
@@ -448,6 +455,14 @@ export class StaffSignIn {
   async #chargeTokenDoor(facts: RequestFacts): Promise<void> {
     await this.#deps.limiter?.charge('auth_token_ip', `ip:${addressKey(facts.ip ?? undefined)}`);
   }
+}
+
+/**
+ * A reset second factor (`SecondFactorResets.issueLink`): not enabled, its phone kept as the marker
+ * that only the emailed link may enrol again (staff.yaml `resetMemberSecondFactor`).
+ */
+function factorReset(user: UserRow): boolean {
+  return !user.secondFactorEnabled && user.secondFactorPhone !== null;
 }
 
 /** An active membership on an account whose members may sign in. */

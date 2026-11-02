@@ -13,7 +13,13 @@ import {
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
 
-export const otpPurposes = ['driver_login', 'second_factor'] as const;
+/**
+ * `second_factor_enrol` (PLAT-11 adversary M-1): an enrolment's codes are their own purpose, so a
+ * phone typed into an enrolment never supersedes, cools down or spends the attempts of that phone's
+ * sign-in challenge (verification, the cooldown and the supersede key are per (phone, purpose); the
+ * phone and address budgets stay shared).
+ */
+export const otpPurposes = ['driver_login', 'second_factor', 'second_factor_enrol'] as const;
 export type OtpPurpose = (typeof otpPurposes)[number];
 
 /**
@@ -43,7 +49,7 @@ export const coreOtpChallenges = pgTable(
     check('core_otp_challenges_phone_check', sql`${table.phone} ~ '^\\+[1-9][0-9]{7,14}$'`),
     check(
       'core_otp_challenges_purpose_check',
-      sql`${table.purpose} IN ('driver_login', 'second_factor')`,
+      sql`${table.purpose} IN ('driver_login', 'second_factor', 'second_factor_enrol')`,
     ),
     check('core_otp_challenges_attempts_check', sql`${table.attempts} >= 0`),
   ],

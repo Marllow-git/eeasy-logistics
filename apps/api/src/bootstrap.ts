@@ -10,8 +10,9 @@ import { identityStore } from './modules/kernel/platform/identity.repository.js'
 // `--role bootstrap --email <email> --name <name> [--locale ar|en]` (PLAT-11 plan 2.12, owner
 // question 5): the first platform super admin without anyone editing the database. A fourth process
 // role beside api, worker and migrate; it holds only the platform pool's URL. It refuses when any
-// platform staff row, or a live super admin invitation, exists; else it creates the invitation and
-// prints the console accept link once to stdout (no mail: SMTP may not exist yet). Audited
+// platform staff row or a live super admin invitation exists, or the email is a disabled user's;
+// else it creates the invitation and prints the console accept link once to stdout (no mail: SMTP
+// may not exist yet). Audited
 // `core.platform_staff.bootstrapped` as the system. OPS-1 runs it once (apps/api/README.md).
 
 export const bootstrapExit = { created: 0, refused: 1, usage: 64 } as const;
@@ -100,7 +101,9 @@ export async function runBootstrap(
     bootstrapSuperAdmin(config, pool, args),
   );
   if (outcome.kind === 'refused') {
-    out.error('Refusing: platform staff already exist, or a super admin invitation is still open.');
+    out.error(
+      'Refusing: platform staff already exist, a super admin invitation is still open, or the email belongs to a disabled user.',
+    );
     return bootstrapExit.refused;
   }
   out.log(`Super admin invitation created for ${args.email} (valid 72 hours). Accept it at:`);

@@ -39,6 +39,24 @@ describe.skipIf(admin === undefined)('--role bootstrap (PLAT-11 item H)', () => 
     return { code, lines, errors };
   };
 
+  it('refuses an email that belongs to a disabled user, leaving reruns open (adversary L-8)', async () => {
+    const owner = connectAs('owner', config);
+    try {
+      await owner`
+        INSERT INTO core_users (id, name, email, locale, disabled_at)
+        VALUES ('019a0000-0000-7000-8000-0000000000d1', 'Gone', 'gone@example.test', 'en', now())`;
+      const refused = await run(['--email', 'Gone@Example.Test', '--name', 'Gone']);
+      expect(refused.code).toBe(bootstrapExit.refused);
+      expect(refused.lines).toEqual([]);
+      expect(await owner`SELECT 1 FROM core_invitations`).toHaveLength(0);
+      expect(
+        await owner`SELECT 1 FROM core_audit_log WHERE action = 'core.platform_staff.bootstrapped'`,
+      ).toHaveLength(0);
+    } finally {
+      await owner.end();
+    }
+  });
+
   it('creates the super admin invitation once, prints the link, audits it, and refuses after', async () => {
     const owner = connectAs('owner', config);
     try {

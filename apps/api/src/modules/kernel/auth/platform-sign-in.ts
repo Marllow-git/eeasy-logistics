@@ -41,6 +41,8 @@ import { base32, fromBase32, matchingStep, otpauthUri, totpSecret } from './totp
 
 export const totpChallengeTtlSeconds = 300;
 const maxAttempts = 5;
+/** Looked up when no user has the email: a well-formed id no row carries (UUIDv7 never has 0 ms). */
+const absentUserId = '00000000-0000-7000-8000-000000000000';
 
 const staffContext = (userId: string) => `core_platform_staff:${userId}`;
 const pendingContext = (challengeId: string) => `core_auth_challenges:${challengeId}`;
@@ -117,7 +119,9 @@ export class PlatformSignIn {
     );
     return this.#deps.sessions.store.run(async (tx) => {
       const user = await tx.users.findByEmail(email);
-      const staff = user === undefined ? undefined : await tx.platformStaff.find(user.id);
+      // The staff lookup runs for an unknown email too (adversary L-2), so the one Argon2 verify
+      // is the only cost that differs between an unknown and a known address.
+      const staff = await tx.platformStaff.find(user?.id ?? absentUserId);
       const usable =
         user !== undefined &&
         !user.disabled &&

@@ -92,6 +92,13 @@
       "when": 1793567504654,
       "tag": "0012_core_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793603035089,
+      "tag": "0013_core_otp_purposes",
+      "breakpoints": true
     }
   ]
 }

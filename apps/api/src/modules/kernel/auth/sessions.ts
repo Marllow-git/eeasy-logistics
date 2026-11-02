@@ -369,7 +369,12 @@ export class SessionService {
     };
   }
 
-  /** The same successor again, with a fresh access token of the same claims (Q-23 "same pair"). */
+  /**
+   * The same successor again, with a fresh access token of the same claims (Q-23 "same pair"), only
+   * while the successor itself is unused (adversary L-1): once it has rotated, handing it out again
+   * would only lead the caller into a reuse. A used successor answers `token_invalid` without
+   * revoking the family (a legitimate race fails closed, not as theft).
+   */
   async #grace(tx: IdentityTransaction, row: RefreshState): Promise<RefreshOutcome> {
     const cipher = this.#deps.cipher;
     if (cipher === null || row.successorCiphertext === null) {
@@ -377,7 +382,9 @@ export class SessionService {
     }
     const successor = cipher.decrypt(row.successorCiphertext, successorContext(row.id));
     const next = await tx.refreshTokens.lockByHash(tokenHash(successor));
-    if (next === undefined || next.revoked) return { ok: false, code: 'token_invalid' };
+    if (next === undefined || next.revoked || next.usedAt !== null) {
+      return { ok: false, code: 'token_invalid' };
+    }
     const left = Math.max(0, Math.floor((next.expiresAt.getTime() - next.now.getTime()) / 1000));
     return {
       ok: true,
