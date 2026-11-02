@@ -7,7 +7,12 @@ import { DelayedError } from 'bullmq';
 import { Redis } from 'ioredis';
 import type postgres from 'postgres';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { AuditWriter } from '../../src/modules/kernel/audit/audit-writer.js';
 import { KindHandlerRegistry } from '../../src/modules/kernel/outbox/kind-handlers.js';
+import { ProviderFailure } from '../../src/modules/kernel/outbox/provider-failure.js';
+import type { PushSender } from '../../src/modules/kernel/push/push-sender.js';
+import { getMetrics } from '../../src/modules/kernel/telemetry/metrics.js';
+import { pushTicketsPurgedAction, runPushReceipts } from '../../src/worker/system/push-receipts.js';
 import { nextOutboxId } from '../../src/modules/kernel/outbox/outbox-id.js';
 import { OutboxQueues } from '../../src/modules/kernel/outbox/queues.js';
 import { pushTicketWriter } from '../../src/modules/kernel/platform/push-tickets.repository.js';
@@ -253,5 +258,161 @@ describe('push delivery (INT-4 plan 2.3)', () => {
       SELECT count(*)::int AS n FROM core_push_tickets
       WHERE outbox_id = ${id} OR ticket_id LIKE '%PushToken%'`;
     expect(tickets?.n).toBe(0);
+  });
+
+  // INT-4 item D (plan 2.4): the receipts job. It reads every unchecked ticket of the database, and
+  // only this file writes tickets, so these tests run here, after the delivery tests, on a clean
+  // slate, with the clock faked through `now`.
+  describe('push receipts job (plan 2.4)', () => {
+    const minute = 60_000;
+    const lockKey = `${prefix}:lock:push-receipts`;
+    const ticketRows = () =>
+      owner<{ device_id: string; status: string; error: string | null; checked: boolean }[]>`
+        SELECT device_id, status, error, checked_at IS NOT NULL AS checked
+        FROM core_push_tickets WHERE account_id = ${account} ORDER BY device_id`;
+    const runReceipts = (at: Date, sender: PushSender = recorder) =>
+      runPushReceipts({
+        db: pool.db,
+        redis,
+        sender,
+        invalidations: handler.invalidations,
+        audit: new AuditWriter(pool),
+        logger: quiet,
+        now: () => at,
+        lockKey,
+      });
+    /** Sends one row to `devices` through the handler; returns when its tickets are kept. */
+    const sendTo = async (devices: { device_id: string; push_token: string }[]) => {
+      const id = await insert(offerRow(devices), 'enqueued');
+      expect(await runJob(id).result).toBe('done');
+      return id;
+    };
+
+    beforeAll(async () => {
+      await owner`DELETE FROM core_push_tickets WHERE account_id = ${account}`;
+    });
+
+    afterEach(async () => {
+      await redis.del(lockKey);
+      await owner`DELETE FROM core_push_tickets WHERE account_id = ${account}`;
+    });
+
+    it('checks tickets only after 15 minutes, writes ok and error, and hands DeviceNotRegistered on once', async () => {
+      fresh();
+      const ok = { device_id: uuidv7(), push_token: token('ok') };
+      const gone = { device_id: uuidv7(), push_token: token('gone') };
+      recorder.planReceiptError(gone.push_token);
+      await sendTo([ok, gone]);
+      const add = vi.spyOn(getMetrics(), 'add');
+
+      const early = await runReceipts(new Date(Date.now() + 10 * minute));
+      expect(early).toMatchObject({ ran: true, counts: { checked: 0 } });
+      expect((await ticketRows()).every((t) => t.status === 'pending' && !t.checked)).toBe(true);
+      await redis.del(lockKey);
+
+      const later = await runReceipts(new Date(Date.now() + 16 * minute));
+      expect(later).toEqual({
+        ran: true,
+        counts: { checked: 2, ok: 1, error: 1, noReceipt: 0, invalidated: 1, purged: 0 },
+      });
+      const rows = await ticketRows();
+      expect(rows.find((t) => t.device_id === ok.device_id)).toMatchObject({
+        status: 'ok',
+        error: null,
+        checked: true,
+      });
+      expect(rows.find((t) => t.device_id === gone.device_id)).toMatchObject({
+        status: 'error',
+        error: 'DeviceNotRegistered',
+        checked: true,
+      });
+      expect(invalidated).toEqual([
+        { accountId: account, deviceId: gone.device_id, reason: 'device_not_registered' },
+      ]);
+      expect(add).toHaveBeenCalledWith('push_receipts_total', 1, { status: 'error' });
+      expect(add).toHaveBeenCalledWith('push_receipts_total', 1, { status: 'ok' });
+
+      // A checked ticket is never asked about again: the device reaches the registry once.
+      await redis.del(lockKey);
+      expect(await runReceipts(new Date(Date.now() + 30 * minute))).toMatchObject({
+        counts: { checked: 0, invalidated: 0 },
+      });
+      expect(invalidated).toHaveLength(1);
+    });
+
+    it('leaves a ticket without a receipt pending for a day, then marks it no_receipt', async () => {
+      fresh();
+      const device = { device_id: uuidv7(), push_token: token('silent') };
+      await sendTo([device]);
+      const silent: PushSender = {
+        provider: 'stub',
+        send: () => Promise.resolve([]),
+        receipts: () => Promise.resolve([]),
+      };
+      expect(await runReceipts(new Date(Date.now() + 20 * 60 * minute), silent)).toMatchObject({
+        counts: { checked: 0 },
+      });
+      expect((await ticketRows())[0]).toMatchObject({ status: 'pending', checked: false });
+      await redis.del(lockKey);
+      expect(
+        await runReceipts(new Date(Date.now() + 24 * 60 * minute + minute), silent),
+      ).toMatchObject({ counts: { checked: 1, noReceipt: 1 } });
+      expect((await ticketRows())[0]).toMatchObject({
+        status: 'error',
+        error: 'no_receipt',
+        checked: true,
+      });
+      expect(invalidated).toEqual([]);
+    });
+
+    it('keeps the tickets for the next run when the push service fails', async () => {
+      fresh();
+      await sendTo([{ device_id: uuidv7(), push_token: token('later') }]);
+      const failing: PushSender = {
+        provider: 'stub',
+        send: () => Promise.resolve([]),
+        receipts: () =>
+          Promise.reject(
+            new ProviderFailure('transient', 'the push service failed', { status: 503 }),
+          ),
+      };
+      expect(await runReceipts(new Date(Date.now() + 16 * minute), failing)).toMatchObject({
+        ran: true,
+        counts: { checked: 0 },
+      });
+      expect((await ticketRows())[0]).toMatchObject({ status: 'pending', checked: false });
+    });
+
+    it('purges tickets after 7 days with one audit row of counts', async () => {
+      fresh();
+      await sendTo([
+        { device_id: uuidv7(), push_token: token('old-1') },
+        { device_id: uuidv7(), push_token: token('old-2') },
+      ]);
+      const run = await runReceipts(new Date(Date.now() + 7 * 24 * 60 * minute + minute));
+      expect(run).toMatchObject({ ran: true, counts: { purged: 2 } });
+      expect(await ticketRows()).toEqual([]);
+      const audit = await owner<{ after: { deleted: number }; account_id: string | null }[]>`
+        SELECT after, account_id FROM core_audit_log
+        WHERE action = ${pushTicketsPurgedAction} AND occurred_at > now() - interval '1 minute'
+        ORDER BY occurred_at DESC LIMIT 1`;
+      expect(audit[0]).toEqual({ after: { deleted: 2, retention_days: 7 }, account_id: null });
+      // A run with nothing to purge writes no audit row.
+      await redis.del(lockKey);
+      const before = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_audit_log WHERE action = ${pushTicketsPurgedAction}`;
+      await runReceipts(new Date(Date.now() + 8 * 24 * 60 * minute));
+      const after = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_audit_log WHERE action = ${pushTicketsPurgedAction}`;
+      expect(after[0]?.n).toBe(before[0]?.n);
+    });
+
+    it('skips a run while another worker holds the lock', async () => {
+      fresh();
+      await sendTo([{ device_id: uuidv7(), push_token: token('locked') }]);
+      await redis.set(lockKey, 'another-worker', 'PX', 60_000);
+      expect(await runReceipts(new Date(Date.now() + 16 * minute))).toEqual({ ran: false });
+      expect((await ticketRows())[0]).toMatchObject({ status: 'pending', checked: false });
+    });
   });
 });
