@@ -11,6 +11,7 @@ import type {
   UserRow,
 } from '../platform/identity.repository.js';
 import { signInAccountStatuses } from '../platform/identity.repository.js';
+import { AccountActivation } from '../provisioning/account-activation.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { addressKey } from '../rate-limit/rate-limiter.js';
 import type { AuthenticationMethod } from './access-token.js';
@@ -296,6 +297,13 @@ export class StaffSignIn {
         ip: facts.ip,
         userAgent: facts.userAgent,
       });
+      // PLAT-13 plan 2.3: the owner's first acceptance activates a `provisioned` account.
+      await AccountActivation.onOwnerAccepted(
+        tx,
+        { id: pending.id, accountId: pending.accountId, userId: user.id, roles: pending.roles },
+        this.#deps.audit,
+        facts,
+      );
       const accepted = await tx.users.find(user.id);
       const membership = await tx.memberships.findOfUser(pending.id, user.id);
       if (accepted === undefined || membership === undefined)

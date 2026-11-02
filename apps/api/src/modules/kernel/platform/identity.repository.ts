@@ -870,23 +870,28 @@ export interface IdentityStore {
   run<T>(fn: (tx: IdentityTransaction) => Promise<T>): Promise<T>;
 }
 
+/**
+ * The identity repositories on `uow`: the store's own transaction, or a platform request's (PLAT-13
+ * plan 2.2: the provisioning door writes the account and its owner's invitation in one).
+ */
+export function identityTransactionOf(uow: PlatformUnitOfWork): IdentityTransaction {
+  return {
+    uow,
+    users: new UsersRepository(uow),
+    memberships: new MembershipsRepository(uow),
+    refreshTokens: new RefreshTokensRepository(uow),
+    challenges: new AuthChallengesRepository(uow),
+    platformStaff: new PlatformStaffRepository(uow),
+    invitations: new InvitationsRepository(uow),
+    resets: new PasswordResetsRepository(uow),
+    accounts: new InvitingAccounts(uow),
+  };
+}
+
 /** One platform transaction per call, with no platform user (the doors are anonymous). */
 export function identityStore(db: PlatformDatabase): IdentityStore {
   return {
-    run: (fn) =>
-      withPlatformUnitOfWork(db, (uow) =>
-        fn({
-          uow,
-          users: new UsersRepository(uow),
-          memberships: new MembershipsRepository(uow),
-          refreshTokens: new RefreshTokensRepository(uow),
-          challenges: new AuthChallengesRepository(uow),
-          platformStaff: new PlatformStaffRepository(uow),
-          invitations: new InvitationsRepository(uow),
-          resets: new PasswordResetsRepository(uow),
-          accounts: new InvitingAccounts(uow),
-        }),
-      ),
+    run: (fn) => withPlatformUnitOfWork(db, (uow) => fn(identityTransactionOf(uow))),
   };
 }
 

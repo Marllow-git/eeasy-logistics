@@ -77,17 +77,21 @@ export class Invitations {
    * Invites `email` to the account: finds or creates the user, creates the `invited` membership (or
    * re-invites an invited or revoked one with the new roles) after the role-combination check
    * (PLAT-10 A-7), replaces any open invitation of the membership, and mails the link. An active
-   * membership answers `409 invalid_transition` (nothing to accept).
+   * membership answers `409 invalid_transition` (nothing to accept). With `tx`, it runs in that
+   * transaction instead of one of its own (PLAT-13 plan 2.2: the provisioning door creates the
+   * account and its owner's invitation together, so the account is visible here and neither
+   * commits without the other).
    */
-  async createStaff(input: StaffInvitation): Promise<CreatedInvitation> {
-    const store = this.#store();
+  async createStaff(input: StaffInvitation, tx?: IdentityTransaction): Promise<CreatedInvitation> {
+    const run = <T>(fn: (tx: IdentityTransaction) => Promise<T>): Promise<T> =>
+      tx === undefined ? this.#store().run(fn) : fn(tx);
     const resolver = this.#deps.resolver;
     if (resolver === undefined) throw new ApiException('internal_error');
     assertRoleCombination(input.roles, resolver.bundles);
     const email = input.email.toLowerCase();
     const token = opaqueToken();
     const link = mailLink(this.#deps.publicWebUrl, 'invitations', token);
-    const created = await store.run(async (tx) => {
+    const created = await run(async (tx) => {
       const account = await tx.accounts.find(input.accountId);
       if (account === undefined || account.status === 'closed') throw new ApiException('not_found');
       const user = await tx.users.findByEmail(email);
