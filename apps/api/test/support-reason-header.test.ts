@@ -53,6 +53,34 @@ describe('X-Support-Reason decoding', () => {
     expect(contractHeaderValue('Idempotency-Key', '100%25')).toBe('100%25');
   });
 
+  it('refuses format characters in the header, sent raw or percent-encoded', () => {
+    // WEB-4 adversary fix round 1 (L): bidirectional overrides and isolates, zero-width marks.
+    for (const value of [
+      encodeURIComponent('ticket \u202E24 refund\u202C'),
+      encodeURIComponent('بلاغ \u2067٤٢\u2069'),
+      'ticket\u200B42',
+    ]) {
+      const target = crossTenantTarget(request(value), door);
+      expect(target !== undefined && isRefusal(target) && target.outcome).toBe('reason_invalid');
+      expect(target !== undefined && isRefusal(target) && target.error.options.fields).toEqual([
+        { pointer: '/header/x-support-reason', code: 'invalid' },
+      ]);
+    }
+  });
+
+  it('refuses format characters in a body reason at the door', () => {
+    const body = { from: 'path', name: 'account_id', reason: 'body' } as const;
+    const target = crossTenantTarget(
+      {
+        params: { account_id: accountId },
+        headers: {},
+        body: { reason: 'suspend: \u202Ednuf\u202C' },
+      } as unknown as Request,
+      body,
+    );
+    expect(target !== undefined && isRefusal(target) && target.outcome).toBe('reason_invalid');
+  });
+
   it('uses a value that does not decode as it was sent', () => {
     expect(decodedHeaderReason('refund 100% check')).toBe('refund 100% check');
     expect(decodedHeaderReason('ticket 42')).toBe('ticket 42');
