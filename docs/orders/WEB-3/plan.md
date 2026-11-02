@@ -90,6 +90,7 @@ The map tile and a pin picker for sites (WEB-6 with Q-19; coordinates are typed 
 | Item | Commit | Tests (counts) | Interpretation |
 |---|---|---|---|
 | A | the commit `WEB-3: A …` | `packages/ui` Vitest 238 passed in 14 files (new `test/authz-query.test.tsx`: 19, `Can`, `useCan` and `QueryProvider` in `ar` and `en`); `apps/web` `test:unit` (new, `node --test`) 5 passed (`src/routes.test.ts`); `packages/i18n` 62 passed (parity); typecheck and lint green in `ui`, `web`, `i18n` | `requirePermission` takes the manifest path (8.2 #2); `forbidden()` under `experimental.authInterrupts` (8.2 #3); the 403 census check runs with item C's census (8.2 #4) |
+| B | the commit `WEB-3: B …` | `packages/ui` Vitest 275 passed in 16 files (new `test/form.test.tsx` 19: helpers, `Form` with the generated `UpdateAccountSettingsBody` picked, radio, number, switch, checkbox group, bilingual pair; new `test/table.test.tsx` 18: `DataTable`, `useListParams`, `useCursorList`; both directions where rendered); `packages/i18n` 65 passed (the `settings` namespace in the parity test); typecheck and lint green in `ui`, `web`, `i18n`, `admin`, `driver` (one lint warning: the React Compiler skips `DataTable`, 8.2 #7) | empty numbers hold `NaN` (8.2 #5); top-level PATCH granularity (8.2 #6); no Orval infinite hooks, `useCursorList` over `useInfiniteQuery` (8.2 #8); table and form strings in `common` (8.2 #9) |
 
 ### 8.1 Deviations
 

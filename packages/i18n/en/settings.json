@@ -1,0 +1,19 @@
+{
+  "title": "Settings",
+  "sections": {
+    "account": "Account settings",
+    "members": "Members",
+    "sites": "Sites",
+    "audit": "Audit log"
+  },
+  "roles": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "dispatcher": "Dispatcher",
+    "site_staff": "Site staff",
+    "warehouse_staff": "Warehouse staff",
+    "cashier": "Cashier",
+    "viewer": "Viewer",
+    "driver": "Driver"
+  }
+}
