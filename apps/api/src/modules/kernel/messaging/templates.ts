@@ -95,6 +95,15 @@ export const messageTemplates = {
     secretContext: 'core_auth_challenges',
     deferrable: false,
   },
+  // PLAT-13 plan 2.9, 2.11: the notice after `platformResetStaffTotp`; no link, no parameter, no
+  // secret (the user signs in with the password and enrols again).
+  platform_totp_reset: {
+    channel: 'mail',
+    category: 'transactional',
+    params: [],
+    secretParams: [],
+    deferrable: false,
+  },
 } as const satisfies Record<MessageTemplateKey, TemplateDefinition>;
 
 export type TemplateKey = keyof typeof messageTemplates;

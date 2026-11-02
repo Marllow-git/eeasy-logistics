@@ -158,11 +158,17 @@ export class Invitations {
   }
 
   /** Invites `email` as platform staff with `role`; the console link, no membership. */
-  async createPlatform(input: PlatformInvitation): Promise<CreatedInvitation> {
-    const store = this.#store();
+  async createPlatform(
+    input: PlatformInvitation,
+    tx?: IdentityTransaction,
+  ): Promise<CreatedInvitation> {
     const token = opaqueToken();
     const link = mailLink(this.#deps.publicAdminUrl, 'invitations', token);
-    const created = await store.run((tx) => this.#platform(tx, input, token, link, true));
+    // With `tx`, in that transaction (PLAT-13 plan 2.9: `platformInviteStaff` runs in the request's
+    // platform unit of work, as `createStaff` does for the provisioning door).
+    const created = await (tx === undefined
+      ? this.#store().run((own) => this.#platform(own, input, token, link, true))
+      : this.#platform(tx, input, token, link, true));
     this.#logger.log(`platform invitation created role=${input.role}`);
     return created;
   }
