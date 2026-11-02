@@ -208,3 +208,27 @@ Leg 2 notes are #23 to #35, after leg 1's.
 10. Round 2: `PinCheck` cannot refuse to run after earlier writes, because `packages/db`'s unit of work keeps no write counter; the rule is a doc comment only (8.2 #47). For DEL-8's brief: the cash handover door must call the check before any write of its own, or add a write flag to the unit of work.
 
 ## 9. Lead review and adversary
+
+Lead: architecture lead (Fable), 2026-11-02. Adversary: Opus, two runs (owner ruling 2026-11-02).
+
+**Lead review.** Leg 1 accepted at a8a53af (rulings in 8.2 #23: the driver's person and membership in the kernel's `DriverIdentities`, `Vehicle` bodies, one write lock per account, no `push_token` in the staff device list, suspension and archive revoke only that membership's driver families and leave `token_version`). Leg 2 accepted: 8.1 #7 (the driver subject, `refreshDriver` and `logoutDevice` added to PLAT-11's `SessionService`, which had no driver path), #8 (the leg 1 test follows the ruling), #9 (`deliver: false` for a stranger's phone), #10, #11. Migration regenerated as `20261102122929_del_drivers` under CHORE-3's names (8.2 #45; SQL body identical, `del_drivers.name` added in place before the regeneration).
+
+**Adversary, run 1 (CHANGES REQUIRED → fixed in 53bc2e1 to cc0bc9e):**
+
+| Finding | Ruling | Result |
+|---|---|---|
+| H-1 `PinCheck` held a second app connection under the request's | fix | `driverVerifyCashPin` runs with `@NoUnitOfWork()`; `driverSetCashPin` keeps the request transaction and a wrong PIN throws `CommittedRefusal` (the failure count commits, the idempotency key is released; 8.2 #36); concurrency test at pool 4, 6 calls |
+| H-2 a second account steers a shared phone's sign-in | fix, contract | `driverVerifyOtp` takes an optional `account_id`; several active rows without it answer `409 account_choice_required` listing the accounts, the code not spent (one attempt counted) |
+| H-3 cross-tenant name lookup and rename | fix, reverses part of ruling #23 | `del_drivers.name` per account; both `rename` methods removed; a tenant never reads or writes another tenant's person |
+| M-1 a revoked device returned on the next code sign-in | fix | `401 device_revoked` at verify; new app ids register up to the cap; a lost phone means suspending the driver (DRV and WEB guidance) |
+| M-2 stale access token on me and PIN doors | fix | `tokenDriver()` refuses a non-active driver or revoked device; the sign-in re-checks after binding |
+| M-3 staff device list showed the app's `device_id` | fix | dropped, like `push_token` |
+| L-1 app-version guard path case | fix | matches the driver surface by the routed path |
+| L-2 device verdict before revoked and reuse checks | fix | reordered; a revoked device's refresh is `token_invalid`, the next sign-in `device_revoked` |
+| L-3 `listDrivers` pages in memory | accepted | debt with PLAT-12 8.2 #36 |
+
+**Adversary, run 2 (PASS; one medium and two lows ruled):** driver-only memberships still showed the person's stored name and locale in `listMembers` (medium: round 2 leaves memberships whose roles are exactly `['driver']` out of `listMembers`, `getMember` answers `404`; round 3 extends the rule to `updateMember`, `revokeMember` and `resetMemberSecondFactor`; mixed memberships stay reachable); `CommittedRefusal` commits whatever the request wrote before it (low: documented on `PinCheck` and `CommittedRefusal`; the unit of work tracks no writes; DEL-8's brief makes the check the first write); `@NoUnitOfWork()` with `@Idempotent()` (low: the boot check `IdempotentRoutesCheck` refuses the pair). Accepted and recorded: `inviteMember` still merges `driver` when it re-invites a revoked driver-only membership (8.2 #49; DEL-5 decides whether a driver re-invite goes through `createDriver` only).
+
+**For later orders.** The driver app's account picker on `account_choice_required` and the lost-phone guidance (DRV-4, WEB-5); the pools' idle-in-transaction and statement timeouts (chore list); the two contract scenarios for the new verify answers (DRV-4's contract run covers them).
+
+**Verdict:** ready for the gate; one-way door (migration `20261102122929_del_drivers`; the contract change on `driverVerifyOtp`); blast radius the driver surface, the members doors (driver-only memberships hidden) and the session service's new driver path.
