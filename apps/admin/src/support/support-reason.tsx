@@ -1,6 +1,7 @@
 'use client';
 
-import { useSignOutCleanup } from '@eeasy-logistics/ui/session';
+import type { PlatformMe } from '@eeasy-logistics/contracts/platform';
+import { useSession, useSessionEndCleanup } from '@eeasy-logistics/ui/session';
 import { usePathname } from 'next/navigation';
 import {
   createContext,
@@ -15,10 +16,12 @@ import { clearListReasons } from './list-reasons';
 import { accountOfPath, keepOnly, readReason, supportHeaders, writeReason } from './reason-store';
 
 // The tab's support reason in React (web §3.5; WEB-4 plan 2.4). `SupportReasonJanitor` (in the
-// platform layout) removes every account's reason the tab is no longer on, on each route change
-// and on sign-out; `SupportReasonProvider` (in the account layout) reads the one account's reason
-// from the tab's storage (never on the server, which has none) and sets it when the reason dialog
-// is confirmed. Cross-tenant queries wait for `reason`.
+// platform layout) removes every reason but the signed-in user's for the account the tab is on, on
+// each route change, and all of them whenever the session ends (sign-out, idle expiry, a refused
+// refresh, `token_invalid`, "another account"; adversary fix round 1, M); `SupportReasonProvider`
+// (in the account layout) reads the user's reason for the one account from the tab's storage
+// (never on the server, which has none) and sets it when the reason dialog is confirmed.
+// Cross-tenant queries wait for `reason`.
 
 // Who reads the stored reasons; told after every write or removal in this tab.
 const listeners = new Set<() => void>();
@@ -30,19 +33,26 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
-/** Removes the reasons of the accounts the tab has left, and all of them on sign-out. */
+/** The signed-in staff member's id (the key of their reasons). */
+function useUserId(): string {
+  return useSession<PlatformMe>().user?.id ?? '';
+}
+
+/** Removes the reasons of the accounts (and users) the tab has left; all when the session ends. */
 export function SupportReasonJanitor() {
   const pathname = usePathname();
+  const userId = useUserId();
   useEffect(() => {
-    keepOnly(window.sessionStorage, accountOfPath(pathname));
+    const accountId = accountOfPath(pathname);
+    keepOnly(window.sessionStorage, accountId === undefined ? undefined : { userId, accountId });
     notify();
-  }, [pathname]);
+  }, [pathname, userId]);
   const clear = useCallback(() => {
     keepOnly(window.sessionStorage, undefined);
     clearListReasons();
     notify();
   }, []);
-  useSignOutCleanup(clear);
+  useSessionEndCleanup(clear);
   return null;
 }
 
@@ -66,18 +76,19 @@ export function SupportReasonProvider({
   accountId: string;
   children: ReactNode;
 }) {
+  const userId = useUserId();
   // `undefined` on the server and during hydration (no storage there), `null` for no reason.
   const stored = useSyncExternalStore(
     subscribe,
-    () => readReason(window.sessionStorage, accountId) ?? null,
+    () => readReason(window.sessionStorage, { userId, accountId }) ?? null,
     () => undefined,
   );
   const setReason = useCallback(
     (reason: string) => {
-      writeReason(window.sessionStorage, accountId, reason);
+      writeReason(window.sessionStorage, { userId, accountId }, reason);
       notify();
     },
-    [accountId],
+    [userId, accountId],
   );
   const value = useMemo(
     () => ({

@@ -10,6 +10,7 @@ import {
   sessionNavigation,
   usePermissions,
   useSession,
+  useSessionEndCleanup,
   useSessionFetcher,
   useUnsavedState,
 } from '../src/session/session-provider';
@@ -467,5 +468,69 @@ describe.each(directions)('SessionProvider in $locale ($dir)', ({ locale }) => {
     const logout = api.fetch.mock.calls.find(([url]) => url.endsWith('/auth/logout'));
     expect(new Headers(logout?.[1]?.headers).get('x-el-client')).toBe('web');
     expect(window.sessionStorage.getItem('el_challenge')).toBeNull();
+  });
+  it('runs the session-end cleanups before leaving, on every ending but the kept dialog', async () => {
+    // WEB-4 adversary fix round 1 (M): the console's support reasons outlived an ended session.
+    stubApi();
+    const order: string[] = [];
+    vi.spyOn(sessionNavigation, 'assign').mockImplementation((path) => order.push(path));
+    const cleanup = vi.fn(() => order.push('cleanup'));
+    function Ending({ dirty }: { dirty: boolean }) {
+      useSessionEndCleanup(cleanup);
+      return <Page dirty={dirty} />;
+    }
+    window.history.replaceState(null, '', '/accounts');
+    const view = renderIn(
+      locale,
+      <SessionProvider me={me} surface="platform" reauthentication={() => steps({ kind: 'done' })}>
+        <Ending dirty={false} />
+      </SessionProvider>,
+    );
+    // A refused refresh (idle expiry): the cleanups, then sign-in.
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    await waitFor(() =>
+      expect(order).toEqual(['cleanup', '/sign-in?next=%2Faccounts&reason=ended']),
+    );
+    view.unmount();
+
+    // With unsaved state the dialog keeps the page for the same user: nothing is forgotten yet;
+    // "another account" ends the session and runs them.
+    order.length = 0;
+    renderIn(
+      locale,
+      <SessionProvider me={me} surface="platform" reauthentication={() => steps({ kind: 'done' })}>
+        <Ending dirty />
+      </SessionProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    await screen.findByRole('dialog', { name: session.dialog_title });
+    expect(order).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: session.dialog_other_user }));
+    await waitFor(() =>
+      expect(order).toEqual(['cleanup', '/sign-in?next=%2Faccounts&reason=ended']),
+    );
+  });
+
+  it('runs the session-end cleanups on sign-out too', async () => {
+    stubApi();
+    const assign = vi.spyOn(sessionNavigation, 'assign').mockImplementation(() => {});
+    const cleanup = vi.fn();
+    function Cleaning() {
+      useSessionEndCleanup(cleanup);
+      return <UserMenu />;
+    }
+    renderIn(
+      locale,
+      <SessionProvider me={me} surface="staff" reauthentication={() => steps({ kind: 'done' })}>
+        <Cleaning />
+      </SessionProvider>,
+    );
+    const trigger = screen.getByRole('button', { name: `${session.user_menu}: Huda Al-Qahtani` });
+    act(() => {
+      fireEvent.keyDown(trigger, { key: 'Enter' });
+    });
+    fireEvent.click(await screen.findByRole('menuitem', { name: session.sign_out }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/signed-out'));
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 });
