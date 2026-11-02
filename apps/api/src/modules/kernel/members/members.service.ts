@@ -4,6 +4,7 @@ import type { AuditFacts } from '../accounts/account.service.js';
 import type { AuditSink } from '../audit/audit-sink.js';
 import { countRevocations } from '../auth/auth-metrics.js';
 import type { Invitations } from '../auth/invitations.js';
+import type { SecondFactorResets } from '../auth/second-factor-resets.js';
 import type { PermissionResolver } from '../authz/permission-resolver.js';
 import { assertRoleCombination } from '../authz/separation.js';
 import type { ListPage, ListPagePlan, PageKey } from '../contract/list-page.js';
@@ -82,6 +83,7 @@ export class MembersService {
       readonly invitations: Pick<Invitations, 'createStaff'>;
       readonly audit: AuditSink;
       readonly resolver: Pick<PermissionResolver, 'bundles'> | undefined;
+      readonly resets: Pick<SecondFactorResets, 'issueLink'>;
     },
   ) {}
 
@@ -297,6 +299,61 @@ export class MembersService {
       { status: 'revoked', invitations_expired: invitations },
       facts,
     );
+  }
+
+  /**
+   * `resetMemberSecondFactor` (plan 2.10): after the caller's token version is re-read, an `active`
+   * membership of the account other than the caller's has its user's second factor reset by
+   * PLAT-11's `SecondFactorResets.issueLink` (the factor off with the phone kept as the marker,
+   * `token_version + 1`, every family revoked, a 24 h link mailed, `core.auth.second_factor_reset`
+   * audited, all in its own platform transaction). This door then audits
+   * `core.member.second_factor_reset` with the reason, committed (the reset has committed).
+   */
+  async resetSecondFactor(
+    id: string,
+    reason: string,
+    facts: AuditFacts,
+    tokenVersion: number | undefined,
+  ): Promise<void> {
+    const context = getContext();
+    await this.assertTokenCurrent(context.userId, tokenVersion);
+    const target = await new MembersRepository(getUnitOfWork()).find(id);
+    if (target?.status !== 'active') throw new ApiException('not_found');
+    if (target.id === context.membershipId || target.userId === context.userId) {
+      throw forbidden('resetMemberSecondFactor', 'self');
+    }
+    let issued: { readonly expiresAt: Date };
+    try {
+      issued = await this.deps.resets.issueLink({
+        userId: target.userId,
+        issuedBy: context.userId,
+        accountId: context.accountId,
+        requestId: facts.requestId,
+      });
+    } catch (error) {
+      // The service's `not_found` is a user it cannot reset (disabled, or no email to mail the link
+      // to): the membership exists, so this door answers that its state allows no reset.
+      if (error instanceof ApiException && error.code === 'not_found') {
+        throw new ApiException('invalid_transition', {
+          details: { current_status: target.status },
+        });
+      }
+      throw error;
+    }
+    await this.deps.audit.recordCommitted({
+      actorType: 'user',
+      actorId: context.userId,
+      accountId: context.accountId,
+      targetType: 'membership',
+      targetId: target.id,
+      action: 'core.member.second_factor_reset',
+      reason,
+      after: { user_id: target.userId, link_expires_at: issued.expiresAt.toISOString() },
+      requestId: facts.requestId,
+      clientRequestId: facts.clientRequestId,
+      ip: facts.ip,
+      userAgent: facts.userAgent,
+    });
   }
 
   /**

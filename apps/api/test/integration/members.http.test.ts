@@ -627,4 +627,107 @@ describe('the member doors over HTTP (PLAT-12 items E to G)', () => {
       await revoke(viewer, admin.membershipId).expect(403);
     });
   });
+
+  describe('resetMemberSecondFactor', () => {
+    const reset = (member: SignedInMember, membershipId: string, body: object, key?: string) =>
+      send(member, 'post', `/v1/staff/members/${membershipId}/second-factor/reset`, body, key);
+    const phone = () => `+9665${String(randomBytes(4).readUInt32BE(0) % 1e8).padStart(8, '0')}`;
+
+    it.each([
+      ['en', 'Set up your Eeasy Logistics verification again'],
+      ['ar', 'أعد إعداد التحقق في إيزي لوجستكس'],
+    ] as const)(
+      'resets a member’s factor (%s): 204, the sessions end, the link mailed, both audit rows',
+      async (locale, subject) => {
+        const { accountId, owning } = await accountWithOwner();
+        const member = await staff.member(accountId, ['dispatcher'], { locale });
+        await owner`
+          UPDATE core_users SET second_factor_enabled = true, second_factor_phone = ${phone()}
+          WHERE id = ${member.userId}`;
+        const key = nextKey();
+        const response = await reset(
+          owning,
+          member.membershipId,
+          { reason: 'Lost phone' },
+          key,
+        ).expect(204);
+        const audit = await auditRowsOf(owner, String(response.headers['x-request-id']));
+        expect(audit).toMatchObject([
+          {
+            action: 'core.auth.second_factor_reset',
+            actorId: owning.userId,
+            accountId,
+            targetType: 'user',
+            targetId: member.userId,
+          },
+          {
+            action: 'core.member.second_factor_reset',
+            actorId: owning.userId,
+            accountId,
+            targetType: 'membership',
+            targetId: member.membershipId,
+            reason: 'Lost phone',
+            after: { user_id: member.userId },
+          },
+        ]);
+        expect(errorOf((await refresh(member).expect(401)).body).code).toBe('token_invalid');
+        const read = await get(owning, `/v1/staff/members/${member.membershipId}`).expect(200);
+        expect(read.body).toMatchObject({
+          status: 'active',
+          user: { second_factor_enabled: false },
+        });
+
+        const mail = await latestMail(owner, member.email, 'second_factor_reset');
+        expect(mail?.payload.locale).toBe(locale);
+        await sendMailRow(config, mail?.id ?? '');
+        const delivered = await mailpitMessage(`${mail?.id ?? ''}@eeasy-logistics`);
+        expect(delivered.Subject).toBe(subject);
+        expect(delivered.Text).toMatch(
+          /http:\/\/localhost:3001\/second-factor\/enrol\/[\da-f-]{36}\.[\w-]{43}/,
+        );
+        // A retried key answers the stored 204 without a second reset or mail.
+        await reset(owning, member.membershipId, { reason: 'Lost phone' }, key).expect(204);
+        const [mails] = await owner<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM core_outbox
+          WHERE kind = 'message' AND payload->>'to' = ${member.email}
+            AND payload->>'template_key' = 'second_factor_reset'`;
+        expect(mails?.n).toBe(1);
+      },
+    );
+
+    it('refuses oneself, another account’s or a non-active membership, a reader, a bad reason and a user it cannot reset', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const body = { reason: 'Lost phone' };
+      expect(errorOf((await reset(owning, owning.membershipId, body).expect(403)).body).code).toBe(
+        'forbidden',
+      );
+      const foreign = await plantMember((await accountWithOwner()).accountId, 'Foreign');
+      await reset(owning, foreign.membershipId, body).expect(404);
+      const invited = await plantMember(accountId, 'Invited', { status: 'invited' });
+      await reset(owning, invited.membershipId, body).expect(404);
+      const revoked = await plantMember(accountId, 'Revoked', { status: 'revoked' });
+      await reset(owning, revoked.membershipId, body).expect(404);
+      const active = await plantMember(accountId, 'Active');
+      const short = await reset(owning, active.membershipId, { reason: 'Lost' }).expect(400);
+      expect(errorOf(short.body).details?.fields).toEqual([
+        expect.objectContaining({ pointer: '/body/reason' }),
+      ]);
+      const viewer = await staff.member(accountId, ['viewer']);
+      await reset(viewer, active.membershipId, body).expect(403);
+      await owner`UPDATE core_users SET email = NULL WHERE id = ${active.userId}`;
+      const unreachable = await reset(owning, active.membershipId, body).expect(409);
+      expect(errorOf(unreachable.body)).toMatchObject({
+        code: 'invalid_transition',
+        details: { current_status: 'active' },
+      });
+      const other = await plantMember(accountId, 'Other');
+      await owner`UPDATE core_users SET token_version = token_version + 1 WHERE id = ${owning.userId}`;
+      const moved = await reset(owning, other.membershipId, body).expect(401);
+      expect(errorOf(moved.body).code).toBe('token_invalid');
+      const [audits] = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_audit_log
+        WHERE action = 'core.member.second_factor_reset' AND account_id = ${accountId}`;
+      expect(audits?.n).toBe(0);
+    });
+  });
 });
