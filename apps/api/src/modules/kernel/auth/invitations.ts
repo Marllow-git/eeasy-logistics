@@ -110,7 +110,13 @@ export class Invitations {
         throw new ApiException('invalid_transition', { details: { current_status: 'active' } });
       } else {
         membershipId = existing.id;
-        await tx.memberships.reinvite(membershipId, input.roles, input.siteIds);
+        // A `driver` role the drivers resource gave stays (as `updateMember` keeps it, PLAT-12 8.2
+        // #31; `StaffRole` cannot send it), and the combination is checked over the result
+        // (PLAT-12 adversary L-2; PLAT-10 A-7).
+        const kept = existing.roles.filter((role) => role === 'driver');
+        const roles = [...new Set([...input.roles, ...kept])];
+        assertRoleCombination(roles, resolver.bundles);
+        await tx.memberships.reinvite(membershipId, roles, input.siteIds);
         await tx.invitations.expireOpenOf(membershipId);
       }
       const invitationId = uuidv7();

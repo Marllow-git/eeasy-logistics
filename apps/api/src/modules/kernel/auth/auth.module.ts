@@ -13,6 +13,7 @@ import { identityStoreOnPool } from '../platform/identity.repository.js';
 import { PLATFORM_POOL } from '../platform/tokens.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { RATE_LIMITER } from '../rate-limit/rate-limiter.js';
+import { MembersController } from '../members/members.controller.js';
 import { AccessTokenIssuer } from './access-token.js';
 import { Invitations } from './invitations.js';
 import { PasswordResets } from './password-resets.js';
@@ -37,7 +38,9 @@ export class AuthModule {
     return {
       module: AuthModule,
       imports: [KernelModule],
-      controllers: [StaffAuthController, PlatformAuthController],
+      // PLAT-12: the staff surface's member doors, here because they delegate to `Invitations` and
+      // `SecondFactorResets` (plan 2.9).
+      controllers: [StaffAuthController, PlatformAuthController, MembersController],
       providers: [
         { provide: PasswordHasher, useFactory: () => new PasswordHasher() },
         // Read once at boot; a missing or malformed list stops the boot (plan 2.2).

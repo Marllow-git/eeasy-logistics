@@ -1,5 +1,6 @@
 import type { SQL } from 'drizzle-orm';
 import { and, asc, desc, eq, gte, lt, sql } from 'drizzle-orm';
+import type { ListPagePlan, ListSorts, PageKey } from '../contract/list-page.js';
 import { coreAuditLog } from '../schema/audit-log.js';
 
 // The reads of core_audit_log shared by the tenant and platform repositories (PLAT-7 plan 2.6):
@@ -65,3 +66,26 @@ export function auditPageOrder(sort: AuditSort): SQL[] {
   const direction = sort === '-occurred_at' ? desc : asc;
   return [direction(coreAuditLog.occurredAt), direction(coreAuditLog.id)];
 }
+
+/** The audit lists' one sort field for the kernel's list page helper (PLAT-12 plan 2.4). */
+export const auditListSorts: ListSorts<'occurred_at'> = {
+  fields: { occurred_at: 'timestamp' },
+  default: '-occurred_at',
+};
+
+/** The repository query of a planned page with the repository's filters. */
+export function auditPageQuery(
+  plan: ListPagePlan<'occurred_at'>,
+  filters: AuditFilters,
+): AuditPageQuery {
+  const { after } = plan;
+  return {
+    filters,
+    sort: plan.sort.descending ? '-occurred_at' : 'occurred_at',
+    after: after === undefined ? undefined : { occurredAt: after.value, id: after.id },
+    limit: plan.limit,
+  };
+}
+
+/** The cursor key of a row: `occurred_at` as PostgreSQL wrote it (microseconds kept) and `id`. */
+export const auditKeyOf = (row: AuditRow): PageKey => ({ value: row.occurredAt, id: row.id });

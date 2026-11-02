@@ -47,3 +47,5 @@ export {
   type IssuedLink,
   type SecondFactorLinkRequest,
 } from '../auth/second-factor-resets.js';
+// Sites (PLAT-12 plan 2.6): DEL-2, DEL-8 and WMS-2 register what keeps a site in use.
+export { SiteUseChecks, type SiteRole, type SiteUseCheck } from '../sites/site-use.js';

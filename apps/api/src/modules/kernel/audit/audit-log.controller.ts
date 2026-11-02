@@ -5,9 +5,9 @@ import { Controller, Get, Inject, Optional } from '@nestjs/common';
 import type { ContractInput } from '../contract/contract-pipe.js';
 import { Input, Operation } from '../contract/contract-pipe.js';
 import { presentStaffAuditPage } from './audit-log.presenter.js';
+import { CURSOR_CODEC, CursorCodec, planListPage } from '../contract/list-page.js';
+import { auditKeyOf, auditListSorts, auditPageQuery } from './audit-log.query.js';
 import { AuditLogRepository } from './audit-log.repository.js';
-import { planAuditPage } from './audit-page.js';
-import { CURSOR_CODEC, CursorCodec } from './cursor.js';
 
 // `listAuditLog` (staff surface; PLAT-7 plan 2.7): the token's account's audit log, newest first,
 // keyset pages (ADR-0029). The account comes only from the token, through the unit of work
@@ -27,9 +27,9 @@ export class AuditLogController {
   @Operation(operation)
   async list(@Input() input: ContractInput<typeof operation>): Promise<ListAuditLog200> {
     const { query } = input;
-    const plan = planAuditPage(this.cursors, {
+    const plan = planListPage(this.cursors, {
       operation: 'listAuditLog',
-      principal: `account:${getContext().accountId}`,
+      reader: `account:${getContext().accountId}`,
       filters: {
         target_type: query.target_type,
         target_id: query.target_id,
@@ -37,18 +37,20 @@ export class AuditLogController {
         created_from: query.created_from,
         created_to: query.created_to,
       },
-      repositoryFilters: {
+      sorts: auditListSorts,
+      sort: query.sort,
+      cursor: query.cursor,
+      limit: query.limit,
+    });
+    const rows = await new AuditLogRepository(getUnitOfWork()).page(
+      auditPageQuery(plan, {
         targetType: query.target_type,
         targetId: query.target_id,
         actorId: query.actor_id,
         from: query.created_from,
         to: query.created_to,
-      },
-      sort: query.sort,
-      cursor: query.cursor,
-      limit: query.limit,
-    });
-    const rows = await new AuditLogRepository(getUnitOfWork()).page(plan.query);
-    return presentStaffAuditPage(plan.page(rows));
+      }),
+    );
+    return presentStaffAuditPage(plan.page(rows, auditKeyOf));
   }
 }
