@@ -3,10 +3,13 @@ import { ApiException } from '../errors/api-exception.js';
 import type { ListPageRequest, ListSorts } from './list-page.js';
 import {
   CursorCodec,
+  containsPattern,
   cursorHmacKey,
   enumListFilter,
+  keysetSlice,
   planListPage,
   presentPage,
+  textQuery,
 } from './list-page.js';
 
 // The kernel's list page helper (PLAT-12 plan 2.4, 2.14; ADR-0029): sort fields, cursor binding,
@@ -147,5 +150,52 @@ describe('enumListFilter', () => {
         [{ pointer: '/query/status', code: 'invalid' }],
       ]);
     }
+  });
+});
+
+describe('the q filter (PLAT-12 leg 2)', () => {
+  it('trims the text and reads a blank one as no filter', () => {
+    expect(textQuery(undefined)).toBeUndefined();
+    expect(textQuery('   ')).toBeUndefined();
+    expect(textQuery('  Sara ')).toBe('Sara');
+  });
+
+  it('escapes the LIKE wildcards and the escape itself, so the text matches literally', () => {
+    expect(containsPattern('sara')).toBe('%sara%');
+    expect(containsPattern('50%_off\\x')).toBe('%50\\%\\_off\\\\x%');
+  });
+});
+
+describe('keysetSlice', () => {
+  const people = [
+    { id: id(3), name: 'Sara' },
+    { id: id(1), name: 'Ali' },
+    { id: id(2), name: 'Sara' },
+    { id: id(4), name: 'سارة' },
+  ];
+  const nameKey = (row: (typeof people)[number]) => ({ value: row.name, id: row.id });
+  const sort = { field: 'name', descending: false, kind: 'text' as const };
+
+  it('orders by the value then the id, in the sort direction, and keeps the page plus one', () => {
+    const ascending = keysetSlice({ sort, after: undefined, limit: 3 }, people, nameKey);
+    expect(ascending.map((row) => row.id)).toEqual([id(1), id(2), id(3)]);
+    const descending = keysetSlice(
+      { sort: { ...sort, descending: true }, after: undefined, limit: 10 },
+      people,
+      nameKey,
+    );
+    expect(descending.map((row) => row.id)).toEqual([id(4), id(3), id(2), id(1)]);
+  });
+
+  it('continues strictly after the cursor key, ties broken by id', () => {
+    const after = { value: 'Sara', id: id(2) };
+    const next = keysetSlice({ sort, after, limit: 10 }, people, nameKey);
+    expect(next.map((row) => row.id)).toEqual([id(3), id(4)]);
+    const back = keysetSlice(
+      { sort: { ...sort, descending: true }, after, limit: 10 },
+      people,
+      nameKey,
+    );
+    expect(back.map((row) => row.id)).toEqual([id(1)]);
   });
 });

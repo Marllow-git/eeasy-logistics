@@ -83,6 +83,13 @@ export class SitesRepository extends ScopedRepository<typeof coreSites> {
     return row;
   }
 
+  /** Which of `ids` name a site of the account, whatever its status (member `site_ids`, 2.7). */
+  async knownIds(ids: readonly string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await this.findMany(inArray(coreSites.id, [...new Set(ids)]));
+    return new Set(rows.map((row) => row.id));
+  }
+
   page(query: SitePageQuery): Promise<SiteRow[]> {
     const value = sortValue[query.sort.field];
     const plan = { sort: query.sort, after: query.after };
