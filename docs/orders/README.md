@@ -27,9 +27,8 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
 | PLAT-13 | #95 | `feat/PLAT-13-provisioning-rollout` | executor worktree | executor-api (Opus) | build, leg 1 (A–D) | native, scratch databases, Redis, Mailpit | one-way door (migration for the rollout tables; the provisioning door); adversary required (Opus); two legs; plan pushed 2026-11-02 |
-| WEB-2 | #87 | `feat/WEB-2-browser-sessions` | executor worktree | executor-web (Opus) | build, leg 1 (A–D) | native stack with the API on 3000, Mailpit, WhatsApp stub | two-way door; adversary required; two legs; design references `docs/references/design/WEB-2.md` (PR #85); Next 16 `proxy.ts` |
 | INT-2 | #98 | `feat/INT-2-geocoder` | executor worktree | executor-api (Opus) | build (A–D) | native, scratch databases, Redis, the fixture stub | one-way door (one migration, `core_geocode_cache`); adversary no; third executor under the ruling of 2026-11-02; files disjoint from PLAT-13 and WEB-2; research `docs/research/hudhud-geocoding-2026-11.md` (PR #97) |
 
 ## Next unblocked (roadmap §1.1)
 
-WEB-3 after WEB-2 (PLAT-12 merged, PR #89); WEB-4 after WEB-19, WEB-2, PLAT-13, PLAT-8; DEL-4 after PLAT-11 and PLAT-9 (merged) once the wave 1 gate opens; DRV-5 after DRV-4 (INT-4 merged, PR #93); OPS-1 waits on the owner\'s go (Q-10, Q-12).
+WEB-3 (WEB-2 merged, PR #91; PLAT-12 and PLAT-7 merged) next, design references first; WEB-4 after WEB-19, WEB-2, PLAT-13, PLAT-8; DEL-4 after PLAT-11 and PLAT-9 (merged) once the wave 1 gate opens; DRV-5 after DRV-4 (INT-4 merged, PR #93); OPS-1 waits on the owner\'s go (Q-10, Q-12).
