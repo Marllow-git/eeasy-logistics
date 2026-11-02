@@ -123,6 +123,27 @@ describe('refreshVerdict', () => {
     });
   });
 
+  it('still says account_suspended for a family the suspension revoked (PLAT-13 plan 2.7)', () => {
+    const membership = row().membership!;
+    const suspended = { ...membership, accountStatus: 'suspended' as const };
+    const refused = { kind: 'refuse', code: 'account_suspended' };
+    expect(verdict(row({ revoked: true, membership: suspended }))).toEqual(refused);
+    expect(verdict(row({ revoked: true, usedAt: seconds(-100), membership: suspended }))).toEqual(
+      refused,
+    );
+    // Only for the member's own live membership, and never across surfaces.
+    const invalid = { kind: 'refuse', code: 'token_invalid' };
+    expect(
+      verdict(row({ revoked: true, membership: { ...suspended, status: 'revoked' } })),
+    ).toEqual(invalid);
+    expect(
+      verdict(row({ revoked: true, membership: suspended }), {
+        surface: 'platform',
+        userAgentHash: agent,
+      }),
+    ).toEqual(invalid);
+  });
+
   it('checks the platform staff row on the platform surface', () => {
     const platform = {
       surface: 'platform' as const,

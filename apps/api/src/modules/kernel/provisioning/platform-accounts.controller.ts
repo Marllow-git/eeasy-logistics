@@ -34,7 +34,7 @@ import { doorAccountStore } from '../platform/accounts.repository.js';
 import { doorIdentityStore } from '../platform/identity.repository.js';
 import type { AccountSortField } from '../platform/provisioning.repository.js';
 import { accountStatuses } from '../schema/accounts.js';
-import { CrossTenant, optionalReason } from '../tenancy/cross-tenant.js';
+import { CrossTenant, accountIdParam, optionalReason } from '../tenancy/cross-tenant.js';
 import { presentListedAccount, presentPlatformAccount } from './platform-accounts.presenter.js';
 import { ProvisioningService } from './provisioning.service.js';
 
@@ -45,14 +45,21 @@ import { ProvisioningService } from './provisioning.service.js';
 // their contract declares no `SupportReason` (lead ruling on 8.2 #8), so the row carries it when sent. `x-permission`
 // (`platform.accounts.read`, `platform.accounts.provision`) is PLAT-10's guard. Registered by
 // `AuthModule`, whose `Invitations` the owner's invitation is delegated to.
-// `platformProvisionZone` and `platformProvisionCoverage` are DEL-1's (ADR-0015); `suspend`,
-// `reactivate` and `close` are leg 2 of this order.
+// `platformProvisionZone` and `platformProvisionCoverage` are DEL-1's (ADR-0015). Suspension,
+// reactivation and closure (leg 2, plan 2.7) are doors too, with the reason in the body
+// (`platform.accounts.suspend`).
 
 const listOp = operationSchemas.platformListAccounts;
 const provisionOp = operationSchemas.platformProvisionAccount;
 const getOp = operationSchemas.platformGetAccount;
 const updateOp = operationSchemas.platformUpdateAccount;
 const inviteOwnerOp = operationSchemas.platformInviteOwner;
+const suspendOp = operationSchemas.platformSuspendAccount;
+const reactivateOp = operationSchemas.platformReactivateAccount;
+const closeOp = operationSchemas.platformCloseAccount;
+
+/** The lifecycle doors carry their reason in the body (`PlatformReasonRequest`), as the door's. */
+const bodyReason = { from: 'path', name: accountIdParam, reason: 'body' } as const;
 
 const accountSorts: ListSorts<AccountSortField> = {
   fields: { created_at: 'timestamp', name: 'text', status: 'text' },
@@ -154,5 +161,47 @@ export class PlatformAccountsController {
   ): Promise<Membership> {
     const membershipId = await this.provisioning.inviteOwner(input.body, facts);
     return presentMember(await this.members.get(membershipId));
+  }
+
+  /** `active → suspended` (plan 2.7); the body's reason is the door's and the audit row's. */
+  @Post(':account_id/suspend')
+  @HttpCode(200)
+  @CrossTenant(bodyReason)
+  @Idempotent()
+  @Operation(suspendOp)
+  async suspend(
+    @Input() input: ContractInput<typeof suspendOp>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<Account> {
+    await this.provisioning.transition('suspend', input.body.reason, facts);
+    return presentPlatformAccount(await this.accounts.read());
+  }
+
+  /** `suspended → active` (plan 2.7). */
+  @Post(':account_id/reactivate')
+  @HttpCode(200)
+  @CrossTenant(bodyReason)
+  @Idempotent()
+  @Operation(reactivateOp)
+  async reactivate(
+    @Input() input: ContractInput<typeof reactivateOp>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<Account> {
+    await this.provisioning.transition('reactivate', input.body.reason, facts);
+    return presentPlatformAccount(await this.accounts.read());
+  }
+
+  /** `suspended → closed` only (plan 2.7, §7 #4); the account stays readable through the door. */
+  @Post(':account_id/close')
+  @HttpCode(200)
+  @CrossTenant(bodyReason)
+  @Idempotent()
+  @Operation(closeOp)
+  async close(
+    @Input() input: ContractInput<typeof closeOp>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<Account> {
+    await this.provisioning.transition('close', input.body.reason, facts);
+    return presentPlatformAccount(await this.accounts.read());
   }
 }

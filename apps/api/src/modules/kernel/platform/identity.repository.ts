@@ -544,6 +544,34 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
     return [...new Set(rows.map((row) => row.familyId))];
   }
 
+  /**
+   * Revokes every live row of `surfaces` whose membership belongs to the account (PLAT-13 plan 2.7:
+   * the staff sessions of a suspended account, every session of a closed one); returns the distinct
+   * families revoked.
+   */
+  async revokeAccount(
+    accountId: string,
+    reason: RevocationReason,
+    surfaces: readonly SessionSurface[],
+  ): Promise<string[]> {
+    const memberships = this.unscoped()
+      .select({ id: coreMemberships.id })
+      .from(coreMemberships)
+      .where(eq(coreMemberships.accountId, accountId));
+    const rows = await this.unscoped()
+      .update(coreRefreshTokens)
+      .set({ revokedAt: sql`now()`, revokedReason: reason, updatedAt: sql`now()` })
+      .where(
+        and(
+          isNull(coreRefreshTokens.revokedAt),
+          inArray(coreRefreshTokens.surface, [...surfaces]),
+          inArray(coreRefreshTokens.membershipId, memberships),
+        ),
+      )
+      .returning({ familyId: coreRefreshTokens.familyId });
+    return [...new Set(rows.map((row) => row.familyId))];
+  }
+
   /** The family and user of a token hash, unlocked, or undefined (logout). */
   async familyOf(tokenHash: Buffer): Promise<{ familyId: string; userId: string } | undefined> {
     const [row] = await this.unscoped()
@@ -728,6 +756,22 @@ export class InvitationsRepository extends PlatformRepository<typeof coreInvitat
       .update(coreInvitations)
       .set({ acceptedAt: sql`now()`, updatedAt: sql`now()` })
       .where(eq(coreInvitations.id, id));
+  }
+
+  /** Ends every open staff invitation of the account (a closed account, plan 2.7); how many. */
+  async expireOpenOfAccount(accountId: string): Promise<number> {
+    const rows = await this.unscoped()
+      .update(coreInvitations)
+      .set({ expiresAt: sql`now()`, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(coreInvitations.accountId, accountId),
+          isNull(coreInvitations.acceptedAt),
+          sql`${coreInvitations.expiresAt} > now()`,
+        ),
+      )
+      .returning({ id: coreInvitations.id });
+    return rows.length;
   }
 
   /** Ends the open invitations of a membership (a new one replaces them). */

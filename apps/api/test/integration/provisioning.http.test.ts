@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Invitations } from '../../src/modules/kernel/auth/invitations.js';
 import { testSigningKey } from '../support/access-tokens.js';
 import { auditRowsOf } from './audit-rows.js';
-import { freshEmail } from './identity-fixtures.js';
+import { freshEmail, insertAccount } from './identity-fixtures.js';
 import { latestMail, mailpitMessage, sendMailRow } from './mail-delivery.js';
 import type { SignedInPlatformStaff } from './platform-sessions.js';
 import { platformStaff, platformWriteHeaders } from './platform-sessions.js';
@@ -470,5 +470,15 @@ describe('the account doors run in one platform transaction (lead ruling on 8.2 
       'core.member.invited',
       'platform.cross_tenant.accessed',
     ]);
+  });
+
+  it('suspends, reactivates, suspends and closes on a one-connection platform pool (item E)', async () => {
+    const id = await insertAccount(owner);
+    for (const action of ['suspend', 'reactivate', 'suspend', 'close']) {
+      await call('post', `/v1/platform/accounts/${id}/${action}`).send({ reason }).expect(200);
+    }
+    const [row] = await owner<{ status: string }[]>`
+      SELECT status FROM core_accounts WHERE id = ${id}`;
+    expect(row?.status).toBe('closed');
   });
 });
