@@ -77,6 +77,16 @@ export async function siteSummaries(
   return new SitesRepository(uow).summaries(ids);
 }
 
+/**
+ * Holds the account's site write lock shared until the transaction ends (DEL-2): a writer that
+ * hangs work off a site (an order's create) takes it before it re-reads the site, so a
+ * deactivation, which holds the lock exclusively through its in-use checks, either sees that work
+ * or runs after it, never between the read and the insert.
+ */
+export function holdSites(uow: UnitOfWork): Promise<void> {
+  return new SitesRepository(uow).holdWrites();
+}
+
 /** `core_sites` of the context's account (PLAT-12 plan 2.2, 2.5; ADR-0018). */
 export class SitesRepository extends ScopedRepository<typeof coreSites> {
   constructor(uow: UnitOfWork) {
@@ -95,6 +105,11 @@ export class SitesRepository extends ScopedRepository<typeof coreSites> {
    */
   lockWrites(): Promise<void> {
     return this.transactionLock('core_sites');
+  }
+
+  /** `lockWrites()` shared: see `holdSites`. */
+  holdWrites(): Promise<void> {
+    return this.sharedTransactionLock('core_sites');
   }
 
   summaries(ids: readonly string[]): Promise<SiteSummary[]> {

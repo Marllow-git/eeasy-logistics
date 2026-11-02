@@ -1,6 +1,6 @@
-import type { Order, OrderItem } from '@eeasy-logistics/contracts/staff/schemas';
+import type { Order, OrderEvent, OrderItem } from '@eeasy-logistics/contracts/staff/schemas';
 import { displayNumber } from '../../kernel/public/index.js';
-import type { OrderItemRow, OrderRow } from './orders.repository.js';
+import type { OrderEventRow, OrderItemRow, OrderRow } from './orders.repository.js';
 
 // `Order` and `OrderItem` of components.yaml (DEL-2 plan 2.3, 2.7). The number is rendered from
 // the stored integer (data §7); `executor_account_id` is never shown (D-1); a point is `{lat, lng}`
@@ -64,5 +64,30 @@ export function presentOrder(row: OrderRow, items?: readonly OrderItemRow[]): Or
     max_attempts: row.maxAttempts,
     notes: row.notes,
     version: row.version,
+  };
+}
+
+/**
+ * `OrderEvent` of components.yaml (plan 2.7). `payload` is internal (an edit's changed parts, the
+ * created event's reason) and not on the contract; proofs and collections arrive with DEL-7 and
+ * DEL-8, so their lists are empty until then.
+ */
+export function presentOrderEvent(row: OrderEventRow): OrderEvent {
+  const point = row.point;
+  return {
+    id: row.id,
+    type: row.type,
+    from_status: row.fromStatus,
+    to_status: row.toStatus,
+    actor_type: row.actorType,
+    actor_id: row.actorId,
+    device_id: row.deviceId,
+    client_ts: row.clientTs === null ? null : row.clientTs.toISOString(),
+    server_ts: row.serverTs.toISOString(),
+    ...(point === null ? {} : { point: { lat: point.y, lng: point.x } }),
+    reason_code: row.reasonCode,
+    note: row.note,
+    proof_ids: [],
+    collection_ids: [],
   };
 }

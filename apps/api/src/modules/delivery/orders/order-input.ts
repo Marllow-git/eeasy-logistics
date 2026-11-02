@@ -117,6 +117,83 @@ function phone(problems: FieldProblem[], pointer: string, value: string): string
   return normalised ?? value;
 }
 
+type CreateRecipient = CreateOrderBody['recipient'];
+type CreateAddress = CreateOrderBody['address'];
+type CreateItems = NonNullable<CreateOrderBody['items']>;
+
+function recipientFields(
+  problems: FieldProblem[],
+  at: string,
+  recipient: CreateRecipient,
+): NewOrderFields['recipient'] {
+  return {
+    name: text(problems, `${at}/name`, recipient.name, nameLimit),
+    phone: phone(problems, `${at}/phone`, recipient.phone),
+    altPhone:
+      recipient.alternate_phone === undefined
+        ? null
+        : phone(problems, `${at}/alternate_phone`, recipient.alternate_phone),
+    language: recipient.preferred_language ?? null,
+  };
+}
+
+function addressFields(
+  problems: FieldProblem[],
+  at: string,
+  address: CreateAddress,
+): OrderAddressFields {
+  return {
+    text: text(problems, `${at}/text`, address.text, addressTextLimit),
+    city: text(problems, `${at}/city`, address.city, cityLimit),
+    district: optionalText(problems, `${at}/district`, address.district, districtLimit),
+    shortCode: address.national_address_short_code ?? null,
+    point: address.point === undefined ? null : { lat: address.point.lat, lng: address.point.lng },
+  };
+}
+
+function itemFieldsOf(
+  problems: FieldProblem[],
+  at: string,
+  kind: OrderKind,
+  items: CreateItems,
+): OrderItemFields[] {
+  if (items.length > maxItems) problems.push({ pointer: at, code: 'too_long' });
+  return items.slice(0, maxItems).map((item, index): OrderItemFields => {
+    const itemAt = `${at}/${index}`;
+    if (item.quantity > maxItemQuantity)
+      problems.push({ pointer: `${itemAt}/quantity`, code: 'invalid' });
+    let direction: ItemDirection = item.direction;
+    if (inboundKinds.has(kind)) direction = 'in';
+    else if (kind === 'delivery' && direction === 'in') {
+      problems.push({ pointer: `${itemAt}/direction`, code: 'invalid' });
+    }
+    return {
+      nameAr: text(problems, `${itemAt}/name_ar`, item.name_ar, nameLimit),
+      nameEn: text(problems, `${itemAt}/name_en`, item.name_en, nameLimit),
+      sku: optionalText(problems, `${itemAt}/sku`, item.sku, skuLimit),
+      quantity: item.quantity,
+      direction,
+      wmsProductId: item.wms_product_id ?? null,
+      declaredValue: item.declared_value?.amount ?? null,
+    };
+  });
+}
+
+/** Notes may span lines; blank is none. */
+function notesOf(problems: FieldProblem[], at: string, value: string | undefined): string | null {
+  if (value === undefined || value.trim() === '') return null;
+  const notes = value.trim();
+  if (Array.from(notes).length > notesLimit) problems.push({ pointer: at, code: 'too_long' });
+  return notes;
+}
+
+/** `422 cod_not_allowed` for COD on a kind that collects nothing (D-4). */
+function assertCodAllowed(kind: OrderKind, codAmount: number): void {
+  if (codAmount > 0 && !codKinds.has(kind)) {
+    throw new ApiException('cod_not_allowed', { details: { kind, cod_amount: codAmount } });
+  }
+}
+
 /**
  * The checked fields of a create, or the refusal: `400 validation_failed` with every field problem,
  * else `422 cod_not_allowed` for COD on a kind that collects nothing.
@@ -124,65 +201,17 @@ function phone(problems: FieldProblem[], pointer: string, value: string): string
 export function newOrderFields(body: CreateOrderBody): NewOrderFields {
   const problems: FieldProblem[] = [];
   const kind = body.kind;
-  const recipient = {
-    name: text(problems, '/body/recipient/name', body.recipient.name, nameLimit),
-    phone: phone(problems, '/body/recipient/phone', body.recipient.phone),
-    altPhone:
-      body.recipient.alternate_phone === undefined
-        ? null
-        : phone(problems, '/body/recipient/alternate_phone', body.recipient.alternate_phone),
-    language: body.recipient.preferred_language ?? null,
-  };
-  const address: OrderAddressFields = {
-    text: text(problems, '/body/address/text', body.address.text, addressTextLimit),
-    city: text(problems, '/body/address/city', body.address.city, cityLimit),
-    district: optionalText(
-      problems,
-      '/body/address/district',
-      body.address.district,
-      districtLimit,
-    ),
-    shortCode: body.address.national_address_short_code ?? null,
-    point: body.address.point === undefined ? null : { ...body.address.point },
-  };
-  const items = body.items ?? [];
-  if (items.length > maxItems) problems.push({ pointer: '/body/items', code: 'too_long' });
-  const itemFields = items.slice(0, maxItems).map((item, index): OrderItemFields => {
-    const at = `/body/items/${index}`;
-    if (item.quantity > maxItemQuantity)
-      problems.push({ pointer: `${at}/quantity`, code: 'invalid' });
-    let direction: ItemDirection = item.direction;
-    if (inboundKinds.has(kind)) direction = 'in';
-    else if (kind === 'delivery' && direction === 'in') {
-      problems.push({ pointer: `${at}/direction`, code: 'invalid' });
-    }
-    return {
-      nameAr: text(problems, `${at}/name_ar`, item.name_ar, nameLimit),
-      nameEn: text(problems, `${at}/name_en`, item.name_en, nameLimit),
-      sku: optionalText(problems, `${at}/sku`, item.sku, skuLimit),
-      quantity: item.quantity,
-      direction,
-      wmsProductId: item.wms_product_id ?? null,
-      declaredValue: item.declared_value?.amount ?? null,
-    };
-  });
+  const recipient = recipientFields(problems, '/body/recipient', body.recipient);
+  const address = addressFields(problems, '/body/address', body.address);
+  const itemFields = itemFieldsOf(problems, '/body/items', kind, body.items ?? []);
   // No `del_slots` yet: a slot id would be stored unchecked (plan 2.3, 2a).
   if (body.slot_id !== undefined) problems.push({ pointer: '/body/slot_id', code: 'invalid' });
-  // Notes may span lines; blank is none.
-  let notes: string | null = null;
-  if (body.notes !== undefined && body.notes.trim() !== '') {
-    notes = body.notes.trim();
-    if (Array.from(notes).length > notesLimit) {
-      problems.push({ pointer: '/body/notes', code: 'too_long' });
-    }
-  }
+  const notes = notesOf(problems, '/body/notes', body.notes);
   const sourceRef = optionalText(problems, '/body/source_ref', body.source_ref, sourceRefLimit);
   if (problems.length > 0) throw new ApiException('validation_failed', { fields: problems });
 
   const codAmount = body.cod_amount?.amount ?? 0;
-  if (codAmount > 0 && !codKinds.has(kind)) {
-    throw new ApiException('cod_not_allowed', { details: { kind, cod_amount: codAmount } });
-  }
+  assertCodAllowed(kind, codAmount);
   return {
     kind,
     siteId: body.site_id.toLowerCase(),
@@ -193,4 +222,60 @@ export function newOrderFields(body: CreateOrderBody): NewOrderFields {
     codAmount,
     notes,
   };
+}
+
+/** The body the generated `updateOrder` schema hands the handler: every part optional. */
+export interface UpdateOrderBody {
+  readonly recipient?: CreateRecipient | undefined;
+  readonly address?: CreateAddress | undefined;
+  readonly items?: CreateItems | undefined;
+  readonly cod_amount?: { readonly amount: number } | undefined;
+  readonly notes?: string | undefined;
+}
+
+/** The checked parts of an edit; a part the client did not send is undefined (plan 2.8). */
+export interface OrderPatch {
+  readonly recipient?: NewOrderFields['recipient'];
+  readonly address?: OrderAddressFields;
+  readonly items?: readonly OrderItemFields[];
+  readonly codAmount?: number;
+  /** Null clears the notes (a blank value). */
+  readonly notes?: string | null;
+}
+
+/** The parts an edit may name, in the order the audit row and the event list them. */
+export const patchKeys = ['recipient', 'address', 'items', 'cod_amount', 'notes'] as const;
+export type PatchKey = (typeof patchKeys)[number];
+
+/**
+ * `updateOrder`'s parts by the create's rules (plan 2.8), for an order of `kind`: `sent` names the
+ * top-level fields the client sent (the generated schema fills defaults, `sentBodyFields`). The
+ * item list is replaced whole; an empty list is allowed, as on a create.
+ */
+export function orderPatchFields(
+  body: UpdateOrderBody,
+  sent: readonly string[],
+  kind: OrderKind,
+): OrderPatch {
+  const problems: FieldProblem[] = [];
+  const has = (key: PatchKey) => sent.includes(key);
+  const patch: {
+    -readonly [K in keyof OrderPatch]: OrderPatch[K];
+  } = {};
+  if (has('recipient') && body.recipient !== undefined) {
+    patch.recipient = recipientFields(problems, '/body/recipient', body.recipient);
+  }
+  if (has('address') && body.address !== undefined) {
+    patch.address = addressFields(problems, '/body/address', body.address);
+  }
+  if (has('items') && body.items !== undefined) {
+    patch.items = itemFieldsOf(problems, '/body/items', kind, body.items);
+  }
+  if (has('notes')) patch.notes = notesOf(problems, '/body/notes', body.notes);
+  if (problems.length > 0) throw new ApiException('validation_failed', { fields: problems });
+  if (has('cod_amount') && body.cod_amount !== undefined) {
+    assertCodAllowed(kind, body.cod_amount.amount);
+    patch.codAmount = body.cod_amount.amount;
+  }
+  return patch;
 }

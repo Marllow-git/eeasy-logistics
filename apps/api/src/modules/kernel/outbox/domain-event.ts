@@ -28,6 +28,18 @@ export const domainEventTypes = [
   // PLAT-13: the notice mail of a platform user's TOTP reset (a kernel effect, no link).
   'core.platform_staff.totp_reset',
   'delivery.order.created',
+  // DEL-2 leg 2: one type per status an arrow lands in (catalogue §6.3), written by
+  // `OrderTransitions.apply` for every arrow; DEL-6 and DEL-7 take the same path.
+  'delivery.order.accepted',
+  'delivery.order.offered',
+  'delivery.order.assigned',
+  'delivery.order.picked_up',
+  'delivery.order.out_for_delivery',
+  'delivery.order.attempted',
+  'delivery.order.delivered',
+  'delivery.order.failed',
+  'delivery.order.returned',
+  'delivery.order.cancelled',
 ] as const;
 export type DomainEventType = (typeof domainEventTypes)[number];
 

@@ -20,6 +20,7 @@ import { PinCheck } from './drivers/cash-pin.js';
 import { DriverCashPinController } from './drivers/driver-cash-pin.controller.js';
 import { DriversController } from './drivers/drivers.controller.js';
 import { VehiclesController } from './vehicles/vehicles.controller.js';
+import { OrderSiteUse } from './orders/order-site-use.js';
 import { OrdersController } from './orders/orders.controller.js';
 import { CoverageController } from './zones/coverage.controller.js';
 import { PlatformZonesController } from './zones/platform-zones.controller.js';
@@ -53,6 +54,8 @@ export class DeliveryModule {
       providers: [
         driverIdentitiesProvider,
         orderAccountsProvider,
+        // The `open_orders` reason of PLAT-12's site-in-use registry (DEL-2 leg 2).
+        OrderSiteUse,
         driverSignInProvider(config),
         {
           // The cash PIN check (plan 2.9): its own tenant transaction on the app pool per check.
