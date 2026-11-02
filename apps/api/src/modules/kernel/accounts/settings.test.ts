@@ -6,7 +6,9 @@ import {
   maxReasonCodes,
   mergeSettings,
   settingsProblems,
+  starterReasonCodes,
 } from './settings.js';
+import { orderAccountOf } from './order-account.js';
 
 // PLAT-12 plan 2.2, 2.3, 2.14: the limits over their defaults, the settings over theirs, the rules
 // beyond the contract's schema and the PATCH merge.
@@ -46,7 +48,7 @@ describe('effectiveSettings', () => {
       intake_rule: 'receive_as_pending',
       max_attempts: 3,
       proof_policy: { delivery: [], cod: [] },
-      reason_codes: [],
+      reason_codes: starterReasonCodes,
       auto_dispatch: { enabled: false },
       second_factor_required: false,
       allowed_cod_methods: ['cash'],
@@ -162,12 +164,34 @@ describe('mergeSettings', () => {
   it('lists the changed keys only, with their effective values before and after', () => {
     const change = mergeSettings(
       { second_factor_required: false, max_attempts: 4 },
-      { second_factor_required: true, max_attempts: 4, reason_codes: [] },
+      { second_factor_required: true, max_attempts: 4, reason_codes: [...starterReasonCodes] },
       ['second_factor_required', 'max_attempts', 'reason_codes'],
     );
     expect(change.changed).toEqual(['second_factor_required']);
     expect(change.before).toEqual({ second_factor_required: false });
     expect(change.after).toEqual({ second_factor_required: true });
+  });
+
+  it('offers six starter reason codes until the owner sets a list, which replaces them (DEL-2)', () => {
+    expect(starterReasonCodes.map((reason) => reason.code)).toEqual([
+      'customer_unreachable',
+      'address_not_found',
+      'customer_refused',
+      'customer_cancelled',
+      'customer_rescheduled',
+      'other',
+    ]);
+    for (const reason of starterReasonCodes) {
+      expect(reason.active).toBe(true);
+      expect(reason.label_ar).toMatch(/[\u0600-\u06FF]/);
+      expect(reason.label_en).toMatch(/^[A-Z][a-z ]+$/);
+    }
+    expect(settingsProblems({ reason_codes: [...starterReasonCodes] })).toEqual([]);
+    expect(orderAccountOf({}, {}).reasonCodes).toContain('customer_cancelled');
+    const owned = mergeSettings({}, { reason_codes: [] }, ['reason_codes']);
+    expect(owned.changed).toEqual(['reason_codes']);
+    expect(owned.stored).toEqual({ reason_codes: [] });
+    expect(orderAccountOf(owned.stored, {}).reasonCodes).toEqual([]);
   });
 
   it('changes nothing when every sent value equals the effective one', () => {

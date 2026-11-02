@@ -26,7 +26,12 @@ export class CensusIdentitiesRepository extends PlatformRepository<typeof coreUs
     accounts: readonly { id: string; name: string; factor: boolean }[],
   ): Promise<void> {
     for (const account of accounts) {
-      const settings = account.factor ? { second_factor_required: true } : {};
+      // An empty reason-code list stored on purpose: the settings census starts from no codes, not
+      // from the starter set an account that never set any reads (DEL-2 round 1, ruling 6).
+      const settings = {
+        reason_codes: [],
+        ...(account.factor ? { second_factor_required: true } : {}),
+      };
       await this.unscoped()
         .insert(coreAccounts)
         .values({ id: account.id, name: account.name, status: 'active', settings })

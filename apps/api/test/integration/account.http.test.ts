@@ -5,6 +5,7 @@ import { createPlatformPool } from '@eeasy-logistics/db/platform';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AccountService } from '../../src/modules/kernel/accounts/account.service.js';
+import { starterReasonCodes } from '../../src/modules/kernel/accounts/settings.js';
 import { AuditWriter } from '../../src/modules/kernel/audit/audit-writer.js';
 import { accountStoreOnPool } from '../../src/modules/kernel/platform/accounts.repository.js';
 import { testSigningKey } from '../support/access-tokens.js';
@@ -125,7 +126,8 @@ describe('the account doors over HTTP (PLAT-12 item B)', () => {
         intake_rule: 'receive_as_pending',
         max_attempts: 3,
         proof_policy: { delivery: [], cod: [] },
-        reason_codes: [],
+        // DEL-2 round 1, ruling 6: the starter set, read but never stored.
+        reason_codes: starterReasonCodes,
         auto_dispatch: { enabled: false },
         second_factor_required: false,
         allowed_cod_methods: ['cash'],
@@ -167,7 +169,10 @@ describe('the account doors over HTTP (PLAT-12 item B)', () => {
       expect(second.status).toBe(200);
       expect(second.body).toMatchObject({ max_attempts: 5, offline_window_hours: 24 });
       const [secondAudit] = await auditRowsOf(owner, second.headers['x-request-id'] ?? '');
-      expect(secondAudit?.before).toEqual({ offline_window_hours: 12, reason_codes: [] });
+      expect(secondAudit?.before).toEqual({
+        offline_window_hours: 12,
+        reason_codes: starterReasonCodes,
+      });
       const [stored] = await owner<{ settings: unknown; version: number }[]>`
         SELECT settings, version FROM core_accounts WHERE id = ${accountId}`;
       expect(stored).toEqual({

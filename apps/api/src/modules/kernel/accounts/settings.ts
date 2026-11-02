@@ -11,12 +11,30 @@ import { canonicalJson } from '../idempotency/request-hash.js';
 /** A settings document under the contract's names (`intake_rule`, `max_attempts`, ...). */
 export type SettingsDocument = Readonly<Record<string, unknown>>;
 
+/**
+ * The reason codes of an account that never set any (DEL-2 lead ruling on leg 2's 8.2 #18): read
+ * through `effectiveSettings`, never stored, so a cancel or a failure works on a new account; the
+ * owner's first `reason_codes` PATCH replaces the whole set, as any stored value does.
+ */
+export const starterReasonCodes = Object.freeze(
+  [
+    ['customer_unreachable', 'تعذر الوصول إلى العميل', 'Customer unreachable'],
+    ['address_not_found', 'العنوان غير موجود', 'Address not found'],
+    ['customer_refused', 'رفض العميل الاستلام', 'Customer refused'],
+    ['customer_cancelled', 'ألغى العميل الطلب', 'Customer cancelled'],
+    ['customer_rescheduled', 'طلب العميل موعدًا آخر', 'Customer rescheduled'],
+    ['other', 'سبب آخر', 'Other'],
+  ].map(([code, labelAr, labelEn]) =>
+    Object.freeze({ code, label_ar: labelAr, label_en: labelEn, active: true }),
+  ),
+);
+
 /** What an account that set nothing reads (plan 2.3: the contract's defaults and the plan's). */
 export const accountSettingsDefaults: SettingsDocument = Object.freeze({
   intake_rule: 'receive_as_pending',
   max_attempts: 3,
   proof_policy: Object.freeze({ delivery: [], cod: [] }),
-  reason_codes: [],
+  reason_codes: starterReasonCodes,
   auto_dispatch: Object.freeze({ enabled: false }),
   second_factor_required: false,
   allowed_cod_methods: ['cash'],
