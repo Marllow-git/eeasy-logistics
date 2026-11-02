@@ -89,3 +89,7 @@ Documents and sources consulted (2026-11-02): Context7 `/drizzle-team/drizzle-or
 4. The roadmap A-27 row (8.1 #2).
 
 ## 9. Lead review
+
+Lead review (Fable), 2026-11-02, against §2 and §8 on head 03faa7e: no defect found. The runner applies every unapplied journal entry itself, in journal order, in one transaction, with Drizzle's bookkeeping (the file's SHA-256, `created_at` = the journal `when`), keeps the two history refusals and adds one the plan missed (two entries with one `when`, since the bookkeeping keys rows by it); the existing sixteen files, snapshots and journal entries are byte-identical and an already-migrated database reports nothing to migrate; the prefix is inert on the unchanged schema. Rulings: 8.1 "2.3 does not work as written" **accepted and thanked**: drizzle-kit 0.31.11 refuses to generate on a forked chain instead of emitting a duplicate, so §11.9's procedure (point the second order's snapshot at main's newest, then regenerate) replaces 2.3; the amendment is A-27 (A-26 was PLAT-11's), added to the roadmap table in this commit; the executor sentence added to `executor-api.md` **accepted**. Serena incident (8.2 #6): two memory lines written into the DEL-4 worktree and reverted; the DEL-4 executor was told to verify; the per-type servers and the read-only rule are PR #115.
+
+Gate: PR #116 marked ready on 03faa7e plus this commit; merged by the lead under the two-way-door delegation after `tools/pr-gate.sh 116` passes on the head it reports.
