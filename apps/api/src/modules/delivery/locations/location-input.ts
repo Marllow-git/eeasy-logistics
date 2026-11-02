@@ -2,14 +2,19 @@ import type { FieldProblem } from '../../kernel/public/index.js';
 import { locationRingSize } from '../../kernel/public/index.js';
 
 // The location batch rules that need no database (DEL-5 plan 2.6; domain model §7; ADR-0028). A
-// point outside the coordinate, accuracy or battery ranges makes the batch `400`; a point whose
-// device time lies more than 5 minutes ahead or more than 24 hours back, or is not newer than the
-// last point kept, is dropped and counted (a duplicate or late point is harmless, never an error).
+// point outside the coordinate, accuracy, speed, heading or battery ranges makes the batch `400`; a
+// point whose device time lies more than 60 seconds ahead or more than 24 hours back, or is not
+// newer than the last point kept, is dropped and counted (a duplicate or late point is harmless,
+// never an error). A point up to 60 seconds ahead is kept with the server time as its device time
+// (adversary round 1, L-d), so a phone whose clock runs ahead cannot block its next minutes.
 
 const minute = 60_000;
-export const maxFutureMs = 5 * minute;
+export const maxFutureMs = minute;
 export const maxAgeMs = 24 * 60 * minute;
 export const maxAccuracyM = 10_000;
+/** 100 m/s (360 km/h) bounds a real fix's speed; a heading is a compass angle (adversary L-b). */
+export const maxSpeedMps = 100;
+export const maxHeadingDeg = 360;
 
 /** One point as the contract's `DriverLocationPoint` carries it. */
 export interface PointInput {
@@ -56,18 +61,21 @@ export function pointProblems(points: readonly PointInput[]): FieldProblem[] {
     if (point.battery_pct !== undefined && !inRange(point.battery_pct, 0, 100)) {
       problems.push(at('battery_pct'));
     }
-    for (const field of ['speed_mps', 'heading_deg'] as const) {
-      const value = point[field];
-      if (value !== undefined && !Number.isFinite(value)) problems.push(at(field));
+    if (point.speed_mps !== undefined && !inRange(point.speed_mps, 0, maxSpeedMps)) {
+      problems.push(at('speed_mps'));
+    }
+    if (point.heading_deg !== undefined && !inRange(point.heading_deg, 0, maxHeadingDeg)) {
+      problems.push(at('heading_deg'));
     }
   });
   return problems;
 }
 
 /**
- * The points to keep, oldest first, and the count dropped per reason: device time more than 5
- * minutes ahead of `now` (`future`) or more than 24 hours behind it (`too_old`), or not newer than
- * `after` (the head's last point) or than the point kept before it (`stale`).
+ * The points to keep, oldest first, and the count dropped per reason: device time more than 60
+ * seconds ahead of `now` (`future`) or more than 24 hours behind it (`too_old`), or not newer than
+ * `after` (the head's last point) or than the point kept before it (`stale`). A kept point ahead of
+ * `now` is stored at `now`, so a second one in the same batch is `stale`.
  */
 export function selectPoints(
   points: readonly PointInput[],
@@ -81,14 +89,15 @@ export function selectPoints(
   const kept: AcceptedPoint[] = [];
   let last = after?.getTime() ?? Number.NEGATIVE_INFINITY;
   for (const { point, clientTs } of sorted) {
-    const time = clientTs.getTime();
-    if (time > now.getTime() + maxFutureMs) dropped.future += 1;
+    const given = clientTs.getTime();
+    const time = Math.min(given, now.getTime());
+    if (given > now.getTime() + maxFutureMs) dropped.future += 1;
     else if (time < now.getTime() - maxAgeMs) dropped.too_old += 1;
     else if (time <= last) dropped.stale += 1;
     else {
       last = time;
       kept.push({
-        clientTs,
+        clientTs: new Date(time),
         lat: point.lat,
         lng: point.lng,
         accuracyM: point.accuracy_m ?? null,

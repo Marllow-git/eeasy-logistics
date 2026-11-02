@@ -109,15 +109,22 @@ export class ShiftsRepository extends ScopedRepository<typeof delDriverShifts> {
     );
   }
 
-  /** A stale alert on an `active` shift (`version + 1`); undefined once it is no longer active. */
-  async markStaleAlerted(id: string, at: Date): Promise<ShiftRow | undefined> {
+  /**
+   * A stale alert on an `active` shift not alerted after `alertedBefore` (`version + 1`); undefined
+   * once it is no longer active or another sweep alerted it meanwhile (adversary round 1, L-a).
+   */
+  async markStaleAlerted(id: string, at: Date, alertedBefore: Date): Promise<ShiftRow | undefined> {
     const [row] = await this.updateWhere(
       {
         staleAlertedAt: at,
         version: sql`${delDriverShifts.version} + 1` as unknown as number,
         updatedAt: sql`now()` as unknown as Date,
       },
-      and(eq(delDriverShifts.id, id), eq(delDriverShifts.status, 'active')),
+      and(
+        eq(delDriverShifts.id, id),
+        eq(delDriverShifts.status, 'active'),
+        sql`(${delDriverShifts.staleAlertedAt} IS NULL OR ${delDriverShifts.staleAlertedAt} <= ${alertedBefore.toISOString()}::timestamptz)`,
+      ),
     );
     return row;
   }
