@@ -50,7 +50,7 @@ Abbreviations: **AO** append-only (trigger, 3.1); **IO** insert-only, same trigg
 
 | Table | Purpose (document 2) | Key columns | Indexes, uniqueness, checks | AO |
 |---|---|---|---|---|
-| `core_accounts` | Account §2.1; platform | `name`, `country char(2) CHECK = 'SA'`, `default_locale`, `timezone`, `status` CHECK provisioned, active, suspended, closed; `limits jsonb` (AccountLimits), `settings jsonb` (AccountSettings: intake rule, max attempts, proof policy, reason codes, auto-dispatch, tolerances), `provisioned_by → core_users`, `closed_at`, `version` | `(status)` | |
+| `core_accounts` | Account §2.1; platform | `name`, `country char(2) CHECK = 'SA'`, `default_locale`, `timezone`, `status` CHECK provisioned, active, suspended, closed; `limits jsonb` (AccountLimits), `settings jsonb` (AccountSettings: intake rule, max attempts, proof policy, reason codes, auto-dispatch, tolerances), `provisioned_by → core_users`, `closed_at`, `version` (`settings` from migration 0012, the rest from 0014) | `(status)` | |
 | `core_usage_counters` | usage counters §2.1 | `metric` CHECK orders, drivers, sites, api_keys; `period date` (month start), `value integer` | PK `(account_id, metric, period)` | |
 | `core_users` | User §2.2; platform | `name`, `email citext`, `phone`, `locale`, `password_hash` (Argon2id), `token_version integer`, `second_factor_enabled`, `second_factor_phone` (the enrolled E.164, the only number a second-factor OTP goes to; A-26), `disabled_at`, `last_login_at` | PU `(email)` and PU `(phone)` where not null | |
 | `core_platform_staff` | platform staff, document 4 §1, §3.3 | `user_id` PK `→ core_users`, `role` CHECK super_admin, admin, support; `totp_secret_ciphertext bytea`, `totp_key_id`, `granted_by`, `revoked_at` | | |

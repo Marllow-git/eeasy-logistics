@@ -93,9 +93,18 @@ Account provisioning, name and limit changes, suspension and closure (PLAT-13: `
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (counts, red then green) | 8.2 |
+|---|---|---|---|
+| A | this commit | integration `accounts-sites-table.test.ts` (new, 4) with `test/schema/tenancy.test.ts`: red 3 failed / 15 passed with the migration as drizzle-kit generated it (no SRID, no policies, no `elx_platform` revoke: the schema test names the four missing policies, the table test the grants and the SRID), green 26/26 with `rls.test.ts` in both `ELX_RLS=off` and `on`; migration job twice on a scratch database (`elx_plat12_a`): 15 applied to `0014_core_accounts_sites`, then nothing to migrate; psql grants: `core_accounts` elx_app SELECT, elx_platform all four; `core_sites` and `core_usage_counters` elx_app all four, elx_platform SELECT; api typecheck and eslint clean | #1, #2 |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes
+
+Leg 1 (items A to D):
+
+1. **Migration 0014** is drizzle-kit's output from `schema/accounts.ts` and the new `schema/sites.ts`, with the SRID added by hand (drizzle-kit 0.31.11 writes `geometry(point)` for `geometry('point', { srid: 4326 })`; the snapshot keeps its spelling, so a later generate sees no drift) and the policies and the `elx_platform` revoke appended. `core_accounts.provisioned_by` is a foreign key to `core_users` (the schema files import each other lazily, as every `references()` is a thunk). Extra CHECKs beyond 2.1's list: `core_accounts.version >= 1`, `core_sites.version >= 1`. `core_usage_counters` has no `id` (its key is the primary key of 2.1); `core_sites.address_text` is nullable (the contract's field is optional).
+2. **Grants as 2.1 reads them:** `elx_platform` keeps its writes on `core_accounts` and loses `INSERT`, `UPDATE`, `DELETE` on `core_sites` and `core_usage_counters` ("read on all three"); PLAT-13's console site doors (`platformProvisionSite`) will grant what they need. `elx_app` keeps the default four on the two tenant tables, `DELETE` included ("CRUD"), although no door deletes a site (K-5: deactivated, never deleted once referenced).
 
 ### 8.3 Not done here
 
