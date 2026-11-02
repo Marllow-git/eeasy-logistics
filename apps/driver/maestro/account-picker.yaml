@@ -1,0 +1,22 @@
+# DRV-1 item B: a phone that drives for two accounts gets the picker (409 account_choice_required),
+# chooses one, and the same code signs it in (DEL-4 plan 8.2 #37).
+appId: sa.eeasy.logistics.driver
+name: account-picker
+env:
+  PHONE: '500000101'
+---
+- runFlow: subflows/launch.yaml
+- runFlow: subflows/sign-in.yaml
+- extendedWaitUntil:
+    visible:
+      id: 'account-0'
+    timeout: 20000
+- assertVisible: "${LOCALE == 'en' ? 'Choose the account' : 'اختر الحساب'}"
+- assertVisible: 'Seed Account A'
+- assertVisible: 'Seed Account B'
+- takeScreenshot: ${SHOTS}/${LOCALE}-04-account-picker
+- tapOn: 'Seed Account B'
+- extendedWaitUntil:
+    visible:
+      id: 'pin-continue'
+    timeout: 20000

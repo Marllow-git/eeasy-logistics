@@ -1,7 +1,10 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   I18nManager,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -31,20 +34,47 @@ function textStyle(kind: keyof typeof text, color: string = colors.foreground): 
   };
 }
 
+/**
+ * The keyboard's height on Android, where the window no longer resizes under edge-to-edge and
+ * KeyboardAvoidingView does not lift the footer; iOS uses KeyboardAvoidingView.
+ */
+function useAndroidKeyboardInset(): number {
+  const [inset, setInset] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const shown = Keyboard.addListener('keyboardDidShow', (event) =>
+      setInset(event.endCoordinates.height),
+    );
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setInset(0));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
+  return inset;
+}
+
 export function Screen({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+  const androidInset = useAndroidKeyboardInset();
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ flexGrow: 1, padding: space.xl, gap: space.lg }}
+      {/* The primary action sits in the footer and must never hide under the keyboard. */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, paddingBottom: androidInset }}
       >
-        {children}
-      </ScrollView>
-      {footer === undefined ? null : (
-        <View style={{ paddingHorizontal: space.xl, paddingBottom: space.lg, gap: space.md }}>
-          {footer}
-        </View>
-      )}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ flexGrow: 1, padding: space.xl, gap: space.lg }}
+        >
+          {children}
+        </ScrollView>
+        {footer === undefined ? null : (
+          <View style={{ paddingHorizontal: space.xl, paddingBottom: space.lg, gap: space.md }}>
+            {footer}
+          </View>
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

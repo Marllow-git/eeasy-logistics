@@ -22,6 +22,16 @@ export function randomUuid(): string {
   return Crypto.randomUUID();
 }
 
+/**
+ * Gives Hermes the Web Crypto `getRandomValues` (from expo-crypto) that packages/contracts' `uuidv7`
+ * and `defaultRequestId` call; Hermes has no `globalThis.crypto`.
+ */
+export function installRandomValues(): void {
+  const scope = globalThis as { crypto?: Partial<Crypto> };
+  scope.crypto ??= {};
+  scope.crypto.getRandomValues ??= Crypto.getRandomValues as Crypto['getRandomValues'];
+}
+
 /** Cryptographically random bytes. */
 export function randomBytes(length: number): Uint8Array {
   return Crypto.getRandomBytes(length);

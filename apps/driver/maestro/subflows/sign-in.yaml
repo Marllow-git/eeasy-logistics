@@ -1,0 +1,40 @@
+# Phone, then the stub's code (DRV-1 plan 2.5). PHONE is the national number the driver types.
+appId: sa.eeasy.logistics.driver
+---
+- runScript:
+    file: ../scripts/current-code.js
+    env:
+      PHONE: ${'+966' + PHONE}
+- tapOn:
+    id: 'phone-input'
+- inputText: ${PHONE}
+- takeScreenshot: ${SHOTS}/${LOCALE}-01-sign-in
+# Android: the footer sits under the keyboard (DRV-1 §8.3).
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+- tapOn:
+    id: 'send-code'
+- extendedWaitUntil:
+    visible:
+      id: 'code-input'
+    timeout: 20000
+- runScript:
+    file: ../scripts/last-code.js
+    env:
+      PHONE: ${'+966' + PHONE}
+      PREVIOUS: ${output.previous}
+- tapOn:
+    id: 'code-input'
+- inputText: ${output.code}
+- takeScreenshot: ${SHOTS}/${LOCALE}-02-verify
+# Android: the footer sits under the keyboard (DRV-1 §8.3).
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+- tapOn:
+    id: 'verify-code'

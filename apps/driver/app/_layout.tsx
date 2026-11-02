@@ -29,10 +29,12 @@ const app = initDriverApp(appLocale);
 export default function RootLayout() {
   useEffect(() => {
     if (needsReload) {
-      void reloadForDirection();
-      return;
+      // After the first commit settles: an immediate reload crashed Fabric's mount on iOS.
+      const timer = setTimeout(() => void reloadForDirection(), 300);
+      return () => clearTimeout(timer);
     }
     void app.start();
+    return undefined;
   }, []);
 
   const gate = useGate();
@@ -61,6 +63,7 @@ export default function RootLayout() {
     <View style={{ flex: 1 }}>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
         <Stack.Protected guard={gate === 'update'}>
           <Stack.Screen name="update" />
         </Stack.Protected>

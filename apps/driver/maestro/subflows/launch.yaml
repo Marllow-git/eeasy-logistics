@@ -1,0 +1,80 @@
+# A fresh install state, the dev client pointed at Metro (METRO_PLAIN, host:port), and the language of LOCALE (ADR-0035):
+# Arabic on first launch; English through the switch on the sign-in screen (it reloads the app).
+appId: sa.eeasy.logistics.driver
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    stopApp: true
+# The dev client's launcher: on iOS its deep link; on Android the URL field (the deep link proved
+# unreliable right after a cleared launch there).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - openLink: exp+eeasy-logistics-driver://expo-development-client/?url=http%3A%2F%2F${METRO_PLAIN}
+      - runFlow:
+          when:
+            visible: 'Open'
+          commands:
+            - tapOn: 'Open'
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'Connect|Wait'
+          timeout: 30000
+- runFlow:
+    when:
+      visible: 'Wait'
+    commands:
+      - tapOn: 'Wait'
+- runFlow:
+    when:
+      visible: 'Connect'
+    commands:
+      - tapOn: 'http://'
+      - inputText: ${METRO_PLAIN}
+      - tapOn: 'Connect'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+# The dev menu opens itself on the first load of a development build.
+- extendedWaitUntil:
+    visible: 'Go home|Continue'
+    timeout: 30000
+    optional: true
+- runFlow:
+    when:
+      visible: 'Go home'
+      platform: Android
+    commands:
+      - pressKey: back
+- extendedWaitUntil:
+    visible:
+      id: 'phone-input'
+    timeout: 60000
+- runFlow:
+    when:
+      true: ${LOCALE == 'en'}
+    commands:
+      - tapOn:
+          id: 'language-switch'
+      # iOS development builds drop the first JS touch after the direction reload (DRV-1 §8.2).
+      - extendedWaitUntil:
+          visible: 'Sign in'
+          timeout: 5000
+          optional: true
+      - runFlow:
+          when:
+            notVisible: 'Sign in'
+          commands:
+            - tapOn:
+                id: 'language-switch'
+      - extendedWaitUntil:
+          visible: 'Sign in'
+          timeout: 30000
+- assertVisible: "${LOCALE == 'en' ? 'Sign in' : 'تسجيل الدخول'}"
