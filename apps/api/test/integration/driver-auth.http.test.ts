@@ -217,7 +217,8 @@ describe('driver sign-in over HTTP (DEL-4 item D)', () => {
   });
 
   it('budgets verifications at 20 an hour per address (driver_verify_ip)', async () => {
-    const address = driverAddress();
+    // An address no other test of this run uses (the random ones are 203.0.113.0/24).
+    const address = '198.18.0.1';
     const phone = saudiMobile();
     const verify = () =>
       http()

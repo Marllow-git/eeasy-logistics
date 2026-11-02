@@ -3,7 +3,8 @@ import type { PlatformDatabase, PlatformUnitOfWork } from '@eeasy-logistics/db/p
 import { PlatformRepository, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { coreAccounts } from '../schema/accounts.js';
-import { delDrivers } from '../schema/drivers.js';
+import { delDriverDevices, delDrivers } from '../schema/drivers.js';
+import type { DriverStatus } from '../schema/drivers.js';
 import type {
   InvitationKind,
   MembershipStatus,
@@ -472,6 +473,14 @@ export interface RefreshState {
   } | null;
   /** Null unless the user is platform staff. */
   readonly platformStaff: { readonly role: PlatformStaffRole; readonly revoked: boolean } | null;
+  /**
+   * A driver row's driver and device (DEL-4 plan 2.8), read through the device row the refresh row
+   * carries; null on the other surfaces. `device` is null when the row names no device that exists.
+   */
+  readonly driver: {
+    readonly status: DriverStatus | null;
+    readonly device: { readonly appDeviceId: string; readonly revoked: boolean } | null;
+  } | null;
 }
 
 export interface NewRefreshToken {
@@ -550,12 +559,30 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
         accountStatus: coreAccounts.status,
         staffRole: corePlatformStaff.role,
         staffRevoked: sql<boolean>`${corePlatformStaff.revokedAt} IS NOT NULL`,
+        appDeviceId: delDriverDevices.deviceId,
+        deviceRevoked: sql<boolean>`${delDriverDevices.revokedAt} IS NOT NULL`,
+        driverStatus: delDrivers.status,
       })
       .from(coreRefreshTokens)
       .innerJoin(coreUsers, eq(coreUsers.id, coreRefreshTokens.userId))
       .leftJoin(coreMemberships, eq(coreMemberships.id, coreRefreshTokens.membershipId))
       .leftJoin(coreAccounts, eq(coreAccounts.id, coreMemberships.accountId))
       .leftJoin(corePlatformStaff, eq(corePlatformStaff.userId, coreRefreshTokens.userId))
+      // The driver of the device (DEL-4 plan 2.8): the device's account must be the membership's.
+      .leftJoin(
+        delDriverDevices,
+        and(
+          eq(delDriverDevices.id, coreRefreshTokens.deviceId),
+          eq(delDriverDevices.accountId, coreMemberships.accountId),
+        ),
+      )
+      .leftJoin(
+        delDrivers,
+        and(
+          eq(delDrivers.id, delDriverDevices.driverId),
+          eq(delDrivers.membershipId, coreRefreshTokens.membershipId),
+        ),
+      )
       .where(eq(coreRefreshTokens.tokenHash, tokenHash))
       .for('update', { of: coreRefreshTokens });
     if (row === undefined) return undefined;
@@ -591,6 +618,16 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
             },
       platformStaff:
         row.staffRole === null ? null : { role: row.staffRole, revoked: row.staffRevoked },
+      driver:
+        row.surface !== 'driver'
+          ? null
+          : {
+              status: row.driverStatus,
+              device:
+                row.appDeviceId === null
+                  ? null
+                  : { appDeviceId: row.appDeviceId, revoked: row.deviceRevoked },
+            },
     };
   }
 

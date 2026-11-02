@@ -60,6 +60,12 @@ export class DriversRepository extends ScopedRepository<typeof delDrivers> {
     return row;
   }
 
+  /** The driver of a membership (a driver token's `mem`), or undefined. */
+  async findOfMembership(membershipId: string): Promise<DriverRow | undefined> {
+    const [row] = await this.findMany(eq(delDrivers.membershipId, membershipId));
+    return row;
+  }
+
   async findOfUser(userId: string): Promise<DriverRow | undefined> {
     const [row] = await this.findMany(eq(delDrivers.userId, userId));
     return row;
@@ -200,6 +206,19 @@ export class DriverDevicesRepository extends ScopedRepository<typeof delDriverDe
       revokedAt: null,
       lastSeenAt: sql`now()` as unknown as Date,
     });
+  }
+
+  /** This device's push token replaced (`driverUpdatePushToken`, plan 2.8); `version + 1`. */
+  setPushToken(id: string, pushToken: string): Promise<DriverDeviceRow> {
+    return this.write(id, { pushToken, lastSeenAt: sql`now()` as unknown as Date });
+  }
+
+  /** `last_seen_at` now (`driverLogout`, plan 2.8): a sighting, not a change (no version). */
+  async seen(id: string): Promise<void> {
+    await this.updateWhere(
+      { lastSeenAt: sql`now()` as unknown as Date },
+      eq(delDriverDevices.id, id),
+    );
   }
 
   /** The driver's devices not yet revoked. */

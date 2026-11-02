@@ -12,7 +12,7 @@ import type {
 } from '../platform/identity.repository.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { addressKey } from '../rate-limit/rate-limiter.js';
-import type { PlatformStaffRole } from '../schema/identity.js';
+import type { PlatformStaffRole, SessionSurface } from '../schema/identity.js';
 import type { AccessTokenIssuer, AuthenticationMethod, SessionClaims } from './access-token.js';
 import { countRefresh, countRevocations } from './auth-metrics.js';
 import type { CookieSurface, IssuedSession } from './cookies.js';
@@ -87,6 +87,8 @@ export type RefreshVerdict =
   | { readonly kind: 'rotate' }
   | { readonly kind: 'grace' }
   | { readonly kind: 'reuse' }
+  /** A driver's device was revoked (DEL-4 plan 2.8): `401 device_revoked`, the family revoked. */
+  | { readonly kind: 'device_revoked' }
   | {
       readonly kind: 'refuse';
       readonly code: Extract<ErrorCode, 'token_invalid' | 'token_expired' | 'account_suspended'>;
@@ -101,14 +103,31 @@ const liveAccountStatuses = new Set(['provisioned', 'active']);
  * from another agent) is a reuse, which revokes the family; then the subject (version, disabled,
  * membership, account, platform staff row); a used row inside the grace answers the same successor;
  * an expired row is `token_expired`; else the row rotates.
+ *
+ * A driver row (DEL-4 plan 2.8) first needs the app's own device id (`request.deviceId`) to be the
+ * one of the row's device, else `token_invalid`; a revoked or vanished device is `device_revoked`
+ * before the row's own revocation (revoking a device revoked its families too, and the app must
+ * learn why); after the subject checks, a driver who is not `active` is `token_invalid`.
  */
 export function refreshVerdict(
   row: RefreshState,
-  request: { readonly surface: CookieSurface; readonly userAgentHash: Buffer | null },
+  request: {
+    readonly surface: SessionSurface;
+    readonly userAgentHash: Buffer | null;
+    /** The app's device id from the driver refresh body; absent on the cookie surfaces. */
+    readonly deviceId?: string;
+  },
   graceSeconds: number,
 ): RefreshVerdict {
-  if (row.surface !== request.surface || row.revoked)
-    return { kind: 'refuse', code: 'token_invalid' };
+  if (row.surface !== request.surface) return { kind: 'refuse', code: 'token_invalid' };
+  if (row.surface === 'driver') {
+    const device = row.driver?.device ?? null;
+    if (device !== null && device.appDeviceId !== request.deviceId) {
+      return { kind: 'refuse', code: 'token_invalid' };
+    }
+    if (device === null || device.revoked) return { kind: 'device_revoked' };
+  }
+  if (row.revoked) return { kind: 'refuse', code: 'token_invalid' };
   if (row.usedAt !== null) {
     const age = row.now.getTime() - row.usedAt.getTime();
     const sameAgent =
@@ -140,6 +159,9 @@ export function refreshVerdict(
     if (!liveAccountStatuses.has(membership.accountStatus)) {
       return { kind: 'refuse', code: 'token_invalid' };
     }
+    if (row.surface === 'driver' && row.driver?.status !== 'active') {
+      return { kind: 'refuse', code: 'token_invalid' };
+    }
   }
   if (row.usedAt !== null) return { kind: 'grace' };
   if (row.expiresAt.getTime() <= row.now.getTime())
@@ -156,7 +178,10 @@ export type RefreshOutcome =
   | { readonly ok: true; readonly session: IssuedSession }
   | {
       readonly ok: false;
-      readonly code: Extract<ErrorCode, 'token_invalid' | 'token_expired' | 'account_suspended'>;
+      readonly code: Extract<
+        ErrorCode,
+        'token_invalid' | 'token_expired' | 'account_suspended' | 'device_revoked'
+      >;
     };
 
 export interface SessionServiceDependencies {
@@ -259,19 +284,91 @@ export class SessionService {
     return outcome.result;
   }
 
+  /**
+   * Rotates a driver's refresh token from the request body (DEL-4 plan 2.8; no cookie): the same
+   * state machine with the device verdict. A revoked device answers `device_revoked` after its
+   * family's revocation committed.
+   */
+  async refreshDriver(
+    input: { readonly refreshToken: string; readonly deviceId: string },
+    facts: RequestFacts,
+  ): Promise<RefreshOutcome> {
+    await this.#deps.limiter?.charge(
+      'session_refresh_ip',
+      `ip:${addressKey(facts.ip ?? undefined)}`,
+    );
+    if (!isOpaqueToken(input.refreshToken)) {
+      countRefresh('driver', 'invalid');
+      return { ok: false, code: 'token_invalid' };
+    }
+    const agent = userAgentHash(facts.userAgent);
+    const outcome = await this.#refreshRow(
+      'driver',
+      input.refreshToken,
+      agent,
+      facts,
+      input.deviceId,
+    );
+    countRefresh('driver', outcome.metric);
+    return outcome.result;
+  }
+
+  /**
+   * Ends a driver's session on this device (`driverLogout`, DEL-4 plan 2.8): every live family of
+   * the membership on the token's device row, audited `core.session.ended` when anything was
+   * revoked. Always succeeds; returns the families revoked.
+   */
+  async logoutDevice(
+    principal: {
+      readonly userId: string;
+      readonly accountId: string;
+      readonly membershipId: string;
+      readonly deviceId: string;
+    },
+    facts: Pick<RequestFacts, 'ip' | 'userAgent' | 'requestId' | 'clientRequestId'>,
+  ): Promise<number> {
+    const families = await this.store.run((tx) =>
+      tx.refreshTokens.revokeAll(principal.userId, 'logout', {
+        surface: 'driver',
+        membershipId: principal.membershipId,
+        deviceId: principal.deviceId,
+      }),
+    );
+    if (families.length === 0) return 0;
+    countRevocations('logout', families.length);
+    await this.#deps.audit.record({
+      actorType: 'user',
+      actorId: principal.userId,
+      accountId: principal.accountId,
+      targetType: 'user',
+      targetId: principal.userId,
+      action: 'core.session.ended',
+      after: { surface: 'driver', families: families.length, reason: 'logout' },
+      requestId: facts.requestId,
+      clientRequestId: facts.clientRequestId,
+      ip: facts.ip,
+      userAgent: facts.userAgent,
+    });
+    return families.length;
+  }
+
   async #refreshRow(
-    surface: CookieSurface,
+    surface: SessionSurface,
     presented: string,
     agent: Buffer | null,
     facts: RequestFacts,
-  ): Promise<{ result: RefreshOutcome; metric: 'ok' | 'grace' | 'reuse_revoked' | 'invalid' }> {
+    deviceId?: string,
+  ): Promise<{
+    result: RefreshOutcome;
+    metric: 'ok' | 'grace' | 'reuse_revoked' | 'invalid' | 'device_revoked';
+  }> {
     const invalid = (result: RefreshOutcome) => ({ result, metric: 'invalid' as const });
     return this.store.run(async (tx) => {
       const row = await tx.refreshTokens.lockByHash(tokenHash(presented));
       if (row === undefined) return invalid({ ok: false, code: 'token_invalid' });
       const verdict = refreshVerdict(
         row,
-        { surface, userAgentHash: agent },
+        { surface, userAgentHash: agent, ...(deviceId === undefined ? {} : { deviceId }) },
         this.#deps.settings.refreshReuseGraceSeconds,
       );
       switch (verdict.kind) {
@@ -280,6 +377,9 @@ export class SessionService {
         case 'reuse':
           await this.#revokeFamily(tx, row, facts);
           return { result: { ok: false, code: 'token_invalid' }, metric: 'reuse_revoked' };
+        case 'device_revoked':
+          await this.#revokeFamily(tx, row, facts, 'revoked');
+          return { result: { ok: false, code: 'device_revoked' }, metric: 'device_revoked' };
         case 'grace': {
           const result = await this.#grace(tx, row);
           return result.ok ? { result, metric: 'grace' } : invalid(result);
@@ -429,9 +529,12 @@ export class SessionService {
     tx: IdentityTransaction,
     row: RefreshState,
     facts: RequestFacts,
+    reason: 'reuse' | 'revoked' = 'reuse',
   ): Promise<void> {
-    await tx.refreshTokens.revokeFamily(row.familyId, 'reuse');
-    countRevocations('reuse', 1);
+    // A revoked device's families are usually revoked already (`revokeDriverDevice`): nothing then.
+    const revoked = await tx.refreshTokens.revokeFamily(row.familyId, reason);
+    if (reason === 'revoked' && revoked === 0) return;
+    countRevocations(reason, 1);
     await this.#deps.audit.record({
       actorType: row.surface === 'platform' ? 'platform_user' : 'user',
       actorId: row.userId,
@@ -439,14 +542,16 @@ export class SessionService {
       targetType: 'session_family',
       targetId: row.familyId,
       action: 'core.session.family_revoked',
-      after: { surface: row.surface, reason: 'reuse' },
+      after: { surface: row.surface, reason },
       requestId: facts.requestId,
       clientRequestId: facts.clientRequestId,
       ip: facts.ip,
       userAgent: facts.userAgent,
     });
     this.#logger.warn(
-      `refresh token reuse: family revoked surface=${row.surface} user_id=${row.userId}`,
+      reason === 'reuse'
+        ? `refresh token reuse: family revoked surface=${row.surface} user_id=${row.userId}`
+        : `refresh from a revoked device: family revoked user_id=${row.userId} device_id=${row.deviceId ?? ''}`,
     );
   }
 }
@@ -501,6 +606,20 @@ function claimsOfRow(row: RefreshState): SessionClaims {
     };
   }
   if (row.membership === null || row.membershipId === null) throw new ApiException('token_invalid');
+  if (row.surface === 'driver') {
+    if (row.deviceId === null) throw new ApiException('token_invalid');
+    return {
+      surface: 'driver',
+      userId: row.userId,
+      accountId: row.membership.accountId,
+      membershipId: row.membershipId,
+      deviceId: row.deviceId,
+      roles: row.membership.roles,
+      sites: row.membership.siteIds,
+      tokenVersion: row.user.tokenVersion,
+      amr,
+    };
+  }
   return {
     surface: 'staff',
     userId: row.userId,

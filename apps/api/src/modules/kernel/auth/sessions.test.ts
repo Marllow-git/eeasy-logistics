@@ -40,13 +40,15 @@ function row(overrides: Partial<RefreshState> = {}): RefreshState {
       siteIds: [],
     },
     platformStaff: null,
+    driver: null,
     ...overrides,
   };
 }
 
 interface Presented {
-  readonly surface: 'staff' | 'platform';
+  readonly surface: 'staff' | 'platform' | 'driver';
   readonly userAgentHash: Buffer | null;
+  readonly deviceId?: string;
 }
 const staff: Presented = { surface: 'staff', userAgentHash: agent };
 const verdict = (state: RefreshState, request: Presented = staff, grace = 30) =>
@@ -159,6 +161,77 @@ describe('refreshVerdict', () => {
     expect(verdict(at(rotatedAt + idle), request)).toEqual({
       kind: 'refuse',
       code: 'token_expired',
+    });
+  });
+
+  describe('a driver row (DEL-4 plan 2.8)', () => {
+    const device = { appDeviceId: 'app-device-1', revoked: false };
+    const driverRow = (overrides: Partial<RefreshState> = {}) =>
+      row({
+        surface: 'driver',
+        deviceId: '019a0000-0000-7000-8000-000000000006',
+        amr: ['otp'],
+        driver: { status: 'active', device },
+        ...overrides,
+      });
+    const presented = {
+      surface: 'driver' as const,
+      userAgentHash: agent,
+      deviceId: 'app-device-1',
+    };
+
+    it('rotates when the app names the row device, the device is live and the driver active', () => {
+      expect(verdict(driverRow(), presented)).toEqual({ kind: 'rotate' });
+    });
+
+    it('refuses another device id, or none, as token_invalid', () => {
+      expect(verdict(driverRow(), { ...presented, deviceId: 'app-device-2' })).toEqual({
+        kind: 'refuse',
+        code: 'token_invalid',
+      });
+      expect(verdict(driverRow(), { surface: 'driver', userAgentHash: agent })).toEqual({
+        kind: 'refuse',
+        code: 'token_invalid',
+      });
+    });
+
+    it('answers device_revoked for a revoked or vanished device, before the row revocation', () => {
+      const revoked = { status: 'active' as const, device: { ...device, revoked: true } };
+      expect(verdict(driverRow({ driver: revoked }), presented)).toEqual({
+        kind: 'device_revoked',
+      });
+      expect(verdict(driverRow({ driver: revoked, revoked: true }), presented)).toEqual({
+        kind: 'device_revoked',
+      });
+      expect(verdict(driverRow({ driver: { status: null, device: null } }), presented)).toEqual({
+        kind: 'device_revoked',
+      });
+    });
+
+    it('refuses a suspended or archived driver as token_invalid, a suspended account as 403', () => {
+      for (const status of ['suspended', 'archived'] as const) {
+        expect(verdict(driverRow({ driver: { status, device } }), presented)).toEqual({
+          kind: 'refuse',
+          code: 'token_invalid',
+        });
+      }
+      const suspended = driverRow();
+      expect(
+        verdict(
+          {
+            ...suspended,
+            membership: suspended.membership && {
+              ...suspended.membership,
+              accountStatus: 'suspended',
+            },
+          },
+          presented,
+        ),
+      ).toEqual({ kind: 'refuse', code: 'account_suspended' });
+    });
+
+    it('keeps the reuse rule: a used row outside the grace is a reuse', () => {
+      expect(verdict(driverRow({ usedAt: seconds(-120) }), presented)).toEqual({ kind: 'reuse' });
     });
   });
 });
