@@ -7,6 +7,7 @@ import type {
 import type { IssuedSession } from '../../kernel/public/index.js';
 import type { DriverDeviceRow } from '../drivers/drivers.repository.js';
 import { presentDriver } from '../drivers/drivers.presenter.js';
+import { presentShift } from '../shifts/shifts.presenter.js';
 import type { DriverSelf } from './driver-self.service.js';
 import type { DriverSessionStarted } from './driver-sessions.service.js';
 
@@ -37,14 +38,14 @@ export function presentOwnDevice(row: DriverDeviceRow): DriverDevice {
 }
 
 /**
- * `DriverMe` (`driverGetMe`, plan 2.8): no shift before DEL-5, cash figures zero before DEL-8's
+ * `DriverMe` (`driverGetMe`, plan 2.8): the live shift (DEL-5 plan 2.4), cash figures zero before DEL-8's
  * ledgers (the block state is the row's), the account's proof policy, the minimum app versions.
  */
 export function presentDriverMe(self: DriverSelf): DriverMe {
   return {
     driver: presentDriver({ row: self.driver, person: self.person }),
     device: presentOwnDevice(self.device),
-    current_shift: null,
+    current_shift: self.currentShift === undefined ? null : presentShift(self.currentShift),
     cash: {
       cash_in_hand: { amount: 0, currency: 'SAR' },
       oldest_collected_business_date: null,
