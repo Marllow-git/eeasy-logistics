@@ -44,6 +44,15 @@ export type AnalyticsCatalogue = IdsAndEnumsOnly<{
     boundary: 'segment' | 'global';
     group: 'merchant' | 'auth' | 'recipient' | 'root';
   };
+  /** A sign-in was submitted (WEB-2 plan 2.12): the surface only, never the email. */
+  'auth.sign_in.started': { surface: 'staff' };
+  /** A sign-in ended in a session: how many factors it took (the `amr` length). */
+  'auth.sign_in.succeeded': { surface: 'staff'; amr_count: number };
+  /** A one-time code was asked for: at sign-in, at enrolment, or again. */
+  'auth.second_factor.requested': {
+    surface: 'staff';
+    purpose: 'sign_in' | 'enrolment' | 'resend';
+  };
   /** The page's session ended (WEB-2 plan 2.12): why, nothing about who. */
   'auth.session.ended': {
     reason: 'token_invalid' | 'refresh_refused' | 'account_suspended';
@@ -55,6 +64,9 @@ export type AnalyticsEvent = keyof AnalyticsCatalogue;
 /** The event names at run time, for the census (`expectAnalyticsEvents`). */
 export const analyticsEvents = [
   'shell.error_page.shown',
+  'auth.sign_in.started',
+  'auth.sign_in.succeeded',
+  'auth.second_factor.requested',
   'auth.session.ended',
 ] as const satisfies readonly AnalyticsEvent[];
 

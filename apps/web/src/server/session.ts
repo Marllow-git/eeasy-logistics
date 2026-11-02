@@ -51,13 +51,16 @@ function sessionView(me: Me): Me {
 
 /**
  * `getMe` once per request (web §4; WEB-2 plan 2.3), wrapped in React `cache()` so the layout and
- * any page of the same request share one call. A `401` sends the user to sign-in with the page
- * they asked for (`reason=ended` when they had a session cookie); a suspended account goes to its
- * notice. The proxy has already refreshed a stale access cookie, so a 401 here means the session
+ * any page of the same request share one call. Without an access cookie the user goes to sign-in
+ * with the page they asked for, without calling the API; a `401` does the same with
+ * `reason=ended`; a suspended account goes to its notice. The proxy has already refreshed a stale access cookie, so a 401 here means the session
  * is over.
  */
 export const getStaffSession = cache(async (): Promise<Me> => {
-  const [fetcher, jar, incoming] = await Promise.all([staffServerFetcher(), cookies(), headers()]);
+  const [jar, incoming] = await Promise.all([cookies(), headers()]);
+  // No access cookie (and none the proxy could renew): no session to read, sign-in at once.
+  if (!jar.has('el_staff_at')) redirect(signInPath(incoming.get(pathHeader) ?? '/'));
+  const fetcher = await staffServerFetcher();
   let failure: ApiError;
   try {
     const answer = await client.getMe({ fetcher });
@@ -68,8 +71,7 @@ export const getStaffSession = cache(async (): Promise<Me> => {
     failure = error;
   }
   if (failure.status === 401) {
-    const hadSession = jar.has('el_staff_at') || jar.has('el_staff_rt');
-    redirect(signInPath(incoming.get(pathHeader) ?? '/', hadSession ? 'ended' : undefined));
+    redirect(signInPath(incoming.get(pathHeader) ?? '/', 'ended'));
   }
   if (failure.code === 'account_suspended') redirect('/account-suspended');
   throw failure;

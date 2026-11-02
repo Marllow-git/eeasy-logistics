@@ -257,8 +257,12 @@ jobs:
       - name: First-load JavaScript budget
         run: pnpm --filter @eeasy-logistics/web run check:budget
       # PLAT-11 item I: the sign-in scenarios reach the identity tables and the web client marker, so
-      # the API gets the ci profile's database (migrated here), Redis, a throwaway signing key and
+      # the API gets the ci profile's database (migrated here), a throwaway signing key and
       # credentials key, and .env.example's public URLs, in a file only its process reads.
+      # WEB-2 plan 2.14: the worker (its own file: the API's plus Redis) delivers the census codes to
+      # the ci WhatsApp stub and the mails to the ci Mailpit. The API runs without REDIS_URL, so no
+      # auth budget is enforced: every census request comes from 127.0.0.1 and three projects pass
+      # login_ip's 50 an hour (the budgets have their own integration tests, PLAT-11).
       - name: Point the API at the ci database and migrate it
         run: |
           set -a; . ./.env; set +a
@@ -269,14 +273,24 @@ jobs:
           {
             echo "DATABASE_URL_APP=postgres://elx_app:${ELX_APP_PASSWORD}@${pg}/elx"
             echo "DATABASE_URL_PLATFORM=postgres://elx_platform:${ELX_PLATFORM_PASSWORD}@${pg}/elx"
-            echo "REDIS_URL=redis://$(port redis-ci 6379)"
             echo "PUBLIC_WEB_URL=${PUBLIC_WEB_URL}"
             echo "PUBLIC_ADMIN_URL=${PUBLIC_ADMIN_URL}"
             echo "AUTH_SIGNING_KEY_ID=contract"
             echo "AUTH_SIGNING_KEY=${signing}"
             echo "CREDENTIALS_KEYS=contract:${credentials}"
             echo "CREDENTIALS_ACTIVE_KEY_ID=contract"
+            echo "MESSAGING_PROVIDER=stub"
+            echo "MESSAGING_STUB_URL=http://$(port whatsapp-stub-ci 8080)"
+            echo "WHATSAPP_ENGINE_SERVICE_ID=${WHATSAPP_ENGINE_SERVICE_ID}"
+            echo "WHATSAPP_ENGINE_KEY_ID=${WHATSAPP_ENGINE_KEY_ID}"
+            echo "WHATSAPP_ENGINE_COMMAND_SECRET=${WHATSAPP_ENGINE_COMMAND_SECRET}"
+            echo "WHATSAPP_ENGINE_CALLBACK_KEY_ID=${WHATSAPP_ENGINE_CALLBACK_KEY_ID}"
+            echo "WHATSAPP_ENGINE_CALLBACK_SECRET=${WHATSAPP_ENGINE_CALLBACK_SECRET}"
+            echo "WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID=${WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID}"
+            echo "MAIL_SMTP_URL=smtp://$(port mailpit-ci 1025)"
+            echo "MAIL_FROM=${MAIL_FROM}"
           } > "$RUNNER_TEMP/api.env"
+          { cat "$RUNNER_TEMP/api.env"; echo "REDIS_URL=redis://$(port redis-ci 6379)"; } > "$RUNNER_TEMP/worker.env"
           DATABASE_URL_OWNER="postgres://elx_owner:${ELX_OWNER_PASSWORD}@${pg}/elx" \
             node apps/api/dist/main.js --role migrate
       - name: Start the API and wait for /health
@@ -296,6 +310,12 @@ jobs:
           pnpm --filter @eeasy-logistics/contracts run test:contract --
           --api "http://127.0.0.1:$API_PORT"
           --web-origin http://localhost:3001 --admin-origin http://localhost:3002
+      # WEB-2 plan 2.14: the census identities (apps/api/src/seed/census.ts) and the worker that
+      # mails the invitations and re-enrolment links and sends the one-time codes.
+      - name: Start the worker and seed the census identities
+        run: |
+          nohup node --env-file="$RUNNER_TEMP/worker.env" apps/api/dist/main.js --role worker > worker.log 2>&1 &
+          node --env-file="$RUNNER_TEMP/api.env" apps/api/dist/seed/census-main.js
       - name: Start the standalone web server and wait for /
         run: |
           standalone=apps/web/.next/standalone/apps/web
@@ -316,7 +336,12 @@ jobs:
       # WEB-1 plan 2.9: the census (projects ar at 1440 and 390 px, en at 1440 px) with the locale,
       # axe and security assertions and the screenshot baselines of tests/census/__screenshots__.
       - name: Census in ar and en
-        run: pnpm --filter @eeasy-logistics/web run test:census
+        run: |
+          port() { docker compose --profile ci port "$1" "$2"; }
+          CENSUS_MAILPIT_URL="http://$(port mailpit-ci 8025)" \
+          CENSUS_WHATSAPP_STUB_URL="http://$(port whatsapp-stub-ci 8080)" \
+          CENSUS_AUTH_SIGNING_KEY="$(grep '^AUTH_SIGNING_KEY=' "$RUNNER_TEMP/api.env" | cut -d= -f2-)" \
+            pnpm --filter @eeasy-logistics/web run test:census
       - name: Upload screenshots and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -325,6 +350,7 @@ jobs:
           path: |
             apps/web/test-results/
             api.log
+            worker.log
             web.log
           if-no-files-found: warn
           retention-days: 14
