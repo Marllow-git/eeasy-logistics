@@ -127,10 +127,10 @@ export class OrdersController {
       audit,
       outbox,
     });
-    const transitions = new OrderTransitions({ audit, outbox });
+    const transitions = new OrderTransitions({ coverage, audit, outbox });
     this.transitions = transitions;
     this.accounts = accounts;
-    this.updates = new OrderUpdates({ coverage, accounts, audit, transitions });
+    this.updates = new OrderUpdates({ coverage, accounts, audit, outbox, transitions });
     this.cursors = cursors ?? new CursorCodec(undefined);
   }
 

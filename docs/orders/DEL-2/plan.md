@@ -108,6 +108,7 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 | R1-2 | `DEL-2: R1-2 …` | `orders-locating.http.test.ts` budget cases 2 red (a third lookup past a budget of 2; a lookup for an unchanged address) → 4 green; unit `intake` +2, `order-updates` +2, `rate-limiter` +1 (orders, rate-limit, geocoding 179 green); orders suites and `rate-limit.http` 27 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #21 |
 | R1-3 | `DEL-2: R1-3 …` | `orders-transitions.http.test.ts` 1 red (`assigned → accepted` answered 200) → 7 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #22 |
 | R1-4 | `DEL-2: R1-4 …` | `orders-transitions.http.test.ts` 1 red (the cancelled order kept its assignment) → 8 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #23, 8.3 |
+| R1-5 | `DEL-2: R1-5 …` | `orders-round1.http.test.ts` 3 red (5a accepted with no coverage: 200; 5b a reused event key: 500; 5d no `delivery.order.updated`) → 4 green (5e's 404s held before the round, kept as tests); unit `list-page` +1, `order-input` +1 (delivery, contract, outbox, rate-limit, geocoding, route and project checks 282 green); the five order suites and `outbox-writer` 43 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #24 to #26, 8.3 |
 
 ### 8.1 Deviations
 
@@ -146,7 +147,8 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 - `rescheduleOrder` (wave 2 in the contract) and `slot_id`: no route until the slots order (plan 2.9, 2a); the route answers `404`.
 - `driver_id` on `listOrders` answers an empty page until DEL-6 creates `del_assignments`.
 - The contract run (`pnpm --filter contracts test:contract`, live API) and the `ELX_RLS=off` lane were not run locally; both are CI's. The `orders-*` suites and `sites.http` ran on the `on` lane only.
-- No outbox row for an edit (`updateOrder`): the catalogue has no type for it and DEL-6's board stream may want one (`delivery.order.updated`, a catalogue row).
+- ~~No outbox row for an edit~~: since round 1 (ruling 5d) a COD or address edit after acceptance writes `delivery.order.updated`; an edit of a `pending` order or of notes, recipient or items writes none.
+- **Strip list (round 1, accepted):** `core_idempotency_keys.response_body` keeps the `Order` answer, recipient data included, for 24 hours (data §5.1, §10). A later chore strips recipient fields from stored bodies and answers replays from the row.
 - Default reason codes for new accounts (8.2 #18) are a provisioning or WEB-5 matter.
 - **DEL-6's duties (adversary round 1, ruling 4):** `OrderTransitions.apply` clears `current_assignment_id` on `cancelled`, `failed` and `accepted`; DEL-6 closes the assignment row and notifies the driver from the `delivery.order.cancelled` and `delivery.order.failed` events (no `del_assignments` table exists yet), and owns `assigned → accepted` (the door refuses it, ruling 3).
 

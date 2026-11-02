@@ -8,11 +8,12 @@ import type {
   OutboxWriter,
 } from '../../kernel/public/index.js';
 import { ApiException, assertVersion } from '../../kernel/public/index.js';
+import type { CoverageQuery } from '../zones/coverage-query.js';
 import type { AuditFacts } from './order-intake.js';
 import type { OrderActor } from './order-machine.js';
 import { isTerminal, transition } from './order-machine.js';
 import type { LatLng, OrderRow } from './orders.repository.js';
-import { OrderEventsRepository, OrdersRepository } from './orders.repository.js';
+import { OrderEventsRepository, orderPoint, OrdersRepository } from './orders.repository.js';
 
 // The one write path of an order's status (DEL-2 plan 2.9, 2.10; domain model §3.13, D-3, D-5,
 // D-8, D-15, D-22). Every arrow goes through `apply`: the row under `FOR UPDATE`, the version the
@@ -58,6 +59,8 @@ export const statusEventType = (to: OrderStatus): DomainEventType =>
   `delivery.order.${to}` as DomainEventType;
 
 export interface TransitionDependencies {
+  /** D-3 again under the row lock before `accepted` (adversary round 1, ruling 5a). */
+  readonly coverage: Pick<CoverageQuery, 'coverage'>;
   readonly audit: AuditSink;
   readonly outbox: Pick<OutboxWriter, 'enqueue'>;
 }
@@ -82,10 +85,25 @@ export class OrderTransitions {
         details: { current_status: current.status, version: current.version },
       });
     }
-    if (command.to === 'accepted' && current.zoneId === null) {
-      throw new ApiException('outside_coverage', {
-        details: { pending_reason: current.pendingReason ?? 'outside_coverage' },
-      });
+    let zoneId = current.zoneId;
+    if (command.to === 'accepted') {
+      if (current.zoneId === null) {
+        throw new ApiException('outside_coverage', {
+          details: { pending_reason: current.pendingReason ?? 'outside_coverage' },
+        });
+      }
+      // The zone stored at intake may since have left the site's coverage (a zone archived, a
+      // coverage row removed): resolved again now, under the row lock (ruling 5a).
+      const at = orderPoint(current);
+      zoneId =
+        at === null
+          ? null
+          : (await this.deps.coverage.coverage(at, { siteId: current.siteId, uow })).zoneId;
+      if (zoneId === null) {
+        throw new ApiException('outside_coverage', {
+          details: { pending_reason: at === null ? 'needs_location' : 'outside_coverage' },
+        });
+      }
     }
 
     const order = await orders.update(current.id, {
@@ -95,6 +113,7 @@ export class OrderTransitions {
       // No driver holds the order any more (adversary round 1, ruling 4): DEL-6 closes the
       // assignment row and tells the driver from the `cancelled` and `failed` events.
       ...(releasesAssignment.has(command.to) ? { currentAssignmentId: null } : {}),
+      ...(zoneId === current.zoneId ? {} : { zoneId }),
       version: current.version + 1,
       ...(isTerminal(command.to) ? { terminalAt: new Date() } : {}),
     });

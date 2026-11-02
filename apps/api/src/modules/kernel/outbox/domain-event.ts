@@ -28,6 +28,8 @@ export const domainEventTypes = [
   // PLAT-13: the notice mail of a platform user's TOTP reset (a kernel effect, no link).
   'core.platform_staff.totp_reset',
   'delivery.order.created',
+  // DEL-2 adversary round 1, ruling 5d: COD or the address edited after acceptance (keys only).
+  'delivery.order.updated',
   // DEL-2 leg 2: one type per status an arrow lands in (catalogue §6.3), written by
   // `OrderTransitions.apply` for every arrow; DEL-6 and DEL-7 take the same path.
   'delivery.order.accepted',

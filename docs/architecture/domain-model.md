@@ -710,6 +710,7 @@ Idempotency key is the envelope `id` unless stated. "Webhook" means exposed to m
 | `core.channel_order.received` | kernel | WMS or Delivery by account flags | connection, channel order ref, recipient, address, lines, COD | no |
 | `core.carrier_update.received` | kernel | WMS | Eeasy shipment id, AWB, status, time | no |
 | `delivery.order.created` | Delivery | WMS (if `source = wms_package`) | number, kind, source, recipient, address, COD | yes |
+| `delivery.order.updated` | Delivery | Delivery dispatch (DEL-6 board) | order, number, changed keys (COD or address edited after acceptance; DEL-2) | no |
 | `delivery.order.accepted` | Delivery | Delivery dispatch | zone, slot | yes |
 | `delivery.order.offered` | Delivery | push effect | driver ids, expiry | no |
 | `delivery.order.assigned` | Delivery | push effect, recipient message | driver, vehicle | yes |
@@ -742,7 +743,7 @@ Idempotency key is the envelope `id` unless stated. "Webhook" means exposed to m
 | `wms.count_session.posted` | WMS | none | variances | no |
 | `wms.channel_publication.dead` | WMS | staff alert | connection, product, last error | no |
 
-Order status events (DEL-2): every arrow of 3.13 goes through Delivery's one write path, which writes `delivery.order.<to_status>` (`internal_event`) with order, number, from and to status, reason code, actor type, site and zone; recipient data stays on the row (data §10). `delivery.order.created` carries the same kind of summary (no recipient), so the "recipient, address" of its row above is for the webhook render, which reads the order. An edit (`updateOrder`) writes no event type; its change is a `note` row in `del_order_events`.
+Order status events (DEL-2): every arrow of 3.13 goes through Delivery's one write path, which writes `delivery.order.<to_status>` (`internal_event`) with order, number, from and to status, reason code, actor type, site and zone; recipient data stays on the row (data §10). `delivery.order.created` carries the same kind of summary (no recipient), so the "recipient, address" of its row above is for the webhook render, which reads the order. An edit (`updateOrder`) is a `note` row in `del_order_events`; when it changes COD or the address of an order already accepted it also writes `delivery.order.updated` (order, number, changed keys, no recipient data; DEL-2 adversary round 1).
 
 Ordering scope is the aggregate in the event name (order, package, fulfilment order, product summary for `wms.stock.available_changed`, movement batch for `wms.movement.recorded`).
 
