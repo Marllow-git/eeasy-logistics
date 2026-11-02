@@ -140,6 +140,34 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
   }
 
   /**
+   * Inserts rows of the context's account, updating the row on a conflict of `target` with `set`
+   * (`ON CONFLICT … DO UPDATE`; DEL-5: the location ring's slots, data §6). The update applies only
+   * when the existing row is of the context's account, so a key held by another account is never
+   * overwritten (that row is left as it is and not returned).
+   */
+  protected async upsertMany(
+    rows: readonly TenantInsert<TTable>[],
+    target: readonly PgColumn[],
+    set: TenantUpdate<TTable>,
+  ): Promise<InferSelectModel<TTable>[]> {
+    if (rows.length === 0) return [];
+    if (Object.hasOwn(set, 'accountId')) {
+      throw new Error('A repository upsert cannot change account_id');
+    }
+    const values = rows.map((row) => ({ ...withoutAccount(row), accountId: this.accountId }));
+    const upserted = await this.#tx
+      .insert(this.table)
+      .values(values as never)
+      .onConflictDoUpdate({
+        target: [...target] as never,
+        set: set as never,
+        setWhere: eq(this.table.accountId, this.accountId),
+      })
+      .returning();
+    return upserted;
+  }
+
+  /**
    * Takes a transaction-scoped advisory lock on `<account>/<name>` without waiting: true when this
    * transaction holds it (until commit or rollback), false when another transaction does.
    */

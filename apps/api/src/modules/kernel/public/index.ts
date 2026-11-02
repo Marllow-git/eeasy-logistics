@@ -151,5 +151,7 @@ export {
   locationRingSize,
 } from '../schema/locations.js';
 export { siteSummaries, type SiteSummary } from '../sites/sites.repository.js';
+// DEL-5 plan 2.6: the named `driver_locations` budget the location ingest charges per driver.
+export { RATE_LIMITER, type RateLimiter } from '../rate-limit/rate-limiter.js';
 export { assertProvisionable } from '../provisioning/provisioning-door.js';
 export { optionalReason } from '../tenancy/cross-tenant.js';

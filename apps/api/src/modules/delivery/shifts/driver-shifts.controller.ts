@@ -18,6 +18,8 @@ import {
   shiftStatuses,
 } from '../../kernel/public/index.js';
 import { ReplayRoute } from '../driver-auth/app-version.guard.js';
+import type { LocationFanout } from '../locations/location-fanout.js';
+import { LOCATION_FANOUT } from '../locations/location-fanout.js';
 import { shiftSorts } from './shifts.controller.js';
 import { presentShift } from './shifts.presenter.js';
 import { ShiftsService } from './shifts.service.js';
@@ -44,9 +46,10 @@ export class DriverShiftsController {
     @Inject(AUDIT_SINK) audit: AuditSink,
     outbox: OutboxWriter,
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
+    @Optional() @Inject(LOCATION_FANOUT) fanout?: LocationFanout | null,
   ) {
     this.cursors = cursors ?? new CursorCodec(undefined);
-    this.shifts = new ShiftsService({ audit, outbox });
+    this.shifts = new ShiftsService({ audit, outbox, fanout: fanout ?? null });
   }
 
   @Get()

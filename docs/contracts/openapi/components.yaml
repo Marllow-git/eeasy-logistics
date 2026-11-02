@@ -711,6 +711,8 @@ components:
         speed_mps: {type: number}
         heading_deg: {type: number}
         battery_pct: {type: integer, minimum: 0, maximum: 100}
+        is_charging: {type: boolean, description: 'Battery charging at the fix (ADR-0039; A-18)'}
+        power_saver: {type: boolean, description: 'Device power-saving mode on at the fix (ADR-0039; A-18)'}
     DriverPosition:
       type: object
       description: Latest point per driver from Redis (10-minute TTL).

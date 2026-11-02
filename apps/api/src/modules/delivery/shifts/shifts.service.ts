@@ -11,6 +11,7 @@ import { ApiException, siteSummaries } from '../../kernel/public/index.js';
 import type { DriverRow } from '../drivers/drivers.repository.js';
 import { DriversRepository } from '../drivers/drivers.repository.js';
 import { tokenDriver } from '../drivers/token-driver.js';
+import type { LocationFanout } from '../locations/location-fanout.js';
 import { VehiclesRepository } from '../vehicles/vehicles.repository.js';
 import { adHocShiftMs, ineligibleReason, planWindowProblems } from './shift-input.js';
 import type { ShiftActor } from './shift-machine.js';
@@ -42,6 +43,8 @@ export class ShiftsService {
     private readonly deps: {
       readonly audit: AuditSink;
       readonly outbox: Pick<OutboxWriter, 'enqueue'>;
+      /** The latest-position keys (plan 2.4: an ended shift leaves the maps); none without Redis. */
+      readonly fanout?: Pick<LocationFanout, 'forget'> | null;
       /** The clock (tests); the server's otherwise. */
       readonly now?: () => Date;
     },
@@ -146,6 +149,7 @@ export class ShiftsService {
   ): Promise<ShiftRow> {
     const { before, after } = await this.staffMove(id, 'ended');
     await this.ended(after, 'dispatcher');
+    await this.deps.fanout?.forget(getContext().accountId, after.driverId);
     await this.recordStaff(after, 'delivery.shift.ended', before, facts, note);
     return after;
   }
@@ -244,6 +248,7 @@ export class ShiftsService {
     if (after === undefined) throw new Error('The shift changed under the driver lock');
     if (to === 'ended') {
       await this.ended(after, 'driver');
+      await this.deps.fanout?.forget(getContext().accountId, after.driverId);
       await this.recordDriver(after, driver, 'delivery.shift.ended', before, facts);
     }
     return after;

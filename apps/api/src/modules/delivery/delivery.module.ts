@@ -18,6 +18,9 @@ import { DriverAuthController } from './driver-auth/driver-auth.controller.js';
 import { PinCheck } from './drivers/cash-pin.js';
 import { DriverCashPinController } from './drivers/driver-cash-pin.controller.js';
 import { DriversController } from './drivers/drivers.controller.js';
+import { DriverLocationsController } from './locations/driver-locations.controller.js';
+import { DriverPositionsController } from './locations/driver-positions.controller.js';
+import { LOCATION_FANOUT, RedisLocationFanout } from './locations/location-fanout.js';
 import { DriverShiftsController } from './shifts/driver-shifts.controller.js';
 import { ShiftsController } from './shifts/shifts.controller.js';
 import { VehiclesController } from './vehicles/vehicles.controller.js';
@@ -32,7 +35,7 @@ import { ZonesController } from './zones/zones.controller.js';
  * through `KernelModule`, the driver's person and membership through `DriverIdentities`) and the
  * driver's own doors (the code check and the tokens through the kernel's `DriverSignIn`); DEL-1's
  * zone, coverage and coverage check doors and the platform's zone and coverage provisioning doors;
- * DEL-5's staff and driver shift doors.
+ * DEL-5's staff and driver shift doors, the location ingest and the staff position reads.
  */
 @Module({})
 export class DeliveryModule {
@@ -50,6 +53,8 @@ export class DeliveryModule {
         PlatformZonesController,
         ShiftsController,
         DriverShiftsController,
+        DriverLocationsController,
+        DriverPositionsController,
       ],
       providers: [
         driverIdentitiesProvider,
@@ -60,6 +65,15 @@ export class DeliveryModule {
           inject: [{ token: APP_POOL, optional: true }, AUDIT_SINK],
           useFactory: (app: Pool<AppDatabase> | null | undefined, audit: AuditSink) =>
             new PinCheck({ app: app?.db ?? null, hasher: new PasswordHasher(), audit }),
+        },
+        {
+          // The latest positions and the per-account channel (DEL-5 plan 2.6): its own Redis
+          // connection, closed on shutdown; without REDIS_URL none, and the head rows serve the maps.
+          provide: LOCATION_FANOUT,
+          useFactory: () => {
+            const url = config.redis.url;
+            return url === undefined ? null : new RedisLocationFanout(url.reveal());
+          },
         },
         { provide: DRIVER_APP_URL, useValue: config.drivers.appUrl },
         { provide: DRIVER_MIN_APP_VERSION, useValue: config.drivers.minAppVersion },

@@ -114,6 +114,25 @@ export const metricCatalogue = {
       'Geocoder calls by method, source and outcome: hit, miss, not_found, rate_limited, unauthorised, permanent, transient, breaker_open, unavailable (INT-2)',
     labels: ['method', 'source', 'outcome'],
   },
+  // DEL-5 plan 2.6 (domain model §7 telemetry signals): driver location points by outcome
+  // (accepted, or the reason one was dropped: stale, future, too_old), the lag server_ts −
+  // client_ts of each accepted point, and the live shifts (set by the shift sweeper, leg 2).
+  driver_pings_total: {
+    kind: 'counter',
+    description: 'Driver location points by outcome: accepted, stale, future, too_old (DEL-5)',
+    labels: ['outcome'],
+  },
+  driver_ping_lag_ms: {
+    kind: 'histogram',
+    description: 'Lag between a point’s device time and its arrival (server_ts − client_ts, DEL-5)',
+    unit: 'ms',
+    labels: [],
+  },
+  active_shifts: {
+    kind: 'observed',
+    description: 'Driver shifts active or paused, per status (DEL-5)',
+    labels: ['status'],
+  },
   channel_publication_drift: {
     kind: 'gauge',
     description: 'Stock publications behind per channel connection (INT orders)',

@@ -1,4 +1,4 @@
-import type { TenantUpdate, UnitOfWork } from '@eeasy-logistics/db';
+import type { RequestContext, TenantUpdate, UnitOfWork } from '@eeasy-logistics/db';
 import { ScopedRepository } from '@eeasy-logistics/db';
 import type { SQL } from 'drizzle-orm';
 import { and, eq, gt, inArray, lt, sql } from 'drizzle-orm';
@@ -9,6 +9,7 @@ import {
   keysetAfter,
   keysetOrder,
   liveShiftStatuses,
+  siteFilter,
 } from '../../kernel/public/index.js';
 
 /** A `del_driver_shifts` row of the context's account. */
@@ -58,6 +59,21 @@ export class ShiftsRepository extends ScopedRepository<typeof delDriverShifts> {
       limit: 1,
     });
     return row;
+  }
+
+  /**
+   * The account's live shifts (`listLatestDriverPositions`, plan 2.7), at `siteId` when given and
+   * within a site-scoped member's sites (`siteFilter`), oldest start first.
+   */
+  liveShifts(siteId: string | undefined, context: RequestContext): Promise<ShiftRow[]> {
+    return this.findMany(
+      and(
+        live,
+        siteId === undefined ? undefined : eq(delDriverShifts.siteId, siteId),
+        siteFilter(context, delDriverShifts.siteId),
+      ),
+      { orderBy: [sql`${delDriverShifts.plannedStart}`, sql`${delDriverShifts.id}`] },
+    );
   }
 
   /** A `planned`, `active` or `paused` shift of the driver overlapping `[start, end)`, if any. */
