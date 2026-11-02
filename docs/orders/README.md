@@ -24,8 +24,9 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 
 | Order | Issue | Branch | Worktree | Executor | Stage | Stack | Notes |
 |---|---|---|---|---|---|---|---|
-| PLAT-11 | #81 | `feat/PLAT-11-auth` | executor worktree | executor-api (Opus) | build, leg 1 (A–E) | native, scratch databases, Redis, whatsapp-stub, Mailpit | one-way door (migration 0012, bootstrap command); adversary required; two legs; research note `docs/research/auth-libraries-2026-11.md` |
+| PLAT-12 | #86 | `feat/PLAT-12-accounts-members-sites` | executor worktree | executor-api (Opus) | build, leg 1 (A–D) | native, scratch databases, Redis, Mailpit | one-way door (migration 0014); adversary required; two legs; plan pushed 2026-11-02 |
+| WEB-2 | #87 | `feat/WEB-2-browser-sessions` | executor worktree | executor-web (Opus) | build, leg 1 (A–D) | native stack with the API on 3000, Mailpit, WhatsApp stub | two-way door; adversary required; two legs; design references `docs/references/design/WEB-2.md` (PR #85); Next 16 `proxy.ts` |
 
 ## Next unblocked (roadmap §1.1)
 
-PLAT-9 merged (PR #75); PLAT-12 after PLAT-11; WEB-2 after PLAT-11 (Q-22); OPS-1 waits on the owner's go (Q-10, Q-12).
+PLAT-13 after PLAT-12; WEB-3 after WEB-2 and PLAT-12; WEB-4 after WEB-19, WEB-2, PLAT-13, PLAT-8; DEL-4 after PLAT-11 (merged, PR #83) and PLAT-9 (merged) once the wave 1 gate opens; OPS-1 waits on the owner\'s go (Q-10, Q-12).
