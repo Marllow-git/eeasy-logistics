@@ -75,7 +75,7 @@ paths:
     post:
       operationId: platformEnrolTotp
       summary: "Start TOTP enrolment for a password-authenticated challenge"
-      description: 'Allowed only with a challenge from the password step or invitation accept, younger than 5 minutes, for a user with no TOTP enrolled (409 second_factor_already_enrolled; re-enrolment needs a super admin reset). Returns the otpauth URI once.'
+      description: 'Allowed only with a challenge from the password step or invitation accept, younger than 5 minutes, for a user with no TOTP enrolled (409 second_factor_already_enrolled; re-enrolment needs a super admin reset). After a super admin reset only the challenge of platformRedeemEnrolmentLink may enrol: the password step alone answers 401 reauthentication_required with details.enrolment_link_required true (amended 2026-11-02, PLAT-13 adversary M-2). Returns the otpauth URI once.'
       tags: [auth]
       x-wave: 0
       x-permission: core.auth.anonymous
@@ -101,6 +101,22 @@ paths:
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformMe'}}}}
         '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid, token_expired.'}
+        '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
+  /auth/enrolment-links/redeem:
+    post:
+      operationId: platformRedeemEnrolmentLink
+      summary: "Exchange an emailed TOTP re-enrolment link for a TOTP challenge"
+      description: 'After platformResetStaffTotp the user gets a one-time emailed link (valid 24 h, the console route /totp/enrol/{token}). The link token plus the password yields a totp challenge (5 minutes) on which platformEnrolTotp and platformConfirmTotp work; neither alone is enough. The link is spent on success; a wrong password counts an attempt on it (five end it). (Added 2026-11-02 by PLAT-13, adversary M-2, additive.)'
+      tags: [auth]
+      x-wave: 0
+      x-permission: core.auth.anonymous
+      security: []
+      parameters: [{$ref: './components.yaml#/components/parameters/ElClient'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlatformRedeemEnrolmentLinkRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TotpChallenge'}}}}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: token_invalid, token_expired, invalid_credentials.'}
+        '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
   /auth/refresh:
     post:
@@ -707,7 +723,7 @@ paths:
     post:
       operationId: platformResetStaffTotp
       summary: "Clear a platform user TOTP so they re-enrol"
-      description: 'Super admin only and never on oneself (403 forbidden). Revokes every session of the user, notifies them by email, and audits the reason; the user re-enrols through the invitation-style challenge flow.'
+      description: 'Super admin only and never on oneself (403 forbidden). Revokes every session of the user, emails them a one-time re-enrolment link valid 24 h, and audits the reason; the user re-enrols through platformRedeemEnrolmentLink (the link plus the password), never with the password alone (amended 2026-11-02, PLAT-13 adversary M-2).'
       tags: [staff]
       x-wave: 0
       x-permission: platform.staff.manage
@@ -761,6 +777,10 @@ components:
       type: object
       required: [token, name, password]
       properties: {token: {type: string}, name: {type: string}, password: {type: string, minLength: 12, maxLength: 256}}
+    PlatformRedeemEnrolmentLinkRequest:
+      type: object
+      required: [token, password]
+      properties: {token: {type: string}, password: {type: string, maxLength: 256}}
     ChallengeOnlyRequest:
       type: object
       required: [challenge_id]

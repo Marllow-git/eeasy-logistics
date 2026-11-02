@@ -438,6 +438,14 @@ export class StaffSignIn {
       { surface: 'staff', userId: user.id, tokenVersion: user.tokenVersion, membership, amr },
       facts,
     );
+    // PLAT-13 adversary L-2: a suspension may have committed after the membership was read and
+    // before the refresh row above, which its revocation could not see. Re-read the status under a
+    // share lock (a later suspension waits for this commit and then revokes this family too); an
+    // account that no longer admits sign-in rolls the whole start back.
+    const status = await tx.accounts.lockStatus(membership.accountId);
+    if (status === undefined || !(signInAccountStatuses as readonly string[]).includes(status)) {
+      throw new ApiException('account_suspended');
+    }
     const principal = staffPrincipal(user.id, membership, user.tokenVersion);
     this.#logger.log(`staff signed in user_id=${user.id}`);
     return {

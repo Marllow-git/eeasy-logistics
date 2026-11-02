@@ -11,6 +11,8 @@ import { operationOf } from '../contract/contract-pipe.js';
 import { ApiException } from '../errors/api-exception.js';
 import type { AccountStore } from '../platform/accounts.repository.js';
 import { accountStoreOnPool } from '../platform/accounts.repository.js';
+import type { IdentityStore } from '../platform/identity.repository.js';
+import { identityStoreOnPool } from '../platform/identity.repository.js';
 import { PLATFORM_POOL } from '../platform/tokens.js';
 import { clientRequestIdOf, serverRequestIdOf } from '../request/request-id.js';
 import { IS_PUBLIC, principalOf } from '../tenancy/frame.js';
@@ -68,6 +70,7 @@ export class PermissionGuard implements CanActivate {
   #recipientLogged = false;
 
   private readonly accounts: AccountStore | null;
+  private readonly identity: IdentityStore | null;
 
   constructor(
     private readonly reflector: Reflector,
@@ -77,6 +80,7 @@ export class PermissionGuard implements CanActivate {
     @Optional() @Inject(PLATFORM_POOL) pool?: Parameters<typeof accountStoreOnPool>[0],
   ) {
     this.accounts = accountStoreOnPool(pool ?? null);
+    this.identity = identityStoreOnPool(pool ?? null);
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -106,7 +110,10 @@ export class PermissionGuard implements CanActivate {
     ) {
       throw new ApiException('forbidden');
     }
-    if (doorPermissions.has(operation.permission)) return true;
+    if (doorPermissions.has(operation.permission)) {
+      await this.assertPlatformStaffCurrent(principal);
+      return true;
+    }
     const resolver = this.resolver;
     if (resolver === undefined) throw new ApiException('internal_error');
     const grants = resolver.grantsOf(principal);
@@ -118,6 +125,7 @@ export class PermissionGuard implements CanActivate {
         explained !== undefined && grants.has(explained.holder) ? explained.code : 'forbidden',
       );
     }
+    await this.assertPlatformStaffCurrent(principal);
     await this.assertAccountWritable(request, principal);
     if (grant === 'sites') {
       // Held only through site-scoped bundles (plan 2.6): the declared site must be one of the
@@ -152,6 +160,26 @@ export class PermissionGuard implements CanActivate {
     // handler, as before this check.
     if (account?.status === 'suspended') throw new ApiException('account_suspended');
     if (account?.status === 'closed') throw new ApiException('token_invalid');
+  }
+
+  /**
+   * A platform token whose staff row changed (PLAT-13 adversary M-1): access tokens are verified by
+   * signature only and live 15 minutes, while a role change or a revocation (`platformSetStaffRoles`)
+   * ends the refresh families only. So on every platform operation the token would be admitted to
+   * (a door permission, or a granted one; a denial stays `403`), the stored staff row is read on the
+   * platform pool, and a row that is missing, revoked, or holds another role than the token's
+   * `roles` is `401 token_invalid` (the console signs in again). Without the platform pool (outside
+   * production) the check is skipped, as `assertAccountWritable` is.
+   */
+  private async assertPlatformStaffCurrent(principal: Principal): Promise<void> {
+    if (principal.kind !== 'platform') return;
+    const store = this.identity;
+    if (store === null) return;
+    const row = await store.run((tx) => tx.platformStaff.find(principal.userId));
+    const [role, ...others] = principal.roles;
+    if (row === undefined || row.revoked || others.length > 0 || role !== row.role) {
+      throw new ApiException('token_invalid');
+    }
   }
 
   /**

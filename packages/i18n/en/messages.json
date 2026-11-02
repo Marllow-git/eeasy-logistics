@@ -22,6 +22,6 @@
   },
   "platform_totp_reset": {
     "subject": "Your Eeasy Logistics console authenticator was reset",
-    "body": "Your authenticator for the Eeasy Logistics platform console was reset by an administrator.\n\nSign in to the console with your password to set up your authenticator app again.\n\nIf you did not expect this, contact a platform super admin."
+    "body": "Your authenticator for the Eeasy Logistics platform console was reset by an administrator.\n\nSet up your authenticator app again within 24 hours (you will need your password):\n{link}\n\nIf you did not expect this, contact a platform super admin."
   }
 }

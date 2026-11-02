@@ -1,10 +1,13 @@
 import { randomBytes } from 'node:crypto';
+import { createCredentialsCipher } from '@eeasy-logistics/config';
 import { operationSchemas, schemas } from '@eeasy-logistics/contracts/platform/schemas';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Invitations } from '../../src/modules/kernel/auth/invitations.js';
+import { fromBase32, totpAt } from '../../src/modules/kernel/auth/totp.js';
 import { testSigningKey } from '../support/access-tokens.js';
 import { auditRowsOf } from './audit-rows.js';
-import { freshEmail } from './identity-fixtures.js';
+import { cookieHeader, freshEmail, insertUser, setCookies } from './identity-fixtures.js';
 import { latestMail, mailpitMessage, sendMailRow } from './mail-delivery.js';
 import type { SignedInPlatformStaff } from './platform-sessions.js';
 import { platformStaff, platformWriteHeaders } from './platform-sessions.js';
@@ -15,8 +18,10 @@ import { connectAs, integrationConfig } from './support.js';
 // PLAT-13 item G over HTTP (plan 2.9, 2.11, 2.12; identity and tenancy §3.3): super admins list,
 // invite, re-role and TOTP-reset platform staff. Super-admin rights come only from a super admin,
 // nobody changes or resets themselves, a role change and a reset end the target's sessions, the
-// reset mails a notice without a link in the user's language, and the next `platformLogin` asks for
-// an enrolment. No response, audit row or mail carries TOTP material. Real platform sessions.
+// reset mails a notice with a one-time re-enrolment link in the user's language, and only that link
+// plus the password enrol again (adversary M-2). Stale invitation links never grant a role (H-1), a
+// changed staff row ends the access token at once (M-1). No response, audit row or mail carries
+// TOTP material. Real platform sessions.
 
 const signing = testSigningKey();
 const config = integrationConfig({
@@ -88,6 +93,31 @@ describe('platform staff doors over HTTP (PLAT-13 item G)', () => {
       cursor = page.next_cursor ?? null;
     } while (cursor !== null);
     return users;
+  }
+
+  const post = (path: string, body: Record<string, unknown>) =>
+    staff.http().post(path).set(platformWriteHeaders(config)).send(body);
+  const acceptInvitation = (token: string, password: string) =>
+    post('/v1/platform/auth/invitations/accept', { token, name: 'Accepted Name', password });
+
+  /** The invitation tokens mailed to `email`, oldest first (decrypted from the outbox rows). */
+  async function invitationTokens(email: string): Promise<string[]> {
+    if (config.credentials === null) throw new Error('credentials keys are required');
+    const cipher = createCredentialsCipher(config.credentials);
+    const rows = await owner<
+      { aggregate_id: string; payload: { params: { link: { encrypted: string } } } }[]
+    >`
+      SELECT aggregate_id, payload FROM core_outbox
+      WHERE kind = 'message' AND payload->>'to' = ${email}
+        AND payload->>'template_key' = 'platform_invitation'
+      ORDER BY created_at, id`;
+    return rows.map((row) => {
+      const link = cipher.decrypt(
+        Buffer.from(row.payload.params.link.encrypted, 'base64'),
+        `core_invitations:${row.aggregate_id}`,
+      );
+      return link.split('/').at(-1) ?? '';
+    });
   }
 
   async function staffRow(userId: string) {
@@ -262,11 +292,16 @@ describe('platform staff doors over HTTP (PLAT-13 item G)', () => {
 
       const mail = await latestMail(owner, target.email, 'platform_totp_reset');
       if (mail === undefined) throw new Error('no TOTP reset mail');
-      expect(mail.payload).toMatchObject({ locale, params: {} });
+      // Adversary M-2: the notice carries the one-time re-enrolment link, sealed on the row.
+      expect(mail.payload).toMatchObject({
+        locale,
+        params: { link: { encrypted: expect.any(String) as string } },
+      });
+      expect(JSON.stringify(mail.payload)).not.toContain('/totp/enrol/');
       await sendMailRow(config, mail.id);
       const delivered = await mailpitMessage(`${mail.id}@eeasy-logistics`);
       expect(delivered.Subject).toContain(locale === 'ar' ? 'المصادقة' : 'authenticator');
-      expect(delivered.Text).not.toMatch(/https?:\/\//);
+      expect(delivered.Text).toMatch(/https?:\/\/\S+\/totp\/enrol\/\S+/);
     }
     const target = await platformStaff(staff.app, config, owner, 'support');
     const short = await resetTotp(target.userId, 'abc').expect(400);
@@ -276,5 +311,154 @@ describe('platform staff doors over HTTP (PLAT-13 item G)', () => {
       'No such person',
     ).expect(404);
     expect(errorOf(unknown.body).code).toBe('not_found');
+  });
+
+  it('never lets a stale platform link grant a role (adversary H-1)', async () => {
+    // Invited twice: the second link is accepted, the member revoked; the first link is dead.
+    const email = freshEmail('invited-twice');
+    await invite({ email, name: 'Twice', roles: ['platform_admin'] }).expect(201);
+    await invite({ email, name: 'Twice', roles: ['platform_support'] }).expect(201);
+    const [first, second] = await invitationTokens(email);
+    if (first === undefined || second === undefined) throw new Error('two invitations expected');
+    const password = `staple battery ${randomBytes(6).toString('hex')}`;
+    await acceptInvitation(second, password).expect(200);
+    const [user] = await owner<{ id: string }[]>`SELECT id FROM core_users WHERE email = ${email}`;
+    if (user === undefined) throw new Error('no invited user');
+    expect(await staffRow(user.id)).toMatchObject({ role: 'support', revoked: false });
+    await setRoles(user.id, []).expect(200);
+    const stale = await acceptInvitation(first, password).expect(401);
+    expect(errorOf(stale.body).code).toBe('token_invalid');
+    expect(await staffRow(user.id)).toMatchObject({ revoked: true });
+
+    // A revoked member invited as super admin, then re-granted admin by a role change: the
+    // super-admin link left over is refused, the member stays admin.
+    const admin = await platformStaff(staff.app, config, owner, 'admin');
+    await setRoles(admin.userId, []).expect(200);
+    await invite({ email: admin.email, name: 'Back', roles: ['platform_super_admin'] }).expect(201);
+    const leftover = (await invitationTokens(admin.email)).at(-1) ?? '';
+    await setRoles(admin.userId, ['platform_admin']).expect(200);
+    const refused = await acceptInvitation(leftover, admin.password).expect(401);
+    expect(errorOf(refused.body).code).toBe('token_invalid');
+    expect(await staffRow(admin.userId)).toMatchObject({ role: 'admin', revoked: false });
+
+    // A live member's link made outside the doors (no expiry) is refused at acceptance too.
+    const live = await platformStaff(staff.app, config, owner, 'support');
+    await staff.app.get(Invitations, { strict: false }).createPlatform({
+      email: live.email,
+      name: 'Live',
+      role: 'super_admin',
+      invitedBy: superAdmin.userId,
+      locale: 'en',
+    });
+    const direct = (await invitationTokens(live.email)).at(-1) ?? '';
+    const liveRefused = await acceptInvitation(direct, live.password).expect(401);
+    expect(errorOf(liveRefused.body).code).toBe('token_invalid');
+    expect(await staffRow(live.userId)).toMatchObject({ role: 'support', revoked: false });
+  });
+
+  it('refuses a platform access token whose staff row changed, at once (adversary M-1)', async () => {
+    const other = await platformStaff(staff.app, config, owner, 'super_admin');
+    await get('/v1/platform/staff-users', other).expect(200);
+    await setRoles(other.userId, []).expect(200);
+    // The access token is still within its 15 minutes: the stored row decides.
+    const revoked = await get('/v1/platform/staff-users', other).expect(401);
+    expect(errorOf(revoked.body).code).toBe('token_invalid');
+
+    const demoted = await platformStaff(staff.app, config, owner, 'admin');
+    await get('/v1/platform/me', demoted).expect(200);
+    await setRoles(demoted.userId, ['platform_support']).expect(200);
+    const stale = await get('/v1/platform/me', demoted).expect(401);
+    expect(errorOf(stale.body).code).toBe('token_invalid');
+  });
+
+  it('re-enrols after a reset only with the emailed link and the password (adversary M-2)', async () => {
+    const target = await platformStaff(staff.app, config, owner, 'support');
+    await resetTotp(target.userId, 'Ticket 6610: new phone').expect(204);
+
+    // The password alone: a challenge, but no enrolment on it.
+    const challenge = schemas.PlatformLogin200Response.parse(
+      (await login(target).expect(200)).body,
+    );
+    expect(challenge.totp_enrolment_required).toBe(true);
+    const passwordOnly = await post('/v1/platform/auth/totp/enrol', {
+      challenge_id: challenge.challenge_id,
+    }).expect(401);
+    expect(errorOf(passwordOnly.body)).toMatchObject({
+      code: 'reauthentication_required',
+      details: { enrolment_link_required: true },
+    });
+
+    // The link as the console receives it.
+    const mail = await latestMail(owner, target.email, 'platform_totp_reset');
+    if (mail === undefined) throw new Error('no TOTP reset mail');
+    await sendMailRow(config, mail.id);
+    const delivered = await mailpitMessage(`${mail.id}@eeasy-logistics`);
+    const link = /https?:\/\/\S+\/totp\/enrol\/(\S+)/.exec(delivered.Text)?.[1];
+    if (link === undefined) throw new Error('no link in the mail');
+
+    const redeem = (password: string) =>
+      post('/v1/platform/auth/enrolment-links/redeem', { token: link, password });
+    const wrong = await redeem('not the password at all').expect(401);
+    expect(errorOf(wrong.body).code).toBe('invalid_credentials');
+    // The staff surface's link door does not take a platform link.
+    const onStaff = await staff
+      .http()
+      .post('/v1/staff/auth/second-factor/enrolment-link')
+      .set(staff.writeHeaders())
+      .send({ link_token: link, password: target.password })
+      .expect(401);
+    expect(errorOf(onStaff.body).code).toBe('token_invalid');
+
+    const redeemed = schemas.PlatformRedeemEnrolmentLink200Response.parse(
+      (await redeem(target.password).expect(200)).body,
+    );
+    expect(redeemed.totp_enrolment_required).toBe(true);
+    const enrolment = await post('/v1/platform/auth/totp/enrol', {
+      challenge_id: redeemed.challenge_id,
+    }).expect(200);
+    const uri = new URL(String((enrolment.body as { otpauth_uri: string }).otpauth_uri));
+    const secret = fromBase32(uri.searchParams.get('secret') ?? '');
+    const confirmed = await post('/v1/platform/auth/totp/confirm', {
+      challenge_id: redeemed.challenge_id,
+      code: totpAt(secret, Math.floor(Date.now() / 1000)),
+    }).expect(200);
+    const cookies = setCookies(confirmed.headers);
+    const cookie = cookieHeader({
+      el_platform_at: cookies.get('el_platform_at')?.value,
+      el_platform_rt: cookies.get('el_platform_rt')?.value,
+    });
+    await staff.http().get('/v1/platform/me').set('Cookie', cookie).expect(200);
+    expect(await staffRow(target.userId)).toMatchObject({ enrolled: true });
+
+    // The link is spent.
+    const again = await redeem(target.password).expect(401);
+    expect(errorOf(again.body).code).toBe('token_invalid');
+  });
+
+  it('answers an invitation of an existing user with the request only (adversary L-6)', async () => {
+    const existing = await insertUser(owner, {
+      name: 'Stored Name',
+      locale: 'ar',
+      secondFactorPhone: '+966500000123',
+    });
+    await owner`UPDATE core_users SET phone = '+966500000123' WHERE id = ${existing.id}`;
+    const response = await invite({
+      email: existing.email,
+      name: 'Requested Name',
+      roles: ['platform_support'],
+    }).expect(201);
+    const user = parseUser(response.body);
+    expect(user).toMatchObject({
+      id: existing.id,
+      email: existing.email,
+      name: 'Requested Name',
+      phone: null,
+      locale: 'en',
+      second_factor_enabled: false,
+      roles: ['platform_support'],
+      totp_enrolled: false,
+    });
+    expect(JSON.stringify(response.body)).not.toContain('Stored Name');
+    expect(JSON.stringify(response.body)).not.toContain('500000123');
   });
 });

@@ -19,7 +19,11 @@ export interface FeatureStore {
   flag(accountId: string, key: string): Promise<FlagState | undefined>;
 }
 
-/** Text values under named keys with a time to live; a failure is a miss, never an error. */
+/**
+ * Text values under named keys with a time to live. A failed read is a miss and a failed write is
+ * skipped, never an error; a failed delete throws (adversary L-5), so the after-commit bust of the
+ * consumer fails and the outbox retries it instead of leaving a stale value for its 60 s.
+ */
 export interface FeatureCache {
   get(name: string): Promise<string | undefined>;
   set(name: string, value: string): Promise<void>;
@@ -70,18 +74,31 @@ export class FeatureResolver {
 
   /** Forgets the cached mode of `key` (a rollout change). */
   async forgetRollout(key: string): Promise<void> {
-    await this.cache?.delete([featureCacheKeys.rollout(key, this.prefix)]);
+    await this.#forget(featureCacheKeys.rollout(key, this.prefix));
   }
 
   /** Forgets the cached flag of an account and key (a flag change). */
   async forgetFlag(accountId: string, key: string): Promise<void> {
-    await this.cache?.delete([featureCacheKeys.flag(accountId, key, this.prefix)]);
+    await this.#forget(featureCacheKeys.flag(accountId, key, this.prefix));
+  }
+
+  /**
+   * The door's delete in its own request: a failure (already logged by the cache) never fails the
+   * change; the `core.feature_flag.changed` consumer deletes again after commit and is retried.
+   */
+  async #forget(name: string): Promise<void> {
+    try {
+      await this.cache?.delete([name]);
+    } catch {
+      // Logged by the cache; the consumer's bust is the one that must succeed.
+    }
   }
 }
 
 /**
- * The cache on a Redis connection: `SET … EX 60`, `GET`, `DEL`. Every command failure is a miss
- * (or a skipped write), logged at most once a minute, so a Redis outage falls back to the tables.
+ * The cache on a Redis connection: `SET … EX 60`, `GET`, `DEL`. A failed `GET` is a miss and a
+ * failed `SET` is skipped, so a Redis outage falls back to the tables; a failed `DEL` is rethrown
+ * (adversary L-5). Failures are logged at most once a minute.
  */
 export function redisFeatureCache(client: Redis): FeatureCache {
   const logger = new Logger('FeatureCache');
@@ -114,6 +131,7 @@ export function redisFeatureCache(client: Redis): FeatureCache {
         await client.del(...names);
       } catch (error) {
         failed(error);
+        throw error;
       }
     },
   };

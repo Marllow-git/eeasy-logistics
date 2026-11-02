@@ -1,6 +1,6 @@
 import type { PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { PlatformRepository } from '@eeasy-logistics/db/platform';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, arrayContains, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { ChallengeKind } from '../schema/identity.js';
 import { coreAuthChallenges } from '../schema/identity.js';
 
@@ -157,6 +157,24 @@ export class AuthChallengesRepository extends PlatformRepository<typeof coreAuth
       .returning({ expiresAt: coreAuthChallenges.expiresAt });
     if (row === undefined) throw new Error('The challenge was not redeemed');
     return row.expiresAt;
+  }
+
+  /**
+   * Consumes every open challenge of `kind` for the user whose `amr` holds `marker` (PLAT-13 M-2:
+   * a new platform re-enrolment link replaces the earlier ones, never a staff link).
+   */
+  async consumeOpenMarked(userId: string, kind: ChallengeKind, marker: string): Promise<void> {
+    await this.unscoped()
+      .update(coreAuthChallenges)
+      .set({ consumedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(coreAuthChallenges.userId, userId),
+          eq(coreAuthChallenges.kind, kind),
+          isNull(coreAuthChallenges.consumedAt),
+          arrayContains(coreAuthChallenges.amr, [marker]),
+        ),
+      );
   }
 
   /** Consumes every open challenge of `kind` for the user (a new enrolment link replaces them). */

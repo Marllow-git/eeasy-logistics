@@ -95,13 +95,16 @@ export const messageTemplates = {
     secretContext: 'core_auth_challenges',
     deferrable: false,
   },
-  // PLAT-13 plan 2.9, 2.11: the notice after `platformResetStaffTotp`; no link, no parameter, no
-  // secret (the user signs in with the password and enrols again).
+  // PLAT-13 plan 2.9, 2.11: the notice after `platformResetStaffTotp`, with the one-time
+  // re-enrolment link (adversary M-2: `PUBLIC_ADMIN_URL/totp/enrol/<token>`, 24 hours; the link and
+  // the password enrol again, never the password alone).
   platform_totp_reset: {
     channel: 'mail',
+    linkParam: 'link',
     category: 'transactional',
-    params: [],
-    secretParams: [],
+    params: ['link'],
+    secretParams: ['link'],
+    secretContext: 'core_auth_challenges',
     deferrable: false,
   },
 } as const satisfies Record<MessageTemplateKey, TemplateDefinition>;

@@ -6,9 +6,6 @@ import type {
 import { operationSchemas } from '@eeasy-logistics/contracts/platform/schemas';
 import { findPlatformContext } from '@eeasy-logistics/db';
 import { Controller, Get, HttpCode, Inject, Optional, Post, Put } from '@nestjs/common';
-import type { AuditSink } from '../audit/audit-sink.js';
-import { AUDIT_SINK } from '../audit/audit-sink.js';
-import { Invitations } from '../auth/invitations.js';
 import type { RequestFacts } from '../auth/request-facts.js';
 import { AuthRequest } from '../auth/request-facts.js';
 import type { ContractInput } from '../contract/contract-pipe.js';
@@ -16,7 +13,6 @@ import { Input, Operation } from '../contract/contract-pipe.js';
 import type { ListSorts } from '../contract/list-page.js';
 import { CURSOR_CODEC, CursorCodec, planListPage, presentPage } from '../contract/list-page.js';
 import { Idempotent } from '../idempotency/idempotency.interceptor.js';
-import { OutboxWriter } from '../outbox/outbox-writer.js';
 import type { StaffSortField } from '../platform/platform-staff.repository.js';
 import type { PlatformStaffRole } from '../schema/identity.js';
 import type { StaffView } from './platform-staff.service.js';
@@ -26,8 +22,9 @@ import { contractRoles } from './staff-rules.js';
 // The platform surface's `staff` tag (PLAT-13 plan 2.9; identity and tenancy §3.3): list, invite,
 // set roles, reset a TOTP. Platform work on the request's platform unit of work (no account, no
 // door); `platform.staff.manage` (super admins by roles.yaml) is PLAT-10's guard, and the service
-// re-checks the caller's stored role for the super-admin rules. Registered by `AuthModule`, whose
-// `Invitations` the invitation is delegated to.
+// re-checks the caller's stored role for the super-admin rules. Registered by `AuthModule`, which
+// builds `PlatformStaffService` with its `Invitations`, the console URL and the credentials cipher
+// (the reset's re-enrolment link, adversary M-2).
 
 const listOp = operationSchemas.platformListStaffUsers;
 const inviteOp = operationSchemas.platformInviteStaff;
@@ -69,13 +66,11 @@ export class PlatformStaffController {
   private readonly staff: PlatformStaffService;
 
   constructor(
-    @Inject(AUDIT_SINK) audit: AuditSink,
-    outbox: OutboxWriter,
-    invitations: Invitations,
+    @Inject(PlatformStaffService) staff: PlatformStaffService,
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
   ) {
     this.cursors = cursors ?? new CursorCodec(undefined);
-    this.staff = new PlatformStaffService({ invitations, audit, outbox });
+    this.staff = staff;
   }
 
   @Get()

@@ -9,7 +9,8 @@ import { featureCacheKeys } from './feature-resolver.js';
  * consumers "all (cache bust)"): after a rollout or flag change commits, the worker deletes the
  * cached value, so no API instance keeps a value the request's own delete raced with for its 60 s.
  * A rollout change (no `account_id` in the payload) drops `elx:rollout:<key>`; a flag change drops
- * `elx:feature:<account>:<key>`. Without Redis there is no cache and nothing to do.
+ * `elx:feature:<account>:<key>`. Without Redis there is no cache and nothing to do. A failed
+ * delete throws (adversary L-5), so the outbox retries the event rather than marking it done.
  */
 @OnDomainEvent('core.feature_flag.changed')
 export class FeatureCacheBustConsumer implements DomainEventConsumer {

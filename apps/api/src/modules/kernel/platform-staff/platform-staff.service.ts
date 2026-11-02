@@ -1,17 +1,21 @@
-import { findPlatformContext } from '@eeasy-logistics/db';
+import type { CredentialsCipher } from '@eeasy-logistics/config';
+import { findPlatformContext, uuidv7 } from '@eeasy-logistics/db';
 import { Logger } from '@nestjs/common';
 import type { AuditFacts } from '../accounts/account.service.js';
 import type { AuditSink } from '../audit/audit-sink.js';
 import { countRevocations } from '../auth/auth-metrics.js';
 import type { Invitations } from '../auth/invitations.js';
-import { enqueueMail } from '../auth/mail-links.js';
+import { enqueueMail, mailLink } from '../auth/mail-links.js';
+import { platformLinkMarker } from '../auth/platform-sign-in.js';
+import { enrolmentLinkTtlSeconds } from '../auth/second-factor.js';
+import { compoundToken, opaqueToken, tokenHash } from '../auth/tokens.js';
 import type { ListPage, ListPagePlan, PageKey } from '../contract/list-page.js';
 import { oneLineTextProblem } from '../contract/text-rules.js';
 import type { FieldProblem } from '../errors/api-exception.js';
 import { ApiException } from '../errors/api-exception.js';
 import { rolloutReasonProblem } from '../features/features.service.js';
 import type { OutboxWriter } from '../outbox/outbox-writer.js';
-import type { IdentityTransaction, UserRow } from '../platform/identity.repository.js';
+import type { IdentityTransaction } from '../platform/identity.repository.js';
 import { currentIdentity } from '../platform/identity.repository.js';
 import type { StaffMemberRow, StaffSortField } from '../platform/platform-staff.repository.js';
 import { PlatformStaffDirectory } from '../platform/platform-staff.repository.js';
@@ -64,18 +68,28 @@ export function viewOf(row: StaffMemberRow): StaffView {
   };
 }
 
-function invitedView(user: UserRow, role: PlatformStaffRole): StaffView {
+/**
+ * An invited user as `platformInviteStaff` answers it (adversary L-6): the request's email and name,
+ * the invitation's language and the invited role, never what is stored on an existing user (their
+ * phone, language or second factor), so the answer is the same whether the email had an account.
+ */
+function invitedView(
+  userId: string,
+  invited: { readonly email: string; readonly name: string; readonly locale: 'ar' | 'en' },
+  role: PlatformStaffRole,
+  at: Date,
+): StaffView {
   return {
-    userId: user.id,
-    name: user.name,
-    email: user.email,
-    phone: user.phone,
-    locale: user.locale,
-    secondFactorEnabled: user.secondFactorEnabled,
+    userId,
+    name: invited.name,
+    email: invited.email,
+    phone: null,
+    locale: invited.locale,
+    secondFactorEnabled: false,
     roles: [contractRoleOf(role)],
     totpEnrolled: false,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
+    createdAt: at,
+    updatedAt: at,
   };
 }
 
@@ -102,6 +116,10 @@ export interface PlatformStaffDependencies {
   readonly invitations: Pick<Invitations, 'createPlatform'>;
   readonly audit: Pick<AuditSink, 'recordIn'>;
   readonly outbox: Pick<OutboxWriter, 'enqueue'>;
+  /** The console's base URL of the re-enrolment link (`PUBLIC_ADMIN_URL`); none: the reset is 500. */
+  readonly publicAdminUrl: string | undefined;
+  /** Seals the link on the mail's outbox row (PLAT-11 item J); none: the reset is 500. */
+  readonly cipher: CredentialsCipher | null;
 }
 
 export class PlatformStaffService {
@@ -158,12 +176,13 @@ export class PlatformStaffService {
       throw new ApiException('invalid_transition', { details: { current_status: 'active' } });
     }
     const inviter = await tx.users.find(caller.id);
+    const locale = inviter?.locale ?? 'ar';
+    // Adversary H-1: the email's earlier links stop working (a newer invitation supersedes them).
+    const expired = await tx.invitations.expireOpenPlatform(email);
     const created = await this.deps.invitations.createPlatform(
-      { email, name: input.name, role, invitedBy: caller.id, locale: inviter?.locale ?? 'ar' },
+      { email, name: input.name, role, invitedBy: caller.id, locale },
       tx,
     );
-    const user = await tx.users.find(created.userId);
-    if (user === undefined) throw new Error('The invited user has no row');
     await this.deps.audit.recordIn(tx.uow, {
       actorType: 'platform_user',
       actorId: caller.id,
@@ -171,13 +190,18 @@ export class PlatformStaffService {
       targetType: 'platform_staff',
       targetId: created.userId,
       action: 'core.platform_staff.invited',
-      after: { role: contractRoleOf(role), email, invitation_id: created.invitationId },
+      after: {
+        role: contractRoleOf(role),
+        email,
+        invitation_id: created.invitationId,
+        invitations_expired: expired,
+      },
       requestId: facts.requestId,
       clientRequestId: facts.clientRequestId,
       ip: facts.ip,
       userAgent: facts.userAgent,
     });
-    return invitedView(user, role);
+    return invitedView(created.userId, { email, name: input.name, locale }, role, new Date());
   }
 
   /**
@@ -220,6 +244,9 @@ export class PlatformStaffService {
       membershipId: null,
     });
     countRevocations('revoked', families.length);
+    // Adversary H-1: a link sent before this change (another role, perhaps super admin) is stale.
+    const expired =
+      target.email === null ? 0 : await tx.invitations.expireOpenPlatform(target.email);
     await this.deps.audit.recordIn(tx.uow, {
       actorType: 'platform_user',
       actorId: caller.id,
@@ -231,6 +258,7 @@ export class PlatformStaffService {
       after: {
         roles: next === null ? [] : [contractRoleOf(next)],
         sessions_ended: families.length,
+        invitations_expired: expired,
       },
       requestId: facts.requestId,
       clientRequestId: facts.clientRequestId,
@@ -245,16 +273,25 @@ export class PlatformStaffService {
   /**
    * `platformResetStaffTotp` (mirrors PLAT-11's staff second-factor reset): a super admin only,
    * never on oneself (`403`); a user with no live staff row is `404`. In one transaction: the TOTP
-   * secret, key id and replay guard cleared, `token_version + 1`, every platform family revoked,
-   * open TOTP challenges spent, the `platform_totp_reset` notice mailed (no link, no secret), and
-   * `core.platform_staff.totp_reset` audited with the reason. The user enrols again at the next
-   * `platformLogin` (`totp_enrolment_required`).
+   * secret and key id cleared (the replay guard kept as the marker that only the link enrols, M-2),
+   * `token_version + 1`, every platform family revoked, open TOTP challenges and earlier platform
+   * links spent, a one-time re-enrolment link (an `enrolment_link` challenge, 24 hours) mailed with
+   * the `platform_totp_reset` notice (`PUBLIC_ADMIN_URL/totp/enrol/<token>`, sealed on the outbox
+   * row), and `core.platform_staff.totp_reset` audited with the reason. The password alone no longer
+   * enrols (adversary M-2): `platformRedeemEnrolmentLink` with the link and the password does.
    */
   async resetTotp(userId: string, reason: string, facts: AuditFacts): Promise<void> {
     const problem = rolloutReasonProblem(reason);
     validationFailed([
       problem === undefined ? undefined : { pointer: '/body/reason', code: problem },
     ]);
+    const linkId = uuidv7();
+    const linkSecret = opaqueToken();
+    const link = mailLink(
+      this.deps.publicAdminUrl,
+      'totp/enrol',
+      compoundToken(linkId, linkSecret),
+    );
     const tx = currentIdentity();
     const caller = await this.caller(tx);
     const refusal = totpResetRefusal(caller.id, caller.role, userId);
@@ -273,19 +310,30 @@ export class PlatformStaffService {
     });
     countRevocations('revoked', families.length);
     await tx.challenges.consumeOpen(userId, 'totp');
+    await tx.challenges.consumeOpenMarked(userId, 'enrolment_link', platformLinkMarker);
+    const linkExpiresAt = await tx.challenges.insert({
+      id: linkId,
+      kind: 'enrolment_link',
+      userId,
+      secretHash: tokenHash(linkSecret),
+      amr: [platformLinkMarker],
+      membershipIds: null,
+      ttlSeconds: enrolmentLinkTtlSeconds,
+      ip: null,
+    });
     await enqueueMail(
       this.deps.outbox,
       tx,
       {
         type: 'core.platform_staff.totp_reset',
-        aggregate: { type: 'user', id: userId },
+        aggregate: { type: 'auth_challenge', id: linkId },
         template: 'platform_totp_reset',
         to: user.email,
         locale: user.locale,
-        params: {},
+        params: { link },
         supersedeKey: `platform_totp_reset:${userId}`,
       },
-      null,
+      this.deps.cipher,
     );
     await this.deps.audit.recordIn(tx.uow, {
       actorType: 'platform_user',
@@ -294,7 +342,11 @@ export class PlatformStaffService {
       targetType: 'platform_staff',
       targetId: userId,
       action: 'core.platform_staff.totp_reset',
-      after: { sessions_ended: families.length, was_enrolled: staff.totpEnrolled },
+      after: {
+        sessions_ended: families.length,
+        was_enrolled: staff.totpEnrolled,
+        link_expires_at: linkExpiresAt.toISOString(),
+      },
       reason: reason.trim(),
       requestId: facts.requestId,
       clientRequestId: facts.clientRequestId,

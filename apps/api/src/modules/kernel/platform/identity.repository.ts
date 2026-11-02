@@ -596,7 +596,14 @@ export interface PlatformStaffRow {
   readonly role: PlatformStaffRole;
   readonly totpEnrolled: boolean;
   readonly revoked: boolean;
+  /**
+   * A reset TOTP (PLAT-13 adversary M-2): no secret, and the replay guard kept as the marker that
+   * only the emailed re-enrolment link may enrol again (as a staff reset keeps the phone).
+   */
+  readonly enrolmentLinkRequired: boolean;
 }
+
+const enrolmentLinkRequired = sql<boolean>`(${corePlatformStaff.totpSecretCiphertext} IS NULL AND ${corePlatformStaff.totpLastStep} IS NOT NULL)`;
 
 export class PlatformStaffRepository extends PlatformRepository<typeof corePlatformStaff> {
   constructor(uow: PlatformUnitOfWork) {
@@ -610,6 +617,7 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
         role: corePlatformStaff.role,
         totpEnrolled: sql<boolean>`${corePlatformStaff.totpSecretCiphertext} IS NOT NULL`,
         revoked: sql<boolean>`${corePlatformStaff.revokedAt} IS NOT NULL`,
+        enrolmentLinkRequired,
       })
       .from(corePlatformStaff)
       .where(eq(corePlatformStaff.userId, userId));
@@ -624,6 +632,7 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
         role: corePlatformStaff.role,
         totpEnrolled: sql<boolean>`${corePlatformStaff.totpSecretCiphertext} IS NOT NULL`,
         revoked: sql<boolean>`${corePlatformStaff.revokedAt} IS NOT NULL`,
+        enrolmentLinkRequired,
         secretCiphertext: corePlatformStaff.totpSecretCiphertext,
         lastStep: corePlatformStaff.totpLastStep,
       })
@@ -715,8 +724,10 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
   }
 
   /**
-   * Clears the TOTP secret, its key id and the replay guard (plan 2.9, `platformResetStaffTotp`):
-   * the next `platformLogin` asks for an enrolment.
+   * Clears the TOTP secret and its key id (plan 2.9, `platformResetStaffTotp`): the next
+   * `platformLogin` asks for an enrolment. The replay guard stays (0 when none was kept) as the
+   * marker that only the emailed re-enrolment link may enrol again (adversary M-2,
+   * `enrolmentLinkRequired`); `enrolTotp` replaces it with the new secret's first step.
    */
   async resetTotp(userId: string): Promise<void> {
     await this.unscoped()
@@ -724,7 +735,7 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
       .set({
         totpSecretCiphertext: null,
         totpKeyId: null,
-        totpLastStep: null,
+        totpLastStep: sql`coalesce(${corePlatformStaff.totpLastStep}, 0)`,
         updatedAt: sql`now()`,
       })
       .where(eq(corePlatformStaff.userId, userId));
@@ -837,6 +848,37 @@ export class InvitationsRepository extends PlatformRepository<typeof coreInvitat
     return rows.length;
   }
 
+  /**
+   * Ends every open `platform` invitation of an email (PLAT-13 adversary H-1): a new invitation or
+   * a role change makes the earlier links stale; how many.
+   */
+  async expireOpenPlatform(email: string): Promise<number> {
+    const rows = await this.unscoped()
+      .update(coreInvitations)
+      .set({ expiresAt: sql`now()`, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(coreInvitations.kind, 'platform'),
+          eq(coreInvitations.email, email),
+          isNull(coreInvitations.acceptedAt),
+          sql`${coreInvitations.expiresAt} > now()`,
+        ),
+      )
+      .returning({ id: coreInvitations.id });
+    return rows.length;
+  }
+
+  /** Whether a later `platform` invitation of the same email exists (this one is superseded). */
+  async platformSuperseded(id: string, email: string): Promise<boolean> {
+    const rows = await this.unscoped().execute<{ found: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM core_invitations later
+        WHERE later.kind = 'platform' AND later.email = ${email} AND later.id <> ${id}
+          AND later.created_at > (SELECT created_at FROM core_invitations WHERE id = ${id})
+      ) AS found`);
+    return rows[0]?.found === true;
+  }
+
   /** Ends the open invitations of a membership (a new one replaces them). */
   async expireOpenOf(membershipId: string): Promise<void> {
     await this.unscoped()
@@ -910,6 +952,21 @@ export class InvitingAccounts extends PlatformRepository<typeof coreAccounts> {
       .from(coreAccounts)
       .where(eq(coreAccounts.id, id));
     return row;
+  }
+
+  /**
+   * The account's status, read again under `FOR SHARE` (PLAT-13 adversary L-2): a session start
+   * re-reads it after its refresh row is written, and a suspension (which locks the row `FOR
+   * UPDATE` before revoking the account's families) either committed first and is seen here, or
+   * waits for this transaction and then revokes the new family with the others.
+   */
+  async lockStatus(id: string): Promise<string | undefined> {
+    const [row] = await this.unscoped()
+      .select({ status: coreAccounts.status })
+      .from(coreAccounts)
+      .where(eq(coreAccounts.id, id))
+      .for('share');
+    return row?.status;
   }
 }
 
