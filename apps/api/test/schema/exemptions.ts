@@ -106,7 +106,7 @@ export const globalUniqueIndexes: Readonly<Record<string, readonly (readonly str
  * partitioned table is listed by its parent; each partition must carry the cloned row trigger and
  * grant the runtime roles nothing (PLAT-5 plan §6, PLAT-7).
  */
-export const appendOnlyTables: readonly string[] = ['core_audit_log'];
+export const appendOnlyTables: readonly string[] = ['core_audit_log', 'del_order_events'];
 
 /**
  * Personal-data columns (data §10 inventory), each tagged `COMMENT ON COLUMN … IS 'pii:<actor>'`
@@ -125,6 +125,17 @@ export const piiColumns: Readonly<Record<string, readonly string[]>> = {
   // DEL-4 plan 2.1 (data §10, driver row): the PIN hash, the app's device id, the push token.
   del_drivers: ['name', 'cash_pin_hash'],
   del_driver_devices: ['device_id', 'push_token'],
+  // DEL-2 plan 2.1 (data §10, recipient row): the recipient and address columns, the event point.
+  del_orders: [
+    'recipient_name',
+    'recipient_phone',
+    'recipient_alt_phone',
+    'address_text',
+    'address_district',
+    'national_address_short_code',
+    'address_point',
+  ],
+  del_order_events: ['point'],
 };
 
 /**

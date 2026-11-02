@@ -140,6 +140,28 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
   }
 
   /**
+   * Inserts `row`, or on a conflict over `target` (a unique key that leads with `account_id`, so
+   * the conflicting row is the context account's own) updates it with `set`, and returns the row
+   * written (DEL-2: `core_sequences`, the row lock held until commit). `set` may refer to the
+   * existing row through the table's columns.
+   */
+  protected async upsert(
+    row: TenantInsert<TTable>,
+    target: readonly PgColumn[],
+    set: Readonly<Record<string, SQL>>,
+  ): Promise<InferSelectModel<TTable>> {
+    if (target[0] !== this.table.accountId) {
+      throw new Error('An upsert target must lead with account_id');
+    }
+    const [written] = await this.#tx
+      .insert(this.table)
+      .values({ ...withoutAccount(row), accountId: this.accountId } as never)
+      .onConflictDoUpdate({ target: [...target], set: set as never })
+      .returning();
+    return written as InferSelectModel<TTable>;
+  }
+
+  /**
    * Takes a transaction-scoped advisory lock on `<account>/<name>` without waiting: true when this
    * transaction holds it (until commit or rollback), false when another transaction does.
    */
