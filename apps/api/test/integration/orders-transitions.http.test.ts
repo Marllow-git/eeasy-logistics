@@ -338,4 +338,47 @@ describe('order transitions over HTTP (DEL-2 item E)', () => {
       'accepted',
     ]);
   });
+
+  it('clears the current assignment on cancel, fail and accept (round 1, ruling 4)', async () => {
+    const { siteId, dispatcher } = await orderWorld(owner, staff);
+    /** An order in `status` with an assignment, at version 2. */
+    const held = async (status: string) => {
+      const order = await createOrder(staff, dispatcher, orderBody(siteId));
+      await forceStatus(owner, order.id, status);
+      await owner`
+        UPDATE del_orders SET current_assignment_id = ${'0192f100-1111-7222-8333-444455556666'}
+        WHERE id = ${order.id}`;
+      return order.id;
+    };
+    const assignmentOf = async (id: string) =>
+      (
+        await owner<{ current_assignment_id: string | null }[]>`
+          SELECT current_assignment_id FROM del_orders WHERE id = ${id}`
+      )[0]?.current_assignment_id;
+
+    const cancelled = await held('assigned');
+    expect(
+      orderOf(
+        (
+          await cancel(dispatcher, cancelled, { reason_code: 'customer_request' }, '"2"').expect(
+            200,
+          )
+        ).body,
+      ),
+    ).toMatchObject({ status: 'cancelled', current_assignment_id: null });
+    expect(await assignmentOf(cancelled)).toBeNull();
+
+    const failed = await held('out_for_delivery');
+    await transition(
+      dispatcher,
+      failed,
+      { to_status: 'failed', reason_code: 'no_answer' },
+      '"2"',
+    ).expect(200);
+    expect(await assignmentOf(failed)).toBeNull();
+
+    const rescheduled = await held('attempted');
+    await transition(dispatcher, rescheduled, { to_status: 'accepted' }, '"2"').expect(200);
+    expect(await assignmentOf(rescheduled)).toBeNull();
+  });
 });

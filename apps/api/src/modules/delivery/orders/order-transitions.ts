@@ -50,6 +50,9 @@ export interface TransitionCommand {
   readonly facts?: AuditFacts | undefined;
 }
 
+/** The statuses that leave no driver on the order: its current assignment is cleared. */
+const releasesAssignment: ReadonlySet<OrderStatus> = new Set(['cancelled', 'failed', 'accepted']);
+
 /** The outbox type of an arrow into `to` (catalogue §6.3: one type per status). */
 export const statusEventType = (to: OrderStatus): DomainEventType =>
   `delivery.order.${to}` as DomainEventType;
@@ -89,6 +92,9 @@ export class OrderTransitions {
       status: command.to,
       // The reason explains a `pending` order only (D-3).
       pendingReason: command.to === 'pending' ? current.pendingReason : null,
+      // No driver holds the order any more (adversary round 1, ruling 4): DEL-6 closes the
+      // assignment row and tells the driver from the `cancelled` and `failed` events.
+      ...(releasesAssignment.has(command.to) ? { currentAssignmentId: null } : {}),
       version: current.version + 1,
       ...(isTerminal(command.to) ? { terminalAt: new Date() } : {}),
     });
