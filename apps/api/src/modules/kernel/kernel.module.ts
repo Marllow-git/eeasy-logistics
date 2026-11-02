@@ -2,6 +2,7 @@ import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, DiscoveryModule } from '@nestjs/core';
 import { AUDIT_SINK } from './audit/audit-sink.js';
+import { AccountController } from './accounts/account.controller.js';
 import { AuditLogController } from './audit/audit-log.controller.js';
 import { AuditWriter } from './audit/audit-writer.js';
 import { DenialAuditThrottle } from './authz/denial-throttle.js';
@@ -32,7 +33,14 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
   imports: [DiscoveryModule],
   // The audit log reads (PLAT-7): listAuditLog, platformListAccountAudit, platformListAudit; the
   // platform outbox operations (PLAT-8): list, read and replay rows, list the consumers.
-  controllers: [AuditLogController, PlatformAuditLogController, PlatformOutboxController],
+  // PLAT-12: the staff surface's account doors (getAccount, getAccountSettings,
+  // updateAccountSettings).
+  controllers: [
+    AuditLogController,
+    PlatformAuditLogController,
+    PlatformOutboxController,
+    AccountController,
+  ],
   providers: [
     IdempotentRoutesCheck,
     // PLAT-10: every non-public route binds a generated operation of its surface, or no boot.

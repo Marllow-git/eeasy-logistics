@@ -47,6 +47,19 @@ export interface ContractInput<S extends OperationSchemas> {
   readonly body: Parsed<S, 'body'>;
 }
 
+/** The top-level fields each parsed input's body was sent with (`sentBodyFields`). */
+const sentFields = new WeakMap<object, readonly string[]>();
+
+/**
+ * The top-level fields the client sent in the JSON object body of `input` (PLAT-12 plan 2.3), empty
+ * for any other body. The generated schemas fill a contract `default` for an absent field, so a
+ * PATCH merge tells "sent" from "absent" here, never from `input.body`. Every field named here
+ * passed the operation's strict schema.
+ */
+export function sentBodyFields(input: object): readonly string[] {
+  return sentFields.get(input) ?? [];
+}
+
 const OPERATION = Symbol('elx:operation');
 const rawInput = Symbol('elx:raw-input');
 
@@ -193,7 +206,11 @@ export function parseContractInput(raw: RawInput): ContractInput<OperationSchema
         })();
   const body = parse('/body', schemas.body, raw.body);
   if (problems.length > 0) throw new ApiException('validation_failed', { fields: problems });
-  return { params, query, headers, body } as ContractInput<OperationSchemas>;
+  const input = { params, query, headers, body } as ContractInput<OperationSchemas>;
+  if (typeof raw.body === 'object' && raw.body !== null && !Array.isArray(raw.body)) {
+    sentFields.set(input, Object.freeze(Object.keys(raw.body)));
+  }
+  return input;
 }
 
 /**

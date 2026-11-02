@@ -69,6 +69,16 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
     return rows as InferSelectModel<TTable>[];
   }
 
+  /** How many rows of the context's account match `condition` (a limit check, a usage figure). */
+  protected async countWhere(condition?: SQL): Promise<number> {
+    const table: PgTable = this.table;
+    const [row] = await this.#tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(table)
+      .where(this.scoped(condition));
+    return row?.count ?? 0;
+  }
+
   protected async insertMany(
     rows: readonly TenantInsert<TTable>[],
   ): Promise<InferSelectModel<TTable>[]> {
