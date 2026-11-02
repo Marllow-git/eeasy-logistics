@@ -90,6 +90,12 @@ async function openAccount(page: Page, locale: Locale, account: { id: string; na
   return reason;
 }
 
+/** A tab of the account's sections (the main navigation has an "Audit log" link too). */
+const accountTab = (page: Page, locale: Locale, key: string) =>
+  page
+    .getByRole('navigation', { name: p(locale, 'account.tabs.label') })
+    .getByRole('link', { name: p(locale, `account.tabs.${key}`) });
+
 /** Dates, times and generated ids change every run: masked in the screenshots. */
 const masks = (page: Page) => [page.locator('time'), page.locator('[data-census-mask]')];
 
@@ -146,7 +152,7 @@ test('support reads accounts without a write control and gets 403 on provisionin
   await expect(page.getByRole('button', { name: p(locale, 'account.invite.button') })).toHaveCount(
     0,
   );
-  await page.getByRole('link', { name: p(locale, 'account.tabs.flags') }).click();
+  await accountTab(page, locale, 'flags').click();
   await expect(page.getByRole('heading', { name: p(locale, 'flags.title') })).toBeVisible();
   await expect(page.getByRole('switch')).toHaveCount(0);
 });
@@ -249,7 +255,7 @@ test('the support reason: asked once per tab and account, kept, cleared on exit'
   await page.reload();
   await expect(banner).toContainText(reason);
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
-  await page.getByRole('link', { name: p(locale, 'account.tabs.flags') }).click();
+  await accountTab(page, locale, 'flags').click();
   await expect(page.getByRole('heading', { name: p(locale, 'flags.title') })).toBeVisible();
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
 
@@ -347,7 +353,7 @@ test('an admin sets a flag with a reason and cannot change a rollout mode', asyn
 
   const account = consoleAccount('active', project());
   const reason = await openAccount(page, locale, account);
-  await page.getByRole('link', { name: p(locale, 'account.tabs.flags') }).click();
+  await accountTab(page, locale, 'flags').click();
   const feature = p(locale, 'features.wms');
   const toggle = page.getByRole('switch', { name: p(locale, 'flags.switch_label', { feature }) });
   const wasOn = (await toggle.getAttribute('aria-checked')) === 'true';
@@ -365,7 +371,7 @@ test('an admin sets a flag with a reason and cannot change a rollout mode', asyn
   await expect(page).toHaveScreenshot('console-flags.png', { fullPage: true, mask: masks(page) });
 
   // The account's Audit tab shows the change with its reason (leg 1 8.3 #3).
-  await page.getByRole('link', { name: p(locale, 'account.tabs.audit') }).click();
+  await accountTab(page, locale, 'audit').click();
   const log = page.getByRole('table', { name: p(locale, 'audit.account_table_label') });
   const changed = log
     .getByRole('row')
@@ -414,7 +420,7 @@ test('support reads the members and the audit log of an account under the banner
   await platformSignIn(page, 'support', project());
   const account = consoleAccount('active', project());
   const reason = await openAccount(page, locale, account);
-  await page.getByRole('link', { name: p(locale, 'account.tabs.members') }).click();
+  await accountTab(page, locale, 'members').click();
   await expect(
     page.getByRole('heading', { level: 2, name: p(locale, 'members.title') }),
   ).toBeVisible();
@@ -427,7 +433,7 @@ test('support reads the members and the audit log of an account under the banner
   await checkPage(page, locale);
   await expect(page).toHaveScreenshot('console-members.png', { fullPage: true, mask: masks(page) });
 
-  await page.getByRole('link', { name: p(locale, 'account.tabs.audit') }).click();
+  await accountTab(page, locale, 'audit').click();
   const log = page.getByRole('table', { name: p(locale, 'audit.account_table_label') });
   // Every read under the door is audited with the reason: the members read above among them.
   const read = log
@@ -597,9 +603,8 @@ test('staff: invite, own row locked, change a role, revoke, reset an authenticat
     .getByRole('radio', { name: p(locale, 'staff.roles.platform_support.label'), exact: true })
     .check();
   await checkPage(page, locale);
-  await expect(page).toHaveScreenshot('console-staff-invite.png', {
-    mask: [...masks(page), page.getByRole('table').locator('tbody')],
-  });
+  // The dialog alone: the list behind it changes with every run.
+  await expect(invite).toHaveScreenshot('console-staff-invite.png');
   await invite.getByRole('button', { name: p(locale, 'staff.invite.submit') }).click();
   await expect(
     page.getByRole('status').filter({ hasText: p(locale, 'staff.invite.done', { email: hire }) }),
@@ -682,4 +687,44 @@ test('a reset authenticator: the sign-in points to the link, the link re-enrols 
   await expect(page.getByRole('heading', { level: 2 })).toHaveText(
     message(locale, 'auth', 'link.invalid_title'),
   );
+});
+// Leg 2 (WEB-4 plan 2.11; exit criterion): the platform audit log, read by support with a reason,
+// filtered to an account (its own reason) and to support reads, shows the reason the support
+// member gave on the account, in the project's language (an Arabic reason decoded by the API).
+
+test('platform audit: support reads, filtered to an account, show the support reason', async ({
+  page,
+  locale,
+}) => {
+  await platformSignIn(page, 'support', project());
+  await page.goto('/audit');
+  const wide = page.getByRole('alertdialog', {
+    name: p(locale, 'filter_gate.title', { name: p(locale, 'filter_gate.all_accounts') }),
+  });
+  await wide.getByRole('textbox').fill(reasonFor(locale, 'audit review'));
+  await wide.getByRole('button', { name: p(locale, 'filter_gate.confirm') }).click();
+  const table = page.getByRole('table', { name: p(locale, 'audit.table_label') });
+  await expect(table).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  await checkPage(page, locale);
+  // The log grows with every run: the viewport only, its rows masked.
+  await expect(page).toHaveScreenshot('console-audit.png', {
+    mask: [...masks(page), table.locator('tbody')],
+  });
+
+  const account = consoleAccount('active', project());
+  await page.goto(`/audit?account_id=${account.id}&action=platform.cross_tenant.accessed`);
+  const gate = page.getByRole('alertdialog', {
+    name: p(locale, 'filter_gate.title', { name: account.name }),
+  });
+  await gate.getByRole('textbox').fill(reasonFor(locale, 'audit of one account'));
+  await gate.getByRole('button', { name: p(locale, 'filter_gate.confirm') }).click();
+  const read = table
+    .getByRole('row')
+    .filter({
+      hasText: message(locale, 'settings', 'audit.actions.platform_cross_tenant_accessed'),
+    })
+    .filter({ hasText: reasonFor(locale, 'census') })
+    .first();
+  await expect(read).toBeVisible();
 });

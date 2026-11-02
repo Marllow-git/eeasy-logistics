@@ -73,7 +73,13 @@ void describe('navigationFor', () => {
         ],
       },
       { group: 'operations', items: [{ href: '/outbox', label: 'outbox', prefix: false }] },
-      { group: 'governance', items: [{ href: '/staff', label: 'staff', prefix: false }] },
+      {
+        group: 'governance',
+        items: [
+          { href: '/staff', label: 'staff', prefix: false },
+          { href: '/audit', label: 'audit', prefix: false },
+        ],
+      },
     ]);
   });
 
@@ -86,7 +92,7 @@ void describe('navigationFor', () => {
   void it('gives the home its areas without itself', () => {
     assert.deepEqual(
       homeAreas(support).map((entry) => entry.href),
-      ['/accounts', '/rollout', '/outbox'],
+      ['/accounts', '/rollout', '/outbox', '/audit'],
     );
     assert.deepEqual(homeAreas({ permissions: [] }), []);
   });
