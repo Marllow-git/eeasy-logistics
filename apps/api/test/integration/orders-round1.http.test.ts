@@ -26,7 +26,8 @@ import { plantSite } from './zone-fixtures.js';
 // acceptance writes `delivery.order.updated` with the changed keys and no recipient data; (e) the
 // three write doors answer `404` for another account's order and, for a site-scoped member, for
 // another site's order. No system bundle that is site-scoped holds the write permissions, so (e)
-// adds a test-only `site_dispatcher` bundle to the boot-time resolver.
+// adds a test-only `site_dispatcher` bundle to the boot-time resolver. Ruling 6: an account that
+// never set reason codes cancels with one of the starter set.
 
 const config = ordersConfig('orders-round1');
 const errorOf = (body: unknown) => operationSchemas.updateOrder.responses['4XX'].parse(body);
@@ -161,6 +162,32 @@ describe('order doors, adversary round 1 lows (DEL-2 ruling 5)', () => {
     expect(await updatedRows()).toEqual([
       { order_id: order.id, number: 1, changed: ['address', 'cod_amount'] },
     ]);
+  });
+
+  it('lets a fresh account cancel with a starter reason code (ruling 6)', async () => {
+    const { accountId, siteId, dispatcher } = await orderWorld(owner, staff);
+    await owner`UPDATE core_accounts SET settings = settings - 'reason_codes' WHERE id = ${accountId}`;
+    const order = await createOrder(staff, dispatcher, orderBody(siteId));
+    const cancelled = await write(
+      dispatcher,
+      'post',
+      `/v1/staff/orders/${order.id}/cancel`,
+      { reason_code: 'customer_cancelled' },
+      1,
+    ).expect(200);
+    expect(cancelled.body).toMatchObject({ status: 'cancelled', version: 2 });
+    const [event] = await owner<{ reason_code: string }[]>`
+      SELECT reason_code FROM del_order_events WHERE order_id = ${order.id} AND to_status = 'cancelled'`;
+    expect(event?.reason_code).toBe('customer_cancelled');
+    // A code outside the set is still refused.
+    const other = await createOrder(staff, dispatcher, orderBody(siteId));
+    await write(
+      dispatcher,
+      'post',
+      `/v1/staff/orders/${other.id}/cancel`,
+      { reason_code: 'no_answer' },
+      1,
+    ).expect(400);
   });
 
   it('answers 404 for another account and, for a site-scoped member, another site (5e)', async () => {

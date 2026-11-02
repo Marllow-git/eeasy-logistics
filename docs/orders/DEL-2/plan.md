@@ -109,6 +109,7 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 | R1-3 | `DEL-2: R1-3 …` | `orders-transitions.http.test.ts` 1 red (`assigned → accepted` answered 200) → 7 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #22 |
 | R1-4 | `DEL-2: R1-4 …` | `orders-transitions.http.test.ts` 1 red (the cancelled order kept its assignment) → 8 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #23, 8.3 |
 | R1-5 | `DEL-2: R1-5 …` | `orders-round1.http.test.ts` 3 red (5a accepted with no coverage: 200; 5b a reused event key: 500; 5d no `delivery.order.updated`) → 4 green (5e's 404s held before the round, kept as tests); unit `list-page` +1, `order-input` +1 (delivery, contract, outbox, rate-limit, geocoding, route and project checks 282 green); the five order suites and `outbox-writer` 43 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #24 to #26, 8.3 |
+| R1-6 | `DEL-2: R1-6 …` | `orders-round1.http.test.ts` 1 red (a fresh account's `customer_cancelled`: 400) → 5 green; `settings.test` +1 and two expectations moved to the starter set; `account.http` (the default read, the first PATCH's `before`), `rate-limit.http`, `orders-transitions` 29 green; accounts and delivery unit 79 green; `census-seed` 14 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #27 |
 
 ### 8.1 Deviations
 
