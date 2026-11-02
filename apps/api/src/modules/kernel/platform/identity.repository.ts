@@ -81,6 +81,52 @@ export class UsersRepository extends PlatformRepository<typeof coreUsers> {
     return row;
   }
 
+  /** The user with this E.164 phone (`core_users.phone`, never the second-factor phone), or undefined. */
+  async findByPhone(phone: string): Promise<UserRow | undefined> {
+    const [row] = await this.unscoped()
+      .select(userColumns)
+      .from(coreUsers)
+      .where(eq(coreUsers.phone, phone))
+      .limit(1);
+    return row;
+  }
+
+  /**
+   * A person known by phone only (DEL-4 plan 2.2: a driver has no email and no password), unless
+   * the phone already has a user (a concurrent creation): `ON CONFLICT` on the partial unique
+   * phone index does nothing, and the caller reads the row back by phone.
+   */
+  async insertByPhone(user: {
+    readonly id: string;
+    readonly name: string;
+    readonly phone: string;
+    readonly locale: UserLocale;
+  }): Promise<void> {
+    await this.unscoped()
+      .insert(coreUsers)
+      .values(user)
+      .onConflictDoNothing({ target: coreUsers.phone, where: sql`${coreUsers.phone} IS NOT NULL` });
+  }
+
+  /** A new display name (DEL-4 plan 2.4, `updateDriver`). */
+  async rename(id: string, name: string): Promise<void> {
+    await this.unscoped()
+      .update(coreUsers)
+      .set({ name, updatedAt: sql`now()` })
+      .where(eq(coreUsers.id, id));
+  }
+
+  /**
+   * `token_version + 1` (DEL-4 plan 2.4: a driver suspended or archived): every refresh family of
+   * the user is refused at its next rotation and every sensitive action re-reads it (identity §4).
+   */
+  async bumpTokenVersion(id: string): Promise<void> {
+    await this.unscoped()
+      .update(coreUsers)
+      .set({ tokenVersion: sql`${coreUsers.tokenVersion} + 1`, updatedAt: sql`now()` })
+      .where(eq(coreUsers.id, id));
+  }
+
   /**
    * The users of `ids` (PLAT-12 `listMembers`, `getMember`: the people behind an account's
    * memberships), read only. `q` is matched by the door over what each membership shows
@@ -516,12 +562,18 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
 
   /**
    * Revokes every live row of the user (a password reset), or of one surface and membership (a
-   * logout without a refresh cookie); returns the distinct families revoked.
+   * logout without a refresh cookie), or of one driver device of that membership (DEL-4 plan 2.5:
+   * `deviceId` is the `del_driver_devices` row id the rows carry); returns the distinct families
+   * revoked.
    */
   async revokeAll(
     userId: string,
     reason: RevocationReason,
-    scope?: { readonly surface: SessionSurface; readonly membershipId: string | null },
+    scope?: {
+      readonly surface: SessionSurface;
+      readonly membershipId: string | null;
+      readonly deviceId?: string;
+    },
   ): Promise<string[]> {
     const conditions = [eq(coreRefreshTokens.userId, userId), isNull(coreRefreshTokens.revokedAt)];
     if (scope !== undefined) {
@@ -531,6 +583,9 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
           ? isNull(coreRefreshTokens.membershipId)
           : eq(coreRefreshTokens.membershipId, scope.membershipId),
       );
+      if (scope.deviceId !== undefined) {
+        conditions.push(eq(coreRefreshTokens.deviceId, scope.deviceId));
+      }
     }
     const rows = await this.unscoped()
       .update(coreRefreshTokens)

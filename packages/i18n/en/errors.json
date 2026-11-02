@@ -80,6 +80,7 @@
     "too_long": "This value is too long.",
     "too_short": "This value is too short.",
     "breached": "This password appears in a list of breached passwords; choose another.",
-    "owner_gate": "This option is not available yet."
+    "owner_gate": "This option is not available yet.",
+    "duplicate": "This value is already in use."
   }
 }

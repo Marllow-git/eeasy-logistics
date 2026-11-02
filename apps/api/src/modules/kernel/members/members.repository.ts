@@ -83,6 +83,50 @@ export class MembersRepository extends ScopedRepository<typeof coreMemberships> 
     return row;
   }
 
+  /**
+   * A driver membership (DEL-4 plan 2.2): `active` at once, since a driver has no password to
+   * accept an invitation with; the caller holds `lockWrites()` and checked the role combination.
+   */
+  async insertActive(values: {
+    readonly id: string;
+    readonly userId: string;
+    readonly roles: readonly string[];
+    readonly siteIds: readonly string[];
+  }): Promise<MemberRow> {
+    const [row] = await this.insertMany([
+      {
+        id: values.id,
+        userId: values.userId,
+        roles: [...values.roles],
+        siteIds: [...values.siteIds],
+        status: 'active',
+      },
+    ]);
+    if (row === undefined) throw new Error('The membership insert returned no row');
+    return row;
+  }
+
+  /**
+   * A revoked membership back to `active` with these roles and sites only (DEL-4 plan 2.2: its old
+   * roles do not come back); the caller holds `lockWrites()` and checked the role combination.
+   */
+  async reactivate(
+    id: string,
+    values: { readonly roles: readonly string[]; readonly siteIds: readonly string[] },
+  ): Promise<MemberRow> {
+    const [row] = await this.updateWhere(
+      {
+        roles: [...values.roles],
+        siteIds: [...values.siteIds],
+        status: 'active',
+        updatedAt: sql`now()` as unknown as Date,
+      },
+      eq(coreMemberships.id, id),
+    );
+    if (row === undefined) throw new Error('The membership vanished under the write lock');
+    return row;
+  }
+
   /** `revoked`; the caller holds `lockWrites()`. */
   async revoke(id: string): Promise<MemberRow> {
     const [row] = await this.updateWhere(

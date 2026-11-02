@@ -19,5 +19,10 @@
   "second_factor_reset": {
     "subject": "Set up your Eeasy Logistics verification again",
     "body": "Your second factor for Eeasy Logistics was reset by an administrator of your account.\n\nSet up a new verification phone within 24 hours (you will need your password):\n{link}\n\nIf you did not expect this, contact the owner of your account."
+  },
+  "driver_invitation": {
+    "body": "You have been added as a driver at {account_name}. Install the Eeasy Driver app and sign in with this phone number: {app_link}",
+    "footer": "If you do not drive for {account_name}, you can ignore this message.",
+    "button": "Install the app"
   }
 }
