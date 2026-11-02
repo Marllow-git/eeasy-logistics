@@ -74,7 +74,7 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
    * a zone read with its boundary as GeoJSON, a list without it). The tenant predicate is the same
    * as `findMany`'s; the caller types the row it selects.
    */
-  protected async selectWhere<TRow extends Record<string, unknown>>(
+  protected async selectWhere<TRow extends object>(
     fields: { readonly [K in keyof TRow]: SQL | PgColumn },
     condition?: SQL,
     page: { readonly orderBy?: readonly SQL[]; readonly limit?: number } = {},

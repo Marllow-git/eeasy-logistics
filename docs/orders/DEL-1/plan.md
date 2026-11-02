@@ -85,6 +85,7 @@ Official city boundary imports (§7 #1); the zones screens (WEB-6) and the map p
 | Item | Commit | Tests (red, then green) | Interpretation |
 |---|---|---|---|
 | A | see `git log` (`DEL-1: A`) | `packages/db` `geometry.test.ts` 3/3 (new); integration `ELX_RLS=on` `zones-table` + `sample`: red 3 failed / 3 passed with the migration as drizzle-kit generated it (no CHECK, no grants, no policies); green with `tenancy` + `drivers-table`: 5 files, 32/32; `drizzle-kit generate` twice: second "No schema changes"; `migrate` twice on `elx_del1_scratch` (`ELX_RLS=on`): applied 20, then "Nothing to migrate" | 8.2 #1 (pool and grants), #2 (EWKB read) |
+| B | see `git log` (`DEL-1: B`) | unit `zone-input.test.ts` 5/5 (new); integration `ELX_RLS=on` `zones.http`: red 6 failed / 6 with the two controllers unregistered, green 6/6 | 8.2 #3 (list omits `boundary`), #4 (inactive site, foreign ids) |
 
 ### 8.1 Deviations
 
