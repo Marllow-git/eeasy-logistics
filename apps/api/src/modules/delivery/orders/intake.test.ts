@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { geocodeConfidenceThreshold, intakeOutcome, locate } from './intake.js';
+import { geocodeConfidenceThreshold, intakeOutcome, locate, overBudget } from './intake.js';
 import type { OrderAddressFields } from './order-input.js';
 
 // The intake decision table (DEL-2 plan 2.6, D-3) and the geocode order of integrations §6.2
@@ -100,5 +100,66 @@ describe('locate', () => {
     expect(await locate(geocoder({ confidence: 0.5 }), address(), 'ar')).toBeUndefined();
     expect(await locate(geocoder('not_found'), address(), 'ar')).toBeUndefined();
     expect(await locate(geocoder('unavailable'), address(), 'ar')).toBeUndefined();
+  });
+
+  it("charges the account's budget once before any provider call, and skips past it (ruling 2)", async () => {
+    const spent = geocoder({ confidence: 0.9 }, 'hit');
+    const refuse = vi.fn(() => Promise.resolve(false));
+    expect(await locate(spent, address({ shortCode: 'REMA7572' }), 'ar', { budget: refuse })).toBe(
+      overBudget,
+    );
+    expect(refuse).toHaveBeenCalledTimes(1);
+    expect(spent.lookupShortCode).not.toHaveBeenCalled();
+    expect(spent.geocode).not.toHaveBeenCalled();
+
+    const allow = vi.fn(() => Promise.resolve(true));
+    const asked = geocoder({ confidence: 0.9 });
+    expect(
+      await locate(asked, address({ shortCode: 'RZZZ0000' }), 'ar', { budget: allow }),
+    ).toMatchObject({ pinSource: 'geocoded' });
+    expect(allow).toHaveBeenCalledTimes(1);
+    expect(asked.lookupShortCode).toHaveBeenCalledTimes(1);
+    expect(asked.geocode).toHaveBeenCalledTimes(1);
+
+    // A sent point asks no provider, so it is never charged.
+    const untouched = vi.fn(() => Promise.resolve(false));
+    expect(
+      await locate(asked, address({ point: olaya }), 'ar', { budget: untouched }),
+    ).toMatchObject({ pinSource: 'manual' });
+    expect(untouched).not.toHaveBeenCalled();
+  });
+
+  it('passes what is left of its deadline to each call and stops when it is spent', async () => {
+    let clock = 0;
+    const source = geocoder({ confidence: 0.9 });
+    source.lookupShortCode.mockImplementationOnce(() => {
+      clock += 1_500;
+      return Promise.resolve({ kind: 'not_found' as const });
+    });
+    await locate(source, address({ shortCode: 'RZZZ0000' }), 'ar', {
+      deadlineMs: 2_000,
+      now: () => clock,
+    });
+    expect(source.lookupShortCode).toHaveBeenCalledWith('RZZZ0000', {
+      degraded: true,
+      deadlineMs: 2_000,
+    });
+    expect(source.geocode).toHaveBeenCalledWith(expect.anything(), {
+      degraded: true,
+      deadlineMs: 500,
+    });
+
+    source.lookupShortCode.mockImplementationOnce(() => {
+      clock += 2_000;
+      return Promise.resolve({ kind: 'not_found' as const });
+    });
+    source.geocode.mockClear();
+    expect(
+      await locate(source, address({ shortCode: 'RZZZ0000' }), 'ar', {
+        deadlineMs: 2_000,
+        now: () => clock,
+      }),
+    ).toBeUndefined();
+    expect(source.geocode).not.toHaveBeenCalled();
   });
 });

@@ -9,7 +9,8 @@ import type {
 } from '../../kernel/public/index.js';
 import { ApiException, assertVersion } from '../../kernel/public/index.js';
 import type { CoverageQuery } from '../zones/coverage-query.js';
-import { intakeGeocodeDeadlineMs, intakeOutcome, locate } from './intake.js';
+import type { LocateOptions } from './intake.js';
+import { intakeGeocodeDeadlineMs, intakeOutcome, locate, overBudget } from './intake.js';
 import type { AuditFacts, CreatedOrder } from './order-intake.js';
 import type { Prelocated } from './order-locating.js';
 import { settlePrelocated } from './order-locating.js';
@@ -237,21 +238,35 @@ export class OrderUpdates {
 /**
  * Where a sent address puts the order (integrations §6.2), for `OrderLocating`: a sent point is the
  * dispatcher's (`manual`); an order already pinned by a recipient, a driver or a dispatcher keeps
- * its point; otherwise the geocoder is asked again within the doors' deadline.
+ * its point; so does an address whose text, city, district and short code are what the order
+ * holds (lead ruling 2: nothing to look up), and one the account's lookup budget skipped;
+ * otherwise the geocoder is asked again within the doors' deadline.
  */
 export async function relocationFor(
   geocoder: Pick<GeocoderService, 'geocode' | 'lookupShortCode'>,
   order: OrderRow,
   patch: OrderPatch,
+  options: Pick<LocateOptions, 'budget'> = {},
 ): Promise<Prelocated> {
   const address = patch.address;
   if (address === undefined) return { kind: 'kept' };
-  if (address.point === null && order.pinSource !== null && trustedPins.has(order.pinSource)) {
-    return { kind: 'kept' };
+  if (address.point === null) {
+    if (order.pinSource !== null && trustedPins.has(order.pinSource)) return { kind: 'kept' };
+    if (
+      address.text === order.addressText &&
+      address.city === order.addressCity &&
+      address.district === order.addressDistrict &&
+      address.shortCode === order.nationalAddressShortCode
+    ) {
+      return { kind: 'kept' };
+    }
   }
   const locale: GeocodeLocale = patch.recipient?.language ?? order.recipientLanguage ?? 'ar';
-  const located = await locate(geocoder, address, locale, { deadlineMs: intakeGeocodeDeadlineMs });
-  return { kind: 'located', located };
+  const located = await locate(geocoder, address, locale, {
+    ...options,
+    deadlineMs: intakeGeocodeDeadlineMs,
+  });
+  return located === overBudget ? { kind: 'kept' } : { kind: 'located', located };
 }
 
 function pointOf(order: OrderRow): { lat: number; lng: number } | null {

@@ -121,6 +121,8 @@ export { normalisePhone, phoneTail } from '../messaging/phone.js';
 export { templateParamsProblem } from '../messaging/templates.js';
 // Geocoding (INT-2 plan 2.1, 2.6): DEL-2's intake and the site geocode step inject `GEOCODER`.
 export { GEOCODER, GeocoderService, type GeocodeOptions } from '../geocoding/geocoder.service.js';
+// The named budgets a context charges itself (DEL-2 `geocode_account`).
+export { RATE_LIMITER, RateLimiter } from '../rate-limit/rate-limiter.js';
 export {
   GeocoderInputError,
   normaliseShortCode,

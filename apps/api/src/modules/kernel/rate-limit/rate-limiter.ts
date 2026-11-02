@@ -190,20 +190,40 @@ export class RateLimiter implements OnModuleInit, OnApplicationShutdown {
    * Fails open like `enforce` when the store is down.
    */
   async charge(name: NamedBudgetName, identity: string): Promise<void> {
-    const budget = (this.#budgets.named ?? namedBudgets)[name];
-    let window: WindowCount;
-    try {
-      window = await this.#store.hit(`${this.#prefix}:named:${name}:${identity}`, budget.windowMs);
-    } catch {
-      this.#failOpen();
-      return;
-    }
-    if (window.count > budget.limit) {
+    const window = await this.#hitNamed(name, identity);
+    if (window !== undefined && window.count > window.limit) {
       const resetS = Math.max(1, Math.ceil(window.ttlMs / 1000));
       throw new ApiException('rate_limited', {
         details: { retry_after_s: resetS },
         headers: { 'Retry-After': String(resetS) },
       });
+    }
+  }
+
+  /**
+   * Charges one hit like `charge` but answers instead of refusing: false past the budget, for a
+   * service that skips its work rather than failing the request (DEL-2 `geocode_account`). True
+   * when the store is down (fails open).
+   */
+  async allows(name: NamedBudgetName, identity: string): Promise<boolean> {
+    const window = await this.#hitNamed(name, identity);
+    return window === undefined || window.count <= window.limit;
+  }
+
+  async #hitNamed(
+    name: NamedBudgetName,
+    identity: string,
+  ): Promise<(WindowCount & { readonly limit: number }) | undefined> {
+    const budget = (this.#budgets.named ?? namedBudgets)[name];
+    try {
+      const window = await this.#store.hit(
+        `${this.#prefix}:named:${name}:${identity}`,
+        budget.windowMs,
+      );
+      return { ...window, limit: budget.limit };
+    } catch {
+      this.#failOpen();
+      return undefined;
     }
   }
 
