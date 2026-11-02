@@ -193,3 +193,13 @@ Leg 2 notes:
 7. **Not checked:** the census against the CI Compose stack beyond what CI runs; the platform console census (only its typecheck, lint and tests ran); a member list above 200 rows (virtualisation is `DataTable`'s, tested in leg 1); a site with two windows on one weekday (8.2 #28).
 
 ## 9. Lead review
+
+Lead: architecture lead (Fable), 2026-11-02. Adversary: none (roadmap row; the API enforces every rule).
+
+**Leg 1** accepted on 2026-11-02 (PR #109 at 677cd5f): the query provider, the route manifest with `requirePermission` through `forbidden()`, `Can`, `Form` on react-hook-form with the generated Zod resolver, `DataTable` on TanStack Table, home and account settings.
+
+**Leg 2** accepted: 8.1 #5 (`census.repository.ts` for the seed's query-builder writes), #6 (the seed deletes only the sites a census run created, local and ci), #7 (`-created_at` default, the API's), #8 (no retention period in the notice), #9 (the `Form` note cites §7 #2; the plan's "A-26" was the lead's slip), #10 (baselines in a second commit), #11 (`next/dynamic` on the account settings page to hold the 180 KB class). Census 132 passed in `ar`, `ar-390` and `en` with the Arabic screenshots reviewed; CI green on 85d8054.
+
+**For later orders.** 8.3 #2: the global error document (PLAT-14) imports the whole catalogue into a chunk every route loads, which costs every route about 6.5 KB per leg of strings; a chore makes it import `common` only (proposed to the owner with the gate-flake chore). 8.3 #6: the sidebar marks the exact path only; prefix matching is WEB-4's call since it shares `AppShell`. 8.3 #5: `site_in_use`, `limit_exceeded` and `rate_limited` are covered by component tests until an order makes them reachable.
+
+**Verdict:** ready for the gate; two-way door; blast radius the merchant home and settings area and the three shared components WEB-4 reuses.
