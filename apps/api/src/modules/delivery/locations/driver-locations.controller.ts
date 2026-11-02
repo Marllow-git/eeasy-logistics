@@ -3,7 +3,13 @@ import type { AppDatabase, Pool } from '@eeasy-logistics/db';
 import { Controller, HttpCode, Inject, Optional, Post } from '@nestjs/common';
 import { APP_POOL } from '../../../database/database.module.js';
 import type { ContractInput, RateLimiter } from '../../kernel/public/index.js';
-import { Input, NoUnitOfWork, Operation, RATE_LIMITER } from '../../kernel/public/index.js';
+import {
+  Feature,
+  Input,
+  NoUnitOfWork,
+  Operation,
+  RATE_LIMITER,
+} from '../../kernel/public/index.js';
 import type { LocationFanout } from './location-fanout.js';
 import { LOCATION_FANOUT } from './location-fanout.js';
 import { LocationsService } from './locations.service.js';
@@ -15,6 +21,10 @@ import { LocationsService } from './locations.service.js';
 
 const postOp = operationSchemas.driverPostLocations;
 
+// The `delivery` module's feature gate (DEL-5 adversary round 1, finding 2; ADR-0006): `403
+// feature_not_enabled` for an account the module is not visible to (K-6). DEL-4's driver-auth doors
+// stay ungated: a driver must sign in to learn the module is off.
+@Feature('delivery')
 @Controller('v1/driver/locations')
 export class DriverLocationsController {
   private readonly locations: LocationsService;

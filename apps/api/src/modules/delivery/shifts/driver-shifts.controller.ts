@@ -9,6 +9,7 @@ import {
   CURSOR_CODEC,
   CursorCodec,
   enumListFilter,
+  Feature,
   Idempotent,
   Input,
   Operation,
@@ -37,6 +38,10 @@ const pauseOp = operationSchemas.driverPauseShift;
 const resumeOp = operationSchemas.driverResumeShift;
 const endOp = operationSchemas.driverEndShift;
 
+// The `delivery` module's feature gate (DEL-5 adversary round 1, finding 2; ADR-0006): `403
+// feature_not_enabled` for an account the module is not visible to (K-6). DEL-4's driver-auth doors
+// stay ungated: a driver must sign in to learn the module is off.
+@Feature('delivery')
 @Controller('v1/driver/shifts')
 export class DriverShiftsController {
   private readonly cursors: CursorCodec;
