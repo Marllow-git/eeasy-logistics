@@ -1,15 +1,22 @@
 import type { Config } from '@eeasy-logistics/config';
+import type { AppDatabase, Pool } from '@eeasy-logistics/db';
 import type { DynamicModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { APP_POOL } from '../../database/database.module.js';
+import type { AuditSink } from '../kernel/public/index.js';
 import {
+  AUDIT_SINK,
   driverIdentitiesProvider,
   driverSignInProvider,
   KernelModule,
+  PasswordHasher,
 } from '../kernel/public/index.js';
 import { DRIVER_APP_URL, DRIVER_MIN_APP_VERSION } from './delivery.tokens.js';
 import { AppVersionGuard } from './driver-auth/app-version.guard.js';
 import { DriverAuthController } from './driver-auth/driver-auth.controller.js';
+import { PinCheck } from './drivers/cash-pin.js';
+import { DriverCashPinController } from './drivers/driver-cash-pin.controller.js';
 import { DriversController } from './drivers/drivers.controller.js';
 import { VehiclesController } from './vehicles/vehicles.controller.js';
 
@@ -26,10 +33,22 @@ export class DeliveryModule {
     return {
       module: DeliveryModule,
       imports: [KernelModule],
-      controllers: [DriversController, VehiclesController, DriverAuthController],
+      controllers: [
+        DriversController,
+        VehiclesController,
+        DriverAuthController,
+        DriverCashPinController,
+      ],
       providers: [
         driverIdentitiesProvider,
         driverSignInProvider(config),
+        {
+          // The cash PIN check (plan 2.9): its own tenant transaction on the app pool per check.
+          provide: PinCheck,
+          inject: [{ token: APP_POOL, optional: true }, AUDIT_SINK],
+          useFactory: (app: Pool<AppDatabase> | null | undefined, audit: AuditSink) =>
+            new PinCheck({ app: app?.db ?? null, hasher: new PasswordHasher(), audit }),
+        },
         { provide: DRIVER_APP_URL, useValue: config.drivers.appUrl },
         { provide: DRIVER_MIN_APP_VERSION, useValue: config.drivers.minAppVersion },
         // Every `v1/driver/*` route but the `@ReplayRoute()` ones (plan 2.10).
