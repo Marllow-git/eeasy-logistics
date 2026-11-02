@@ -9,6 +9,8 @@ import { PrincipalResolver } from './auth/principal.js';
 import { IDEMPOTENCY_HMAC_KEY } from './idempotency/idempotency.interceptor.js';
 import { idempotencyHmacKey } from './idempotency/request-hash.js';
 import { PERMISSION_RESOLVER } from './authz/permission-resolver.js';
+import { GEOCODER_SETUP, GeocoderSetup } from './geocoding/geocoders.js';
+import { geocodeCacheStore } from './platform/geocode-cache.repository.js';
 import { FEATURE_RESOLVER } from './features/feature-gate.js';
 import type { FeatureStore } from './features/feature-resolver.js';
 import { FeatureResolver, redisFeatureCache } from './features/feature-resolver.js';
@@ -155,6 +157,14 @@ export class RequestFrameModule {
           },
         },
         {
+          // The geocoder's sources, cache and breakers (INT-2 plan 2.6, 2.11); `KernelModule`
+          // provides the `GEOCODER` service on them. The cache table needs the platform pool.
+          provide: GEOCODER_SETUP,
+          inject: [PLATFORM_POOL],
+          useFactory: (pool: Parameters<typeof loadPermissionResolver>[0]) =>
+            new GeocoderSetup(config, pool ? geocodeCacheStore(pool.db) : undefined),
+        },
+        {
           // The feature gate's K-6 resolver (PLAT-13 plan 2.5): the tables on the platform pool,
           // cached in Redis for 60 s when REDIS_URL is set. Without the pool there is none and a
           // gated route answers 500 (production requires the pool).
@@ -178,6 +188,7 @@ export class RequestFrameModule {
       ],
       exports: [
         FEATURE_RESOLVER,
+        GEOCODER_SETUP,
         PRINCIPAL_RESOLVER,
         PERMISSION_RESOLVER,
         IDEMPOTENCY_HMAC_KEY,
