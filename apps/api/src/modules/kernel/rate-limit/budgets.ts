@@ -68,6 +68,9 @@ export const namedBudgets = {
   // bounds each driver).
   driver_verify_ip: { limit: 20, windowMs: hourMs },
   driver_pin_ip: { limit: 30, windowMs: hourMs },
+  // DEL-5 plan 2.6 (README §7): location batches per driver, keyed `driver:<id>`, whatever device
+  // sends them (the route budget above counts per device).
+  driver_locations: { limit: 12, windowMs },
 } as const satisfies Record<string, NamedBudget>;
 
 /** The named budgets with the configured global OTP budget (`OTP_GLOBAL_HOURLY_BUDGET`). */
