@@ -48,15 +48,42 @@ type Refresh =
   | { readonly kind: 'suspended'; readonly cookies: readonly string[] }
   | { readonly kind: 'unavailable' };
 
+/**
+ * The prefetch markers (adversary L-6): Next 16.4.3's router sends `Next-Router-Prefetch` and, from
+ * its segment cache, `Next-Router-Segment-Prefetch` (`dist/client/components/app-router-headers.js`);
+ * browsers send `Sec-Purpose: prefetch` (speculation rules, `<link rel=prefetch>`) or the older
+ * `Purpose: prefetch`.
+ */
+function isPrefetch(headers: Headers): boolean {
+  if (headers.has('next-router-prefetch') || headers.has('next-router-segment-prefetch')) {
+    return true;
+  }
+  return [headers.get('sec-purpose'), headers.get('purpose')].some((value) =>
+    (value ?? '')
+      .toLowerCase()
+      .split(/[;,\s]/)
+      .includes('prefetch'),
+  );
+}
+
 /** A navigation the user asked for: a document load or an App Router navigation, never a prefetch. */
 export function isNavigation(request: Pick<NextRequest, 'method' | 'headers'>): boolean {
   if (request.method !== 'GET') return false;
   const headers = request.headers;
-  if (headers.has('next-router-prefetch') || headers.get('purpose') === 'prefetch') return false;
+  if (isPrefetch(headers)) return false;
   if (headers.has('rsc')) return true;
   const destination = headers.get('sec-fetch-dest');
   if (destination !== null) return destination === 'document';
   return (headers.get('accept') ?? '').includes('text/html');
+}
+
+/**
+ * Whether the request came from this site or from the user (`Sec-Fetch-Site` `same-origin`,
+ * `same-site`, `none`), or from a browser that sends no fetch metadata.
+ */
+function sameSiteOrTyped(request: Pick<NextRequest, 'headers'>): boolean {
+  const site = request.headers.get('sec-fetch-site');
+  return site === null || site === 'same-origin' || site === 'same-site' || site === 'none';
 }
 
 /** `name=value` pairs of `Set-Cookie` lines; a cleared cookie (`Max-Age=0`) maps to undefined. */
@@ -138,8 +165,21 @@ async function refreshOnce(
   return { kind: 'unavailable' };
 }
 
-function redirectTo(request: NextRequest, path: string, setCookies: readonly string[]) {
-  const response = NextResponse.redirect(new URL(path, request.nextUrl.origin));
+/**
+ * A redirect within this app (adversary L-2). The target is built on the configured public origin,
+ * never on the request's `Host`; Next's proxy adapter then sends a same-host target as a relative
+ * `Location` (`dist/server/web/adapter.js`, `getRelativeURL`). A relative `Location` cannot be
+ * returned from here: the adapter parses it with `new NextURL(location)` and throws on Next 16.4.3.
+ */
+function redirectTo(
+  request: NextRequest,
+  options: SessionProxyOptions,
+  path: string,
+  setCookies: readonly string[],
+) {
+  const response = NextResponse.redirect(
+    new URL(path, options.publicOrigin ?? request.nextUrl.origin),
+  );
   for (const line of setCookies) response.headers.append('Set-Cookie', line);
   return response;
 }
@@ -192,9 +232,9 @@ export function createSessionProxy(options: SessionProxyOptions) {
           );
           return pass(refreshed.cookies);
         case 'ended':
-          return finish(redirectTo(request, signInPath(here, 'ended'), refreshed.cookies));
+          return finish(redirectTo(request, options, signInPath(here, 'ended'), refreshed.cookies));
         case 'suspended':
-          return finish(redirectTo(request, options.suspendedPath, refreshed.cookies));
+          return finish(redirectTo(request, options, options.suspendedPath, refreshed.cookies));
         case 'unavailable':
           return pass();
       }
@@ -202,10 +242,16 @@ export function createSessionProxy(options: SessionProxyOptions) {
 
     if (group === 'auth' && pathname === '/sign-in') {
       // The session ended (a refused refresh, or a page whose session read failed): the cookies go,
-      // so a token the API no longer accepts cannot send the user back and forth.
-      if (searchParams.get('reason') === 'ended') return pass(clearedCookies(options.cookies));
+      // so a token the API no longer accepts cannot send the user back and forth. Only for a
+      // navigation from this site or typed by the user: a cross-site link to this URL renders the
+      // notice and signs nobody out (adversary L-1).
+      if (searchParams.get('reason') === 'ended') {
+        return sameSiteOrTyped(request) ? pass(clearedCookies(options.cookies)) : pass();
+      }
       if (!accessTokenStale(access, now, 0)) {
-        return finish(redirectTo(request, safeNextPath(searchParams.get('next')) ?? '/', []));
+        return finish(
+          redirectTo(request, options, safeNextPath(searchParams.get('next')) ?? '/', []),
+        );
       }
     }
     return pass();

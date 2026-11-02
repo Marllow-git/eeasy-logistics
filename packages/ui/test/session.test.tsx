@@ -14,7 +14,7 @@ import {
   useUnsavedState,
 } from '../src/session/session-provider';
 import { UserMenu } from '../src/session/user-menu';
-import { arabicIndicDigits, directions, renderIn } from './render';
+import { arabicIndicDigits, directions, renderIn, wrapIn } from './render';
 
 // WEB-2 plan 2.3, 2.8, 2.10: the session provider, the re-sign-in dialog and the two fields it
 // uses, in both reading directions.
@@ -202,6 +202,46 @@ describe.each(directions)('ReSignInDialog in $locale ($dir)', ({ locale }) => {
     expect(code).toHaveBeenLastCalledWith('222222');
   });
 
+  it('forgets the typed password, the code step and the error when closed and reopened', async () => {
+    // Adversary M-1: a dismissed dialog must not reopen at a dead code step or keep the password.
+    const password = vi
+      .fn<Reauthentication['password']>()
+      .mockResolvedValueOnce({ kind: 'error', message: 'Wrong password' })
+      .mockResolvedValue({ kind: 'code' });
+    const reauth: Reauthentication = { password, code: vi.fn() };
+    const dialog = (open: boolean) => (
+      <ReSignInDialog
+        open={open}
+        reauthentication={reauth}
+        onSignedIn={() => {}}
+        onDismiss={() => {}}
+        onOtherAccount={() => {}}
+      />
+    );
+    const view = renderIn(locale, dialog(true));
+    const field = () =>
+      screen.getByLabelText<HTMLInputElement>(messages[locale].auth.fields.password);
+    fireEvent.change(field(), { target: { value: 'first try' } });
+    fireEvent.click(screen.getByRole('button', { name: session.dialog_submit }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Wrong password');
+    // Cleared as soon as it was sent.
+    expect(field().value).toBe('');
+    fireEvent.change(field(), { target: { value: 'typed then dismissed' } });
+    view.rerender(wrapIn(locale, dialog(false)));
+    view.rerender(wrapIn(locale, dialog(true)));
+    expect(field().value).toBe('');
+    expect(screen.queryByRole('alert')).toBeNull();
+    // Reaching the code step, then dismissing, reopens at the password step.
+    fireEvent.change(field(), { target: { value: 'second try' } });
+    fireEvent.click(screen.getByRole('button', { name: session.dialog_submit }));
+    await screen.findByText(session.dialog_code_description);
+    view.rerender(wrapIn(locale, dialog(false)));
+    view.rerender(wrapIn(locale, dialog(true)));
+    expect(screen.queryByText(session.dialog_code_description)).toBeNull();
+    expect(screen.getByText(session.dialog_description)).toBeTruthy();
+    expect(field().value).toBe('');
+  });
+
   it('offers a full sign-in with another account', () => {
     const onOtherAccount = vi.fn();
     renderIn(
@@ -371,6 +411,40 @@ describe.each(directions)('SessionProvider in $locale ($dir)', ({ locale }) => {
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('200'));
     expect(assign).not.toHaveBeenCalled();
     expect(api.state.keys[0]).toBe(api.state.keys[1]);
+  });
+
+  it('starts the steps afresh after a dismissed dialog, so no challenge outlives it', async () => {
+    // Adversary M-1: the memoised steps held the code challenge of the dismissed dialog.
+    stubApi();
+    vi.spyOn(sessionNavigation, 'assign').mockImplementation(() => {});
+    const factory = vi.fn((): Reauthentication => ({
+      password: () => Promise.resolve({ kind: 'code' as const }),
+      code: () => Promise.resolve({ kind: 'done' as const }),
+    }));
+    renderIn(
+      locale,
+      <SessionProvider me={me} surface="staff" reauthentication={factory}>
+        <Page dirty />
+      </SessionProvider>,
+    );
+    const close = messages[locale].common.actions.close;
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    await screen.findByRole('dialog', { name: session.dialog_title });
+    const calls = factory.mock.calls.length;
+    fireEvent.change(screen.getByLabelText(messages[locale].auth.fields.password), {
+      target: { value: 'pw' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: session.dialog_submit }));
+    await screen.findByText(session.dialog_code_description);
+    fireEvent.click(screen.getByRole('button', { name: close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    await screen.findByRole('dialog', { name: session.dialog_title });
+    expect(screen.getByText(session.dialog_description)).toBeTruthy();
+    expect(
+      screen.getByLabelText<HTMLInputElement>(messages[locale].auth.fields.password).value,
+    ).toBe('');
+    expect(factory.mock.calls.length).toBeGreaterThan(calls);
   });
 
   it('signs out through logout, clears sessionStorage and leaves for the signed-out page', async () => {

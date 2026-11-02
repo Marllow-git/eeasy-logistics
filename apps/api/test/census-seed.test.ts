@@ -1,3 +1,4 @@
+import type { Config } from '@eeasy-logistics/config';
 import type * as ConfigNode from '@eeasy-logistics/config/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as CensusSeed from '../src/seed/census.js';
@@ -6,6 +7,7 @@ import {
   censusPlatformStaff,
   censusProjects,
   censusSeedRefusal,
+  seedCensus,
 } from '../src/seed/census.js';
 
 // WEB-2 (lead ruling on leg 1): `seed:census` writes known passwords and a known TOTP secret, so it
@@ -36,6 +38,21 @@ describe('censusSeedRefusal', () => {
       'seed:census refuses to run with APP_ENV=(unset): local or ci only',
     );
   });
+});
+
+describe('seedCensus', () => {
+  it.each(['production', 'staging'])(
+    'refuses APP_ENV=%s itself, whoever calls it, before it touches the credentials or a pool',
+    async (env) => {
+      // Adversary L-4: the guard lives in the seed, not only in census-main.
+      const config = {
+        app: { env },
+        credentials: { keys: 'never read' },
+        db: { poolSize: { platform: 9 } },
+      } as unknown as Config;
+      await expect(seedCensus(config)).rejects.toThrow(censusSeedRefusal(env));
+    },
+  );
 });
 
 describe('census-main', () => {
