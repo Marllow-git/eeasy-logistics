@@ -95,6 +95,8 @@ export { AuthRequest, type RequestFacts } from '../auth/request-facts.js';
 // device row Delivery binds.
 export { DriverSignIn, driverSignInProvider, type SignedInDriver } from '../auth/driver-sign-in.js';
 export type { IssuedSession } from '../auth/cookies.js';
+// The cash PIN (DEL-4 plan 2.9): hashed and verified with PLAT-11's Argon2id parameters.
+export { PasswordHasher } from '../auth/passwords.js';
 export {
   CURSOR_CODEC,
   CursorCodec,

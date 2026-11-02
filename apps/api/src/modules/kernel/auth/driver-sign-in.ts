@@ -156,6 +156,24 @@ export class DriverSignIn {
     );
   }
 
+  /**
+   * A fresh code for the signed-in driver's own phone (plan 2.9: the first cash PIN, or one after a
+   * dispatcher's reset): PLAT-9's verification for the person's phone and `driver_login`, single
+   * use; anything else is `401 otp_invalid`.
+   */
+  async verifyOwnCode(userId: string, code: string): Promise<void> {
+    const [person] = await this.#identity().run((tx) => tx.users.findByIds([userId]));
+    if (person?.phone === null || person?.phone === undefined) {
+      throw new ApiException('otp_invalid');
+    }
+    await this.#deps.otp.verify({ phone: person.phone, purpose: 'driver_login', code });
+  }
+
+  /** `driver_pin_ip` (plan 2.12): one cash PIN set or check from this client address. */
+  async chargeCashPin(facts: Pick<RequestFacts, 'ip'>): Promise<void> {
+    await this.#deps.limiter?.charge('driver_pin_ip', `ip:${addressKey(facts.ip ?? undefined)}`);
+  }
+
   /** `driverRefresh` (plan 2.8): PLAT-11's rotation with the device verdict, from the body. */
   refresh(
     input: { readonly refreshToken: string; readonly deviceId: string },

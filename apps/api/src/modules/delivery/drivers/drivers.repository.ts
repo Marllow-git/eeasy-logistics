@@ -126,6 +126,22 @@ export class DriversRepository extends ScopedRepository<typeof delDrivers> {
     return this.write(id, { cashPinHash: null, cashPinFailures: 0, cashPinLockedAt: null });
   }
 
+  /**
+   * The outcome of a cash PIN check (plan 2.9): the failure count, and the lock when the fifth
+   * failure sets it; `version + 1`. The caller holds `lockDriver(id)`.
+   */
+  recordPinCheck(id: string, failures: number, lock: boolean): Promise<DriverRow> {
+    return this.write(id, {
+      cashPinFailures: failures,
+      ...(lock ? { cashPinLockedAt: sql`now()` as unknown as Date } : {}),
+    });
+  }
+
+  /** A new cash PIN hash (plan 2.9): failures and lock cleared; `version + 1`. */
+  setCashPin(id: string, hash: string): Promise<DriverRow> {
+    return this.write(id, { cashPinHash: hash, cashPinFailures: 0, cashPinLockedAt: null });
+  }
+
   /** Bumps `version` (and `updated_at`) alone: a change that lives on the person (the name). */
   touch(id: string): Promise<DriverRow> {
     return this.write(id, {});
@@ -211,6 +227,22 @@ export class DriverDevicesRepository extends ScopedRepository<typeof delDriverDe
   /** This device's push token replaced (`driverUpdatePushToken`, plan 2.8); `version + 1`. */
   setPushToken(id: string, pushToken: string): Promise<DriverDeviceRow> {
     return this.write(id, { pushToken, lastSeenAt: sql`now()` as unknown as Date });
+  }
+
+  /**
+   * The push service says the token no longer reaches this device (plan 2.11; INT-4's registry):
+   * the token cleared; `version + 1`. Returns whether a row had one.
+   */
+  async clearPushToken(id: string): Promise<boolean> {
+    const rows = await this.updateWhere(
+      {
+        pushToken: null,
+        version: sql`${delDriverDevices.version} + 1` as unknown as number,
+        updatedAt: sql`now()` as unknown as Date,
+      },
+      and(eq(delDriverDevices.id, id), isNotNull(delDriverDevices.pushToken)),
+    );
+    return rows.length > 0;
   }
 
   /** `last_seen_at` now (`driverLogout`, plan 2.8): a sighting, not a change (no version). */
