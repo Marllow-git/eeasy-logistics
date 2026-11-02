@@ -63,7 +63,66 @@ export const censusAccounts = {
   settingsar: { id: censusId('account-settings-ar'), name: 'متجر الخبر', factor: false },
   settingsar390: { id: censusId('account-settings-ar390'), name: 'متجر الطائف', factor: false },
   settingsen: { id: censusId('account-settings-en'), name: 'متجر أبها', factor: false },
+  // WEB-4: per project, the account the console acts on (support reason, flags, suspend and
+  // reactivate), one left suspended (close it with its name typed) and one provisioned (its owner
+  // never accepted). Every run puts the status back, so a closed census account opens again.
+  consolear: { id: censusId('account-console-ar'), name: 'متجر نجران', factor: false },
+  consolear390: { id: censusId('account-console-ar390'), name: 'متجر جازان', factor: false },
+  consoleen: { id: censusId('account-console-en'), name: 'متجر تبوك', factor: false },
+  suspendedar: {
+    id: censusId('account-suspended-ar'),
+    name: 'متجر حائل',
+    factor: false,
+    status: 'suspended',
+  },
+  suspendedar390: {
+    id: censusId('account-suspended-ar390'),
+    name: 'متجر الباحة',
+    factor: false,
+    status: 'suspended',
+  },
+  suspendeden: {
+    id: censusId('account-suspended-en'),
+    name: 'متجر عرعر',
+    factor: false,
+    status: 'suspended',
+  },
+  provisionedar: {
+    id: censusId('account-provisioned-ar'),
+    name: 'متجر القريات',
+    factor: false,
+    status: 'provisioned',
+  },
+  provisionedar390: {
+    id: censusId('account-provisioned-ar390'),
+    name: 'متجر سكاكا',
+    factor: false,
+    status: 'provisioned',
+  },
+  provisioneden: {
+    id: censusId('account-provisioned-en'),
+    name: 'متجر ينبع',
+    factor: false,
+    status: 'provisioned',
+  },
 } as const;
+
+/** A census account's starting status: `active` unless it says otherwise (WEB-4). */
+export type CensusAccountStatus = 'active' | 'suspended' | 'provisioned';
+
+/** WEB-4: the console census accounts of a project (acted on, suspended, provisioned). */
+export function censusConsoleAccounts(project: CensusProject): {
+  active: CensusAccountKey;
+  suspended: CensusAccountKey;
+  provisioned: CensusAccountKey;
+} {
+  const suffix = slug(project) as 'ar' | 'ar390' | 'en';
+  return {
+    active: `console${suffix}`,
+    suspended: `suspended${suffix}`,
+    provisioned: `provisioned${suffix}`,
+  };
+}
 
 export type CensusAccountKey = keyof typeof censusAccounts;
 
@@ -194,8 +253,21 @@ export const censusPlatformRoles = [
   'session',
   'dialog',
   'logout',
+  // WEB-4: the console screens: provisioning and the list, the account lifecycle and flags, the
+  // rollout change (super admins); an `admin` (no rollout change) and a `support` (reads only).
+  'accounts',
+  'lifecycle',
+  'rollout',
+  'operator',
+  'support',
 ] as const;
 export type CensusPlatformRole = (typeof censusPlatformRoles)[number];
+
+/** The console role of a census staff member: `super_admin` but for WEB-4's two. */
+export const censusPlatformRoleOf = (
+  role: CensusPlatformRole,
+): 'super_admin' | 'admin' | 'support' =>
+  role === 'operator' ? 'admin' : role === 'support' ? 'support' : 'super_admin';
 
 /** The census email of a console role for a project: `census-platform-<role>-<project>@…`. */
 export function censusPlatformEmail(
@@ -211,15 +283,17 @@ export interface CensusPlatformStaff {
   readonly name: string;
   /** Enrolled with `censusTotpSecret`, or no TOTP yet. */
   readonly totp: boolean;
+  readonly role: 'super_admin' | 'admin' | 'support';
 }
 
-/** The console staff of one project, all `super_admin`. */
+/** The console staff of one project: super admins, one `admin` and one `support` (WEB-4). */
 export function censusPlatformStaff(project: CensusProject): CensusPlatformStaff[] {
   return censusPlatformRoles.map((role) => ({
     id: censusId(`platform-${role}-${project}`),
     email: censusPlatformEmail(role, project),
     name: `Census ${role}`,
     totp: role !== 'enrol',
+    role: censusPlatformRoleOf(role),
   }));
 }
 

@@ -11,7 +11,7 @@ import {
   coreUsers,
 } from '../modules/kernel/schema/identity.js';
 import { coreOtpChallenges } from '../modules/kernel/schema/otp-challenges.js';
-import type { CensusAccountKey, CensusSite, CensusUser } from './census.js';
+import type { CensusAccountKey, CensusAccountStatus, CensusSite, CensusUser } from './census.js';
 
 /**
  * Puts the census identities back to their starting state (seed tool only; local and ci; WEB-2
@@ -22,17 +22,24 @@ export class CensusIdentitiesRepository extends PlatformRepository<typeof coreUs
     super(uow, coreUsers);
   }
 
+  /** Each account with its starting status (`active` by default; WEB-4's suspended and provisioned), never closed. */
   async putAccounts(
-    accounts: readonly { id: string; name: string; factor: boolean }[],
+    accounts: readonly {
+      id: string;
+      name: string;
+      factor: boolean;
+      status?: CensusAccountStatus;
+    }[],
   ): Promise<void> {
     for (const account of accounts) {
       const settings = account.factor ? { second_factor_required: true } : {};
+      const status = account.status ?? 'active';
       await this.unscoped()
         .insert(coreAccounts)
-        .values({ id: account.id, name: account.name, status: 'active', settings })
+        .values({ id: account.id, name: account.name, status, settings })
         .onConflictDoUpdate({
           target: coreAccounts.id,
-          set: { name: account.name, status: 'active', settings, updatedAt: sql`now()` },
+          set: { name: account.name, status, closedAt: null, settings, updatedAt: sql`now()` },
         });
     }
   }
@@ -111,7 +118,7 @@ export class CensusIdentitiesRepository extends PlatformRepository<typeof coreUs
    * for it (or none: enrolment at sign-in); the replay guard starts over.
    */
   async putPlatformStaff(
-    admin: { id: string; email: string; name: string },
+    admin: { id: string; email: string; name: string; role: 'super_admin' | 'admin' | 'support' },
     passwordHash: string,
     sealed: { blob: Buffer; keyId: string } | null,
   ): Promise<void> {
@@ -132,7 +139,7 @@ export class CensusIdentitiesRepository extends PlatformRepository<typeof coreUs
         set: { ...values, tokenVersion: sql`${coreUsers.tokenVersion} + 1`, updatedAt: sql`now()` },
       });
     const staff = {
-      role: 'super_admin' as const,
+      role: admin.role,
       totpSecretCiphertext: sealed?.blob ?? null,
       totpKeyId: sealed?.keyId ?? null,
       totpLastStep: null,
