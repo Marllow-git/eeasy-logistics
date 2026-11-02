@@ -53,7 +53,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OtpVerifyRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DriverSession'}}}}
-        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid.'}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid, device_revoked (this app id was revoked by a dispatcher; a code never brings it back).'}
         '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: device_limit_reached, account_choice_required.'}
         '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}

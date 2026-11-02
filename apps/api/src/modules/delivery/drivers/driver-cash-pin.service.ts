@@ -5,6 +5,7 @@ import { ApiException } from '../../kernel/public/index.js';
 import type { AuditFacts, PinCheck } from './cash-pin.js';
 import type { DriverRow } from './drivers.repository.js';
 import { DriversRepository } from './drivers.repository.js';
+import { tokenDriver } from './token-driver.js';
 
 // The driver's own cash PIN doors (DEL-4 plan 2.9, 2.12; ADR-0034): the driver is the token's.
 // Each call charges `driver_pin_ip`; the five-failure lock bounds each driver.
@@ -81,12 +82,11 @@ export class DriverCashPinService {
     await this.deps.pins.check(() => this.current(), pin, facts);
   }
 
-  /** The token's driver (another account's never matches); none is `404`. */
+  /**
+   * The token's driver (another account's never matches; none is `404`), still `active` (`401
+   * token_invalid`) on a device that is not revoked (`401 device_revoked`, adversary M-2).
+   */
   private async current(): Promise<DriverRow> {
-    const membershipId = getContext().membershipId;
-    if (membershipId === null) throw new ApiException('unauthenticated');
-    const driver = await new DriversRepository(getUnitOfWork()).findOfMembership(membershipId);
-    if (driver === undefined) throw new ApiException('not_found');
-    return driver;
+    return (await tokenDriver(getUnitOfWork())).driver;
   }
 }

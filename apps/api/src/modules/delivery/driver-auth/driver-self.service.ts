@@ -8,6 +8,7 @@ import type {
 import { ApiException } from '../../kernel/public/index.js';
 import type { DriverDeviceRow, DriverRow } from '../drivers/drivers.repository.js';
 import { DriverDevicesRepository, DriversRepository } from '../drivers/drivers.repository.js';
+import { tokenDriver } from '../drivers/token-driver.js';
 import type { MinAppVersions } from './app-version.guard.js';
 import { pushTokenProblem } from './device-input.js';
 
@@ -97,15 +98,11 @@ export class DriverSelfService {
     return deviceId;
   }
 
-  /** The token's driver and device; either missing is `404` (another account's never matches). */
-  private async current(): Promise<{ driver: DriverRow; device: DriverDeviceRow }> {
-    const membershipId = getContext().membershipId;
-    if (membershipId === null) throw new ApiException('unauthenticated');
-    const uow = getUnitOfWork();
-    const driver = await new DriversRepository(uow).findOfMembership(membershipId);
-    if (driver === undefined) throw new ApiException('not_found');
-    const device = await new DriverDevicesRepository(uow).find(driver.id, this.deviceId());
-    if (device === undefined) throw new ApiException('not_found');
-    return { driver, device };
+  /**
+   * The token's driver and device (another account's never matches): no driver is `404`, one not
+   * `active` `401 token_invalid`, a revoked or vanished device `401 device_revoked` (adversary M-2).
+   */
+  private current(): Promise<{ driver: DriverRow; device: DriverDeviceRow }> {
+    return tokenDriver(getUnitOfWork());
   }
 }
