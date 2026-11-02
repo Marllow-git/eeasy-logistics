@@ -10,6 +10,7 @@ import {
   driverIdentitiesProvider,
   driverSignInProvider,
   KernelModule,
+  orderAccountsProvider,
   PasswordHasher,
 } from '../kernel/public/index.js';
 import { DRIVER_APP_URL, DRIVER_MIN_APP_VERSION } from './delivery.tokens.js';
@@ -19,6 +20,7 @@ import { PinCheck } from './drivers/cash-pin.js';
 import { DriverCashPinController } from './drivers/driver-cash-pin.controller.js';
 import { DriversController } from './drivers/drivers.controller.js';
 import { VehiclesController } from './vehicles/vehicles.controller.js';
+import { OrdersController } from './orders/orders.controller.js';
 import { CoverageController } from './zones/coverage.controller.js';
 import { PlatformZonesController } from './zones/platform-zones.controller.js';
 import { ZonesController } from './zones/zones.controller.js';
@@ -29,7 +31,8 @@ import { ZonesController } from './zones/zones.controller.js';
  * DEL-4's staff driver, device, PIN and vehicle doors (the kernel's audit sink and outbox writer
  * through `KernelModule`, the driver's person and membership through `DriverIdentities`) and the
  * driver's own doors (the code check and the tokens through the kernel's `DriverSignIn`); DEL-1's
- * zone, coverage and coverage check doors and the platform's zone and coverage provisioning doors.
+ * zone, coverage and coverage check doors and the platform's zone and coverage provisioning doors;
+ * DEL-2's order doors (the account's intake settings through the kernel's `OrderAccounts`).
  */
 @Module({})
 export class DeliveryModule {
@@ -45,9 +48,11 @@ export class DeliveryModule {
         ZonesController,
         CoverageController,
         PlatformZonesController,
+        OrdersController,
       ],
       providers: [
         driverIdentitiesProvider,
+        orderAccountsProvider,
         driverSignInProvider(config),
         {
           // The cash PIN check (plan 2.9): its own tenant transaction on the app pool per check.

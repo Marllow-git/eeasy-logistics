@@ -26,4 +26,22 @@ export class UsageCountersRepository extends ScopedRepository<typeof coreUsageCo
     );
     return row?.value ?? 0;
   }
+
+  /**
+   * Adds one to `metric` for the current month and answers the new count (DEL-2: an order); the
+   * counter's row lock is held until the transaction ends, and a rollback gives the count back.
+   */
+  async increment(metric: UsageMetric): Promise<number> {
+    const row = await this.upsert(
+      {
+        metric,
+        period:
+          sql`date_trunc('month', now() AT TIME ZONE 'Asia/Riyadh')::date` as unknown as string,
+        value: 1,
+      },
+      [coreUsageCounters.accountId, coreUsageCounters.metric, coreUsageCounters.period],
+      { value: sql`${coreUsageCounters.value} + 1`, updatedAt: sql`now()` },
+    );
+    return row.value;
+  }
 }

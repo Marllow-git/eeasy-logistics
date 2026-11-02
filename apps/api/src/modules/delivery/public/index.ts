@@ -13,3 +13,24 @@ export {
   type CoverageAnswer,
   type CoveragePoint,
 } from '../zones/coverage-query.js';
+// DEL-2 (plan 2.6, 2.10): the order state machine as data, which DEL-6's offers and DEL-7's driver
+// events check their arrows against, and the intake WMS-7's `createFromPackage` and DEL-3's import
+// call with their own `source`.
+export {
+  isTerminal,
+  nextStatuses,
+  OrderMachine,
+  orderActors,
+  orderArrows,
+  prePickupStatuses,
+  transition,
+  type MachineVerdict,
+  type OrderActor,
+} from '../orders/order-machine.js';
+export {
+  OrderIntake,
+  type CreatedOrder,
+  type IntakeDependencies,
+  type IntakeRequest,
+} from '../orders/order-intake.js';
+export { newOrderFields, type NewOrderFields } from '../orders/order-input.js';

@@ -10,4 +10,7 @@ export const migratorFiles: readonly string[] = [
   'test/integration/audit-log-table.test.ts',
   // PLAT-11 item H: migrates a database of its own (the bootstrap refuses once staff exist).
   'test/integration/bootstrap.test.ts',
+  // DEL-2 item A: the owner's TRUNCATE of del_order_events takes its ACCESS EXCLUSIVE lock before
+  // the append-only trigger refuses it, which would stall the parallel order suites.
+  'test/integration/orders-table.test.ts',
 ];

@@ -99,13 +99,24 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 | Item | Commit | Tests (red → green) | Interpretation |
 |---|---|---|---|
 | A | see `git log` (`DEL-2: A …`) | `orders-table.test.ts` 5 red (migration out of the journal) → 5 green; `tenancy.test.ts` 14 green; `sequence-allocator.test.ts` 3 green; ELX_RLS=on; `migrate` twice on a scratch database (21 applied, then nothing); second `drizzle-kit generate`: no changes | 8.2 #1, #2 |
+| B | see `git log` (`DEL-2: B …`) | `orders.http.test.ts` 5 red (controller unregistered) → 5 green; unit `order-machine` 3, `order-input` 5, `intake` 8 green; `orders-table` 5, `tenancy` 14, `features.http` 7 (Mailpit on scratch ports), `delivery-gate.http`, `route-spelling.http`, `outbox-writer` green (46 with the first three); api unit suite 1042 (2 red in `integration-projects` fixed by listing `orders-table` as a migrator file); `test:architecture` clean; ELX_RLS=on | 8.2 #3 to #9 |
 
 ### 8.1 Deviations
+
+- **Contract (shared seam):** `components.yaml` `Order.pending_reason` gains `needs_location` (8.2 #4). Additive in shape; no in-flight order reads `Order`.
+- **`packages/db`:** `ScopedRepository.upsert` (protected; the target must lead with `account_id`) for the allocator and the usage counter (8.2 #1, #6).
 
 ### 8.2 Notes
 
 1. **`core_sequences` (2.1, 2.2).** No migration on `main` created it, so this one does, as data §2.1 names it (`next_value`, the name CHECK of §7), not the plan's `value`. Provisioning does not create the rows yet, so `SequenceAllocator` upserts (`INSERT … ON CONFLICT DO UPDATE`, the row lock held to commit) through a new `ScopedRepository.upsert` in `packages/db`, whose target must lead with `account_id`.
 2. **Columns beyond data §2.2 (2.1).** `del_order_items.position` keeps the request's item order (UUIDv7 ids of one millisecond are not monotonic); `del_order_events.note` is the contract's `OrderEvent.note`; a CHECK ties `type = transition` to a `to_status`. `idempotency_key` is nullable (system events carry none). `elx_platform` reads the four tables and writes none.
+3. **D-4 code (2.3).** The plan says `400 validation_failed` at `/body/cod_amount`; `createOrder` and errors.md name `422 cod_not_allowed` for exactly this, so the door answers that (`details.kind`, `details.cod_amount`). The lead may overrule; the change is one line in `order-input.ts`.
+4. **`needs_location` on the contract (2a).** `Order.pending_reason` listed only `outside_coverage`, `awaiting_review`; the presenter could not return the third reason, so `components.yaml` gains the value (§8.1). README §2 counts a new value of a non-extensible enum as breaking; no client reads orders yet (WEB-5 not started).
+5. **Geocode timing (2.4).** `@Idempotent()` needs the request's transaction, so the geocoder cannot run before it opens. It runs first in the handler, after the site check and before any lock or write; the transaction holds only the idempotency reservation during that I/O.
+6. **Monthly order limit (2.3).** The plan is silent. The contract lists `422 limit_exceeded` and `core_usage_counters` says DEL-2 counts orders. Intake upserts the `orders` counter in the order's transaction and refuses past `limits.orders_per_month`; a refusal rolls the count and the number back. `OrderAccounts` (kernel) reads the settings and limits on the platform pool, as `AccountService` does.
+7. **Item directions (2.3).** The generated schema fills `direction: out`, so a sent `out` and an omitted one look the same. `return_pickup` and `pickup_request` items are always `in`, `exchange` keeps what was sent, and an `in` item on a `delivery` order is `400` at its `direction`.
+8. **Sites (2.3).** An unknown, foreign or inactive site is `400 validation_failed` at `/body/site_id` (DEL-4's home-site rule); a warehouse is `422 site_kind_mismatch`. `@SiteScoped({ from: 'body' })` is on the door, but no site-scoped bundle holds `delivery.orders.create`, so nothing tests it.
+9. **Machine extras (2.6, 2.9).** `picked_up → failed` (dispatcher) is in the machine for Q-6's cancel after pickup; §3.13's diagram lacks it but its closing note implies it. A short-code hit stores the source's own confidence (1 from the register and the stub, 0.95 from Sayyar), not a fixed 1.0. The created event's `payload` carries `pending_reason`.
 
 ### 8.3 Not done here
 
