@@ -26,8 +26,8 @@ import { connectAs, integrationConfig } from './support.js';
 // account's door, with the reason in the body. A suspended account's members cannot refresh
 // (`403 account_suspended`) or write, their staff families are revoked, its external outbox effects
 // wait while its internal events relay; reactivation restores writes and a new session refreshes;
-// closure is only from `suspended`, revokes every session and expires the open invitations. Real
-// platform sessions (invited, TOTP-enrolled) and real staff sessions.
+// closure is from `suspended` (or `provisioned`, adversary L-3), revokes every session and expires
+// the open invitations. Real platform sessions (invited, TOTP-enrolled) and real staff sessions.
 
 const signing = testSigningKey();
 const config = integrationConfig({
@@ -237,7 +237,6 @@ describe('suspension, reactivation and closure over HTTP (PLAT-13 item E)', () =
       [provisioned, 'suspend', 'provisioned'],
       [active, 'reactivate', 'active'],
       [active, 'close', 'active'],
-      [provisioned, 'close', 'provisioned'],
     ];
     for (const [accountId, action, current] of cases) {
       const response = await lifecycle(accountId, action).expect(409);
@@ -309,6 +308,31 @@ describe('suspension, reactivation and closure over HTTP (PLAT-13 item E)', () =
     expect(errorOf(blocked.body).code).toBe('token_invalid');
   });
 
+  it('closes a provisioned account whose owner never accepted: the owner invitation expired (adversary L-3)', async () => {
+    const accountId = await insertAccount(owner, { status: 'provisioned' });
+    await staff
+      .http()
+      .post(`/v1/platform/accounts/${accountId}/owner-invitations`)
+      .set(platformWriteHeaders(config))
+      .set('Cookie', admin.cookie)
+      .set('Idempotency-Key', nextKey())
+      .send({ email: freshEmail('never-accepted'), name: 'Never Accepted' })
+      .expect(201);
+    const response = await lifecycle(accountId, 'close').expect(200);
+    expect(response.body).toMatchObject({ id: accountId, status: 'closed' });
+    expect(await accountRow(accountId)).toMatchObject({ status: 'closed', closed: true });
+    const open = await owner`
+      SELECT 1 FROM core_invitations
+      WHERE account_id = ${accountId} AND accepted_at IS NULL AND expires_at > now()`;
+    expect(open).toHaveLength(0);
+    const audit = await auditRowsOf(owner, String(response.headers['x-request-id']));
+    expect(audit.find((row) => row.action === 'core.account.closed')).toMatchObject({
+      before: { status: 'provisioned' },
+      after: { status: 'closed', sessions_ended: 0, invitations_expired: 1 },
+      reason,
+    });
+  });
+
   it('answers a replay with the first response; refuses support and a reason the door bounds', async () => {
     const accountId = await insertAccount(owner);
     const key = nextKey();
@@ -326,6 +350,23 @@ describe('suspension, reactivation and closure over HTTP (PLAT-13 item E)', () =
     const short = await lifecycle(accountId, 'reactivate', admin, nextKey(), { reason: 'abc' });
     expect(short.status).toBe(400);
     expect(errorOf(short.body).code).toBe('validation_failed');
+    expect(await accountRow(accountId)).toMatchObject({ status: 'suspended' });
+  });
+
+  it('accepts a body reason up to the 500 characters of the contract (adversary L-1)', async () => {
+    const accountId = await insertAccount(owner);
+    const long = `Ticket 9001: ${'x'.repeat(287)}`;
+    expect(long).toHaveLength(300);
+    const response = await lifecycle(accountId, 'suspend', admin, nextKey(), { reason: long });
+    expect(response.status).toBe(200);
+    const audit = await auditRowsOf(owner, String(response.headers['x-request-id']));
+    expect(audit.find((row) => row.action === 'core.account.suspended')).toMatchObject({
+      reason: long,
+    });
+    const over = await lifecycle(accountId, 'reactivate', admin, nextKey(), {
+      reason: 'y'.repeat(501),
+    }).expect(400);
+    expect(errorOf(over.body).code).toBe('validation_failed');
     expect(await accountRow(accountId)).toMatchObject({ status: 'suspended' });
   });
 });

@@ -8,7 +8,8 @@ import { lifecycleTransition } from './account-lifecycle.js';
 const allowed: Readonly<Record<LifecycleAction, Record<string, string>>> = {
   suspend: { active: 'suspended' },
   reactivate: { suspended: 'active' },
-  close: { suspended: 'closed' },
+  // Adversary L-3: a provisioned account whose owner never accepted can be closed.
+  close: { suspended: 'closed', provisioned: 'closed' },
 };
 
 describe('account lifecycle transitions (plan 2.7)', () => {
@@ -25,12 +26,13 @@ describe('account lifecycle transitions (plan 2.7)', () => {
     expect(lifecycleTransition('suspend', 'active')?.event).toBe('core.account.suspended');
     expect(lifecycleTransition('reactivate', 'suspended')?.event).toBe('core.account.reactivated');
     expect(lifecycleTransition('close', 'suspended')?.event).toBe('core.account.closed');
+    expect(lifecycleTransition('close', 'provisioned')?.event).toBe('core.account.closed');
   });
 
-  it('never closes an active or a provisioned account, and never reopens a closed one', () => {
+  it('never closes an active account, and never reopens a closed one', () => {
     expect(lifecycleTransition('close', 'active')).toBeUndefined();
-    expect(lifecycleTransition('close', 'provisioned')).toBeUndefined();
     expect(lifecycleTransition('reactivate', 'closed')).toBeUndefined();
     expect(lifecycleTransition('suspend', 'closed')).toBeUndefined();
+    expect(lifecycleTransition('suspend', 'provisioned')).toBeUndefined();
   });
 });

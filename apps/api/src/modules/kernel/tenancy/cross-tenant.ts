@@ -14,6 +14,11 @@ import { CROSS_TENANT } from './frame.js';
 export const accountIdParam = 'account_id';
 export const supportReasonHeader = 'x-support-reason';
 export const supportReasonMaxLength = 200;
+/**
+ * A body reason's bound (PLAT-13 adversary L-1): the contract's `PlatformReasonRequest` allows 500
+ * characters, so a `reason: 'body'` door accepts what its contract does; the header keeps 200.
+ */
+export const bodyReasonMaxLength = 500;
 
 /**
  * Resolves the account of the resource a `lookup` door names (PLAT-8 plan 2.7: an outbox row's
@@ -117,7 +122,8 @@ function rawReason(request: Request, source: CrossTenantSource): unknown {
 /**
  * The target and reason of a `@CrossTenant()` request, or why it is refused, or undefined when a
  * query- or body-declared parameter is absent (no door). A missing or blank reason is
- * `400 reason_required` (errors.md §5), except on a `reason: 'optional'` door (no reason, null); a reason over 200 characters or with control characters is
+ * `400 reason_required` (errors.md §5), except on a `reason: 'optional'` door (no reason, null); a reason over its bound (200 characters in the header, 500 in the body) or
+ * with control characters is
  * `400 validation_failed`; a malformed id (a repeated query value included) is `404 not_found`,
  * like an unknown one. The caller audits refusals too (identity and tenancy §5).
  */
@@ -135,7 +141,8 @@ export function crossTenantTarget(
   }
   const pointer = source.reason === 'body' ? '/body/reason' : `/header/${supportReasonHeader}`;
   const hasControl = /\p{Cc}/u.test(reason);
-  if (hasControl || [...reason].length > supportReasonMaxLength) {
+  const maxLength = source.reason === 'body' ? bodyReasonMaxLength : supportReasonMaxLength;
+  if (hasControl || [...reason].length > maxLength) {
     const code = hasControl ? 'invalid' : 'too_long';
     return {
       outcome: 'reason_invalid',

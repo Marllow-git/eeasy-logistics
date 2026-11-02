@@ -139,6 +139,16 @@ describe('FeatureCacheBustConsumer', () => {
     expect(cache.values.get(`elx:feature:${account}:delivery`)).toBe('1');
   });
 
+  it('fails when Redis cannot delete, so the outbox retries the bust (adversary L-5)', async () => {
+    const del = vi.fn(() => Promise.reject(new Error('down')));
+    const failing = { get: vi.fn(), set: vi.fn(), del } as unknown as Redis;
+    const consumer = new FeatureCacheBustConsumer(redisFeatureCache(failing));
+    await expect(
+      consumer.handle(event({ account_id: account, feature_key: 'wms', enabled: true })),
+    ).rejects.toThrow('down');
+    expect(del).toHaveBeenCalledWith(`elx:feature:${account}:wms`);
+  });
+
   it('does nothing without a cache', async () => {
     await expect(
       new FeatureCacheBustConsumer(null).handle(event({ feature_key: 'wms' })),

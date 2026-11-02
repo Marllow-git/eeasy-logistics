@@ -15,6 +15,7 @@ import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { RATE_LIMITER } from '../rate-limit/rate-limiter.js';
 import { MembersController } from '../members/members.controller.js';
 import { PlatformStaffController } from '../platform-staff/platform-staff.controller.js';
+import { PlatformStaffService } from '../platform-staff/platform-staff.service.js';
 import { PlatformAccountsController } from '../provisioning/platform-accounts.controller.js';
 import { AccessTokenIssuer } from './access-token.js';
 import { Invitations } from './invitations.js';
@@ -210,6 +211,20 @@ export class AuthModule {
               outbox,
               resolver,
               publicWebUrl: config.app.publicWebUrl,
+              publicAdminUrl: config.app.publicAdminUrl,
+              cipher:
+                config.credentials === null ? null : createCredentialsCipher(config.credentials),
+            }),
+        },
+        {
+          // PLAT-13 plan 2.9: the platform staff doors (the reset mails a console link, M-2).
+          provide: PlatformStaffService,
+          inject: [Invitations, AUDIT_SINK, OutboxWriter],
+          useFactory: (invitations: Invitations, audit: AuditSink, outbox: OutboxWriter) =>
+            new PlatformStaffService({
+              invitations,
+              audit,
+              outbox,
               publicAdminUrl: config.app.publicAdminUrl,
               cipher:
                 config.credentials === null ? null : createCredentialsCipher(config.credentials),
