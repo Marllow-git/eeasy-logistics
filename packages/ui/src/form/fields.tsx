@@ -79,7 +79,8 @@ export function NumberField<Values extends FieldValues, Name extends FieldPath<V
   disabled,
   min,
   max,
-}: FieldProps<Values, Name> & { min?: number; max?: number }) {
+  step = 1,
+}: FieldProps<Values, Name> & { min?: number; max?: number; step?: number | 'any' }) {
   return (
     <FormField<Values, Name>
       name={name}
@@ -97,7 +98,7 @@ export function NumberField<Values extends FieldValues, Name extends FieldPath<V
           lang="en"
           min={min}
           max={max}
-          step={1}
+          step={step}
           className="max-w-40 text-start"
           value={typeof value === 'number' && !Number.isNaN(value) ? String(value) : ''}
           onChange={(event) => {

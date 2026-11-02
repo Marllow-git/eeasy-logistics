@@ -66,6 +66,13 @@ export function routeOpen(route: MerchantRoute, grants: SessionGrants): boolean 
   return route.read === null || (grants.permissions ?? []).includes(route.read);
 }
 
+/** The module routes (those behind a feature) this session may open: the home page's cards. */
+export function openModules(grants: SessionGrants): MerchantRoute[] {
+  return (merchantRoutes as readonly MerchantRoute[]).filter(
+    (route) => route.feature !== undefined && routeOpen(route, grants),
+  );
+}
+
 export interface NavigationEntry {
   readonly href: string;
   readonly label: NavigationLabel;

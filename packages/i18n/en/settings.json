@@ -15,5 +15,98 @@
     "cashier": "Cashier",
     "viewer": "Viewer",
     "driver": "Driver"
+  },
+  "home": {
+    "greeting": "Welcome, {name}",
+    "account_line": "You are working on {account}.",
+    "modules_title": "Modules",
+    "modules_empty": "No modules are enabled for this account yet. The platform team enables them when your account is set up.",
+    "settings_card_title": "Settings",
+    "settings_card_body": "The rules for orders, delivery and cash on delivery on this account.",
+    "settings_card_open": "Open settings",
+    "facts_title": "Account limits"
+  },
+  "usage": {
+    "sites": "Sites",
+    "drivers": "Drivers",
+    "of": "{used} of {limit}",
+    "unlimited": "{used}, no limit"
+  },
+  "account": {
+    "description": "The rules for taking in orders, delivery and cash on delivery on this account. Each section saves on its own.",
+    "read_only": "You can view these settings only; the account owner or an admin changes them.",
+    "limits_title": "Limits and usage",
+    "limits_description": "The platform team sets these limits when it sets up the account.",
+    "intake": {
+      "title": "Order intake",
+      "rule": "When a new order arrives",
+      "receive_as_pending": "It waits until your team accepts it",
+      "receive_as_pending_hint": "New orders are reviewed before they reach dispatch.",
+      "auto_accept": "It is accepted at once",
+      "auto_accept_hint": "New orders go straight to dispatch.",
+      "max_attempts": "Maximum delivery attempts",
+      "max_attempts_hint": "From 1 to 10 attempts before the order is returned."
+    },
+    "proof": {
+      "title": "Proof of delivery",
+      "delivery": "On every delivery",
+      "cod": "On cash on delivery",
+      "hint": "What the driver collects before the delivery closes.",
+      "kinds": {
+        "photo": "Photo",
+        "signature": "Recipient's signature",
+        "recipient_otp": "Code sent to the recipient",
+        "id_check": "ID check"
+      }
+    },
+    "reason_codes": {
+      "title": "Reason codes",
+      "description": "The reasons a driver picks when a delivery fails, in Arabic and English. Up to 100 reasons.",
+      "code": "Code",
+      "code_hint": "Lowercase English letters, digits and underscores, 2 to 40 characters.",
+      "label": "Label",
+      "active": "Active",
+      "add": "Add reason",
+      "remove": "Remove reason {number}",
+      "row": "Reason {number}",
+      "empty": "No reason codes yet.",
+      "limit": "You have reached the limit of 100 reasons."
+    },
+    "dispatch": {
+      "title": "Auto-dispatch",
+      "enabled": "Offer orders to drivers automatically",
+      "enabled_hint": "Each ready order is offered to available drivers in waves.",
+      "offer_ttl": "Offer time in seconds",
+      "offer_ttl_hint": "At least 30 seconds.",
+      "drivers_per_wave": "Drivers per wave",
+      "drivers_per_wave_hint": "At least one driver."
+    },
+    "security": {
+      "title": "Security",
+      "second_factor": "Require a second factor from every member",
+      "second_factor_hint": "Members who enrolled a phone are always asked for a code. When this is on, the others enrol a phone at their next sign-in."
+    },
+    "cod": {
+      "title": "Cash on delivery",
+      "methods": "Accepted payment methods",
+      "kinds": {
+        "cash": "Cash",
+        "card": "Card",
+        "mada": "mada",
+        "wallet": "Digital wallet"
+      }
+    },
+    "drivers": {
+      "title": "Driver app",
+      "offline_window": "Offline window in hours",
+      "offline_window_hint": "From 1 to 48 hours after a run ends during which the app accepts what the driver recorded offline."
+    },
+    "warehouse": {
+      "title": "Warehouse",
+      "receipt_tolerance": "Receipt tolerance (%)",
+      "receipt_tolerance_hint": "The difference between ordered and received quantity accepted without review.",
+      "adjustment_threshold": "Stock adjustment approval threshold",
+      "adjustment_threshold_hint": "An adjustment above this quantity needs a second person's approval."
+    }
   }
 }

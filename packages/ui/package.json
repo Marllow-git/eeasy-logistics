@@ -32,7 +32,8 @@
     "./form/fields": "./src/form/fields.tsx",
     "./table": "./src/table/data-table.tsx",
     "./table/list-params": "./src/table/list-params.ts",
-    "./table/cursor-list": "./src/table/cursor-list.ts"
+    "./table/cursor-list": "./src/table/cursor-list.ts",
+    "./settings/reason-codes": "./src/settings/reason-codes.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
