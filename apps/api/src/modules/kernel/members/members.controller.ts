@@ -1,10 +1,12 @@
 import type { ListMembers200, Membership } from '@eeasy-logistics/contracts/staff/schemas';
 import { operationSchemas } from '@eeasy-logistics/contracts/staff/schemas';
 import { getContext } from '@eeasy-logistics/db';
-import { Controller, Get, HttpCode, Inject, Optional, Post } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Inject, Optional, Patch, Post } from '@nestjs/common';
 import { AUDIT_SINK } from '../audit/audit-sink.js';
 import type { AuditSink } from '../audit/audit-sink.js';
 import { Invitations } from '../auth/invitations.js';
+import type { PermissionResolver } from '../authz/permission-resolver.js';
+import { PERMISSION_RESOLVER } from '../authz/permission-resolver.js';
 import type { RequestFacts } from '../auth/request-facts.js';
 import { AuthRequest } from '../auth/request-facts.js';
 import type { ContractInput } from '../contract/contract-pipe.js';
@@ -28,7 +30,7 @@ import type { Member, MemberSortField } from './members.service.js';
 import { MembersService } from './members.service.js';
 
 // The staff surface's `members` tag (PLAT-12 plan 2.4, 2.7 to 2.11): `listMembers`, `getMember`,
-// `inviteMember`. The account is the token's; a membership of another account is `404`. Members
+// `inviteMember`, `updateMember`, `revokeMember`. The account is the token's; a membership of another account is `404`. Members
 // are an account resource, not a site one: no door here is site-scoped (2.11). `x-permission`
 // (`core.members.read`, `core.members.manage`) is enforced by PLAT-10's guard. Registered by
 // `AuthModule`, whose `Invitations` the invitation is delegated to (2.9).
@@ -36,6 +38,8 @@ import { MembersService } from './members.service.js';
 const listOp = operationSchemas.listMembers;
 const getOp = operationSchemas.getMember;
 const inviteOp = operationSchemas.inviteMember;
+const updateOp = operationSchemas.updateMember;
+const revokeOp = operationSchemas.revokeMember;
 
 const memberSorts: ListSorts<MemberSortField> = {
   fields: { created_at: 'timestamp', name: 'text', status: 'text' },
@@ -54,6 +58,7 @@ export class MembersController {
     invitations: Invitations,
     @Optional() @Inject(PLATFORM_POOL) pool?: Parameters<typeof identityStoreOnPool>[0],
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
+    @Optional() @Inject(PERMISSION_RESOLVER) resolver?: PermissionResolver | null,
   ) {
     this.cursors = cursors ?? new CursorCodec(undefined);
     this.members = new MembersService({
@@ -61,6 +66,7 @@ export class MembersController {
       accounts: accountStoreOnPool(pool ?? null),
       invitations,
       audit,
+      resolver: resolver ?? undefined,
     });
   }
 
@@ -99,5 +105,34 @@ export class MembersController {
   @Operation(getOp)
   async get(@Input() input: ContractInput<typeof getOp>): Promise<Membership> {
     return present(await this.members.get(input.params.membership_id));
+  }
+
+  /** Roles and sites; an absent field keeps its value (plan 2.8). Re-reads `token_version`. */
+  @Patch(':membership_id')
+  @HttpCode(200)
+  @Idempotent()
+  @Operation(updateOp)
+  async update(
+    @Input() input: ContractInput<typeof updateOp>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<Membership> {
+    const member = await this.members.update(
+      input.params.membership_id,
+      input.body,
+      facts,
+      facts.principal?.tokenVersion,
+    );
+    return present(member);
+  }
+
+  @Delete(':membership_id')
+  @HttpCode(204)
+  @Idempotent()
+  @Operation(revokeOp)
+  async revoke(
+    @Input() input: ContractInput<typeof revokeOp>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<void> {
+    await this.members.revoke(input.params.membership_id, facts, facts.principal?.tokenVersion);
   }
 }

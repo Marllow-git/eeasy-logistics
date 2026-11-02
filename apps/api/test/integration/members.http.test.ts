@@ -406,4 +406,225 @@ describe('the member doors over HTTP (PLAT-12 items E to G)', () => {
       expect(errorOf(forbidden.body).code).toBe('forbidden');
     });
   });
+
+  const update = (member: SignedInMember, membershipId: string, body: object) =>
+    send(member, 'patch', `/v1/staff/members/${membershipId}`, body);
+  const revoke = (member: SignedInMember, membershipId: string) =>
+    send(member, 'delete', `/v1/staff/members/${membershipId}`);
+  const refresh = (member: SignedInMember) =>
+    staff
+      .http()
+      .post('/v1/staff/auth/refresh')
+      .set(staff.writeHeaders())
+      .set('Cookie', member.cookie);
+  const rolesOf = async (membershipId: string) => {
+    const [row] = await owner<{ roles: string[]; status: string }[]>`
+      SELECT roles, status FROM core_memberships WHERE id = ${membershipId}`;
+    return row;
+  };
+
+  describe('updateMember', () => {
+    it('changes roles and sites, audited; the sessions of that membership end and a new sign-in carries the new roles', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const site = await plantSite(accountId);
+      const member = await staff.member(accountId, ['dispatcher']);
+      const response = await update(owning, member.membershipId, {
+        roles: ['viewer'],
+        site_ids: [site, site],
+      }).expect(200);
+      expect(operationSchemas.updateMember.responses['200'].parse(response.body)).toMatchObject({
+        id: member.membershipId,
+        roles: ['viewer'],
+        site_ids: [site],
+        status: 'active',
+        user: { email: member.email, phone: null },
+      });
+      const audit = await auditRowsOf(owner, String(response.headers['x-request-id']));
+      expect(audit).toMatchObject([
+        {
+          actorId: owning.userId,
+          accountId,
+          targetType: 'membership',
+          targetId: member.membershipId,
+          action: 'core.member.updated',
+          before: { roles: ['dispatcher'], site_ids: [] },
+          after: { roles: ['viewer'], site_ids: [site] },
+        },
+      ]);
+      const families = await owner<{ reason: string | null }[]>`
+        SELECT revoked_reason AS reason FROM core_refresh_tokens
+        WHERE membership_id = ${member.membershipId}`;
+      expect(families.map((family) => family.reason)).toEqual(['revoked']);
+      expect(errorOf((await refresh(member).expect(401)).body).code).toBe('token_invalid');
+      const again = await staff.login(member.email);
+      expect(again.status).toBe(200);
+      expect(again.body).toMatchObject({
+        me: { membership: { roles: ['viewer'], site_ids: [site] } },
+      });
+      // The caller's own session is untouched.
+      await get(owning, '/v1/staff/members').expect(200);
+
+      // A body that changes nothing writes nothing; an absent field keeps its value.
+      const same = await update(owning, member.membershipId, { roles: ['viewer'] }).expect(200);
+      expect(await auditRowsOf(owner, String(same.headers['x-request-id']))).toEqual([]);
+      const sites = await update(owning, member.membershipId, { site_ids: [] }).expect(200);
+      expect(sites.body).toMatchObject({ roles: ['viewer'], site_ids: [] });
+      expect(await auditRowsOf(owner, String(sites.headers['x-request-id']))).toMatchObject([
+        { before: { site_ids: [site] }, after: { site_ids: [] } },
+      ]);
+    });
+
+    it('refuses the caller’s own membership, owner changes by an admin, a revoked one, an unknown site and driver with cash', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const site = await plantSite(accountId);
+      const admin = await staff.member(accountId, ['admin']);
+      const codeOf = async (response: Promise<{ body: unknown }>) =>
+        errorOf((await response).body).code;
+      expect(
+        await codeOf(update(admin, admin.membershipId, { roles: ['viewer'] }).expect(403)),
+      ).toBe('forbidden');
+      expect(
+        await codeOf(update(owning, owning.membershipId, { site_ids: [site] }).expect(403)),
+      ).toBe('forbidden');
+      const dispatcher = await plantMember(accountId, 'Dina', { roles: ['dispatcher'] });
+      await update(admin, dispatcher.membershipId, { roles: ['owner'] }).expect(403);
+      expect((await rolesOf(dispatcher.membershipId))?.roles).toEqual(['dispatcher']);
+      const second = await plantMember(accountId, 'Second owner', { roles: ['owner'] });
+      await update(admin, second.membershipId, { roles: ['admin'] }).expect(403);
+      // Sites of an owner are no owner change.
+      await update(admin, second.membershipId, { site_ids: [site] }).expect(200);
+      await update(owning, dispatcher.membershipId, { roles: ['owner', 'dispatcher'] }).expect(200);
+      await update(owning, second.membershipId, { roles: ['admin'] }).expect(200);
+
+      const revoked = await plantMember(accountId, 'Gone', { status: 'revoked' });
+      expect(
+        errorOf(
+          (await update(owning, revoked.membershipId, { roles: ['admin'] }).expect(409)).body,
+        ),
+      ).toMatchObject({ code: 'invalid_transition', details: { current_status: 'revoked' } });
+      const foreign = await plantMember((await accountWithOwner()).accountId, 'Foreign');
+      await update(owning, foreign.membershipId, { roles: ['admin'] }).expect(404);
+      const unknownSite = await update(owning, dispatcher.membershipId, {
+        site_ids: [site, uuidv7()],
+      }).expect(400);
+      expect(errorOf(unknownSite.body).details?.fields).toEqual([
+        expect.objectContaining({ pointer: '/body/site_ids/1', code: 'invalid' }),
+      ]);
+      await update(owning, dispatcher.membershipId, { roles: ['driver'] }).expect(400);
+
+      // A driver role the drivers resource gave stays, and counts in the combination (A-7).
+      const driver = await plantMember(accountId, 'Driver', { roles: ['driver'] });
+      const cash = await update(owning, driver.membershipId, { roles: ['cashier'] }).expect(422);
+      expect(errorOf(cash.body).code).toBe('role_combination_forbidden');
+      const viewer = await update(owning, driver.membershipId, { roles: ['viewer'] }).expect(200);
+      expect(viewer.body).toMatchObject({ roles: ['viewer', 'driver'] });
+
+      const reader = await staff.member(accountId, ['viewer']);
+      await update(reader, dispatcher.membershipId, { roles: ['viewer'] }).expect(403);
+    });
+
+    it('lets two owners demoting each other at once leave one owner', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const other = await staff.member(accountId, ['owner']);
+      // Both rows held by another transaction until both requests are in flight, so without the
+      // membership write lock both would pass their checks before either writes.
+      let release = () => undefined as void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      let locked = () => undefined as void;
+      const holding = new Promise<void>((resolve) => (locked = resolve));
+      const holder = owner.begin(async (tx) => {
+        await tx`
+          SELECT id FROM core_memberships
+          WHERE id IN (${owning.membershipId}, ${other.membershipId}) FOR UPDATE`;
+        locked();
+        await released;
+      });
+      await holding;
+      const racing = Promise.all([
+        update(owning, other.membershipId, { roles: ['admin'] }),
+        update(other, owning.membershipId, { roles: ['admin'] }),
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      release();
+      await holder;
+      const answers = await racing;
+      expect(answers.map((answer) => answer.status).sort()).toEqual([200, 403]);
+      const [owners] = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_memberships
+        WHERE account_id = ${accountId} AND status = 'active' AND 'owner' = ANY(roles)`;
+      expect(owners?.n).toBe(1);
+    });
+
+    it('answers 401 token_invalid once the caller’s token version moved, changing nothing', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const member = await plantMember(accountId, 'Kept', { roles: ['dispatcher'] });
+      await owner`UPDATE core_users SET token_version = token_version + 1 WHERE id = ${owning.userId}`;
+      const refused = await update(owning, member.membershipId, { roles: ['viewer'] }).expect(401);
+      expect(errorOf(refused.body).code).toBe('token_invalid');
+      expect(errorOf((await revoke(owning, member.membershipId).expect(401)).body).code).toBe(
+        'token_invalid',
+      );
+      expect(await rolesOf(member.membershipId)).toEqual({
+        roles: ['dispatcher'],
+        status: 'active',
+      });
+    });
+  });
+
+  describe('revokeMember', () => {
+    it('revokes: 204, the sessions end, the open invitation expires, audited, a repeat is 409', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const member = await staff.member(accountId, ['dispatcher']);
+      const response = await revoke(owning, member.membershipId).expect(204);
+      expect(await auditRowsOf(owner, String(response.headers['x-request-id']))).toMatchObject([
+        {
+          actorId: owning.userId,
+          targetType: 'membership',
+          targetId: member.membershipId,
+          action: 'core.member.revoked',
+          before: { status: 'active' },
+          after: { status: 'revoked', invitations_expired: 0 },
+        },
+      ]);
+      await refresh(member).expect(401);
+      expect((await staff.login(member.email)).status).toBe(401);
+      const read = await get(owning, `/v1/staff/members/${member.membershipId}`).expect(200);
+      expect(read.body).toMatchObject({ status: 'revoked' });
+      const repeat = await revoke(owning, member.membershipId).expect(409);
+      expect(errorOf(repeat.body)).toMatchObject({
+        code: 'invalid_transition',
+        details: { current_status: 'revoked' },
+      });
+
+      const email = freshEmail('withdrawn');
+      const invited = await invite(owning, { email, name: 'Wafa', roles: ['viewer'] }).expect(201);
+      const id = (invited.body as Membership).id;
+      const withdrawn = await revoke(owning, id).expect(204);
+      expect(await auditRowsOf(owner, String(withdrawn.headers['x-request-id']))).toMatchObject([
+        { before: { status: 'invited' }, after: { status: 'revoked', invitations_expired: 1 } },
+      ]);
+      const [open] = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_invitations
+        WHERE membership_id = ${id} AND expires_at > now()`;
+      expect(open?.n).toBe(0);
+    });
+
+    it('refuses oneself and an owner revoked by an admin; another account’s id is 404', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const admin = await staff.member(accountId, ['admin']);
+      expect(errorOf((await revoke(owning, owning.membershipId).expect(403)).body).code).toBe(
+        'forbidden',
+      );
+      await revoke(admin, admin.membershipId).expect(403);
+      await revoke(admin, owning.membershipId).expect(403);
+      expect(await rolesOf(owning.membershipId)).toEqual({ roles: ['owner'], status: 'active' });
+      const second = await plantMember(accountId, 'Second owner', { roles: ['owner'] });
+      await revoke(owning, second.membershipId).expect(204);
+      const foreign = await plantMember((await accountWithOwner()).accountId, 'Foreign');
+      await revoke(owning, foreign.membershipId).expect(404);
+      expect((await rolesOf(foreign.membershipId))?.status).toBe('active');
+      const viewer = await staff.member(accountId, ['viewer']);
+      await revoke(viewer, admin.membershipId).expect(403);
+    });
+  });
 });
