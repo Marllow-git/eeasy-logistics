@@ -191,7 +191,8 @@ export class SitesService {
   ): Promise<void> {
     const context = getContext();
     return this.deps.audit.record({
-      actorType: 'user',
+      // `platformProvisionSite` (DEL-1 plan 2.6) creates through the cross-tenant door.
+      actorType: context.actingCrossTenant ? 'platform_user' : 'user',
       actorId: context.userId,
       accountId: context.accountId,
       targetType: 'site',

@@ -3,3 +3,13 @@
 // invalidation handler the worker registers with INT-4's registry (plan 2.11).
 export { cashPinRules, PinCheck } from '../drivers/cash-pin.js';
 export { driverPushInvalidation } from '../drivers/push-invalidation.js';
+// DEL-1: `CoverageQueryPort` (plan 2.5; domain model §1.1): DEL-2's intake and WMS-7's pack bench
+// ask which zone and sites cover a point in their own unit of work; `outsideCoverage` is the typed
+// reason an uncovered address is refused with.
+export {
+  CoverageQuery,
+  isCovered,
+  outsideCoverage,
+  type CoverageAnswer,
+  type CoveragePoint,
+} from '../zones/coverage-query.js';
