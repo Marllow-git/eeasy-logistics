@@ -1,0 +1,31 @@
+# DRV-1 item C: the permissions step after the PIN: location while in use through the OS prompt,
+# the rest put off, and the shell reached.
+appId: sa.eeasy.logistics.driver
+name: permissions
+---
+- runFlow: pin-setup.yaml
+- takeScreenshot: ${SHOTS}/${LOCALE}-07-permissions
+# The OS keeps an earlier answer across a cleared install on the simulator: ask only when asked.
+- runFlow:
+    when:
+      visible:
+        id: 'allow-location'
+    commands:
+      - tapOn:
+          id: 'allow-location'
+      - runFlow:
+          when:
+            visible: 'Allow While Using App|While using the app'
+          commands:
+            - tapOn: 'Allow While Using App|While using the app'
+- extendedWaitUntil:
+    visible: "${LOCALE == 'en' ? 'Allowed' : 'مسموح'}"
+    timeout: 10000
+- takeScreenshot: ${SHOTS}/${LOCALE}-08-permissions-location
+- tapOn:
+    id: 'permissions-continue'
+- extendedWaitUntil:
+    visible:
+      id: 'shell-placeholder'
+    timeout: 20000
+- takeScreenshot: ${SHOTS}/${LOCALE}-09-shell

@@ -1,0 +1,73 @@
+# DRV-1 item C: the first cash PIN, entered twice, saved with a fresh code (driverSetCashPin); the
+# verifier is armed and the permissions step follows.
+appId: sa.eeasy.logistics.driver
+name: pin-setup
+env:
+  PHONE: '500000102'
+---
+- runFlow: subflows/launch.yaml
+- runFlow: subflows/sign-in.yaml
+- extendedWaitUntil:
+    visible:
+      id: 'pin-continue'
+    timeout: 20000
+- tapOn:
+    id: 'pin-key-1'
+- tapOn:
+    id: 'pin-key-3'
+- tapOn:
+    id: 'pin-key-5'
+- tapOn:
+    id: 'pin-key-7'
+- takeScreenshot: ${SHOTS}/${LOCALE}-05-pin-entered
+- tapOn:
+    id: 'pin-continue'
+- assertVisible: "${LOCALE == 'en' ? 'Confirm your cash PIN' : 'أكّد رمز النقد'}"
+- tapOn:
+    id: 'pin-key-1'
+- tapOn:
+    id: 'pin-key-3'
+- tapOn:
+    id: 'pin-key-5'
+- tapOn:
+    id: 'pin-key-7'
+- tapOn:
+    id: 'pin-continue'
+- extendedWaitUntil:
+    visible:
+      id: 'pin-otp-input'
+    timeout: 20000
+# The sign-in code went out moments ago: the server's 60 s cooldown per phone holds the first send,
+# so the flow waits for the send button and asks again, then reads the new code.
+- extendedWaitUntil:
+    visible:
+      id: 'pin-otp-send'
+    timeout: 75000
+- runScript:
+    file: scripts/current-code.js
+    env:
+      PHONE: ${'+966' + PHONE}
+- tapOn:
+    id: 'pin-otp-send'
+- runScript:
+    file: scripts/last-code.js
+    env:
+      PHONE: ${'+966' + PHONE}
+      PREVIOUS: ${output.previous}
+- tapOn:
+    id: 'pin-otp-input'
+- inputText: ${output.code}
+- takeScreenshot: ${SHOTS}/${LOCALE}-06-pin-otp
+# Android: the footer sits under the keyboard (DRV-1 §8.3).
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+- tapOn:
+    id: 'save-pin'
+- extendedWaitUntil:
+    visible:
+      id: 'permissions-continue'
+    timeout: 20000
+- assertVisible: "${LOCALE == 'en' ? 'Allow access' : 'اسمح بالوصول'}"
