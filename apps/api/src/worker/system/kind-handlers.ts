@@ -2,7 +2,9 @@ import type { Config } from '@eeasy-logistics/config';
 import type { AppDatabase, Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { Logger } from '@nestjs/common';
-import { driverPushInvalidation } from '../../modules/delivery/public/index.js';
+import { deliveryConsumers, driverPushInvalidation } from '../../modules/delivery/public/index.js';
+import { AuditWriter } from '../../modules/kernel/audit/audit-writer.js';
+import { OutboxWriter } from '../../modules/kernel/outbox/outbox-writer.js';
 import { Redis } from 'ioredis';
 import { redisFeatureCache } from '../../modules/kernel/features/feature-resolver.js';
 import { kernelConsumers } from '../../modules/kernel/outbox/account-suspended.consumer.js';
@@ -56,9 +58,11 @@ export function buildKindHandlers(
       new InternalEventDispatcher({
         db: pool.db,
         app: app.db,
-        consumers: new DomainEventConsumerRegistry(
-          kernelConsumers({ featureCache: redis === null ? null : redisFeatureCache(redis) }),
-        ),
+        consumers: new DomainEventConsumerRegistry([
+          ...kernelConsumers({ featureCache: redis === null ? null : redisFeatureCache(redis) }),
+          // DEL-5 plan 2.5: a suspended account's live shifts end by the system.
+          ...deliveryConsumers({ audit: new AuditWriter(), outbox: new OutboxWriter() }),
+        ]),
         logger,
         close: () => {
           redis?.disconnect();

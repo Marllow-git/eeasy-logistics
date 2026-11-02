@@ -1,14 +1,20 @@
 import { randomBytes } from 'node:crypto';
 import type { AppDatabase, Pool } from '@eeasy-logistics/db';
-import { createAppPool, uuidv7 } from '@eeasy-logistics/db';
+import { createAppPool, uuidv7, withUnitOfWork } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { createPlatformPool } from '@eeasy-logistics/db/platform';
 import { Redis } from 'ioredis';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { SuspendedAccountShiftsConsumer } from '../../src/modules/delivery/public/index.js';
+import { AuditWriter } from '../../src/modules/kernel/audit/audit-writer.js';
+import type { DomainEvent } from '../../src/modules/kernel/outbox/domain-event.js';
+import { subscribedTypes } from '../../src/modules/kernel/outbox/domain-event-consumers.js';
+import { OutboxWriter } from '../../src/modules/kernel/outbox/outbox-writer.js';
 import { pushPayload } from '../../src/modules/kernel/push/push.handler.js';
 import { runShiftSweeper } from '../../src/worker/system/shift-sweeper.js';
 import { runTelemetryRetention } from '../../src/worker/system/telemetry-retention.js';
+import { systemContext } from '../../src/worker/system/tenant-runs.js';
 import { runTrailAppender } from '../../src/worker/system/trail-appender.js';
 import type { PlantedDriver } from './driver-fixtures.js';
 import { plantDriver } from './driver-fixtures.js';
@@ -377,6 +383,80 @@ describe('the DEL-5 worker jobs (item D)', () => {
       expect(await outboxOf(pausedShift)).toEqual([]);
       // The push rows are this suite's only: none is left for the push suite's relay.
       await owner`DELETE FROM core_outbox WHERE kind = 'push' AND account_id = ${silent.accountId}`;
+    });
+  });
+
+  describe('the core.account.suspended consumer (item E)', () => {
+    const suspended = (accountId: string): DomainEvent => ({
+      id: uuidv7(),
+      type: 'core.account.suspended',
+      version: 1,
+      occurredAt: new Date(),
+      accountId,
+      aggregateType: 'account',
+      aggregateId: accountId,
+      sequence: 2,
+      causationId: null,
+      correlationId: null,
+      payload: { reason: 'billing' },
+    });
+    const consumer = new SuspendedAccountShiftsConsumer({
+      audit: new AuditWriter(),
+      outbox: new OutboxWriter(),
+    });
+    const deliver = (event: DomainEvent) =>
+      withUnitOfWork(app.db, systemContext(event.accountId ?? ''), (uow) =>
+        consumer.handle(event, uow),
+      );
+    const statusOf = async (id: string) =>
+      (await owner<{ status: string }[]>`SELECT status FROM del_driver_shifts WHERE id = ${id}`)[0]
+        ?.status;
+
+    it('ends the account’s active and paused shifts by the system, nothing else', async () => {
+      const active = await plantDriver(owner);
+      const activeShift = await insertShift(active, 'active');
+      const paused = await plantDriver(owner, { accountId: active.accountId });
+      const pausedShift = await insertShift(paused, 'paused');
+      const planned = await plantDriver(owner, { accountId: active.accountId });
+      const plannedShift = await insertShift(planned, 'planned', {
+        plannedStart: new Date(Date.now() + 60 * 60_000),
+      });
+      const other = await plantDriver(owner);
+      const otherShift = await insertShift(other, 'active');
+      const event = suspended(active.accountId);
+
+      await deliver(event);
+      expect(await statusOf(activeShift)).toBe('ended');
+      expect(await statusOf(pausedShift)).toBe('ended');
+      expect(await statusOf(plannedShift)).toBe('planned');
+      expect(await statusOf(otherShift)).toBe('active');
+      const events = await owner<{ aggregate_id: string; payload: Record<string, unknown> }[]>`
+        SELECT aggregate_id, payload FROM core_outbox
+        WHERE type = 'delivery.shift.ended' AND aggregate_id IN (${activeShift}, ${pausedShift})
+        ORDER BY aggregate_id`;
+      expect(events).toHaveLength(2);
+      for (const row of events) {
+        expect(row.payload).toMatchObject({ ended_by: 'system', reason: 'account_suspended' });
+      }
+      const audit = await owner<{ actor_type: string; action: string; reason: string | null }[]>`
+        SELECT actor_type, action, reason FROM core_audit_log
+        WHERE target_id IN (${activeShift}, ${pausedShift})`;
+      expect(audit).toEqual([
+        { actor_type: 'system', action: 'delivery.shift.ended', reason: 'account_suspended' },
+        { actor_type: 'system', action: 'delivery.shift.ended', reason: 'account_suspended' },
+      ]);
+
+      // A redelivery finds nothing live: no second event.
+      await deliver(event);
+      const again = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_outbox
+        WHERE type = 'delivery.shift.ended' AND aggregate_id = ${activeShift}`;
+      expect(again[0]?.n).toBe(1);
+    });
+
+    it('is subscribed to core.account.suspended under a stable name', () => {
+      expect(subscribedTypes(consumer)).toEqual(['core.account.suspended']);
+      expect(consumer.consumer).toBe('delivery.account_suspended_shifts');
     });
   });
 });
