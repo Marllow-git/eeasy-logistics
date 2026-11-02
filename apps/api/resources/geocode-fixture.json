@@ -1,0 +1,464 @@
+{
+  "about": "The geocoder stub's fixture (INT-2 plan 2.5): districts of Riyadh and Jeddah with approximate centroids, authored by hand for this repository on 2026-11-02 from general knowledge of the two cities. Not copied from any dataset (no licence-clean district extract was found, docs/research/hudhud-geocoding-2026-11.md section 3). The centroids are rough (within a few kilometres) and are for local and ci tests only, never for routing or delivery. The short codes are fixture values: RRHC2680 and REMA7572 are the examples of Hudhud's documentation, the other four are invented and may not exist.",
+  "licence": "Same as this repository.",
+  "districts": [
+    {
+      "id": "riyadh-al-olaya",
+      "name_ar": "العليا",
+      "name_en": "Al Olaya",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.695,
+      "lng": 46.685
+    },
+    {
+      "id": "riyadh-al-malaz",
+      "name_ar": "الملز",
+      "name_en": "Al Malaz",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.665,
+      "lng": 46.73
+    },
+    {
+      "id": "riyadh-al-murabba",
+      "name_ar": "المربع",
+      "name_en": "Al Murabba",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.655,
+      "lng": 46.71
+    },
+    {
+      "id": "riyadh-al-sulimaniyah",
+      "name_ar": "السليمانية",
+      "name_en": "Al Sulimaniyah",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.705,
+      "lng": 46.7
+    },
+    {
+      "id": "riyadh-al-wurud",
+      "name_ar": "الورود",
+      "name_en": "Al Wurud",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.725,
+      "lng": 46.675
+    },
+    {
+      "id": "riyadh-al-nakheel",
+      "name_ar": "النخيل",
+      "name_en": "Al Nakheel",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.75,
+      "lng": 46.64
+    },
+    {
+      "id": "riyadh-al-yasmin",
+      "name_ar": "الياسمين",
+      "name_en": "Al Yasmin",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.825,
+      "lng": 46.64
+    },
+    {
+      "id": "riyadh-al-narjis",
+      "name_ar": "النرجس",
+      "name_en": "Al Narjis",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.85,
+      "lng": 46.67
+    },
+    {
+      "id": "riyadh-al-malqa",
+      "name_ar": "الملقا",
+      "name_en": "Al Malqa",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.805,
+      "lng": 46.605
+    },
+    {
+      "id": "riyadh-hittin",
+      "name_ar": "حطين",
+      "name_en": "Hittin",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.765,
+      "lng": 46.595
+    },
+    {
+      "id": "riyadh-al-sahafah",
+      "name_ar": "الصحافة",
+      "name_en": "Al Sahafah",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.8,
+      "lng": 46.64
+    },
+    {
+      "id": "riyadh-al-aqiq",
+      "name_ar": "العقيق",
+      "name_en": "Al Aqiq",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.775,
+      "lng": 46.625
+    },
+    {
+      "id": "riyadh-al-rabwah",
+      "name_ar": "الربوة",
+      "name_en": "Al Rabwah",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.69,
+      "lng": 46.76
+    },
+    {
+      "id": "riyadh-al-rawdah",
+      "name_ar": "الروضة",
+      "name_en": "Al Rawdah",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.735,
+      "lng": 46.77
+    },
+    {
+      "id": "riyadh-al-naseem",
+      "name_ar": "النسيم",
+      "name_en": "Al Naseem",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.74,
+      "lng": 46.83
+    },
+    {
+      "id": "riyadh-al-shifa",
+      "name_ar": "الشفا",
+      "name_en": "Al Shifa",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.56,
+      "lng": 46.695
+    },
+    {
+      "id": "riyadh-al-aziziyah",
+      "name_ar": "العزيزية",
+      "name_en": "Al Aziziyah",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.59,
+      "lng": 46.76
+    },
+    {
+      "id": "riyadh-al-suwaidi",
+      "name_ar": "السويدي",
+      "name_en": "Al Suwaidi",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.61,
+      "lng": 46.66
+    },
+    {
+      "id": "riyadh-al-badiah",
+      "name_ar": "البديعة",
+      "name_en": "Al Badiah",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.625,
+      "lng": 46.665
+    },
+    {
+      "id": "riyadh-irqah",
+      "name_ar": "عرقة",
+      "name_en": "Irqah",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.69,
+      "lng": 46.585
+    },
+    {
+      "id": "riyadh-al-muruj",
+      "name_ar": "المروج",
+      "name_en": "Al Muruj",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.755,
+      "lng": 46.66
+    },
+    {
+      "id": "riyadh-al-ghadir",
+      "name_ar": "الغدير",
+      "name_en": "Al Ghadir",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.77,
+      "lng": 46.655
+    },
+    {
+      "id": "riyadh-qurtubah",
+      "name_ar": "قرطبة",
+      "name_en": "Qurtubah",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.81,
+      "lng": 46.74
+    },
+    {
+      "id": "riyadh-al-hamra",
+      "name_ar": "الحمراء",
+      "name_en": "Al Hamra",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.775,
+      "lng": 46.755
+    },
+    {
+      "id": "riyadh-al-nahdah",
+      "name_ar": "النهضة",
+      "name_en": "Al Nahdah",
+      "city_ar": "الرياض",
+      "city_en": "Riyadh",
+      "lat": 24.77,
+      "lng": 46.805
+    },
+    {
+      "id": "jeddah-al-rawdah",
+      "name_ar": "الروضة",
+      "name_en": "Al Rawdah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.565,
+      "lng": 39.155
+    },
+    {
+      "id": "jeddah-al-hamra",
+      "name_ar": "الحمراء",
+      "name_en": "Al Hamra",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.515,
+      "lng": 39.165
+    },
+    {
+      "id": "jeddah-al-balad",
+      "name_ar": "البلد",
+      "name_en": "Al Balad",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.485,
+      "lng": 39.185
+    },
+    {
+      "id": "jeddah-al-safa",
+      "name_ar": "الصفا",
+      "name_en": "Al Safa",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.58,
+      "lng": 39.21
+    },
+    {
+      "id": "jeddah-al-zahra",
+      "name_ar": "الزهراء",
+      "name_en": "Al Zahra",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.58,
+      "lng": 39.135
+    },
+    {
+      "id": "jeddah-al-shati",
+      "name_ar": "الشاطئ",
+      "name_en": "Al Shati",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.6,
+      "lng": 39.11
+    },
+    {
+      "id": "jeddah-al-nahdah",
+      "name_ar": "النهضة",
+      "name_en": "Al Nahdah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.615,
+      "lng": 39.12
+    },
+    {
+      "id": "jeddah-al-salamah",
+      "name_ar": "السلامة",
+      "name_en": "Al Salamah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.59,
+      "lng": 39.155
+    },
+    {
+      "id": "jeddah-al-naim",
+      "name_ar": "النعيم",
+      "name_en": "Al Naim",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.625,
+      "lng": 39.155
+    },
+    {
+      "id": "jeddah-al-marwah",
+      "name_ar": "المروة",
+      "name_en": "Al Marwah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.625,
+      "lng": 39.21
+    },
+    {
+      "id": "jeddah-al-faisaliyah",
+      "name_ar": "الفيصلية",
+      "name_en": "Al Faisaliyah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.56,
+      "lng": 39.18
+    },
+    {
+      "id": "jeddah-al-andalus",
+      "name_ar": "الأندلس",
+      "name_en": "Al Andalus",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.535,
+      "lng": 39.15
+    },
+    {
+      "id": "jeddah-al-aziziyah",
+      "name_ar": "العزيزية",
+      "name_en": "Al Aziziyah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.55,
+      "lng": 39.2
+    },
+    {
+      "id": "jeddah-al-rehab",
+      "name_ar": "الرحاب",
+      "name_en": "Al Rehab",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.555,
+      "lng": 39.23
+    },
+    {
+      "id": "jeddah-al-basateen",
+      "name_ar": "البساتين",
+      "name_en": "Al Basateen",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.67,
+      "lng": 39.13
+    },
+    {
+      "id": "jeddah-obhur-al-shamaliyah",
+      "name_ar": "أبحر الشمالية",
+      "name_en": "Obhur Al Shamaliyah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.74,
+      "lng": 39.1
+    },
+    {
+      "id": "jeddah-al-muhammadiyah",
+      "name_ar": "المحمدية",
+      "name_en": "Al Muhammadiyah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.665,
+      "lng": 39.12
+    },
+    {
+      "id": "jeddah-al-bawadi",
+      "name_ar": "البوادي",
+      "name_en": "Al Bawadi",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.6,
+      "lng": 39.18
+    },
+    {
+      "id": "jeddah-al-rabwah",
+      "name_ar": "الربوة",
+      "name_en": "Al Rabwah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.6,
+      "lng": 39.195
+    },
+    {
+      "id": "jeddah-al-khalidiyah",
+      "name_ar": "الخالدية",
+      "name_en": "Al Khalidiyah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.545,
+      "lng": 39.135
+    },
+    {
+      "id": "jeddah-al-ruwais",
+      "name_ar": "الرويس",
+      "name_en": "Al Ruwais",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.505,
+      "lng": 39.16
+    },
+    {
+      "id": "jeddah-al-sharafiyah",
+      "name_ar": "الشرفية",
+      "name_en": "Al Sharafiyah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.525,
+      "lng": 39.185
+    },
+    {
+      "id": "jeddah-al-baghdadiyah",
+      "name_ar": "البغدادية",
+      "name_en": "Al Baghdadiyah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.495,
+      "lng": 39.175
+    },
+    {
+      "id": "jeddah-mushrifah",
+      "name_ar": "مشرفة",
+      "name_en": "Mushrifah",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.54,
+      "lng": 39.19
+    },
+    {
+      "id": "jeddah-al-samer",
+      "name_ar": "السامر",
+      "name_en": "Al Samer",
+      "city_ar": "جدة",
+      "city_en": "Jeddah",
+      "lat": 21.605,
+      "lng": 39.24
+    }
+  ],
+  "short_codes": {
+    "REMA7572": "riyadh-al-olaya",
+    "RRHC2680": "riyadh-al-malqa",
+    "RAGI2929": "riyadh-al-malaz",
+    "RNRA4410": "riyadh-al-narjis",
+    "JRWA3105": "jeddah-al-rawdah",
+    "JSFA1188": "jeddah-al-safa"
+  }
+}

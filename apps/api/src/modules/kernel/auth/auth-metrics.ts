@@ -1,5 +1,5 @@
 import { ApiException } from '../errors/api-exception.js';
-import type { RevocationReason } from '../schema/identity.js';
+import type { RevocationReason, SessionSurface } from '../schema/identity.js';
 import { getMetrics } from '../telemetry/metrics.js';
 import type { CookieSurface } from './cookies.js';
 
@@ -7,7 +7,13 @@ import type { CookieSurface } from './cookies.js';
 // outcome or reason from a closed list, never a user, an email or a token.
 
 export type LoginOutcome = 'ok' | 'second_factor' | 'invalid_credentials' | 'rate_limited';
-export type RefreshMetricOutcome = 'ok' | 'grace' | 'reuse_revoked' | 'invalid';
+export type RefreshMetricOutcome =
+  | 'ok'
+  | 'grace'
+  | 'reuse_revoked'
+  | 'invalid'
+  /** A driver refresh from a revoked device (DEL-4 plan 2.8): the family is revoked too. */
+  | 'device_revoked';
 
 /**
  * Runs a password step and counts its outcome: what `outcomeOf` says on success, the refusal's
@@ -33,7 +39,7 @@ export async function countedLogin<T>(
   }
 }
 
-export function countRefresh(surface: CookieSurface, outcome: RefreshMetricOutcome): void {
+export function countRefresh(surface: SessionSurface, outcome: RefreshMetricOutcome): void {
   getMetrics().add('auth_refresh_total', 1, { surface, outcome });
 }
 

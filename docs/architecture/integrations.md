@@ -41,11 +41,11 @@ Columns are the same for every port. "Wave" is the first wave that needs a worki
 |---|---|
 | Methods | `geocode(text, city?, locale) → {point, confidence 0..1, district?, short_code?} \| not_found`; `lookupShortCode(code) → {point, address parts} \| not_found`; `reverse(point) → {text, district, city}` |
 | Owner | kernel, `kernel/public/ports`: sites (kernel, §2.3 of document 2) and orders (Delivery) both need it |
-| Adapters | Hudhud geocoding (first); National Address short code via Hudhud if its contract includes it, otherwise a Saudi National Address (SPL) API adapter (**to confirm** which) |
+| Adapters | Hudhud geocoding (first); National Address short code via Hudhud if its contract includes it, otherwise a Saudi National Address (SPL) API adapter (**to confirm** which). Built (INT-2, owner ruling 2026-11-02): a chain of sources in `GEOCODER_SOURCES` order, each behind its own breaker and asked only for the lookups it has: the official SPL API (short codes, with `NATIONAL_ADDRESS_API_KEY`) and its POI reverse lookup, the Sayyar mirror (short codes, text), then Hudhud as the fallback; the stub in local and ci. The adapter derives the confidence (Hudhud publishes none): 1.0 for an SPL or Hudhud short code, 0.95 for Sayyar's, 0.8 or 0.6 for a Sayyar text match, 0.9 for a single Hudhud search result and 0.7 for the first of several, 0.2 less for a settlement-level match |
 | Kind | sync, read-only |
 | Timeout | 2 s geocode, 2 s short code |
 | Retry | one retry on network error |
-| Cache | normalised text hash and short code → result, 30 days, in a kernel cache table (document 5 names it) with Redis in front |
+| Cache | normalised text hash and short code → result, in `core_geocode_cache` (document 5 §2.1), 30 days for a hit and 24 hours for `not_found`, with Redis in front; the stub's answers are not cached |
 | Breaker and degraded | intake never fails because geocoding failed: the order is stored with no point, `pin_source` unset and confidence 0, and it is listed in the dispatcher's "needs location" view; an address-pin request (§5) is the remedy |
 | Stub | fixture table of Riyadh and Jeddah districts, unknown text returns `not_found` |
 | Credentials | Hudhud key; SPL key if used; platform secrets |
@@ -265,6 +265,7 @@ Every template exists in Arabic and English (ADR-0016) and is chosen by the reci
 | Wave | Template key | Category | Recipient | Triggered by | Parameters |
 |---|---|---|---|---|---|
 | 0 | `auth_otp` | authentication (copy-code button) | staff second factor and drivers | document 4 §3 | code, encrypted with the credentials key on the outbox row, which is deleted one hour after sending (data §5.2, §10) (amended 2026-10-31, roadmap A-5) |
+| 1 | `driver_invitation` | utility (engine type `shipment_issued`, deferrable) | a driver a dispatcher created, from the account's own sender | `createDriver` (DEL-4 plan 2.3; amended 2026-11-02, roadmap A-26) | account name (at most 80 characters, from provisioning), app link (`DRIVER_APP_URL`, a placeholder landing until DRV-6 names the store listing) |
 | 1 | `order_assigned` | utility | recipient | `delivery.order.assigned` | merchant name, order number |
 | 1 | `order_out_for_delivery` | utility | recipient | `delivery.order.out_for_delivery` | merchant name, driver first name, ETA window, tracking link (purpose `track`) |
 | 1 | `order_attempted` | utility | recipient | `delivery.order.attempted` | merchant name, reason (localised label), reschedule link from wave 2 |

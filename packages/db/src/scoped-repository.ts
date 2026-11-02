@@ -69,6 +69,37 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
     return rows as InferSelectModel<TTable>[];
   }
 
+  /**
+   * Chosen columns or expressions of the rows of the context's account matching `condition` (DEL-1:
+   * a zone read with its boundary as GeoJSON, a list without it). The tenant predicate is the same
+   * as `findMany`'s; the caller types the row it selects.
+   */
+  protected async selectWhere<TRow extends object>(
+    fields: { readonly [K in keyof TRow]: SQL | PgColumn },
+    condition?: SQL,
+    page: { readonly orderBy?: readonly SQL[]; readonly limit?: number } = {},
+  ): Promise<TRow[]> {
+    const table: PgTable = this.table;
+    const query = this.#tx
+      .select(fields as Record<string, SQL | PgColumn>)
+      .from(table)
+      .where(this.scoped(condition))
+      .orderBy(...(page.orderBy ?? []))
+      .$dynamic();
+    const rows = page.limit === undefined ? await query : await query.limit(page.limit);
+    return rows as TRow[];
+  }
+
+  /**
+   * One scalar expression that reads no table (DEL-1: `ST_IsValidReason` of a boundary before its
+   * insert, so an invalid one is a typed refusal and the transaction stays usable). A table read
+   * belongs in the other methods, which carry the tenant predicate.
+   */
+  protected async evaluate<T>(expression: SQL): Promise<T> {
+    const rows = await this.#tx.execute<{ value: T }>(sql`SELECT ${expression} AS value`);
+    return rows[0]?.value as T;
+  }
+
   /** How many rows of the context's account match `condition` (a limit check, a usage figure). */
   protected async countWhere(condition?: SQL): Promise<number> {
     const table: PgTable = this.table;

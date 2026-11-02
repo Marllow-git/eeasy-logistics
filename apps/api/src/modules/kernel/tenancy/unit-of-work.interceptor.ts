@@ -1,5 +1,5 @@
 import type { AppDatabase, Pool, RequestContext } from '@eeasy-logistics/db';
-import { findContext, withUnitOfWork } from '@eeasy-logistics/db';
+import { findContext, runWithContext, withUnitOfWork } from '@eeasy-logistics/db';
 import type { CallHandler, ExecutionContext, NestInterceptor } from '@nestjs/common';
 import { HttpException, Inject, Injectable, Optional } from '@nestjs/common';
 import { HTTP_CODE_METADATA } from '@nestjs/common/constants.js';
@@ -18,7 +18,13 @@ import { annotateRequest } from '../telemetry/spans.js';
 import type { CrossTenantSource } from './cross-tenant.js';
 import { crossTenantTarget, isRefusal } from './cross-tenant.js';
 import type { PlatformFrames } from './frame.js';
-import { CROSS_TENANT, PLATFORM_FRAMES, principalOf } from './frame.js';
+import {
+  CommittedRefusal,
+  CROSS_TENANT,
+  NO_UNIT_OF_WORK,
+  PLATFORM_FRAMES,
+  principalOf,
+} from './frame.js';
 
 /** Carries a handler's value out of a transaction that must roll back (a non-2xx answer). */
 class RollbackWith extends Error {
@@ -61,6 +67,8 @@ interface Call {
   readonly response: Response;
   readonly requestId: string;
   readonly crossTenant: CrossTenantSource | undefined;
+  /** `@NoUnitOfWork()`: the token's context, no transaction (the handler opens its own). */
+  readonly noUnitOfWork: boolean;
   readonly operation: string;
   /** The status a settled handler answers: its own, its `@HttpCode()`, else 201 for POST. */
   readonly successStatus: () => number;
@@ -94,6 +102,7 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
     const response = http.getResponse<Response>();
     const handler = context.getHandler();
     const crossTenant = this.reflector.get<CrossTenantSource | undefined>(CROSS_TENANT, handler);
+    const noUnitOfWork = this.reflector.get<boolean | undefined>(NO_UNIT_OF_WORK, handler) === true;
     const handle = async () => {
       // The tenant the unit of work runs for (a cross-tenant target too), on the request span.
       annotateRequest(request, { 'elx.account.id': findContext()?.accountId });
@@ -113,6 +122,7 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
         response,
         requestId: serverRequestIdOf(request),
         crossTenant,
+        noUnitOfWork,
         operation: `${context.getClass().name}.${handler.name}`,
         successStatus,
         handle,
@@ -135,10 +145,12 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       if (call.crossTenant !== undefined) {
         throw new Error('@CrossTenant() is for platform handlers only');
       }
+      const sites = requestSiteScope(call.request);
+      const context = tenantContext(principal, requestId, sites);
+      if (call.noUnitOfWork) return runWithContext(context, handle);
       const pool = this.appPool;
       if (pool === undefined || pool === null) throw new ApiException('internal_error');
-      const sites = requestSiteScope(call.request);
-      return withUnitOfWork(pool.db, tenantContext(principal, requestId, sites), handle);
+      return this.tenant(pool.db, context, handle);
     }
     const platform = this.platform;
     if (platform === undefined) throw new ApiException('internal_error');
@@ -146,6 +158,27 @@ export class UnitOfWorkInterceptor implements NestInterceptor {
       return platform.runPlatform({ userId: principal.userId, requestId }, handle);
     }
     return this.crossTenant(call, call.crossTenant, platform);
+  }
+
+  /**
+   * The request's tenant transaction: commits on a value, rolls back on a throw, except a
+   * `CommittedRefusal`, which commits what the handler wrote and is then answered (DEL-4 H-1).
+   */
+  private async tenant(
+    db: AppDatabase,
+    context: RequestContext,
+    handle: () => Promise<unknown>,
+  ): Promise<unknown> {
+    const value = await withUnitOfWork(db, context, async () => {
+      try {
+        return await handle();
+      } catch (error) {
+        if (error instanceof CommittedRefusal) return error;
+        throw error;
+      }
+    });
+    if (value instanceof CommittedRefusal) throw value;
+    return value;
   }
 
   /**
