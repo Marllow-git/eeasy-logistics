@@ -9,6 +9,8 @@ import { PrincipalResolver } from './auth/principal.js';
 import { IDEMPOTENCY_HMAC_KEY } from './idempotency/idempotency.interceptor.js';
 import { idempotencyHmacKey } from './idempotency/request-hash.js';
 import { PERMISSION_RESOLVER } from './authz/permission-resolver.js';
+import { GEOCODER_SETUP, GeocoderSetup } from './geocoding/geocoders.js';
+import { geocodeCacheStore } from './platform/geocode-cache.repository.js';
 import { PLATFORM_POOL, PlatformModule } from './platform/platform.module.js';
 import { loadPermissionResolver } from './platform/roles.repository.js';
 import { defaultBudgets, namedBudgetsWith } from './rate-limit/budgets.js';
@@ -136,8 +138,17 @@ export class RequestFrameModule {
             return new ApiOutboxQueues(connection);
           },
         },
+        {
+          // The geocoder's sources, cache and breakers (INT-2 plan 2.6, 2.11); `KernelModule`
+          // provides the `GEOCODER` service on them. The cache table needs the platform pool.
+          provide: GEOCODER_SETUP,
+          inject: [PLATFORM_POOL],
+          useFactory: (pool: Parameters<typeof loadPermissionResolver>[0]) =>
+            new GeocoderSetup(config, pool ? geocodeCacheStore(pool.db) : undefined),
+        },
       ],
       exports: [
+        GEOCODER_SETUP,
         PRINCIPAL_RESOLVER,
         PERMISSION_RESOLVER,
         IDEMPOTENCY_HMAC_KEY,

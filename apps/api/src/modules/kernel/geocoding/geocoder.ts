@@ -99,7 +99,7 @@ export class GeocoderInputError extends Error {
 
 // Arabic-Indic (U+0660..0669) and Eastern Arabic-Indic (U+06F0..06F9) digits to Western.
 function westernDigits(text: string): string {
-  return text.replace(/[٠-٩۰-۹]/g, (digit) => {
+  return text.replace(/[\u0660-\u0669\u06f0-\u06f9]/g, (digit) => {
     const code = digit.charCodeAt(0);
     return String(code >= 0x06f0 ? code - 0x06f0 : code - 0x0660);
   });

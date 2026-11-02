@@ -38,7 +38,10 @@ export const coreGeocodeCache = pgTable(
       'core_geocode_cache_method_check',
       sql`${table.method} IN ('geocode', 'shortcode', 'reverse')`,
     ),
-    check('core_geocode_cache_provider_check', sql`${table.provider} IN ('spl', 'sayyar', 'hudhud')`),
+    check(
+      'core_geocode_cache_provider_check',
+      sql`${table.provider} IN ('spl', 'sayyar', 'hudhud')`,
+    ),
     check('core_geocode_cache_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
   ],
 );
