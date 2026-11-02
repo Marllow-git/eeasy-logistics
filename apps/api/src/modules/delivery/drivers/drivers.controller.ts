@@ -31,6 +31,8 @@ import {
   Feature,
 } from '../../kernel/public/index.js';
 import { DRIVER_APP_URL } from '../delivery.tokens.js';
+import type { LocationFanout } from '../locations/location-fanout.js';
+import { LOCATION_FANOUT } from '../locations/location-fanout.js';
 import { presentDriverDevice } from './driver-devices.presenter.js';
 import { DriverDevicesService } from './driver-devices.service.js';
 import { presentDriver } from './drivers.presenter.js';
@@ -76,9 +78,10 @@ export class DriversController {
     identities: DriverIdentities,
     @Inject(DRIVER_APP_URL) appUrl: string,
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
+    @Optional() @Inject(LOCATION_FANOUT) fanout?: LocationFanout | null,
   ) {
     this.cursors = cursors ?? new CursorCodec(undefined);
-    this.drivers = new DriversService({ identities, audit, outbox, appUrl });
+    this.drivers = new DriversService({ identities, audit, outbox, appUrl, fanout });
     this.devices = new DriverDevicesService({ identities, audit });
   }
 

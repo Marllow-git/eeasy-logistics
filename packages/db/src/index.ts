@@ -27,6 +27,7 @@ export {
   type TenantUpdate,
 } from './scoped-repository.ts';
 export {
+  afterCommit,
   getUnitOfWork,
   UnitOfWorkClosedError,
   withUnitOfWork,

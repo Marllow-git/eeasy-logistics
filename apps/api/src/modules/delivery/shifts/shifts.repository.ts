@@ -85,6 +85,11 @@ export class ShiftsRepository extends ScopedRepository<typeof delDriverShifts> {
     return this.findMany(live, { orderBy: byDriver });
   }
 
+  /** Live shifts whose `planned_end` is at or before `cutoff`, in driver order (overdue ends). */
+  liveEndedBy(cutoff: Date): Promise<ShiftRow[]> {
+    return this.findMany(and(live, lte(delDriverShifts.plannedEnd, cutoff)), { orderBy: byDriver });
+  }
+
   /** `planned` shifts whose `planned_start` is at or before `cutoff`, in driver order (no-shows). */
   plannedStartedBy(cutoff: Date): Promise<ShiftRow[]> {
     return this.findMany(

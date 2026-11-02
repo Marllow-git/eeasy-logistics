@@ -16,6 +16,11 @@ export const earlyStartMs = 60 * minute;
 export const adHocShiftMs = 12 * hour;
 /** A planned shift not started 30 minutes after `planned_start` is a no-show (§7 #1). */
 export const noShowGraceMs = 30 * minute;
+/**
+ * A live (`active` or `paused`) shift still open 60 minutes after its `planned_end` is ended by the
+ * system (adversary round 1, finding 1): no shift stays live for days and keeps alerting.
+ */
+export const overdueGraceMs = 60 * minute;
 /** An active shift without a point for 5 minutes is stale; one alert per 15 minutes (§7 #3). */
 export const staleAfterMs = 5 * minute;
 export const staleRepeatMs = 15 * minute;

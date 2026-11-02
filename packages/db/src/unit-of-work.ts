@@ -101,7 +101,38 @@ export async function withUnitOfWork<T>(
   if (checked.actingCrossTenant) {
     throw new Error('A cross-tenant context runs on the platform pool, never on elx_app');
   }
-  return db.transaction((tx) => runTenantTransaction(tx, checked, fn));
+  const hooks: (() => Promise<void>)[] = [];
+  const value = await db.transaction((tx) =>
+    runTenantTransaction(tx, checked, (uow) => {
+      commitHooks.set(uow, hooks);
+      return fn(uow);
+    }),
+  );
+  for (const hook of hooks) {
+    try {
+      await hook();
+    } catch {
+      // The transaction has committed: a hook's failure must not turn it into an error answer.
+      // Hooks are best-effort cache work (a Redis key) that handles and reports its own failures.
+    }
+  }
+  return value;
+}
+
+/** The after-commit work of each unit of work `withUnitOfWork` opened. */
+const commitHooks = new WeakMap<UnitOfWork, (() => Promise<void>)[]>();
+
+/**
+ * Runs `fn` once the current unit of work's transaction has committed, never on a rollback (DEL-5
+ * adversary round 1, finding 3): a cache entry that must follow a committed write, such as deleting
+ * a Redis key, so a concurrent reader never refills it from the state the write replaces. Hooks run
+ * in order after the commit; a failing hook is ignored, so `fn` handles its own errors. Only inside
+ * `withUnitOfWork` (the request's, a job's or a consumer's tenant unit of work).
+ */
+export function afterCommit(fn: () => Promise<void>): void {
+  const hooks = commitHooks.get(getUnitOfWork());
+  if (hooks === undefined) throw new Error('afterCommit runs inside withUnitOfWork only');
+  hooks.push(fn);
 }
 
 /**

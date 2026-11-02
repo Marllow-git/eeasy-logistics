@@ -11,6 +11,7 @@ import { AuditWriter } from '../../src/modules/kernel/audit/audit-writer.js';
 import type { DomainEvent } from '../../src/modules/kernel/outbox/domain-event.js';
 import { subscribedTypes } from '../../src/modules/kernel/outbox/domain-event-consumers.js';
 import { OutboxWriter } from '../../src/modules/kernel/outbox/outbox-writer.js';
+import { latestKey } from '../../src/modules/delivery/locations/location-fanout.js';
 import { pushPayload } from '../../src/modules/kernel/push/push.handler.js';
 import { runShiftSweeper } from '../../src/worker/system/shift-sweeper.js';
 import { runTelemetryRetention } from '../../src/worker/system/telemetry-retention.js';
@@ -57,7 +58,7 @@ describe('the DEL-5 worker jobs (item D)', () => {
   async function insertShift(
     driver: PlantedDriver,
     status: 'planned' | 'active' | 'paused' | 'ended',
-    fields: { plannedStart?: Date; startedAt?: Date } = {},
+    fields: { plannedStart?: Date; plannedEnd?: Date; startedAt?: Date } = {},
   ): Promise<string> {
     const id = uuidv7();
     const start = fields.plannedStart ?? new Date(Date.now() - 60 * 60_000);
@@ -66,7 +67,7 @@ describe('the DEL-5 worker jobs (item D)', () => {
       INSERT INTO del_driver_shifts
         (id, account_id, driver_id, site_id, planned_start, planned_end, started_at, ended_at, status)
       VALUES (${id}, ${driver.accountId}, ${driver.driverId}, ${driver.siteId}, ${start},
-              ${new Date(start.getTime() + 8 * 60 * 60_000)}, ${started},
+              ${fields.plannedEnd ?? new Date(start.getTime() + 8 * 60 * 60_000)}, ${started},
               ${status === 'ended' ? new Date() : null}, ${status})`;
     return id;
   }
@@ -294,7 +295,7 @@ describe('the DEL-5 worker jobs (item D)', () => {
       const run = await sweep([late.accountId], now);
       expect(run).toEqual({
         ran: true,
-        counts: { accounts: 1, noShows: 1, stale: 0, failed: 0 },
+        counts: { accounts: 1, noShows: 1, ended: 0, stale: 0, failed: 0 },
       });
       expect((await shiftOf(lateShift))?.status).toBe('no_show');
       expect((await shiftOf(earlyShift))?.status).toBe('planned');
@@ -343,7 +344,10 @@ describe('the DEL-5 worker jobs (item D)', () => {
       );
 
       const run = await sweep([silent.accountId], now);
-      expect(run).toEqual({ ran: true, counts: { accounts: 1, noShows: 0, stale: 1, failed: 0 } });
+      expect(run).toEqual({
+        ran: true,
+        counts: { accounts: 1, noShows: 0, ended: 0, stale: 1, failed: 0 },
+      });
       const shift = await shiftOf(silentShift);
       expect(shift?.stale_alerted_at?.getTime()).toBe(now.getTime());
       expect(shift?.version).toBe(2);
@@ -383,6 +387,94 @@ describe('the DEL-5 worker jobs (item D)', () => {
       expect(await outboxOf(pausedShift)).toEqual([]);
       // The push rows are this suite's only: none is left for the push suite's relay.
       await owner`DELETE FROM core_outbox WHERE kind = 'push' AND account_id = ${silent.accountId}`;
+    });
+
+    it('ends live shifts 60 minutes past their planned end by the system, then alerts none (F1)', async () => {
+      const now = new Date();
+      const plantSilentDevice = (driver: PlantedDriver) =>
+        owner`
+          INSERT INTO del_driver_devices
+            (id, account_id, driver_id, device_id, platform, app_version, push_token)
+          VALUES (${uuidv7()}, ${driver.accountId}, ${driver.driverId}, ${`app-${uuidv7()}`},
+                  'android', '1.0.0', 'ExponentPushToken[overdue-test]')`;
+      const overdue = await plantDriver(owner);
+      const overdueShift = await insertShift(overdue, 'active', {
+        plannedStart: new Date(now.getTime() - 10 * 60 * minute),
+        plannedEnd: new Date(now.getTime() - 61 * minute),
+        startedAt: new Date(now.getTime() - 10 * 60 * minute),
+      });
+      await plantSilentDevice(overdue);
+      const paused = await plantDriver(owner, { accountId: overdue.accountId });
+      const pausedShift = await insertShift(paused, 'paused', {
+        plannedStart: new Date(now.getTime() - 10 * 60 * minute),
+        plannedEnd: new Date(now.getTime() - 61 * minute),
+      });
+      const grace = await plantDriver(owner, { accountId: overdue.accountId });
+      const graceShift = await insertShift(grace, 'active', {
+        plannedStart: new Date(now.getTime() - 10 * 60 * minute),
+        plannedEnd: new Date(now.getTime() - 59 * minute),
+        startedAt: new Date(now.getTime() - 10 * 60 * minute),
+      });
+      await plantRing(grace, graceShift, 1, 1, now, now);
+      const key = latestKey(overdue.accountId, overdue.driverId);
+      await redis.hset(key, { lat: '24.7', lng: '46.6' });
+
+      const run = await sweep([overdue.accountId], now);
+      expect(run).toEqual({
+        ran: true,
+        counts: { accounts: 1, noShows: 0, ended: 2, stale: 0, failed: 0 },
+      });
+      expect((await shiftOf(overdueShift))?.status).toBe('ended');
+      expect((await shiftOf(pausedShift))?.status).toBe('ended');
+      expect((await shiftOf(graceShift))?.status).toBe('active');
+      for (const id of [overdueShift, pausedShift]) {
+        const rows = await outboxOf(id);
+        expect(rows.map((r) => [r.kind, r.type])).toEqual([
+          ['internal_event', 'delivery.shift.ended'],
+        ]);
+        expect(rows[0]?.payload).toMatchObject({
+          shift_id: id,
+          ended_by: 'system',
+          reason: 'planned_end_passed',
+        });
+        const audit = await owner<{ actor_type: string; action: string; reason: string | null }[]>`
+          SELECT actor_type, action, reason FROM core_audit_log WHERE target_id = ${id}`;
+        expect(audit).toEqual([
+          { actor_type: 'system', action: 'delivery.shift.ended', reason: 'planned_end_passed' },
+        ]);
+      }
+      // Deleted after the account's transaction committed.
+      expect(await redis.exists(key)).toBe(0);
+      // Later sweeps find nothing live for the driver: no stale alert, no push row.
+      await sweep([overdue.accountId], new Date(now.getTime() + 20 * minute));
+      expect(await outboxOf(overdueShift)).toHaveLength(1);
+    });
+
+    it('raises no alert and writes no push row for a driver without a live shift (F1)', async () => {
+      const now = new Date();
+      const driver = await plantDriver(owner);
+      const shiftId = await insertShift(driver, 'ended', {
+        startedAt: new Date(now.getTime() - 60 * minute),
+      });
+      await plantRing(
+        driver,
+        shiftId,
+        1,
+        1,
+        new Date(now.getTime() - 50 * minute),
+        new Date(now.getTime() - 50 * minute),
+      );
+      await owner`UPDATE del_drivers SET status = 'suspended' WHERE id = ${driver.driverId}`;
+      const other = await plantDriver(owner, { accountId: driver.accountId });
+      await insertShift(other, 'active', { startedAt: now }); // keeps the account in the sweep
+
+      const run = await sweep([driver.accountId], now);
+      expect(run).toMatchObject({ ran: true, counts: { accounts: 1, stale: 0 } });
+      const rows = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_outbox
+        WHERE account_id = ${driver.accountId}
+          AND (kind = 'push' OR type = 'delivery.shift.tracking_stale')`;
+      expect(rows[0]?.n).toBe(0);
     });
   });
 
