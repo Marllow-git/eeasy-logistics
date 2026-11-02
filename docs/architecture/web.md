@@ -10,9 +10,9 @@ Two Next.js applications (ADR-0038, owner ruling 2026-11-01). `apps/web`, built 
 
 | Route group | Audience (document 4 §1) | URL space | API surface (document 3 §1) | Credential |
 |---|---|---|---|---|
-| `(auth)` in `apps/web` | merchant staff before sign-in | `/sign-in`, `/sign-in/second-factor`, `/invitations/[token]`, `/password-reset`, `/password-reset/[token]` | `/v1/staff/auth/*` | none yet |
+| `(auth)` in `apps/web` | merchant staff before sign-in | `/sign-in`, `/sign-in/second-factor`, `/sign-in/second-factor/enrol`, `/sign-in/select-account`, `/invitations/[token]`, `/password-reset`, `/password-reset/[token]`, `/second-factor/enrol/[token]` (the emailed re-enrolment link: password, then a new phone; PLAT-11 8.2 #34), `/signed-out` (after sign-out), `/account-suspended` (the full-page notice of section 3.4, with sign-out) | `/v1/staff/auth/*` | none yet |
 | `(merchant)` | owner, admin, dispatcher, site staff, warehouse staff, cashier, viewer | `/`, `/orders`, `/dispatch`, `/cash`, `/wms/*`, `/settings/*`, … | `/v1/staff` (`staff.yaml`, `staff-delivery.yaml`, `staff-wms.yaml`) | `el_staff_at` cookie |
-| `(auth)` in `apps/admin` | platform staff before sign-in | `/sign-in`, `/sign-in/totp` on the admin hostname | `/v1/platform/auth/*` | none yet |
+| `(auth)` in `apps/admin` | platform staff before sign-in | `/sign-in`, `/sign-in/totp` (code entry, or the enrolment view with the QR code on first use), `/invitations/[token]` (a platform staff invitation, then the enrolment view), `/signed-out` on the admin hostname | `/v1/platform/auth/*` | none yet |
 | `(platform)` in `apps/admin` | platform super admin, admin, support | `/*` on the admin hostname (paths below are written `/platform/*` for continuity; the segment is dropped in `apps/admin`) | `/v1/platform` | `el_platform_at` cookie, host-only on the admin hostname |
 | `(recipient)` | recipient, no account | `/track/[token]`, `/reschedule/[token]`, `/pin/[token]`, `/embed/track/[token]` | `/v1/recipient` | `X-Recipient-Token` header |
 
@@ -25,6 +25,7 @@ apps/web/
   src/
     app/
       (auth)/          layout.tsx  sign-in/  invitations/[token]/  password-reset/
+                       second-factor/enrol/[token]/  signed-out/  account-suspended/
       (merchant)/      layout.tsx  page.tsx  orders/  dispatch/  zones/  drivers/  vehicles/  shifts/
                        slots/  cash/  wms/  channels/  settings/
       (recipient)/     layout.tsx  track/[token]/  reschedule/[token]/  pin/[token]/  embed/track/[token]/
@@ -40,7 +41,7 @@ apps/web/
 apps/admin/
   src/
     app/
-      (auth)/          layout.tsx  sign-in/  sign-in/totp/
+      (auth)/          layout.tsx  sign-in/  sign-in/totp/  invitations/[token]/  signed-out/
       (platform)/      layout.tsx  page.tsx  accounts/  rollout/  outbox/  staff/  audit/  channel-publications/
       healthz/route.ts  csp-report/route.ts
     api/  auth/  routes.ts  analytics.ts   (same shape as apps/web; the platform client only)
