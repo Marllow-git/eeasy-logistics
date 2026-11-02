@@ -2,5 +2,8 @@
   "primary": "Main navigation",
   "home": "Home",
   "settings": "Settings",
-  "settings_account": "Account settings"
+  "settings_account": "Account settings",
+  "settings_members": "Members",
+  "settings_sites": "Sites",
+  "settings_audit": "Audit log"
 }

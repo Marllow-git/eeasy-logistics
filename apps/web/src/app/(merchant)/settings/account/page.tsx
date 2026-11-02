@@ -4,7 +4,7 @@ import { PageHeader } from '@eeasy-logistics/ui/components/page-header';
 import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query';
 import { getTranslations } from 'next-intl/server';
 import { staffServerFetcher } from '../../../../server/api';
-import { AccountSettingsForms } from '../../../../settings/account-settings';
+import { AccountSettingsScreen } from '../../../../settings/account-settings-screen';
 import { UsageFacts } from '../../../../settings/usage';
 
 /**
@@ -45,7 +45,7 @@ export default async function AccountSettingsPage() {
         </Card>
       ) : null}
       <HydrationBoundary state={dehydrate(queryClient)}>
-        <AccountSettingsForms />
+        <AccountSettingsScreen />
       </HydrationBoundary>
     </>
   );

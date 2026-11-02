@@ -3,6 +3,7 @@
 import { dir } from '@eeasy-logistics/i18n';
 import { useId, type ComponentProps, type ReactNode } from 'react';
 import { useController, type FieldPath, type FieldValues } from 'react-hook-form';
+import { DisabledWithReason } from '../authz/can';
 import { Checkbox } from '../components/checkbox/checkbox';
 import { Input } from '../components/input/input';
 import { Label } from '../components/label/label';
@@ -67,6 +68,41 @@ export function TextField<Values extends FieldValues, Name extends FieldPath<Val
 }
 
 /**
+ * Several lines of text (an address, a reason): `dir="auto"` so each value takes the direction of
+ * what the user typed (web §5); `maxLength` caps what the browser accepts, the schema still checks.
+ */
+export function TextAreaField<Values extends FieldValues, Name extends FieldPath<Values>>({
+  name,
+  label,
+  description,
+  className,
+  disabled,
+  rows = 3,
+  maxLength,
+}: FieldProps<Values, Name> & { rows?: number; maxLength?: number }) {
+  return (
+    <FormField<Values, Name>
+      name={name}
+      label={label}
+      description={description}
+      className={className}
+    >
+      {({ value, ...control }) => (
+        <textarea
+          {...control}
+          dir="auto"
+          rows={rows}
+          maxLength={maxLength}
+          disabled={disabled ?? control.disabled}
+          value={value ?? ''}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger"
+        />
+      )}
+    </FormField>
+  );
+}
+
+/**
  * A whole number. An empty input holds `NaN`, not undefined: the generated schemas give some
  * numbers a default, which would quietly replace a cleared value; `NaN` fails as `required`.
  * Digits are Western in both languages (ADR-0016), so the input is left to right.
@@ -116,6 +152,11 @@ export interface FieldOption {
   readonly label: ReactNode;
   readonly description?: ReactNode;
   readonly disabled?: boolean;
+  /**
+   * Why a disabled option cannot change (a rule of the API the UI shows, web §4): the checkbox is
+   * then wrapped in `DisabledWithReason`, so the reason is its description and its tooltip.
+   */
+  readonly reason?: ReactNode;
 }
 
 /** A select over `options` (Radix Select). */
@@ -270,8 +311,8 @@ export function CheckboxGroupField<Values extends FieldValues, Name extends Fiel
   return (
     <ChoiceGroup legend={label} description={description} error={error} className={className}>
       {() =>
-        options.map((option, index) => (
-          <div key={option.value} className="flex items-start gap-2">
+        options.map((option, index) => {
+          const box = (
             <Checkbox
               id={`${id}-${option.value}`}
               ref={index === 0 ? field.ref : undefined}
@@ -282,16 +323,25 @@ export function CheckboxGroupField<Values extends FieldValues, Name extends Fiel
               onBlur={field.onBlur}
               className="mt-0.5"
             />
-            <div className="flex flex-col">
-              <Label htmlFor={`${id}-${option.value}`} className="font-normal">
-                {option.label}
-              </Label>
-              {option.description ? (
-                <span className="text-sm text-muted-foreground">{option.description}</span>
-              ) : null}
+          );
+          return (
+            <div key={option.value} className="flex items-start gap-2">
+              {option.reason !== undefined && (option.disabled === true || disabled === true) ? (
+                <DisabledWithReason reason={option.reason}>{box}</DisabledWithReason>
+              ) : (
+                box
+              )}
+              <div className="flex flex-col">
+                <Label htmlFor={`${id}-${option.value}`} className="font-normal">
+                  {option.label}
+                </Label>
+                {option.description ? (
+                  <span className="text-sm text-muted-foreground">{option.description}</span>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ))
+          );
+        })
       }
     </ChoiceGroup>
   );

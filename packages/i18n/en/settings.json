@@ -108,5 +108,100 @@
       "adjustment_threshold": "Stock adjustment approval threshold",
       "adjustment_threshold_hint": "An adjustment above this quantity needs a second person's approval."
     }
+  },
+  "members": {
+    "description": "The people who work on this account, their roles and the sites they work at.",
+    "table_label": "Members of this account",
+    "invite": "Invite member",
+    "invited_notice": "Invitation sent to {email}.",
+    "you": "You",
+    "columns": {
+      "name": "Name",
+      "roles": "Roles",
+      "sites": "Sites",
+      "status": "Status",
+      "joined": "Added"
+    },
+    "status": {
+      "active": "Active",
+      "invited": "Invitation sent",
+      "revoked": "Revoked"
+    },
+    "filters": {
+      "status": "Status",
+      "all": "All",
+      "site": "Site",
+      "all_sites": "All sites",
+      "search": "Search by name or email"
+    },
+    "sites_all": "All sites",
+    "sites_none": "No sites",
+    "sites_count": "{count, plural, one {{value} site} other {{value} sites}}",
+    "empty": "No members yet.",
+    "empty_hint": "Invite the people who run deliveries, sites and cash with you.",
+    "empty_filtered": "No members match these filters.",
+    "clear_filters": "Clear filters",
+    "invite_dialog": {
+      "title": "Invite a member",
+      "description": "We email a link to set a password. The link is valid for 72 hours.",
+      "email": "Email",
+      "name": "Name",
+      "roles": "Roles",
+      "roles_hint": "One role or more.",
+      "sites": "Sites",
+      "sites_hint": "Site staff, warehouse staff and cashiers work only at the sites ticked here; the other roles see every site.",
+      "no_sites": "This account has no sites yet.",
+      "submit": "Send invitation"
+    },
+    "detail": {
+      "back": "All members",
+      "invitation_banner": "The invitation was sent to {email}. It is waiting to be accepted.",
+      "revoked_banner": "This membership is revoked. It comes back only through a new invitation.",
+      "profile_title": "Member",
+      "email": "Email",
+      "joined": "Added on",
+      "second_factor": "Second factor",
+      "second_factor_on": "Phone enrolled",
+      "second_factor_off": "Not enrolled",
+      "access_title": "Roles and sites",
+      "access_description": "A change signs the member out; the new access applies at their next sign-in.",
+      "roles": "Roles",
+      "sites": "Sites",
+      "driver_kept": "The driver role is managed with the drivers and stays as it is.",
+      "actions_title": "Access",
+      "saved": "Roles and sites saved.",
+      "save": "Save roles and sites"
+    },
+    "locks": {
+      "self": "You cannot change your own membership.",
+      "owner_only": "Only an owner can change an owner's membership.",
+      "owner_grant": "Only an owner can grant or remove the owner role.",
+      "last_owner": "This is the account's only owner; the owner role stays."
+    },
+    "revoke": {
+      "action": "Revoke access",
+      "title": "Revoke {name}'s access?",
+      "consequence_sessions": "They are signed out everywhere within a few minutes and can no longer open this account.",
+      "consequence_audit": "What they did stays in the audit log.",
+      "consequence_return": "They come back only through a new invitation.",
+      "confirm": "Revoke access",
+      "done": "Access revoked.",
+      "withdraw_action": "Withdraw invitation",
+      "withdraw_title": "Withdraw the invitation to {name}?",
+      "withdraw_consequence": "The link in the email stops working.",
+      "withdraw_confirm": "Withdraw invitation",
+      "withdrawn": "Invitation withdrawn."
+    },
+    "reset": {
+      "action": "Reset second factor",
+      "title": "Reset {name}'s second factor?",
+      "description": "For a member who lost the phone they enrolled.",
+      "consequence_phone": "The enrolled phone is removed and they are signed out everywhere.",
+      "consequence_link": "They get an email with a link to enrol a phone again; the password alone cannot enrol.",
+      "reason": "Reason",
+      "reason_hint": "From 5 to 500 characters. Kept in the audit log.",
+      "submit": "Reset second factor",
+      "done": "Second factor reset. The member gets an email with a link to enrol again."
+    }
   }
 }

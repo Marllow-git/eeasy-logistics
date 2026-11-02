@@ -14,7 +14,22 @@ import {
 // `Me.features`, and every route a layout gates is in the manifest.
 // node:test returns promises the runner awaits; `void` marks them for no-floating-promises.
 
-const owner = { permissions: ['core.account.read', 'core.account.manage'], features: [] };
+const owner = {
+  permissions: [
+    'core.account.read',
+    'core.account.manage',
+    'core.members.read',
+    'core.members.manage',
+    'core.sites.read',
+    'core.sites.manage',
+    'core.audit.read',
+  ],
+  features: [],
+};
+const viewer = {
+  permissions: ['core.account.read', 'core.members.read', 'core.sites.read', 'core.audit.read'],
+  features: [],
+};
 const siteStaff = { permissions: ['core.sites.read'], features: [] };
 
 void describe('the merchant route manifest', () => {
@@ -31,13 +46,31 @@ void describe('the merchant route manifest', () => {
   });
 
   void it('builds the sidebar from the open routes, dropping empty groups', () => {
+    const settings = [
+      { href: '/settings/account', label: 'settings_account' },
+      { href: '/settings/members', label: 'settings_members' },
+      { href: '/settings/sites', label: 'settings_sites' },
+      { href: '/settings/audit', label: 'settings_audit' },
+    ];
     assert.deepEqual(navigationFor(owner), [
       { group: 'main', items: [{ href: '/', label: 'home' }] },
-      { group: 'settings', items: [{ href: '/settings/account', label: 'settings_account' }] },
+      { group: 'settings', items: settings },
     ]);
+    // The viewer reads every settings screen (roles.yaml) and has the same sidebar.
+    assert.deepEqual(navigationFor(viewer), navigationFor(owner));
+    // Site staff read sites only: the one settings entry they may open.
     assert.deepEqual(navigationFor(siteStaff), [
       { group: 'main', items: [{ href: '/', label: 'home' }] },
+      { group: 'settings', items: [{ href: '/settings/sites', label: 'settings_sites' }] },
     ]);
+  });
+
+  void it('gates the new-site form on the manage permission, not the read one', () => {
+    assert.equal(routeOpen(routeOf('/settings/sites/new'), owner), true);
+    assert.equal(routeOpen(routeOf('/settings/sites/new'), viewer), false);
+    assert.equal(routeOpen(routeOf('/settings/sites'), viewer), true);
+    assert.equal(routeOpen(routeOf('/settings/members'), siteStaff), false);
+    assert.equal(routeOpen(routeOf('/settings/audit'), siteStaff), false);
   });
 
   void it('hides a module whose feature the account does not see, whatever the permissions', () => {

@@ -2,5 +2,8 @@
   "primary": "التنقل الرئيسي",
   "home": "الرئيسية",
   "settings": "الإعدادات",
-  "settings_account": "إعدادات الحساب"
+  "settings_account": "إعدادات الحساب",
+  "settings_members": "الأعضاء",
+  "settings_sites": "المواقع",
+  "settings_audit": "سجل التدقيق"
 }
