@@ -10,6 +10,7 @@ export type { IdempotentOptions } from '../idempotency/idempotency.js';
 export {
   Input,
   Operation,
+  operationOf,
   sentBodyFields,
   type ContractInput,
   type OperationSchemas,
