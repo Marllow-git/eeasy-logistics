@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiException } from '../../kernel/public/index.js';
 import type { CreateOrderBody } from './order-input.js';
-import { newOrderFields } from './order-input.js';
+import { maxCodAmount, newOrderFields, orderPatchFields } from './order-input.js';
 
 // The create rules beyond the schema (DEL-2 plan 2.3; D-4; §3.1, §3.2): COD by kind, item
 // directions by kind, the bounds in code points, phones normalised, `slot_id` refused. Bodies are
@@ -76,6 +76,24 @@ describe('newOrderFields', () => {
       });
       expect(newOrderFields(body({ kind, cod_amount: { amount: 0 } })).codAmount).toBe(0);
     }
+  });
+
+  it('bounds COD at 1,000,000 SAR on a create and an edit (round 1, ruling 5d)', () => {
+    expect(newOrderFields(body({ cod_amount: { amount: maxCodAmount } })).codAmount).toBe(
+      100_000_000,
+    );
+    const over = { cod_amount: { amount: maxCodAmount + 1 } };
+    const problem = {
+      code: 'validation_failed',
+      fields: [{ pointer: '/body/cod_amount/amount', code: 'invalid' }],
+    };
+    expect(refusal(() => newOrderFields(body(over)))).toMatchObject(problem);
+    expect(refusal(() => orderPatchFields(over, ['cod_amount'], 'delivery'))).toMatchObject(
+      problem,
+    );
+    expect(orderPatchFields({ cod_amount: { amount: 500 } }, ['cod_amount'], 'delivery')).toEqual({
+      codAmount: 500,
+    });
   });
 
   it('sets item directions by kind', () => {

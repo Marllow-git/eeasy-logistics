@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { ApiException } from '../errors/api-exception.js';
 import type { ListPageRequest, ListSorts } from './list-page.js';
@@ -101,6 +102,37 @@ describe('planListPage', () => {
     expect(
       refusal(() => planListPage(codec, request({ cursor: `${text}.${signature?.slice(1)}A` }))),
     ).toEqual(invalid);
+  });
+
+  it('keys the filter digest, so a cursor never lets its holder test guesses of the filters (DEL-2 round 1)', () => {
+    const binding = {
+      operation: 'listOrders',
+      principal: 'account:0193a5c4-7e1f-7c3a-9b2d-4f6e8a1c2d3e',
+      filters: { q: '4567' },
+      sort: '-created_at',
+    };
+    const digestOf = (cursor: string) =>
+      (
+        JSON.parse(Buffer.from(cursor.split('.')[0] ?? '', 'base64url').toString('utf8')) as {
+          f: string;
+        }
+      ).f;
+    const mine = digestOf(codec.encode({ value: '2026-11-02T10:00:00.000Z', id: id(1) }, binding));
+    const bare = createHash('sha256')
+      .update(
+        JSON.stringify({
+          filters: binding.filters,
+          operation: binding.operation,
+          principal: binding.principal,
+          sort: binding.sort,
+        }),
+      )
+      .digest('base64url');
+    expect(mine).not.toBe(bare);
+    const other = new CursorCodec(cursorHmacKey('another signing key, also long enough to derive'));
+    expect(
+      digestOf(other.encode({ value: '2026-11-02T10:00:00.000Z', id: id(1) }, binding)),
+    ).not.toBe(mine);
   });
 
   it('refuses an expired cursor and a time key that is not a time', () => {

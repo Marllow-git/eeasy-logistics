@@ -187,6 +187,18 @@ function notesOf(problems: FieldProblem[], at: string, value: string | undefined
   return notes;
 }
 
+/**
+ * The largest COD one order may carry: 100,000,000 halalas, 1,000,000 SAR (adversary round 1,
+ * ruling 5d). `Money.amount` has no upper bound in the contract; custody and liability sums would.
+ */
+export const maxCodAmount = 100_000_000;
+
+function codAmountOf(problems: FieldProblem[], cod: { readonly amount: number } | undefined) {
+  const amount = cod?.amount ?? 0;
+  if (amount > maxCodAmount) problems.push({ pointer: '/body/cod_amount/amount', code: 'invalid' });
+  return amount;
+}
+
 /** `422 cod_not_allowed` for COD on a kind that collects nothing (D-4). */
 function assertCodAllowed(kind: OrderKind, codAmount: number): void {
   if (codAmount > 0 && !codKinds.has(kind)) {
@@ -208,9 +220,9 @@ export function newOrderFields(body: CreateOrderBody): NewOrderFields {
   if (body.slot_id !== undefined) problems.push({ pointer: '/body/slot_id', code: 'invalid' });
   const notes = notesOf(problems, '/body/notes', body.notes);
   const sourceRef = optionalText(problems, '/body/source_ref', body.source_ref, sourceRefLimit);
+  const codAmount = codAmountOf(problems, body.cod_amount);
   if (problems.length > 0) throw new ApiException('validation_failed', { fields: problems });
 
-  const codAmount = body.cod_amount?.amount ?? 0;
   assertCodAllowed(kind, codAmount);
   return {
     kind,
@@ -272,10 +284,14 @@ export function orderPatchFields(
     patch.items = itemFieldsOf(problems, '/body/items', kind, body.items);
   }
   if (has('notes')) patch.notes = notesOf(problems, '/body/notes', body.notes);
+  const codAmount =
+    has('cod_amount') && body.cod_amount !== undefined
+      ? codAmountOf(problems, body.cod_amount)
+      : undefined;
   if (problems.length > 0) throw new ApiException('validation_failed', { fields: problems });
-  if (has('cod_amount') && body.cod_amount !== undefined) {
-    assertCodAllowed(kind, body.cod_amount.amount);
-    patch.codAmount = body.cod_amount.amount;
+  if (codAmount !== undefined) {
+    assertCodAllowed(kind, codAmount);
+    patch.codAmount = codAmount;
   }
   return patch;
 }

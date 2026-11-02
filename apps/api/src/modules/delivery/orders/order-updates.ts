@@ -5,6 +5,7 @@ import type {
   GeocodeLocale,
   GeocoderService,
   OrderAccounts,
+  OutboxWriter,
   PinSource,
 } from '../../kernel/public/index.js';
 import { ApiException, assertVersion } from '../../kernel/public/index.js';
@@ -22,6 +23,7 @@ import type { OrderRow, OrderUpdate } from './orders.repository.js';
 import {
   OrderEventsRepository,
   OrderItemsRepository,
+  orderPoint,
   OrdersRepository,
 } from './orders.repository.js';
 
@@ -52,6 +54,7 @@ export interface UpdateDependencies {
   readonly coverage: Pick<CoverageQuery, 'coverage'>;
   readonly accounts: Pick<OrderAccounts, 'current'>;
   readonly audit: AuditSink;
+  readonly outbox: Pick<OutboxWriter, 'enqueue'>;
   readonly transitions: Pick<OrderTransitions, 'apply'>;
 }
 
@@ -149,7 +152,7 @@ export class OrderUpdates {
         values.pinSource = located?.pinSource ?? null;
         values.geocodeConfidence = located?.confidence ?? null;
       }
-      const at = point === undefined ? pointOf(current) : point;
+      const at = point === undefined ? orderPoint(current) : point;
       const zoneId =
         at === null
           ? null
@@ -224,6 +227,20 @@ export class OrderUpdates {
       ip: request.facts.ip,
       userAgent: request.facts.userAgent,
     });
+    // Once accepted, dispatch and DEL-6's board work from the order: a new amount or address is
+    // announced (ruling 5d). The keys only; recipient data stays on the row (data §10).
+    if (
+      current.status !== 'pending' &&
+      (patch.codAmount !== undefined || patch.address !== undefined)
+    ) {
+      await this.deps.outbox.enqueue(uow, {
+        type: 'delivery.order.updated',
+        version: 1,
+        aggregate: { type: 'order', id: order.id, version: order.version },
+        kind: 'internal_event',
+        payload: { order_id: order.id, number: order.number, changed: parts },
+      });
+    }
     if (accept) {
       order = await this.deps.transitions.apply(uow, order.id, {
         to: 'accepted',
@@ -267,9 +284,4 @@ export async function relocationFor(
     deadlineMs: intakeGeocodeDeadlineMs,
   });
   return located === overBudget ? { kind: 'kept' } : { kind: 'located', located };
-}
-
-function pointOf(order: OrderRow): { lat: number; lng: number } | null {
-  const point = order.addressPoint;
-  return point === null ? null : { lat: point.y, lng: point.x };
 }

@@ -1,4 +1,4 @@
-import { createHash, createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
+import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { isUuid } from '@eeasy-logistics/db';
 import type { SQL } from 'drizzle-orm';
 import { asc, desc, sql } from 'drizzle-orm';
@@ -13,9 +13,10 @@ import { canonicalJson } from '../idempotency/request-hash.js';
 // exists. Keyset on (sort value, id): `id` is the tie-breaker, so the order is total and stable
 // under inserts between pages. No counts.
 //
-// A cursor is base64url of `{ v: 1, k: [sort value, id], f: sha256(binding), exp }`, then `.` and
+// A cursor is base64url of `{ v: 1, k: [sort value, id], f: HMAC(binding), exp }`, then `.` and
 // an HMAC-SHA256 of that text under a key derived from the signing key (ADR-0029: "signed by the
-// API"). Valid 24 hours and only with the same operation, reader, filters and sort; anything else
+// API"). The binding's digest is keyed too (DEL-2 adversary round 1, ruling 5c): a bare hash of
+// the filters let anyone holding a cursor test guesses of them offline (a `q` phone tail). Valid 24 hours and only with the same operation, reader, filters and sort; anything else
 // is `400 validation_failed` on `/query/cursor`.
 
 export const cursorLifetimeSeconds = 24 * 60 * 60;
@@ -50,20 +51,17 @@ export interface OccurredAtKey {
   readonly id: string;
 }
 
-function bindingHash(binding: CursorBinding): string {
+/** The canonical text a cursor is bound to; the codec keys its digest. */
+function bindingText(binding: CursorBinding): string {
   const filters = Object.fromEntries(
     Object.entries(binding.filters).filter(([, value]) => value !== undefined),
   );
-  return createHash('sha256')
-    .update(
-      canonicalJson({
-        operation: binding.operation,
-        principal: binding.principal,
-        filters,
-        sort: binding.sort,
-      }),
-    )
-    .digest('base64url');
+  return canonicalJson({
+    operation: binding.operation,
+    principal: binding.principal,
+    filters,
+    sort: binding.sort,
+  });
 }
 
 const invalidCursor = () =>
@@ -111,12 +109,17 @@ export class CursorCodec {
     return createHmac('sha256', this.key).update(text).digest();
   }
 
+  /** The binding's digest under the cursor key, apart from the signature by its prefix. */
+  private bindingHash(binding: CursorBinding): string {
+    return this.sign(`binding:${bindingText(binding)}`).toString('base64url');
+  }
+
   encode(last: PageKey | OccurredAtKey, binding: CursorBinding): string {
     const value = 'value' in last ? last.value : last.occurredAt;
     const payload: CursorPayload = {
       v: 1,
       k: [value, last.id],
-      f: bindingHash(binding),
+      f: this.bindingHash(binding),
       exp: this.nowSeconds() + cursorLifetimeSeconds,
     };
     const text = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -140,7 +143,7 @@ export class CursorCodec {
       throw invalidCursor();
     }
     if (!isPayload(payload)) throw invalidCursor();
-    if (payload.f !== bindingHash(binding)) throw invalidCursor();
+    if (payload.f !== this.bindingHash(binding)) throw invalidCursor();
     if (payload.exp <= this.nowSeconds()) throw invalidCursor();
     return { value: payload.k[0], id: payload.k[1] };
   }

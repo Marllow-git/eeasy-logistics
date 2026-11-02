@@ -354,7 +354,7 @@ Plan: policies are created with every table from wave 0 (the schema test require
 ### 5.1 `core_idempotency_keys`
 
 - Reserve: insert `(account_id, principal_id, key, request_hash, state = 'in_progress')` in the business transaction, before the write (K-8). A unique violation means a replay: same hash and `completed` returns the stored response; same hash and `in_progress` returns `409` with `Retry-After` (the original is still running); a different hash returns `422 idempotency_key_reused`.
-- Complete: the same transaction stores `response_status` and `response_body` and sets `expires_at = created_at + 24 h`.
+- Complete: the same transaction stores `response_status` and `response_body` and sets `expires_at = created_at + 24 h`. The body is the answer as sent, so for 24 hours the row of an order write (`createOrder`, `updateOrder`, the transitions) holds that `Order` with its recipient name, phone and address (DEL-2 adversary round 1: accepted; a chore strips recipient data from stored bodies and answers replays from the row).
 - Purge: an hourly worker job deletes rows with `expires_at < now()` in batches of 10,000 by the worker-scan index (K-9). Driver replays older than 24 hours are answered from `del_order_events` through the D-15 unique key.
 
 ### 5.2 `core_outbox`
@@ -444,6 +444,7 @@ Every column below carries `COMMENT ON COLUMN … IS 'pii:<actor>'`; the schema 
 | Recipient | `del_orders.recipient_name`, `recipient_phone`, `recipient_alt_phone`, `address_text`, `address_district`, `national_address_short_code`, `address_point`; the recipient and address snapshot on `wms_fulfilment_orders`; `del_order_events.point`, `del_attempts.point`, `del_attempts.note` | life of the account (the merchant's records); open question 1 |
 | Recipient | proof files behind `del_proofs.storage_key` (photos, signatures, ID checks) | two years after the order's `terminal_at` by default, per account policy (`platform.md` §6); the job deletes the object, sets `purged_at` and writes an audit row |
 | Recipient | `core_inbound_webhooks.payload` (channel orders carry name, phone, address); `core_outbox.payload` of `message` rows | inbound 30 days; outbox per 5.2 (7 days done, 30 days dead) |
+| Recipient | `core_idempotency_keys.response_body` of the order writes (the `Order` answered) | 24 hours (5.1); the strip-list chore removes it |
 | Recipient | `del_tracking_tokens` rows | `track` until the order closes plus 30 days; `reschedule` and `address_pin` 48 hours (document 4 §3.5); deleted daily after expiry |
 | Driver | `core_users.name`, `phone`; `del_drivers.name`, `cash_pin_hash`; `del_driver_devices.device_id`, `push_token` | life of the membership; the push token is cleared on archive, on a device revocation and when the push service reports it invalid (DEL-4, A-26) |
 | Driver | `del_driver_locations`, `del_driver_location_heads` | ring overwritten within one hour; deleted when the driver is archived |

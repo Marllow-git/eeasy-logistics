@@ -17,6 +17,7 @@ import {
 } from 'drizzle-orm';
 import type { ListPagePlan, OrderKind, OrderStatus } from '../../kernel/public/index.js';
 import {
+  ApiException,
   delOrderEvents,
   delOrderItems,
   delOrders,
@@ -82,6 +83,29 @@ export type NumberOf = (q: string) => number | undefined;
 export interface LatLng {
   readonly lat: number;
   readonly lng: number;
+}
+
+/** An order's point as latitude and longitude (`addressPoint` reads longitude first). */
+export function orderPoint(order: Pick<OrderRow, 'addressPoint'>): LatLng | null {
+  const point = order.addressPoint;
+  return point === null ? null : { lat: point.y, lng: point.x };
+}
+
+/** The unique index of `del_order_events` on `(account_id, idempotency_key)` (D-15). */
+const eventKeyIndex = 'del_order_events_account_idempotency_key';
+
+/** A unique violation (23505) of `index`, as postgres.js raises it, possibly wrapped by Drizzle. */
+function isUniqueViolation(error: unknown, index: string): boolean {
+  for (
+    let cause = error, depth = 0;
+    cause !== null && typeof cause === 'object' && depth < 3;
+    depth += 1
+  ) {
+    const failure = cause as { code?: unknown; constraint_name?: unknown; cause?: unknown };
+    if (failure.code === '23505') return failure.constraint_name === index;
+    cause = failure.cause;
+  }
+  return false;
 }
 
 function pointValue(point: LatLng | null): SQL {
@@ -236,13 +260,21 @@ export class OrderEventsRepository extends ScopedRepository<typeof delOrderEvent
    * transaction writes (an edit and the arrow it causes) keep their order on the timeline.
    */
   async append(values: EventInsert, point: LatLng | null = null): Promise<OrderEventRow> {
-    const [row] = await this.insertMany([
-      {
-        ...values,
-        serverTs: sql`clock_timestamp()` as unknown as Date,
-        point: pointValue(point) as unknown as OrderEventRow['point'],
-      },
-    ]);
+    let row: OrderEventRow | undefined;
+    try {
+      [row] = await this.insertMany([
+        {
+          ...values,
+          serverTs: sql`clock_timestamp()` as unknown as Date,
+          point: pointValue(point) as unknown as OrderEventRow['point'],
+        },
+      ]);
+    } catch (error) {
+      // The key is unique per account for ever (D-15), across doors and principals: another
+      // member's request or a driver event (DEL-7) already holds it. The transaction rolls back.
+      if (isUniqueViolation(error, eventKeyIndex)) throw new ApiException('idempotency_key_reused');
+      throw error;
+    }
     if (row === undefined) throw new Error('The event insert returned no row');
     return row;
   }
