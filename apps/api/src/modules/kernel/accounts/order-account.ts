@@ -39,9 +39,12 @@ export function orderAccountOf(settings: unknown, limits: unknown): OrderAccount
       typeof maxAttempts === 'number' && Number.isInteger(maxAttempts) && maxAttempts >= 1
         ? Math.min(maxAttempts, 32_767)
         : 3,
+    // A code switched off (`active: false`) stays on old events but is not offered again (DEL-2 E).
     reasonCodes: reasonCodes
       .map((entry: unknown) =>
-        entry !== null && typeof entry === 'object'
+        entry !== null &&
+        typeof entry === 'object' &&
+        (entry as Record<string, unknown>).active !== false
           ? (entry as Record<string, unknown>).code
           : undefined,
       )

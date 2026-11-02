@@ -78,6 +78,13 @@ export const prePickupStatuses: ReadonlySet<OrderStatus> = new Set([
   'assigned',
 ]);
 
+/** A driver holds the parcel: a dispatcher's cancel becomes `failed` (plan 2.9, Q-6). */
+export const afterPickupStatuses: ReadonlySet<OrderStatus> = new Set([
+  'picked_up',
+  'out_for_delivery',
+  'attempted',
+]);
+
 /** The machine as one value, for Delivery's public surface (plan 2.10). */
 export const OrderMachine = Object.freeze({
   arrows: orderArrows,

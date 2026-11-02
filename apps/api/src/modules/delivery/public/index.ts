@@ -17,6 +17,7 @@ export {
 // events check their arrows against, and the intake WMS-7's `createFromPackage` and DEL-3's import
 // call with their own `source`.
 export {
+  afterPickupStatuses,
   isTerminal,
   nextStatuses,
   OrderMachine,
@@ -34,3 +35,15 @@ export {
   type IntakeRequest,
 } from '../orders/order-intake.js';
 export { newOrderFields, type NewOrderFields } from '../orders/order-input.js';
+// DEL-2 leg 2 (plan 2.10): the one write path of an order's status, which DEL-6's offer acceptance
+// and assignment and DEL-7's driver events call with their actor after their own checks, and the
+// read they make those checks on.
+export {
+  OrderReader,
+  OrderTransitions,
+  statusEventType,
+  type TransitionActor,
+  type TransitionCommand,
+  type TransitionDependencies,
+} from '../orders/order-transitions.js';
+export type { OrderRow } from '../orders/orders.repository.js';
