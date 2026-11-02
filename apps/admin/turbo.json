@@ -10,6 +10,9 @@
     },
     "test": {
       "dependsOn": ["^build", "^typecheck"]
+    },
+    "build": {
+      "env": ["API_INTERNAL_URL"]
     }
   }
 }

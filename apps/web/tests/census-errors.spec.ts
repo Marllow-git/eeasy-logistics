@@ -13,6 +13,7 @@ import {
   settle,
   test,
 } from './census/helpers';
+import { projectOf, signIn } from './census/session';
 
 // Census of the error pages and the Sentry tunnel (PLAT-14 plan 2.9, web §10.4): each group's
 // error page renders inside its frame and the root one full-page, in the project's locale, with
@@ -35,6 +36,10 @@ for (const fault of faults) {
     page,
     locale,
   }) => {
+    // WEB-2: the merchant area needs a session (the layout reads getMe).
+    if (fault.shell === 'navigation') {
+      await signIn(page, 'staff', projectOf(test.info().project.name));
+    }
     const response = await page.goto(fault.path);
     expect(response?.status(), `HTTP status of ${fault.path}`).toBe(500);
     await settle(page);
@@ -147,5 +152,43 @@ test.describe('the /monitoring tunnel', () => {
     expect(forwarded.status()).toBe(502);
     const get = await request.get('/monitoring');
     expect(get.status()).toBe(405);
+  });
+});
+
+test.describe('the /monitoring/csp sink', () => {
+  // Adversary M-2 on WEB-2: the route takes only the report media types (a cross-site form post is
+  // text/plain or urlencoded) and answers 415 without reading or logging anything else. An address of
+  // its own (TEST-NET-3) keeps the census pages' own reports out of this check's budget.
+  test('takes only report media types', async ({ request }) => {
+    test.skip(test.info().project.name !== 'ar', 'the endpoint is locale-free: one project');
+    const address = { 'x-forwarded-for': '203.0.113.7' };
+    const report = {
+      'csp-report': {
+        'violated-directive': 'img-src',
+        'blocked-uri': 'https://census.invalid/x.png',
+      },
+    };
+    for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'application/json']) {
+      const refused = await request.post('/monitoring/csp', {
+        headers: { ...address, 'content-type': type },
+        data: JSON.stringify(report),
+      });
+      expect(refused.status(), type).toBe(415);
+    }
+    const legacy = await request.post('/monitoring/csp', {
+      headers: { ...address, 'content-type': 'application/csp-report' },
+      data: JSON.stringify(report),
+    });
+    expect(legacy.status()).toBe(204);
+    const reporting = await request.post('/monitoring/csp', {
+      headers: { ...address, 'content-type': 'application/reports+json' },
+      data: JSON.stringify([
+        {
+          type: 'csp-violation',
+          body: { effectiveDirective: 'img-src', blockedURL: 'https://census.invalid/y.png' },
+        },
+      ]),
+    });
+    expect(reporting.status()).toBe(204);
   });
 });

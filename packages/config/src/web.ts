@@ -17,6 +17,7 @@ export function publicConfig(): WebPublicConfig {
     NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
     NEXT_PUBLIC_RELEASE: process.env.NEXT_PUBLIC_RELEASE,
     NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+    NEXT_PUBLIC_STORAGE_ORIGIN: process.env.NEXT_PUBLIC_STORAGE_ORIGIN,
   });
   return cached;
 }
@@ -27,4 +28,12 @@ export function publicConfig(): WebPublicConfig {
  */
 export function nextRuntime(): string | undefined {
   return process.env.NEXT_RUNTIME;
+}
+
+/**
+ * Whether this is the `next dev` server, whose React build evaluates code: the proxy then allows
+ * 'unsafe-eval' in the CSP (WEB-2 plan 2.6, Next.js CSP guide). Next inlines `NODE_ENV` at build.
+ */
+export function isDevelopmentServer(): boolean {
+  return process.env.NODE_ENV === 'development';
 }

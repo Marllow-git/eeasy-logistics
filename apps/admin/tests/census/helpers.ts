@@ -85,12 +85,35 @@ export async function expectAxeClean(page: Page) {
 }
 
 /**
- * The security headers this order owns (plan 2.9): `X-Content-Type-Options: nosniff`. CSP and the
- * frame headers per group join with WEB-2 (web §3.6).
+ * The security headers of every page (web §3.6; WEB-1 plan 2.9, WEB-2 plan 2.6), apps/web's checks:
+ * nosniff, the CSP with a per-request nonce and 'strict-dynamic' and no third-party source, the
+ * frame, referrer and permissions policies, the report endpoint. The console has no recipient
+ * pages, so the referrer policy is the same on every group.
  */
 export function expectSecurityHeaders(response: Response | null) {
   expect(response, 'navigation response').not.toBeNull();
-  expect(response!.headers()['x-content-type-options']).toBe('nosniff');
+  const headers = response!.headers();
+  expect(headers['x-content-type-options']).toBe('nosniff');
+  const policy = headers['content-security-policy'] ?? '';
+  expect(policy, 'CSP').toMatch(
+    /script-src 'self' 'nonce-[A-Za-z0-9+/=]{16,}' 'strict-dynamic'(;|$)/,
+  );
+  for (const directive of [
+    "default-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "form-action 'self'",
+    "connect-src 'self'",
+    'report-to csp',
+  ]) {
+    expect(policy, 'CSP').toContain(directive);
+  }
+  expect(policy, 'no third-party origin in the CSP').not.toMatch(/https?:\/\//);
+  expect(headers['x-frame-options']).toBe('DENY');
+  expect(headers['permissions-policy']).toBe('camera=(), microphone=(), geolocation=(self)');
+  expect(headers['reporting-endpoints']).toBe('csp="/monitoring/csp"');
+  expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
 }
 
 const sessionCookie = /\bel_(?:staff|platform)_(?:at|rt)\b|\bel_(?:staff|platform)_[a-z]+=/;

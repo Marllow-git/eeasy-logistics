@@ -1,4 +1,7 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Config } from '@eeasy-logistics/config';
 import { uuidv7 } from '@eeasy-logistics/db';
 import { databaseOf, dropDatabase, recreateDatabase } from '@eeasy-logistics/db/admin';
@@ -186,5 +189,130 @@ describe('audit partition maintenance in the migration job', () => {
         runId: uuidv7(),
       }),
     ).rejects.toThrow('Audit partition maintenance runs only as the plain elx_owner login');
+  });
+});
+
+// Timestamp-named migrations and parallel orders (CHORE-3 plan 2.2, 2.5). The planted files go in a
+// copy of the folder and create only throwaway schemas; the database is put back afterwards (the
+// planted rows deleted, the version rewritten), so this file can run on the shared ci database.
+describe('timestamp-named and parallel-order migrations (CHORE-3)', () => {
+  interface Entry {
+    idx: number;
+    version: string;
+    when: number;
+    tag: string;
+    breakpoints: boolean;
+  }
+  const suffix = randomBytes(4).toString('hex');
+  const folder = mkdtempSync(join(tmpdir(), 'elx-chore3-'));
+  const journalPath = join(folder, 'meta', '_journal.json');
+  let mainEntries: Entry[] = [];
+  const planted: { entry: Entry; sql: string; schema: string }[] = [];
+
+  /** drizzle-kit's `timestamp` prefix (`YYYYMMDDHHmmss`, UTC) for a journal `when`. */
+  const stamp = (when: number) => new Date(when).toISOString().replace(/\D/g, '').slice(0, 14);
+  const plant = (when: number, slug: string): Entry => {
+    const schema = `chore3_${slug}_${suffix}`;
+    const entry = { idx: 0, version: '7', when, tag: `${stamp(when)}_${slug}`, breakpoints: true };
+    const sql =
+      `-- reviewed (CHORE-3 test)\nCREATE SCHEMA "${schema}";\n--> statement-breakpoint\n` +
+      `CREATE TABLE "${schema}"."probe" (id integer PRIMARY KEY);\n`;
+    writeFileSync(join(folder, `${entry.tag}.sql`), sql);
+    planted.push({ entry, sql, schema });
+    return entry;
+  };
+  const writeJournal = (entries: Entry[]) => {
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as { entries: Entry[] };
+    journal.entries = entries.map((entry, idx) => ({ ...entry, idx }));
+    writeFileSync(journalPath, JSON.stringify(journal, null, 2));
+  };
+  const run = (log?: (line: string) => void) =>
+    runMigrations({ url: config.db.urls.owner, folder, rls: config.db.rls, log });
+  const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+  const recorded = async (when: number) => {
+    const owner = connectAs('owner', config);
+    try {
+      return await owner<{ hash: string }[]>`
+        SELECT hash FROM drizzle.__drizzle_migrations WHERE created_at = ${when}`;
+    } finally {
+      await owner.end();
+    }
+  };
+
+  beforeAll(() => {
+    cpSync(migrationsFolder, folder, { recursive: true });
+    mainEntries = (JSON.parse(readFileSync(journalPath, 'utf8')) as { entries: Entry[] }).entries;
+  });
+
+  afterAll(async () => {
+    const owner = connectAs('owner', config);
+    try {
+      for (const { entry, schema } of planted) {
+        await owner`DELETE FROM drizzle.__drizzle_migrations WHERE created_at = ${entry.when}`;
+        await owner`DROP SCHEMA IF EXISTS ${owner(schema)} CASCADE`;
+      }
+    } finally {
+      await owner.end();
+    }
+    await runMigrations({
+      url: config.db.urls.owner,
+      folder: migrationsFolder,
+      rls: config.db.rls,
+    });
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("keeps Drizzle's bookkeeping: one row per file, its SHA-256 and the journal when", async () => {
+    const owner = connectAs('owner', config);
+    try {
+      const rows = await owner<{ hash: string; when: string }[]>`
+        SELECT hash, created_at::text AS when FROM drizzle.__drizzle_migrations ORDER BY id`;
+      const expected = mainEntries.map((entry) => ({
+        hash: sha256(readFileSync(join(migrationsFolder, `${entry.tag}.sql`)).toString()),
+        when: String(entry.when),
+      }));
+      expect(rows).toEqual(expected);
+    } finally {
+      await owner.end();
+    }
+  });
+
+  it('applies a timestamp-named migration after the index-named ones once, then nothing', async () => {
+    const last = mainEntries.at(-1)?.when ?? 0;
+    const late = plant(last + 120_000, 'late');
+    writeJournal([...mainEntries, late]);
+    expect(late.tag).toMatch(/^\d{14}_late$/);
+
+    expect(await run()).toMatchObject({ applied: 1, version: late.tag });
+    expect(await recorded(late.when)).toEqual([{ hash: sha256(planted[0]?.sql ?? '') }]);
+    expect(await run()).toMatchObject({ applied: 0, version: late.tag });
+  });
+
+  it('applies an unapplied migration older than the last applied one in journal order, once', async () => {
+    const late = planted[0]?.entry;
+    if (late === undefined) throw new Error('The previous case plants the late migration');
+    // A parallel order generated it before `late` but merged after it: the journal holds both,
+    // ordered by `when` (plan 2.4), and the database has already applied `late`.
+    const early = plant(late.when - 60_000, 'early');
+    writeJournal([...mainEntries, early, late]);
+
+    const logs: string[] = [];
+    expect(await run((line) => logs.push(line))).toMatchObject({ applied: 1, version: late.tag });
+    expect(logs).toContain(
+      `migration ${early.tag} is older than the last applied one; applying in journal order`,
+    );
+    expect(await recorded(early.when)).toEqual([{ hash: sha256(planted[1]?.sql ?? '') }]);
+    const owner = connectAs('owner', config);
+    try {
+      const [table] = await owner<{ name: string | null }[]>`
+        SELECT to_regclass(${`"${planted[1]?.schema ?? ''}".probe`})::text AS name`;
+      expect(table?.name).toBe(`${planted[1]?.schema ?? ''}.probe`);
+    } finally {
+      await owner.end();
+    }
+
+    const again: string[] = [];
+    expect(await run((line) => again.push(line))).toMatchObject({ applied: 0 });
+    expect(again.filter((line) => line.includes('older than the last applied'))).toEqual([]);
   });
 });

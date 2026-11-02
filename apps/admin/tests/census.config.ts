@@ -6,17 +6,25 @@ import { defineConfig, devices } from '@playwright/test';
  * and screenshot baselines. Projects: `ar` at 1440 px and 390 px (Arabic is the primary layout,
  * reviewed first), `en` at 1440 px.
  *
- * The server must already listen on 127.0.0.1:3002, the admin port of `.env.example`
- * (`PUBLIC_ADMIN_URL`): locally `pnpm --filter admin build && pnpm --filter admin start`, in CI the
- * standalone server. The address is fixed rather than read from the environment, which only
- * packages/config may read (AGENTS.md).
+ * The server must already listen on port 3002 and be reached as `http://localhost:3002`, the
+ * `PUBLIC_ADMIN_URL` of `.env.example`: the API accepts a platform write only with that exact
+ * Origin (ADR-0032, ADR-0038), and the browser keeps the API's `Secure` session cookies on
+ * localhost (WEB-2). Locally `pnpm --filter admin build && pnpm --filter admin start`, in CI the
+ * standalone server; with the API, its worker, Mailpit and the WhatsApp stub of the stack, and
+ * `seed:census` run first (tests/census/session.ts). The address is fixed rather than read from the
+ * environment, which only packages/config may read (AGENTS.md).
  *
  * A census spec joins `testMatch` in the PR that adds it (handbook 03), so an unlisted spec reports
  * "no tests found" instead of passing silently.
  */
 export default defineConfig({
   testDir: '.',
-  testMatch: ['census-shell.spec.ts', 'census-errors.spec.ts', 'census-analytics.spec.ts'],
+  testMatch: [
+    'census-shell.spec.ts',
+    'census-errors.spec.ts',
+    'census-analytics.spec.ts',
+    'census-auth.spec.ts',
+  ],
   outputDir: '../test-results',
   forbidOnly: true,
   retries: 0,
@@ -29,7 +37,7 @@ export default defineConfig({
   },
   use: {
     ...devices['Desktop Chrome'],
-    baseURL: 'http://127.0.0.1:3002',
+    baseURL: 'http://localhost:3002',
     trace: 'retain-on-failure',
   },
   projects: [
