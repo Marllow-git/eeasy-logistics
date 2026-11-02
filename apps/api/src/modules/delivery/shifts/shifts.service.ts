@@ -305,7 +305,8 @@ export class ShiftsService {
     const uow = getUnitOfWork();
     const now = this.now();
     const shifts = new ShiftsRepository(uow);
-    const candidates = await shifts.activeNotAlertedSince(new Date(now.getTime() - staleRepeatMs));
+    const alertedBefore = new Date(now.getTime() - staleRepeatMs);
+    const candidates = await shifts.activeNotAlertedSince(alertedBefore);
     if (candidates.length === 0) return 0;
     const heads = new Map(
       (await new LocationHeadsRepository(uow).latestOf(candidates.map((s) => s.driverId))).map(
@@ -316,7 +317,7 @@ export class ShiftsService {
     for (const shift of candidates) {
       const lastPointAt = heads.get(shift.driverId) ?? null;
       if (shift.startedAt === null || !isStale(shift.startedAt, lastPointAt, now)) continue;
-      const row = await shifts.markStaleAlerted(shift.id, now);
+      const row = await shifts.markStaleAlerted(shift.id, now, alertedBefore);
       if (row === undefined) continue;
       const devices = (await new DriverDevicesRepository(uow).ofDriver(row.driverId)).filter(
         (device) => device.revokedAt === null && device.pushToken !== null,

@@ -12,6 +12,7 @@ import type { DomainEvent } from '../../src/modules/kernel/outbox/domain-event.j
 import { subscribedTypes } from '../../src/modules/kernel/outbox/domain-event-consumers.js';
 import { OutboxWriter } from '../../src/modules/kernel/outbox/outbox-writer.js';
 import { latestKey } from '../../src/modules/delivery/locations/location-fanout.js';
+import { ShiftsRepository } from '../../src/modules/delivery/shifts/shifts.repository.js';
 import { pushPayload } from '../../src/modules/kernel/push/push.handler.js';
 import { runShiftSweeper } from '../../src/worker/system/shift-sweeper.js';
 import { runTelemetryRetention } from '../../src/worker/system/telemetry-retention.js';
@@ -448,6 +449,23 @@ describe('the DEL-5 worker jobs (item D)', () => {
       // Later sweeps find nothing live for the driver: no stale alert, no push row.
       await sweep([overdue.accountId], new Date(now.getTime() + 20 * minute));
       expect(await outboxOf(overdueShift)).toHaveLength(1);
+    });
+
+    it('marks a stale alert only when no other sweep alerted the shift meanwhile (L-a)', async () => {
+      const now = new Date();
+      const driver = await plantDriver(owner);
+      const shiftId = await insertShift(driver, 'active');
+      // Another sweep alerted it a minute ago, after this sweep read its candidates.
+      await owner`
+        UPDATE del_driver_shifts SET stale_alerted_at = ${new Date(now.getTime() - minute)}
+        WHERE id = ${shiftId}`;
+      const mark = (alertedBefore: Date) =>
+        withUnitOfWork(app.db, systemContext(driver.accountId), (uow) =>
+          new ShiftsRepository(uow).markStaleAlerted(shiftId, now, alertedBefore),
+        );
+      expect(await mark(new Date(now.getTime() - 15 * minute))).toBeUndefined();
+      expect((await shiftOf(shiftId))?.version).toBe(1);
+      expect((await mark(now))?.staleAlertedAt?.getTime()).toBe(now.getTime());
     });
 
     it('raises no alert and writes no push row for a driver without a live shift (F1)', async () => {

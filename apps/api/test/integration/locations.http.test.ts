@@ -31,6 +31,8 @@ const config = integrationConfig({
   CREDENTIALS_KEYS: `locations:${randomBytes(32).toString('base64')}`,
   CREDENTIALS_ACTIVE_KEY_ID: 'locations',
   TRUST_PROXY_HOPS: '1',
+  // An app below this minimum still posts its queued points (`@ReplayRoute()`, adversary L-c).
+  DRIVER_MIN_APP_VERSION_IOS: '1.4.0',
 });
 const redisUrl = config.redis.url?.reveal() ?? '';
 
@@ -292,6 +294,28 @@ describe('the location doors over HTTP (DEL-5 item C)', () => {
       await redis.del(key);
       fanout.onApplicationShutdown();
     }
+  });
+
+  it('takes points from an app below the minimum version, where other doors answer 426 (L-c)', async () => {
+    const { driver, session } = await onShift();
+    const outdated = <T extends { set(name: string, value: string): T }>(call: T): T =>
+      call.set('X-App-Version', '1.3.9').set('X-App-Platform', 'ios');
+    await outdated(post(staff, session, pointsEnding(1, 5))).expect(202);
+    expect((await headOf(driver.driverId))?.last_seq).toBe(1);
+    await outdated(http().get('/v1/driver/me').set('Authorization', bearer(session))).expect(426);
+  });
+
+  it('refuses a suspended driver and a revoked device with 401 (L-e)', async () => {
+    const { driver, session } = await onShift();
+    await owner`UPDATE del_drivers SET status = 'suspended' WHERE id = ${driver.driverId}`;
+    const suspended = await post(staff, session, pointsEnding(1, 5)).expect(401);
+    expect(errorOf(suspended.body).code).toBe('token_invalid');
+    await owner`UPDATE del_drivers SET status = 'active' WHERE id = ${driver.driverId}`;
+    await owner`
+      UPDATE del_driver_devices SET revoked_at = now() WHERE id = ${session.device?.id ?? ''}`;
+    const revoked = await post(staff, session, pointsEnding(1, 4)).expect(401);
+    expect(errorOf(revoked.body).code).toBe('device_revoked');
+    expect(await headOf(driver.driverId)).toBeUndefined();
   });
 
   it('accepts a batch with 202 when Redis is down; the head keeps the point', async () => {
