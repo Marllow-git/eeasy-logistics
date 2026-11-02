@@ -141,6 +141,13 @@
       "when": 1793624362786,
       "tag": "20261102125922_del_zones",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793628300483,
+      "tag": "20261102140500_del_shifts_locations",
+      "breakpoints": true
     }
   ]
 }

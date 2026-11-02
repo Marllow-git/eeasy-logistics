@@ -96,6 +96,11 @@ export const globalUniqueIndexes: Readonly<Record<string, readonly (readonly str
   core_invitations: [['token_hash']],
   // Expo's ticket id, minted by the push service and unique across projects (INT-4 plan 2.4).
   core_push_tickets: [['ticket_id']],
+  // A driver id belongs to one account (DEL-5 plan 2.1; data §2.2): one live shift per driver, the
+  // ring's slots and the ring head are keyed by it alone.
+  del_driver_shifts: [['driver_id']],
+  del_driver_locations: [['driver_id', 'slot']],
+  del_driver_location_heads: [['driver_id']],
 };
 
 /**
@@ -125,6 +130,10 @@ export const piiColumns: Readonly<Record<string, readonly string[]>> = {
   // DEL-4 plan 2.1 (data §10, driver row): the PIN hash, the app's device id, the push token.
   del_drivers: ['name', 'cash_pin_hash'],
   del_driver_devices: ['device_id', 'push_token'],
+  // DEL-5 plan 2.1 (data §10, driver row): the positions of the ring, the head and the trail.
+  del_driver_locations: ['point'],
+  del_driver_location_heads: ['last_point'],
+  del_driver_trails: ['path'],
 };
 
 /**
