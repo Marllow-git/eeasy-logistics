@@ -111,7 +111,7 @@ export const metricCatalogue = {
   geocoder_calls_total: {
     kind: 'counter',
     description:
-      'Geocoder calls by method, source and outcome: hit, miss, not_found, rate_limited, unauthorised, permanent, transient, breaker_open, unavailable (INT-2)',
+      'Geocoder calls by method, source and outcome: hit, miss, not_found, rate_limited, unauthorised, permanent, transient, breaker_open, unavailable (INT-2); over_budget, a lookup skipped by the account hourly budget (DEL-2)',
     labels: ['method', 'source', 'outcome'],
   },
   channel_publication_drift: {

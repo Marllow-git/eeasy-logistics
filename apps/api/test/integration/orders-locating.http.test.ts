@@ -5,8 +5,14 @@ import type postgres from 'postgres';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { notFound } from '../../src/modules/kernel/geocoding/geocoder.js';
 import { StubGeocoder } from '../../src/modules/kernel/geocoding/stub-geocoder.js';
+import { defaultBudgets, namedBudgets } from '../../src/modules/kernel/rate-limit/budgets.js';
+import {
+  RATE_LIMITER,
+  RateLimiter,
+  redisRateLimitStore,
+} from '../../src/modules/kernel/rate-limit/rate-limiter.js';
 import { testSigningKey } from '../support/access-tokens.js';
-import { createOrder, nextKey, orderBody, orderWorld } from './order-fixtures.js';
+import { createOrder, nextKey, olaya, orderBody, orderWorld } from './order-fixtures.js';
 import type { SignedInMember, StaffApp } from './staff-sessions.js';
 import { startStaffApp } from './staff-sessions.js';
 import { connectAs, integrationConfig } from './support.js';
@@ -116,5 +122,93 @@ describe('the order doors locate before the transaction (DEL-2 adversary round 1
     });
     expect(spy).toHaveBeenCalledTimes(1);
     expect(inContext).toEqual([false]);
+  });
+});
+
+// Lead ruling 2: every lookup of the order doors is charged to the account's hourly budget
+// (`geocode_account`, 300 an hour; 2 here) before a provider is asked. Past it the create lands
+// `needs_location` and an address edit keeps the order's point, with no provider call. An edit
+// whose text, city, district and short code are unchanged asks nothing at all.
+describe("the order doors' geocoder budget (DEL-2 adversary round 1, ruling 2)", () => {
+  const config = integrationConfig({
+    AUTH_SIGNING_KEY_ID: signing.keyId,
+    AUTH_SIGNING_KEY: signing.key,
+    CREDENTIALS_KEYS: `orders-budget:${randomBytes(32).toString('base64')}`,
+    CREDENTIALS_ACTIVE_KEY_ID: 'orders-budget',
+    TRUST_PROXY_HOPS: '1',
+    GEOCODER_SOURCES: 'stub',
+  });
+  let staff: StaffApp;
+  let owner: postgres.Sql;
+
+  beforeAll(async () => {
+    owner = connectAs('owner', config);
+    const redisUrl = config.redis.url?.reveal() ?? '';
+    const limiter = new RateLimiter(redisRateLimitStore(redisUrl), {
+      prefix: `elx-test-budget-${randomBytes(4).toString('hex')}:rl`,
+      budgets: {
+        ...defaultBudgets,
+        named: { ...namedBudgets, geocode_account: { limit: 2, windowMs: 3_600_000 } },
+      },
+    });
+    staff = await startStaffApp(config, owner, {
+      configure: (builder) => builder.overrideProvider(RATE_LIMITER).useValue(limiter),
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterAll(async () => {
+    await staff?.close();
+    await owner?.end();
+  });
+
+  const patch = (member: SignedInMember, id: string, version: number, body: object) =>
+    staff
+      .http()
+      .patch(`/v1/staff/orders/${id}`)
+      .set(staff.writeHeaders())
+      .set('Cookie', member.cookie)
+      .set('Idempotency-Key', nextKey())
+      .set('If-Match', `"${version}"`)
+      .send(body)
+      .expect(200)
+      .then((response) => updateOp.responses['200'].parse(response.body));
+
+  const byText = { text: 'Al Olaya district', city: 'Riyadh' };
+
+  it('takes the create without a point and keeps the edited order on its point past the budget', async () => {
+    const { siteId, zoneId, dispatcher } = await orderWorld(owner, staff);
+    const spy = vi.spyOn(StubGeocoder.prototype, 'geocode');
+    const first = await createOrder(staff, dispatcher, orderBody(siteId, { address: byText }));
+    await createOrder(staff, dispatcher, orderBody(siteId, { address: byText }));
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(first).toMatchObject({ zone_id: zoneId, address: { point: olaya } });
+
+    const third = await createOrder(staff, dispatcher, orderBody(siteId, { address: byText }));
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(third).toMatchObject({ status: 'pending', pending_reason: 'needs_location' });
+    expect(third.address).not.toHaveProperty('point');
+
+    const edited = await patch(dispatcher, first.id, 1, {
+      address: { text: 'Al Malaz', city: 'Riyadh' },
+    });
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(edited).toMatchObject({
+      zone_id: zoneId,
+      version: 2,
+      address: { text: 'Al Malaz', point: olaya, pin_source: 'geocoded' },
+    });
+  });
+
+  it('asks nothing for an edit that leaves the address as it was', async () => {
+    const { siteId, dispatcher } = await orderWorld(owner, staff);
+    const order = await createOrder(staff, dispatcher, orderBody(siteId, { address: byText }));
+    const spy = vi.spyOn(StubGeocoder.prototype, 'geocode');
+    const edited = await patch(dispatcher, order.id, 1, { address: byText, notes: 'gate 3' });
+    expect(spy).not.toHaveBeenCalled();
+    expect(edited).toMatchObject({ version: 2, notes: 'gate 3', address: { point: olaya } });
   });
 });

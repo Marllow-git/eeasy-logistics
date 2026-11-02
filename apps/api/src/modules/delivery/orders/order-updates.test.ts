@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ApiException } from '../../kernel/public/index.js';
 import type { OrderStatus } from '../../kernel/public/index.js';
 import { orderPatchFields } from './order-input.js';
-import { assertEditable, changedParts } from './order-updates.js';
+import type { OrderAddressFields, OrderPatch } from './order-input.js';
+import { assertEditable, changedParts, relocationFor } from './order-updates.js';
+import type { OrderRow } from './orders.repository.js';
 
 // DEL-2 item D: the edit rules of `updateOrder` (plan 2.8; domain model §3.2, D-4).
 
@@ -97,5 +99,68 @@ describe('orderPatchFields and changedParts', () => {
       '/body/items/0/quantity',
       '/body/items/0/direction',
     ]);
+  });
+});
+
+describe('relocationFor (adversary round 1, ruling 2)', () => {
+  const order = {
+    pinSource: 'geocoded',
+    addressText: 'Al Olaya',
+    addressCity: 'Riyadh',
+    addressDistrict: null,
+    nationalAddressShortCode: null,
+    recipientLanguage: 'ar',
+  } as unknown as OrderRow;
+  const address = (overrides: Partial<OrderAddressFields> = {}): OrderPatch => ({
+    address: {
+      text: 'Al Olaya',
+      city: 'Riyadh',
+      district: null,
+      shortCode: null,
+      point: null,
+      ...overrides,
+    },
+  });
+  const geocoder = () => ({
+    lookupShortCode: vi.fn(() => Promise.resolve({ kind: 'not_found' as const })),
+    geocode: vi.fn(() =>
+      Promise.resolve({
+        kind: 'found' as const,
+        point: { lat: 24.7, lng: 46.7 },
+        confidence: 0.9,
+        formatted: 'Al Malaz',
+        provider: 'stub' as const,
+      }),
+    ),
+  });
+
+  it('asks nothing when the text, city, district and short code are unchanged', async () => {
+    const source = geocoder();
+    const budget = vi.fn(() => Promise.resolve(true));
+    expect(await relocationFor(source, order, address(), { budget })).toEqual({ kind: 'kept' });
+    expect(source.geocode).not.toHaveBeenCalled();
+    expect(budget).not.toHaveBeenCalled();
+  });
+
+  it('asks again when any of them changed, and keeps the point past the budget', async () => {
+    for (const changed of [
+      { text: 'Al Malaz' },
+      { city: 'Jeddah' },
+      { district: 'Olaya' },
+      { shortCode: 'RZZZ0000' },
+    ]) {
+      const source = geocoder();
+      expect(await relocationFor(source, order, address(changed))).toMatchObject({
+        kind: 'located',
+        located: { pinSource: 'geocoded' },
+      });
+    }
+    const source = geocoder();
+    const spent = vi.fn(() => Promise.resolve(false));
+    expect(
+      await relocationFor(source, order, address({ text: 'Al Malaz' }), { budget: spent }),
+    ).toEqual({ kind: 'kept' });
+    expect(spent).toHaveBeenCalledTimes(1);
+    expect(source.geocode).not.toHaveBeenCalled();
   });
 });

@@ -68,6 +68,10 @@ export const namedBudgets = {
   // bounds each driver).
   driver_verify_ip: { limit: 20, windowMs: hourMs },
   driver_pin_ip: { limit: 30, windowMs: hourMs },
+  // The order doors' address lookups (DEL-2 adversary round 1, lead ruling 2): per account, keyed
+  // `account:<id>`, charged before any provider call. Past it the lookup is skipped, not refused:
+  // the order lands `needs_location` (create) or keeps its point (update).
+  geocode_account: { limit: 300, windowMs: hourMs },
 } as const satisfies Record<string, NamedBudget>;
 
 /** The named budgets with the configured global OTP budget (`OTP_GLOBAL_HOURLY_BUDGET`). */

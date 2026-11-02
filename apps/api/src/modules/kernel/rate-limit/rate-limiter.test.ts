@@ -223,3 +223,19 @@ describe('RateLimiter.charge (named budgets)', () => {
     expect(limiter.failOpenCount).toBe(1);
   });
 });
+
+// DEL-2 adversary round 1, ruling 2: a budget a service skips its work past instead of refusing.
+describe('RateLimiter.allows (geocode_account)', () => {
+  it('answers true up to 300 an hour per account, then false, and true when the store fails', async () => {
+    expect(defaultBudgets.named?.geocode_account).toEqual({ limit: 300, windowMs: 3_600_000 });
+    const limiter = new RateLimiter(memoryStore());
+    for (let index = 0; index < 300; index += 1) {
+      expect(await limiter.allows('geocode_account', 'account:a')).toBe(true);
+    }
+    expect(await limiter.allows('geocode_account', 'account:a')).toBe(false);
+    expect(await limiter.allows('geocode_account', 'account:b')).toBe(true);
+    const open = new RateLimiter(failingStore, { logger: { warn: () => undefined } });
+    expect(await open.allows('geocode_account', 'account:a')).toBe(true);
+    expect(open.failOpenCount).toBe(1);
+  });
+});

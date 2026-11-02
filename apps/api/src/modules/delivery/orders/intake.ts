@@ -5,7 +5,7 @@ import type {
   PendingReason,
   PinSource,
 } from '../../kernel/public/index.js';
-import { ApiException, GeocoderInputError } from '../../kernel/public/index.js';
+import { ApiException, GeocoderInputError, getMetrics } from '../../kernel/public/index.js';
 import type { OrderAddressFields } from './order-input.js';
 
 // Intake (DEL-2 plan 2.4 to 2.6; integrations §6.2; D-3; ADR-0015). Where the address is, then
@@ -25,7 +25,15 @@ export interface LocateOptions {
   /** The whole lookup's deadline; the geocoder's own chain deadline when unset. */
   readonly deadlineMs?: number;
   readonly now?: () => number;
+  /**
+   * The account's hourly lookup budget (`geocode_account`, lead ruling 2), charged once before any
+   * provider call; false skips the lookup and `locate` answers `over_budget`.
+   */
+  readonly budget?: () => Promise<boolean>;
 }
+
+/** `locate`'s answer when the account's budget skipped the lookup (no provider was asked). */
+export const overBudget = 'over_budget';
 
 export interface Located {
   readonly point: { readonly lat: number; readonly lng: number };
@@ -35,15 +43,25 @@ export interface Located {
 
 /**
  * Integrations §6.2 in order: a sent point (`manual`, 1.0); else the National Address short code;
- * else the text with its city, kept at or above the threshold. Nothing reliable is undefined.
+ * else the text with its city, kept at or above the threshold. Nothing reliable is undefined; a
+ * lookup the account's budget skipped is `over_budget` (the create stores no point, the update keeps
+ * the order's).
  */
 export async function locate(
   geocoder: Pick<GeocoderService, 'geocode' | 'lookupShortCode'>,
   address: OrderAddressFields,
   locale: GeocodeLocale,
   options: LocateOptions = {},
-): Promise<Located | undefined> {
+): Promise<Located | undefined | typeof overBudget> {
   if (address.point !== null) return { point: address.point, pinSource: 'manual', confidence: 1 };
+  if (options.budget !== undefined && !(await options.budget())) {
+    getMetrics().add('geocoder_calls_total', 1, {
+      method: address.shortCode === null ? 'geocode' : 'shortcode',
+      source: 'none',
+      outcome: 'over_budget',
+    });
+    return overBudget;
+  }
   const now = options.now ?? Date.now;
   const started = now();
   /** What is left of the lookup's deadline for the next call; undefined without one. */

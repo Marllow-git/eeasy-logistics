@@ -8,9 +8,15 @@ import { createParamDecorator } from '@nestjs/common';
 import type { Request } from 'express';
 import { APP_POOL } from '../../../database/database.module.js';
 import type { GeocoderService } from '../../kernel/public/index.js';
-import { GEOCODER, ifMatchVersion, requestTenantContext } from '../../kernel/public/index.js';
+import {
+  GEOCODER,
+  ifMatchVersion,
+  RATE_LIMITER,
+  RateLimiter,
+  requestTenantContext,
+} from '../../kernel/public/index.js';
 import type { Located } from './intake.js';
-import { intakeGeocodeDeadlineMs, locate } from './intake.js';
+import { intakeGeocodeDeadlineMs, locate, overBudget } from './intake.js';
 import { newOrderFields, orderPatchFields } from './order-input.js';
 import { relocationFor } from './order-updates.js';
 import { OrdersRepository } from './orders.repository.js';
@@ -24,8 +30,10 @@ import { OrdersRepository } from './orders.repository.js';
 // answer on the request for the handler (`@PreLocated()`), which applies it inside the transaction
 // after its own checks. `updateOrder` first reads the order on a short transaction of its own
 // (the trusted pin and the unchanged address decide whether to ask at all), released before the
-// lookup. A body the contract refuses is left to the pipe; a failure is kept and raised by the
-// handler at the point the inline lookup used to raise it.
+// lookup. Every lookup is charged to the account's hourly budget (`geocode_account`, ruling 2)
+// before a provider is asked; past it the lookup is skipped. A body the contract refuses is left
+// to the pipe; a failure is kept and raised by the handler at the point the inline lookup used to
+// raise it.
 
 /** What the guard found for the request's address. */
 export type Prelocated =
@@ -65,7 +73,16 @@ export class OrderLocating implements CanActivate {
   constructor(
     @Inject(GEOCODER) private readonly geocoder: GeocoderService,
     @Optional() @Inject(APP_POOL) private readonly app?: Pool<AppDatabase> | null,
+    @Optional() @Inject(RATE_LIMITER) private readonly limiter?: RateLimiter,
   ) {}
+
+  /** The account's `geocode_account` charge; no limiter (no `REDIS_URL`) is no budget. */
+  private budgetOf(request: Request): (() => Promise<boolean>) | undefined {
+    const limiter = this.limiter;
+    const accountId = requestTenantContext(request)?.accountId;
+    if (limiter === undefined || accountId === undefined) return undefined;
+    return () => limiter.allows('geocode_account', `account:${accountId}`);
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
@@ -88,10 +105,13 @@ export class OrderLocating implements CanActivate {
     const parsed = createOp.body.safeParse(request.body);
     if (!parsed.success) return undefined;
     const fields = newOrderFields(parsed.data);
+    const budget = this.budgetOf(request);
     const located = await locate(this.geocoder, fields.address, fields.recipient.language ?? 'ar', {
       deadlineMs: intakeGeocodeDeadlineMs,
+      ...(budget === undefined ? {} : { budget }),
     });
-    return { kind: 'located', located };
+    // Past the budget the order is taken without a point: `needs_location`.
+    return { kind: 'located', located: located === overBudget ? undefined : located };
   }
 
   private async forUpdate(request: Request): Promise<Prelocated | undefined> {
@@ -113,6 +133,7 @@ export class OrderLocating implements CanActivate {
       return { kind: 'kept' };
     }
     const patch = orderPatchFields(body.data, sent, seen.kind);
-    return await relocationFor(this.geocoder, seen, patch);
+    const budget = this.budgetOf(request);
+    return await relocationFor(this.geocoder, seen, patch, budget === undefined ? {} : { budget });
   }
 }
