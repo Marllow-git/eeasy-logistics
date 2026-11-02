@@ -287,6 +287,48 @@ describe('the member doors over HTTP (PLAT-12 items E to G)', () => {
         'driver',
       ]);
     });
+
+    it('answers 404 on a driver-only membership at update, revoke and second-factor reset; staff with driver stay (DEL-4 R3)', async () => {
+      // The driver-only membership's lifecycle is Delivery's (`updateDriver`, suspension, archive,
+      // `resetDriverCashPin`); the member doors reach only memberships this account invited as staff.
+      const a = await accountWithOwner();
+      const b = await accountWithOwner();
+      const inA = await plantDriver(owner, { accountId: a.accountId });
+      const inB = await plantDriver(owner, { accountId: b.accountId, userId: inA.userId });
+      const mixed = await plantMember(b.accountId, 'Mixed Staff', {
+        roles: ['dispatcher', 'driver'],
+      });
+      const resetPath = (id: string) => `/v1/staff/members/${id}/second-factor/reset`;
+
+      for (const [signedIn, membershipId] of [
+        [b.owning, inB.membershipId],
+        [a.owning, inA.membershipId],
+      ] as const) {
+        const updated = await send(signedIn, 'patch', `/v1/staff/members/${membershipId}`, {
+          roles: ['viewer'],
+        }).expect(404);
+        expect(errorOf(updated.body).code).toBe('not_found');
+        await send(signedIn, 'post', resetPath(membershipId), { reason: 'Lost phone' }).expect(404);
+        await send(signedIn, 'delete', `/v1/staff/members/${membershipId}`).expect(404);
+        expect(await rolesOf(membershipId)).toEqual({ roles: ['driver'], status: 'active' });
+      }
+
+      const updated = await send(b.owning, 'patch', `/v1/staff/members/${mixed.membershipId}`, {
+        roles: ['viewer'],
+      }).expect(200);
+      expect(operationSchemas.updateMember.responses['200'].parse(updated.body).roles).toEqual([
+        'viewer',
+        'driver',
+      ]);
+      await send(b.owning, 'post', resetPath(mixed.membershipId), {
+        reason: 'Lost phone',
+      }).expect(204);
+      await send(b.owning, 'delete', `/v1/staff/members/${mixed.membershipId}`).expect(204);
+      expect(await rolesOf(mixed.membershipId)).toEqual({
+        roles: ['viewer', 'driver'],
+        status: 'revoked',
+      });
+    });
   });
 
   describe('inviteMember', () => {
@@ -625,8 +667,9 @@ describe('the member doors over HTTP (PLAT-12 items E to G)', () => {
       ]);
       await update(owning, dispatcher.membershipId, { roles: ['driver'] }).expect(400);
 
-      // A driver role the drivers resource gave stays, and counts in the combination (A-7).
-      const driver = await plantMember(accountId, 'Driver', { roles: ['driver'] });
+      // A driver role the drivers resource gave stays, and counts in the combination (A-7). A
+      // driver-only membership is not the member doors' (DEL-4 R3), so the staff member drives too.
+      const driver = await plantMember(accountId, 'Driver', { roles: ['dispatcher', 'driver'] });
       const cash = await update(owning, driver.membershipId, { roles: ['cashier'] }).expect(422);
       expect(errorOf(cash.body).code).toBe('role_combination_forbidden');
       const viewer = await update(owning, driver.membershipId, { roles: ['viewer'] }).expect(200);

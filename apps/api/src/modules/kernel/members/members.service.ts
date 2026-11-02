@@ -92,9 +92,11 @@ const maxNameLength = 120;
 /**
  * A membership whose roles are exactly `['driver']` (DEL-4 adversary H-3, lead ruling round 2): its
  * person row holds the name and locale the first account to create the person typed, so the member
- * doors leave it out (`list`) or answer `404` (`get`); the account's drivers are Delivery's
- * (`listDrivers`, `getDriver`, which show `del_drivers.name`). A membership holding `driver` beside
- * a staff role was invited as staff by this account and stays.
+ * doors leave it out (`list`) or answer `404` (`get`, and since round 3 `update`, `revoke` and
+ * `resetSecondFactor`); the account's drivers are Delivery's (`listDrivers`, `getDriver`, which show
+ * `del_drivers.name`; their lifecycle is `updateDriver`, suspension, archive and
+ * `resetDriverCashPin`). A membership holding `driver` beside a staff role was invited as staff by
+ * this account and stays, its `driver` role kept by `update` (PLAT-12 8.2 #31).
  */
 function isDriverOnly(row: MemberRow): boolean {
   return row.roles.length === 1 && row.roles[0] === 'driver';
@@ -312,7 +314,7 @@ export class MembersService {
     await members.lockWrites();
     const caller = await callerOf(members);
     const target = await members.find(id);
-    if (target === undefined) throw new ApiException('not_found');
+    if (target === undefined || isDriverOnly(target)) throw new ApiException('not_found');
     const kept = target.roles.filter((role) => role === 'driver');
     const roles =
       patch.roles === undefined ? target.roles : [...new Set([...patch.roles, ...kept])];
@@ -362,7 +364,7 @@ export class MembersService {
     await members.lockWrites();
     const caller = await callerOf(members);
     const target = await members.find(id);
-    if (target === undefined) throw new ApiException('not_found');
+    if (target === undefined || isDriverOnly(target)) throw new ApiException('not_found');
     const refusal = memberChangeRefusal({
       caller,
       target,
@@ -410,7 +412,7 @@ export class MembersService {
     await members.lockWrites();
     const caller = await callerOf(members);
     const target = await members.find(id);
-    if (target?.status !== 'active') throw new ApiException('not_found');
+    if (target?.status !== 'active' || isDriverOnly(target)) throw new ApiException('not_found');
     const refusal = memberChangeRefusal({
       caller,
       target,
