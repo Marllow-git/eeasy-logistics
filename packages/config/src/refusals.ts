@@ -5,6 +5,37 @@ import type { AppRole, ServerVariable } from './server.ts';
 export const expoPushServiceUrl = 'https://exp.host';
 
 /**
+ * The geocoder's sources (INT-2 plan 2.11): the official National Address API (short codes with
+ * `NATIONAL_ADDRESS_API_KEY`; its POI API answers the reverse lookup without a key), the Sayyar
+ * mirror (short codes and text, no key), Hudhud (every method, with `HUDHUD_API_KEY`) and the
+ * fixture stub (local and ci only).
+ */
+export const geocoderSources = ['spl', 'sayyar', 'hudhud', 'stub'] as const;
+export type GeocoderSource = (typeof geocoderSources)[number];
+
+/** Each source's host; production refuses any other value (INT-2 plan 2.7). */
+export const geocoderServiceUrls = {
+  HUDHUD_API_URL: 'https://b.hudhud.sa',
+  SPL_API_URL: 'https://apina.address.gov.sa',
+  SPL_POI_URL: 'https://beta-api.address.gov.sa',
+  SAYYAR_URL: 'https://sayyar.com',
+} as const;
+
+/** Unset `GEOCODER_SOURCES`: the stub in local and ci, else the chain of plan 2.11. */
+export function defaultGeocoderSources(appEnv: string | undefined): readonly GeocoderSource[] {
+  return appEnv === 'local' || appEnv === 'ci' ? ['stub'] : ['spl', 'sayyar', 'hudhud'];
+}
+
+/** The sources of a `GEOCODER_SOURCES` value, or undefined when it is not a list of distinct ones. */
+export function splitGeocoderSources(text: string): GeocoderSource[] | undefined {
+  const names = text.split(',').map((name) => name.trim());
+  const known: readonly string[] = geocoderSources;
+  if (names.some((name) => !known.includes(name))) return undefined;
+  if (new Set(names).size !== names.length) return undefined;
+  return names as GeocoderSource[];
+}
+
+/**
  * What production refuses to start without (plan 2.3, platform §3), per process role. Each role gets
  * only the database credential of its duty (data §4.4, ADR-0031; PLAT-5 review H-2, amending PLAT-4):
  * `api` and `worker` need the `elx_app` and `elx_platform` URLs plus the public web and admin URLs, Redis,
@@ -64,7 +95,11 @@ export const secureSchemeInProduction: readonly (readonly [ServerVariable, strin
   ['OTEL_EXPORTER_OTLP_ENDPOINT', 'https://'],
 ];
 
-export const adapterSelectors: readonly ServerVariable[] = ['MESSAGING_PROVIDER', 'PUSH_PROVIDER'];
+export const adapterSelectors: readonly ServerVariable[] = [
+  'MESSAGING_PROVIDER',
+  'PUSH_PROVIDER',
+  // GEOCODER_SOURCES is a list: its `stub` is refused by `geocoderRefusals`.
+];
 
 export interface RefusalInput {
   /** The parsed `APP_ENV`, or undefined when it was itself invalid (then no rule applies). */
@@ -76,6 +111,8 @@ export interface RefusalInput {
   readonly messagingDisabled: boolean | undefined;
   /** `PUSH_DISABLED=true`: the explicit decision to send no push (INT-4 plan 2.6). */
   readonly pushDisabled: boolean | undefined;
+  /** `GEOCODER_DISABLED=true`: the explicit decision to geocode nothing (INT-2 plan 2.7). */
+  readonly geocoderDisabled: boolean | undefined;
   /** The process role (`--role`); the requirements depend on it. */
   readonly role: AppRole;
 }
@@ -127,6 +164,7 @@ export function productionRefusals(input: RefusalInput): ConfigIssue[] {
       }
     }
     issues.push(...pushRefusals(input, input.appEnv));
+    issues.push(...geocoderRefusals(input, input.appEnv));
   }
   if (input.appEnv !== 'production') return issues;
   for (const variable of requiredInProduction(input.role)) {
@@ -221,6 +259,59 @@ function pushRefusals(input: RefusalInput, appEnv: 'staging' | 'production'): Co
       variable: 'EXPO_PUSH_URL',
       problem: `must be ${expoPushServiceUrl} in production`,
     });
+  }
+  return issues;
+}
+
+/**
+ * The geocoder decision of a deployed api or worker (INT-2 plan 2.7, 2.11; integrations §2.2, §9):
+ * staging and production never run the stub, and every method (short code, text, reverse) needs
+ * at least one source that can answer it, unless `GEOCODER_DISABLED=true` (every call then answers
+ * `unavailable`). Production talks to each source's own host only, so a key never leaves for
+ * another one.
+ */
+function geocoderRefusals(input: RefusalInput, appEnv: 'staging' | 'production'): ConfigIssue[] {
+  const issues: ConfigIssue[] = [];
+  const raw = input.raw('GEOCODER_SOURCES');
+  const sources =
+    raw === undefined || raw === '' ? defaultGeocoderSources(appEnv) : splitGeocoderSources(raw);
+  // A malformed list is reported by the schema.
+  if (sources?.includes('stub')) {
+    issues.push({
+      variable: 'GEOCODER_SOURCES',
+      problem: `lists stub, which only local and ci run; ${appEnv} refuses it`,
+    });
+  } else if (
+    sources !== undefined &&
+    input.geocoderDisabled !== true &&
+    (input.role === 'api' || input.role === 'worker')
+  ) {
+    const spl = sources.includes('spl');
+    const sayyar = sources.includes('sayyar');
+    const hudhud = sources.includes('hudhud') && input.present('HUDHUD_API_KEY');
+    const missing = [
+      ...((spl && input.present('NATIONAL_ADDRESS_API_KEY')) || sayyar || hudhud
+        ? []
+        : ['short code']),
+      ...(sayyar || hudhud ? [] : ['text']),
+      ...(spl || hudhud ? [] : ['reverse']),
+    ];
+    if (missing.length > 0) {
+      issues.push({
+        variable: 'GEOCODER_SOURCES',
+        problem: `leaves no source for ${missing.join(', ')} when APP_ENV=${appEnv} (spl short codes need NATIONAL_ADDRESS_API_KEY, hudhud needs HUDHUD_API_KEY), unless GEOCODER_DISABLED=true`,
+      });
+    }
+  }
+  if (appEnv === 'production') {
+    for (const [variable, url] of Object.entries(geocoderServiceUrls) as [
+      ServerVariable,
+      string,
+    ][]) {
+      if (input.present(variable) && input.raw(variable) !== url) {
+        issues.push({ variable, problem: `must be ${url} in production` });
+      }
+    }
   }
   return issues;
 }

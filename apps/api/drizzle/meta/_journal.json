@@ -120,6 +120,27 @@
       "when": 1793611785176,
       "tag": "0016_core_rollout",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793620691758,
+      "tag": "20261102115811_core_geocode_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793622569750,
+      "tag": "20261102122929_del_drivers",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793624362786,
+      "tag": "20261102125922_del_zones",
+      "breakpoints": true
     }
   ]
 }

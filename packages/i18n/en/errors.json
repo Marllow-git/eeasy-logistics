@@ -25,6 +25,7 @@
     "reauthentication_required": "Confirm your password to continue.",
     "second_factor_already_enrolled": "A second factor is already set up.",
     "otp_invalid": "The code is incorrect or has expired.",
+    "account_choice_required": "Choose the account to sign in to.",
     "device_limit_reached": "The maximum number of devices is already in use.",
     "device_revoked": "This device has been signed out.",
     "app_update_required": "Update the app to continue.",
@@ -80,6 +81,7 @@
     "too_long": "This value is too long.",
     "too_short": "This value is too short.",
     "breached": "This password appears in a list of breached passwords; choose another.",
-    "owner_gate": "This option is not available yet."
+    "owner_gate": "This option is not available yet.",
+    "duplicate": "This value is already in use."
   }
 }

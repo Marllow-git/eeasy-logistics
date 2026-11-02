@@ -58,6 +58,11 @@ export interface IdempotencyStore {
   /** Reuses an expired row that the purge has not removed yet, as a fresh `in_progress`. */
   restart(id: string, claim: IdempotencyClaim): Promise<void>;
   complete(id: string, status: number, body: unknown): Promise<void>;
+  /**
+   * Gives a reservation up inside a transaction that commits anyway (a `CommittedRefusal`, DEL-4
+   * H-1): the row is left expired, so the next request with the key restarts it.
+   */
+  release(id: string): Promise<void>;
 }
 
 export type ReserveOutcome =

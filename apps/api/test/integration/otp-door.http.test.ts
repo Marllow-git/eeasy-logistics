@@ -1,7 +1,5 @@
 import { randomBytes, randomInt } from 'node:crypto';
-import { operationSchemas } from '@eeasy-logistics/contracts/driver/schemas';
-import { createCredentialsCipher } from '@eeasy-logistics/config';
-import { Controller, HttpCode, Inject, Post } from '@nestjs/common';
+import { schemas } from '@eeasy-logistics/contracts/driver/schemas';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { Redis } from 'ioredis';
@@ -16,69 +14,32 @@ import {
   redisBreakerStateStore,
 } from '../../src/modules/kernel/messaging/breaker.js';
 import { MESSAGING_BREAKERS } from '../../src/modules/kernel/messaging/messaging.module.js';
-import { OtpService } from '../../src/modules/kernel/messaging/otp.service.js';
 import { EngineMessageSender } from '../../src/modules/kernel/messaging/engine/engine-message-sender.js';
-import type { ContractInput } from '../../src/modules/kernel/public/index.js';
-import { Input, Operation, Public } from '../../src/modules/kernel/public/index.js';
 import {
   RATE_LIMITER,
   RateLimiter,
   redisRateLimitStore,
 } from '../../src/modules/kernel/rate-limit/rate-limiter.js';
-import { ClientIp } from '../../src/modules/kernel/request/client-ip.js';
+import { testSigningKey } from '../support/access-tokens.js';
+import { codeOf, newDevice, plantDriver } from './driver-fixtures.js';
 import { connectAs, integrationConfig } from './support.js';
 
-// PLAT-9 item D: test-only door routes bound to the real `driverRequestOtp` and `driverVerifyOtp`
-// operations (`core.auth.anonymous` doors, so `@Public()` passes the PLAT-10 boot check), parsed by
-// `ContractPipe` with the generated schemas and passed by the permission guard. PLAT-11 replaces the
-// bodies (driver lookup, device binding, tokens), not this wiring.
-
-const requestOtp = operationSchemas.driverRequestOtp;
-const verifyOtp = operationSchemas.driverVerifyOtp;
-
-@Controller('v1/driver/auth/otp')
-class OtpDoorProbe {
-  constructor(@Inject(OtpService) private readonly otp: OtpService) {}
-
-  @Post('request')
-  @Public()
-  @HttpCode(202)
-  @Operation(requestOtp)
-  async request(
-    @Input() input: ContractInput<typeof requestOtp>,
-    @ClientIp() ip: string | undefined,
-  ): Promise<void> {
-    await this.otp.request({
-      phone: input.body.phone,
-      purpose: 'driver_login',
-      ip,
-      locale: input.body.locale ?? 'ar',
-    });
-  }
-
-  @Post('verify')
-  @Public()
-  @HttpCode(200)
-  @Operation(verifyOtp)
-  async verify(@Input() input: ContractInput<typeof verifyOtp>): Promise<Record<string, never>> {
-    await this.otp.verify({
-      phone: input.body.phone,
-      purpose: 'driver_login',
-      code: input.body.code,
-    });
-    return {};
-  }
-}
+// PLAT-9 item D's OTP door tests, moved onto the real driver doors by DEL-4 item D (the test-only
+// probe controller is gone): `driverRequestOtp` and `driverVerifyOtp` as `DriverAuthController`
+// serves them, parsed by `ContractPipe` with the generated schemas. A verification that passes needs
+// a driver now (a phone that is no one's gets no code), so those tests plant one.
 
 const runId = randomBytes(4).toString('hex');
 // One trusted proxy hop, so each test's `X-Forwarded-For` is its client address (fresh budgets).
+const signing = testSigningKey();
 const config = integrationConfig({
+  AUTH_SIGNING_KEY_ID: signing.keyId,
+  AUTH_SIGNING_KEY: signing.key,
   CREDENTIALS_KEYS: `otp-door:${randomBytes(32).toString('base64')}`,
   CREDENTIALS_ACTIVE_KEY_ID: 'otp-door',
   TRUST_PROXY_HOPS: '1',
 });
 const saudiMobile = () => `+96655${String(randomInt(0, 10_000_000)).padStart(7, '0')}`;
-const device = { device_id: 'probe-device', platform: 'android', app_version: '1.0.0' } as const;
 
 interface ErrorBody {
   code: string;
@@ -87,7 +48,7 @@ interface ErrorBody {
   details?: unknown;
 }
 
-describe('OTP doors on the real operations (PLAT-9 item D)', () => {
+describe('OTP doors on the real driver doors (PLAT-9 item D, DEL-4 item D)', () => {
   let app: NestExpressApplication;
   let owner: postgres.Sql;
   let redis: Redis;
@@ -108,21 +69,14 @@ describe('OTP doors on the real operations (PLAT-9 item D)', () => {
   const verify = (phone: string, code: string) =>
     http()
       .post('/v1/driver/auth/otp/verify')
+      .set('X-Forwarded-For', `192.0.2.${randomInt(1, 255)}`)
       .set('Accept-Language', 'en')
-      .send({ phone, code, device });
-  /** The code a worker would send, read back by decrypting the row (the test holds the key). */
-  const codeOf = async (phone: string): Promise<string> => {
-    const [row] = await owner<
-      { payload: { challenge_id: string; params: { code: { encrypted: string } } } }[]
-    >`
-      SELECT payload FROM core_outbox
-      WHERE kind = 'message' AND payload->>'to' = ${phone} AND status = 'pending'`;
-    if (row === undefined) throw new Error('no pending OTP row');
-    if (config.credentials === null) throw new Error('no credentials');
-    return createCredentialsCipher(config.credentials).decrypt(
-      Buffer.from(row.payload.params.code.encrypted, 'base64'),
-      `core_otp_challenges:${row.payload.challenge_id}`,
-    );
+      .send({ phone, code, device: newDevice() });
+  /** A planted driver's phone (the verification tests need someone the code may sign in). */
+  const driverPhone = async () => {
+    const { phone } = await plantDriver(owner);
+    phones.push(phone);
+    return phone;
   };
 
   beforeAll(async () => {
@@ -133,7 +87,6 @@ describe('OTP doors on the real operations (PLAT-9 item D)', () => {
     owner = connectAs('owner', config);
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule.forRoot(config)],
-      controllers: [OtpDoorProbe],
     })
       .overrideProvider(RATE_LIMITER)
       .useValue(new RateLimiter(redisRateLimitStore(redisUrl), { prefix: `elx-test-${runId}:rl` }))
@@ -166,6 +119,10 @@ describe('OTP doors on the real operations (PLAT-9 item D)', () => {
     expect(response.text).toBe('');
     const rows = await owner`SELECT id FROM core_otp_challenges WHERE phone = ${phone}`;
     expect(rows).toHaveLength(1);
+    // No one's phone (DEL-4 plan 2.7): the challenge and its cooldown exist, no code is sent.
+    const sent = await owner`
+      SELECT id FROM core_outbox WHERE kind = 'message' AND payload->>'to' = ${phone}`;
+    expect(sent).toHaveLength(0);
   });
 
   it('refuses a body outside the contract with 400 validation_failed', async () => {
@@ -193,10 +150,10 @@ describe('OTP doors on the real operations (PLAT-9 item D)', () => {
   });
 
   it('verifies once with 200, then answers otp_invalid with the same body as a wrong code', async () => {
-    const phone = fresh();
+    const phone = await driverPhone();
     await askFor(phone).expect(202);
-    const code = await codeOf(phone);
-    await verify(phone, code).expect(200, {});
+    const code = await codeOf(owner, config, phone);
+    schemas.DriverVerifyOtp200Response.parse((await verify(phone, code).expect(200)).body);
     const reused = (await verify(phone, code).expect(401)).body as ErrorBody;
     const wrong = (await verify(phone, code === '000000' ? '111111' : '000000').expect(401))
       .body as ErrorBody;
@@ -209,9 +166,9 @@ describe('OTP doors on the real operations (PLAT-9 item D)', () => {
   });
 
   it('answers otp_invalid after five wrong codes, even for the right one', async () => {
-    const phone = fresh();
+    const phone = await driverPhone();
     await askFor(phone).expect(202);
-    const code = await codeOf(phone);
+    const code = await codeOf(owner, config, phone);
     const wrong = code === '000000' ? '111111' : '000000';
     for (let attempt = 0; attempt < 5; attempt += 1) await verify(phone, wrong).expect(401);
     const response = await verify(phone, code).expect(401);

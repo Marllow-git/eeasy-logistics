@@ -7,6 +7,7 @@ import type { OtpPurgeCounts } from '../../modules/kernel/platform/messaging.rep
 import { MessagingRepository } from '../../modules/kernel/platform/messaging.repository.js';
 import type { AuthPurgeCounts } from '../../modules/kernel/platform/identity.repository.js';
 import { purgeAuthRows } from './auth-purge.js';
+import { purgeGeocodeCache } from './geocode-cache-purge.js';
 
 // The OTP purge (PLAT-9 plan 2.6, 2A.6; data §10; integrations §4.1 row `message`): every hour,
 // under the Redis lock `elx:lock:otp-prune`, one platform transaction deletes
@@ -17,7 +18,8 @@ import { purgeAuthRows } from './auth-purge.js';
 // - `core_engine_callback_nonces` older than 24 h (engine contract §2.5 retention);
 // and writes one audit row with the counts (`core.otp_rows.purged`), in the same transaction.
 // PLAT-11 plan 2.13: under the same lock, a second transaction purges the identity rows
-// (auth-purge.ts, audit `core.auth_rows.purged`).
+// (auth-purge.ts, audit `core.auth_rows.purged`). INT-2 plan 2.4: a third, the expired geocode
+// cache rows (geocode-cache-purge.ts, audit `core.geocode_cache.purged`).
 
 export const otpPurgeLockKey = 'elx:lock:otp-prune';
 /** The lock outlives one run and expires before the next hourly one. */
@@ -31,6 +33,8 @@ export type OtpPurgeRun =
       readonly counts: OtpPurgeCounts;
       /** The identity rows (PLAT-11); absent when that set failed after the OTP set committed. */
       readonly auth?: AuthPurgeCounts;
+      /** The expired geocode cache rows deleted (INT-2). */
+      readonly geocodeCache?: number;
     }
   | { readonly ran: false };
 
@@ -66,5 +70,6 @@ export async function runOtpPurge(
   const acquired = await redis.set(lockKey, randomUUID(), 'PX', otpPurgeLockTtlMs, 'NX');
   if (acquired !== 'OK') return { ran: false };
   const counts = await purgeOtpRows(db, audit);
-  return { ran: true, counts, auth: await purgeAuthRows(db, audit) };
+  const auth = await purgeAuthRows(db, audit);
+  return { ran: true, counts, auth, geocodeCache: await purgeGeocodeCache(db, audit) };
 }

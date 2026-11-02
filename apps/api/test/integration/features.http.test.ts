@@ -30,7 +30,8 @@ import { connectAs, integrationConfig } from './support.js';
 // test-only staff route (permission first, then K-6), every mode against the flag, the flag and
 // rollout doors with their audit rows and events, the gate's Redis cache and its consumer, and
 // `Me.features`. Real platform and staff sessions. The suite owns the `wms` rollout row while it
-// runs (no other suite reads it) and puts it back to `allowlist`.
+// runs (no other suite reads it) and puts it back to `allowlist`. The harness runs `delivery` in
+// mode `all` (DEL-1 plan 2.9, global-setup.ts), so `Me.features` always lists it.
 
 const signing = testSigningKey();
 const config = integrationConfig({
@@ -157,7 +158,7 @@ describe('feature gate, rollout and flags over HTTP (PLAT-13 item C)', () => {
       'feature_not_enabled',
     );
     expect(codeOf((await probe(accountOwner).expect(403)).body)).toBe('feature_not_enabled');
-    expect(await features(accountOwner)).toEqual([]);
+    expect(await features(accountOwner)).toEqual(['delivery']);
   });
 
   it('enables the flag under audit; the gate and Me.features follow at once', async () => {
@@ -190,7 +191,7 @@ describe('feature gate, rollout and flags over HTTP (PLAT-13 item C)', () => {
       },
     ]);
     await probe(accountOwner).expect(200);
-    expect(await features(accountOwner)).toEqual(['wms']);
+    expect(await features(accountOwner)).toEqual(['delivery', 'wms']);
 
     const listed = await staff
       .http()
@@ -267,13 +268,13 @@ describe('feature gate, rollout and flags over HTTP (PLAT-13 item C)', () => {
         AND correlation_id = ${String(off.headers['x-request-id'])}`;
     expect(event).toEqual({ account_id: null, payload: { feature_key: 'wms', mode: 'off' } });
     expect(codeOf((await probe(accountOwner).expect(403)).body)).toBe('feature_not_enabled');
-    expect(await features(accountOwner)).toEqual([]);
+    expect(await features(accountOwner)).toEqual(['delivery']);
 
     await setMode('all').expect(200);
     await setFlag(false).expect(200);
     await probe(accountOwner).expect(200);
     await probe(viewer).expect(200);
-    expect(await features(accountOwner)).toEqual(['wms']);
+    expect(await features(accountOwner)).toEqual(['delivery', 'wms']);
     expect(codeOf((await probe(viewer, 'manage').expect(403)).body)).toBe('forbidden');
 
     const listed = await staff
@@ -284,7 +285,7 @@ describe('feature gate, rollout and flags over HTTP (PLAT-13 item C)', () => {
     expect(
       operationSchemas.platformListRolloutModes.responses['200'].parse(listed.body).data,
     ).toMatchObject([
-      { feature_key: 'delivery', mode: 'allowlist' },
+      { feature_key: 'delivery', mode: 'all' },
       { feature_key: 'wms', mode: 'all', updated_by: superAdmin.userId },
     ]);
 

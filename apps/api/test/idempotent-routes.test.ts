@@ -2,7 +2,7 @@ import { Controller, HttpCode, Post } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
-import { Idempotent, Operation } from '../src/modules/kernel/public/index.js';
+import { Idempotent, NoUnitOfWork, Operation } from '../src/modules/kernel/public/index.js';
 import { probeOperations } from './support/probe-operations.js';
 
 // PLAT-6 review round 2, finding 4: the stored replay status is `response.statusCode` when the
@@ -56,6 +56,18 @@ class DeclaredBase {
 @Controller('v1/staff/inherited-declared')
 class InheritedDeclared extends DeclaredBase {}
 
+// DEL-4 adversary round 1 (L): `@Idempotent()` reserves its key in the request's transaction, which
+// `@NoUnitOfWork()` takes away; a handler carrying both is refused at start.
+@Controller('v1/staff/without-unit-of-work')
+class WithoutUnitOfWork {
+  @Post()
+  @HttpCode(204)
+  @NoUnitOfWork()
+  @Idempotent()
+  @Operation(probeOperations.staffWrite)
+  create(): void {}
+}
+
 async function start(controller: new () => unknown): Promise<void> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
@@ -84,6 +96,12 @@ describe('@Idempotent() handlers declare @HttpCode() (IdempotentRoutesCheck)', (
   it('refuses to start naming the handler without @HttpCode()', async () => {
     await expect(start(Undeclared)).rejects.toThrow(
       '@Idempotent() handlers need @HttpCode(): Undeclared.create',
+    );
+  });
+
+  it('refuses a handler with both @NoUnitOfWork() and @Idempotent() (DEL-4 R2)', async () => {
+    await expect(start(WithoutUnitOfWork)).rejects.toThrow(
+      '@Idempotent() handlers need the request unit of work, not @NoUnitOfWork(): WithoutUnitOfWork.create',
     );
   });
 });

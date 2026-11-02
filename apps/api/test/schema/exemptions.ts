@@ -28,6 +28,11 @@ export const tenancyExemptions: Readonly<Record<string, { class: string; reason:
     reason:
       'the engine callback replay cache, keyed by (service, nonce); no account (PLAT-9 plan 2A.2, migration 0011)',
   },
+  core_geocode_cache: {
+    class: 'platform table',
+    reason:
+      'the geocoder answer for an address text is the same for every tenant and carries no tenant data; platform pool only (INT-2 plan 2.4, migration 20261102115811_core_geocode_cache)',
+  },
   core_otp_challenges: {
     class: 'users',
     reason:
@@ -117,6 +122,9 @@ export const piiColumns: Readonly<Record<string, readonly string[]>> = {
   core_platform_staff: ['totp_secret_ciphertext'],
   core_invitations: ['email', 'name'],
   core_auth_challenges: ['pending_phone', 'ip'],
+  // DEL-4 plan 2.1 (data §10, driver row): the PIN hash, the app's device id, the push token.
+  del_drivers: ['name', 'cash_pin_hash'],
+  del_driver_devices: ['device_id', 'push_token'],
 };
 
 /**

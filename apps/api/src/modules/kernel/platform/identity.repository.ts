@@ -6,8 +6,10 @@ import {
   getPlatformUnitOfWork,
   withPlatformUnitOfWork,
 } from '@eeasy-logistics/db/platform';
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { coreAccounts } from '../schema/accounts.js';
+import { delDriverDevices, delDrivers } from '../schema/drivers.js';
+import type { DriverStatus } from '../schema/drivers.js';
 import type {
   InvitationKind,
   MembershipStatus,
@@ -84,6 +86,44 @@ export class UsersRepository extends PlatformRepository<typeof coreUsers> {
       .where(eq(coreUsers.id, id))
       .limit(1);
     return row;
+  }
+
+  /** The user with this E.164 phone (`core_users.phone`, never the second-factor phone), or undefined. */
+  async findByPhone(phone: string): Promise<UserRow | undefined> {
+    const [row] = await this.unscoped()
+      .select(userColumns)
+      .from(coreUsers)
+      .where(eq(coreUsers.phone, phone))
+      .limit(1);
+    return row;
+  }
+
+  /**
+   * A person known by phone only (DEL-4 plan 2.2: a driver has no email and no password), unless
+   * the phone already has a user (a concurrent creation): `ON CONFLICT` on the partial unique
+   * phone index does nothing, and the caller reads the row back by phone.
+   */
+  async insertByPhone(user: {
+    readonly id: string;
+    readonly name: string;
+    readonly phone: string;
+    readonly locale: UserLocale;
+  }): Promise<void> {
+    await this.unscoped()
+      .insert(coreUsers)
+      .values(user)
+      .onConflictDoNothing({ target: coreUsers.phone, where: sql`${coreUsers.phone} IS NOT NULL` });
+  }
+
+  /**
+   * `token_version + 1` (DEL-4 plan 2.4: a driver suspended or archived): every refresh family of
+   * the user is refused at its next rotation and every sensitive action re-reads it (identity §4).
+   */
+  async bumpTokenVersion(id: string): Promise<void> {
+    await this.unscoped()
+      .update(coreUsers)
+      .set({ tokenVersion: sql`${coreUsers.tokenVersion} + 1`, updatedAt: sql`now()` })
+      .where(eq(coreUsers.id, id));
   }
 
   /**
@@ -358,6 +398,60 @@ export class MembershipsRepository extends PlatformRepository<typeof coreMembers
       .set({ status: 'active', updatedAt: sql`now()` })
       .where(eq(coreMemberships.id, id));
   }
+
+  /**
+   * The drivers this E.164 phone may sign in as (DEL-4 plan 2.7): a user not disabled, an `active`
+   * membership holding `driver` on an `active` account, and its `active` driver row; the most
+   * recently changed driver first. One query whatever the phone, so a stranger costs what a
+   * driver does.
+   */
+  async driversOfPhone(phone: string): Promise<DriverSignInRow[]> {
+    return this.unscoped()
+      .select({
+        userId: coreUsers.id,
+        tokenVersion: coreUsers.tokenVersion,
+        membershipId: coreMemberships.id,
+        accountId: coreMemberships.accountId,
+        accountName: coreAccounts.name,
+        roles: coreMemberships.roles,
+        siteIds: coreMemberships.siteIds,
+        driverId: delDrivers.id,
+      })
+      .from(coreUsers)
+      .innerJoin(coreMemberships, eq(coreMemberships.userId, coreUsers.id))
+      .innerJoin(coreAccounts, eq(coreAccounts.id, coreMemberships.accountId))
+      .innerJoin(
+        delDrivers,
+        and(
+          eq(delDrivers.membershipId, coreMemberships.id),
+          eq(delDrivers.accountId, coreMemberships.accountId),
+        ),
+      )
+      .where(
+        and(
+          eq(coreUsers.phone, phone),
+          isNull(coreUsers.disabledAt),
+          eq(coreMemberships.status, 'active'),
+          sql`'driver' = ANY(${coreMemberships.roles})`,
+          eq(coreAccounts.status, 'active'),
+          eq(delDrivers.status, 'active'),
+        ),
+      )
+      .orderBy(desc(delDrivers.updatedAt), desc(delDrivers.id));
+  }
+}
+
+/** A driver a phone may sign in as (DEL-4 plan 2.7). */
+export interface DriverSignInRow {
+  readonly userId: string;
+  readonly tokenVersion: number;
+  readonly membershipId: string;
+  readonly accountId: string;
+  /** The account's name: the choice `account_choice_required` offers (adversary H-2). */
+  readonly accountName: string;
+  readonly roles: string[];
+  readonly siteIds: string[];
+  readonly driverId: string;
 }
 
 /** A refresh row as the rotation reads it, with the subject's state, on the database clock. */
@@ -387,6 +481,14 @@ export interface RefreshState {
   } | null;
   /** Null unless the user is platform staff. */
   readonly platformStaff: { readonly role: PlatformStaffRole; readonly revoked: boolean } | null;
+  /**
+   * A driver row's driver and device (DEL-4 plan 2.8), read through the device row the refresh row
+   * carries; null on the other surfaces. `device` is null when the row names no device that exists.
+   */
+  readonly driver: {
+    readonly status: DriverStatus | null;
+    readonly device: { readonly appDeviceId: string; readonly revoked: boolean } | null;
+  } | null;
 }
 
 export interface NewRefreshToken {
@@ -465,12 +567,30 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
         accountStatus: coreAccounts.status,
         staffRole: corePlatformStaff.role,
         staffRevoked: sql<boolean>`${corePlatformStaff.revokedAt} IS NOT NULL`,
+        appDeviceId: delDriverDevices.deviceId,
+        deviceRevoked: sql<boolean>`${delDriverDevices.revokedAt} IS NOT NULL`,
+        driverStatus: delDrivers.status,
       })
       .from(coreRefreshTokens)
       .innerJoin(coreUsers, eq(coreUsers.id, coreRefreshTokens.userId))
       .leftJoin(coreMemberships, eq(coreMemberships.id, coreRefreshTokens.membershipId))
       .leftJoin(coreAccounts, eq(coreAccounts.id, coreMemberships.accountId))
       .leftJoin(corePlatformStaff, eq(corePlatformStaff.userId, coreRefreshTokens.userId))
+      // The driver of the device (DEL-4 plan 2.8): the device's account must be the membership's.
+      .leftJoin(
+        delDriverDevices,
+        and(
+          eq(delDriverDevices.id, coreRefreshTokens.deviceId),
+          eq(delDriverDevices.accountId, coreMemberships.accountId),
+        ),
+      )
+      .leftJoin(
+        delDrivers,
+        and(
+          eq(delDrivers.id, delDriverDevices.driverId),
+          eq(delDrivers.membershipId, coreRefreshTokens.membershipId),
+        ),
+      )
       .where(eq(coreRefreshTokens.tokenHash, tokenHash))
       .for('update', { of: coreRefreshTokens });
     if (row === undefined) return undefined;
@@ -506,6 +626,16 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
             },
       platformStaff:
         row.staffRole === null ? null : { role: row.staffRole, revoked: row.staffRevoked },
+      driver:
+        row.surface !== 'driver'
+          ? null
+          : {
+              status: row.driverStatus,
+              device:
+                row.appDeviceId === null
+                  ? null
+                  : { appDeviceId: row.appDeviceId, revoked: row.deviceRevoked },
+            },
     };
   }
 
@@ -529,12 +659,18 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
 
   /**
    * Revokes every live row of the user (a password reset), or of one surface and membership (a
-   * logout without a refresh cookie); returns the distinct families revoked.
+   * logout without a refresh cookie), or of one driver device of that membership (DEL-4 plan 2.5:
+   * `deviceId` is the `del_driver_devices` row id the rows carry); returns the distinct families
+   * revoked.
    */
   async revokeAll(
     userId: string,
     reason: RevocationReason,
-    scope?: { readonly surface: SessionSurface; readonly membershipId: string | null },
+    scope?: {
+      readonly surface: SessionSurface;
+      readonly membershipId: string | null;
+      readonly deviceId?: string;
+    },
   ): Promise<string[]> {
     const conditions = [eq(coreRefreshTokens.userId, userId), isNull(coreRefreshTokens.revokedAt)];
     if (scope !== undefined) {
@@ -544,6 +680,9 @@ export class RefreshTokensRepository extends PlatformRepository<typeof coreRefre
           ? isNull(coreRefreshTokens.membershipId)
           : eq(coreRefreshTokens.membershipId, scope.membershipId),
       );
+      if (scope.deviceId !== undefined) {
+        conditions.push(eq(coreRefreshTokens.deviceId, scope.deviceId));
+      }
     }
     const rows = await this.unscoped()
       .update(coreRefreshTokens)

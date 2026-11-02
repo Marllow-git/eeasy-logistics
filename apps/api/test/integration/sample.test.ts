@@ -4,7 +4,7 @@ import { transactionOf } from '@eeasy-logistics/db/testing';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { coreAccounts } from '../../src/modules/kernel/schema/accounts.js';
-import { accountFixtures } from '../../src/seed/fixtures.js';
+import { accountFixtures, coverageFixtures, zoneFixtures } from '../../src/seed/fixtures.js';
 import { seedFixtures } from '../../src/seed/seed.js';
 import { connectAs, harnessDatabase, integrationConfig } from './support.js';
 
@@ -36,13 +36,23 @@ describe('sample integration test', () => {
     }
   });
 
-  it('seeds the two fixture accounts deterministically and idempotently', async () => {
+  it('seeds the two fixture accounts, their zones and coverage deterministically and idempotently', async () => {
     await seedFixtures(config.db);
     expect(await seedFixtures(config.db)).toBe(0);
     const rows = await owner<{ id: string; name: string; status: string }[]>`
       SELECT id, name, status FROM core_accounts
       WHERE id IN ${owner(accountFixtures.map((fixture) => fixture.id))} ORDER BY id`;
     expect(rows).toEqual(accountFixtures.map(({ id, name, status }) => ({ id, name, status })));
+    // DEL-1 plan 2.8: two drawn zones per account, each covered by its city's branch.
+    const covered = await owner<{ account_id: string; zones: number; pairs: number }[]>`
+      SELECT z.account_id, count(DISTINCT z.id)::int AS zones, count(c.id)::int AS pairs
+      FROM del_zones z JOIN del_coverage c ON c.zone_id = z.id
+      WHERE z.id IN ${owner(zoneFixtures.map((zone) => zone.id))}
+      GROUP BY z.account_id ORDER BY z.account_id`;
+    expect(covered).toEqual(
+      accountFixtures.map(({ id }) => ({ account_id: id, zones: 2, pairs: 2 })),
+    );
+    expect(coverageFixtures).toHaveLength(4);
   });
 
   it('reads through a unit of work for one account', async () => {

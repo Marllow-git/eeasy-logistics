@@ -74,12 +74,25 @@ export interface OtpRequest {
   /** The client address (`request.ip`), for the per-address budget and the row. */
   readonly ip: string | undefined;
   readonly locale: Locale;
+  /**
+   * False when the phone belongs to no one who may sign in with it (DEL-4 plan 2.7, identity §8):
+   * every step runs (availability, the phone lock, the cooldown, the budgets, the challenge row)
+   * except the `message` row, so the door answers and costs the same and no code is sent.
+   * Default true.
+   */
+  readonly deliver?: boolean;
 }
 
 export interface OtpVerification {
   readonly phone: string;
   readonly purpose: OtpPurpose;
   readonly code: string;
+  /**
+   * False: a right code proves possession without being spent (DEL-4 adversary H-2: the driver
+   * still has to choose an account and sends the same code again). The match counts as one of the
+   * challenge's five attempts, so a code answers at most five times. Default true.
+   */
+  readonly consume?: boolean;
 }
 
 /** What `verify` proves: the E.164 phone that received the code. */
@@ -185,6 +198,7 @@ export class OtpService {
         ip: input.ip === undefined || input.ip === '' ? null : input.ip,
       });
       const encrypted = cipher.encrypt(code, `core_otp_challenges:${id}`);
+      if (input.deliver === false) return;
       await outbox.enqueue(uow, {
         type: 'core.otp_challenge.created',
         version: 1,
@@ -201,6 +215,7 @@ export class OtpService {
         },
       });
     });
+    // The same line either way: the log does not tell whether the phone is anyone's.
     this.#logger.log(`otp challenge created purpose=${input.purpose} phone=${phoneTail(phone)}`);
   }
 
@@ -233,7 +248,8 @@ export class OtpService {
       }
       const ids = live.map((challenge) => challenge.id);
       if (matched && wellFormed) {
-        await challenges.consumeAll(ids);
+        if (input.consume === false) await challenges.recordFailures(ids);
+        else await challenges.consumeAll(ids);
         return true;
       }
       await challenges.recordFailures(ids);

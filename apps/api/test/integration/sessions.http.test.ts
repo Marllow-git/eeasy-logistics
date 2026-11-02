@@ -252,7 +252,8 @@ describe('sessions over HTTP (PLAT-11 item C)', () => {
     expect(me.account).toMatchObject({ id: accountId, status: 'active' });
     expect(me.permissions).toContain('delivery.orders.read');
     expect(me.permissions).not.toContain('core.members.manage');
-    expect(me.features).toEqual([]);
+    // The harness row in global-setup.ts sets the `delivery` rollout mode to `all` (DEL-1 plan 2.9).
+    expect(me.features).toEqual(['delivery']);
     expect(JSON.stringify(response.body)).not.toMatch(/password|token_version/);
   });
 

@@ -40,6 +40,9 @@ export class MembersRepository extends ScopedRepository<typeof coreMemberships> 
   matching(filters: MemberFilters): Promise<MemberRow[]> {
     return this.findMany(
       and(
+        // Driver-only memberships are Delivery's (DEL-4 R2): never read, so the in-memory page
+        // stays the size of the staff (PLAT-12 8.2 #36).
+        sql`${coreMemberships.roles} <> ARRAY['driver']::text[]`,
         filters.statuses === undefined
           ? undefined
           : inArray(coreMemberships.status, [...filters.statuses]),
@@ -75,6 +78,50 @@ export class MembersRepository extends ScopedRepository<typeof coreMemberships> 
       {
         roles: [...values.roles],
         siteIds: [...values.siteIds],
+        updatedAt: sql`now()` as unknown as Date,
+      },
+      eq(coreMemberships.id, id),
+    );
+    if (row === undefined) throw new Error('The membership vanished under the write lock');
+    return row;
+  }
+
+  /**
+   * A driver membership (DEL-4 plan 2.2): `active` at once, since a driver has no password to
+   * accept an invitation with; the caller holds `lockWrites()` and checked the role combination.
+   */
+  async insertActive(values: {
+    readonly id: string;
+    readonly userId: string;
+    readonly roles: readonly string[];
+    readonly siteIds: readonly string[];
+  }): Promise<MemberRow> {
+    const [row] = await this.insertMany([
+      {
+        id: values.id,
+        userId: values.userId,
+        roles: [...values.roles],
+        siteIds: [...values.siteIds],
+        status: 'active',
+      },
+    ]);
+    if (row === undefined) throw new Error('The membership insert returned no row');
+    return row;
+  }
+
+  /**
+   * A revoked membership back to `active` with these roles and sites only (DEL-4 plan 2.2: its old
+   * roles do not come back); the caller holds `lockWrites()` and checked the role combination.
+   */
+  async reactivate(
+    id: string,
+    values: { readonly roles: readonly string[]; readonly siteIds: readonly string[] },
+  ): Promise<MemberRow> {
+    const [row] = await this.updateWhere(
+      {
+        roles: [...values.roles],
+        siteIds: [...values.siteIds],
+        status: 'active',
         updatedAt: sql`now()` as unknown as Date,
       },
       eq(coreMemberships.id, id),

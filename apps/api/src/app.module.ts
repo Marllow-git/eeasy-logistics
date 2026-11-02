@@ -32,6 +32,8 @@ export class AppModule {
         MessagingModule.forRoot(config),
         // PLAT-11: staff and platform sign-in, sessions and Me.
         AuthModule.forRoot(config),
+        // DEL-4: the staff driver doors.
+        DeliveryModule.forRoot(config),
         ReadinessModule.forRoot(config),
       ],
       // PLAT-14: flushes the telemetry main.ts started.

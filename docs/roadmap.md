@@ -23,15 +23,19 @@ Updated by the lead at every order close (handbook 01 stage 9) and read with the
 | WEB-2 browser sessions and sign-in doors | merged | #91 | 2026-11-02 |
 | INT-4 push sender | merged | #93 | 2026-11-02 |
 | OPS-3 EAS and store accounts (research) | merged | #82 | 2026-11-01 |
-| INT-2 geocoder and short codes | built, lead review passed; regenerating its migration on main after PLAT-13 | #105 | 2026-11-02 |
+| INT-2 geocoder and short codes | merged (migration `20261102115811_core_geocode_cache`) | #105 | 2026-11-02 |
 | CHORE-3 timestamp migration names and parallel-order migrations | merged | #116 | 2026-11-02 |
 | PLAT-13 provisioning, rollout and suspension | merged (two adversary runs, fixes in) | #104 | 2026-11-02 |
-| WEB-3 merchant settings screens | built, lead review passed; at the gate | #109 | 2026-11-02 |
-| DEL-4 drivers, devices and driver auth | built; adversary fix round 1 (three highs) in progress | #114 | 2026-11-02 |
+| WEB-3 merchant settings screens | merged | #109 | 2026-11-02 |
+| DEL-4 drivers, devices and driver auth | merged (two adversary runs, three fix rounds; migration `20261102122929_del_drivers`; `driverVerifyOtp` gains `account_id`) | #114 | 2026-11-02 |
 | OPS-1 host, registry and staging | waits on the owner's go (Q-10, Q-12); the wave 0 exit criteria need it | – | – |
-| WEB-4 platform console screens | planned (#119); registers when WEB-3 merges | – | 2026-11-02 |
+| WEB-4 platform console screens | both legs built; adversary pass running | #129 | 2026-11-02 |
+| DEL-1 zones and coverage | merged (migration `20261102125922_del_zones`; the `delivery` feature gate on the staff delivery doors) | #132 | 2026-11-02 |
+| DEL-2 orders and intake rules | registered (#134); leg 1 building (the critical path's next step) | – | 2026-11-02 |
+| DRV-1 driver app shell and sign-in | registered (#130); leg 1 building | – | 2026-11-02 |
+| DEL-5 shifts and location pings | registered (#137); leg 1 building | – | 2026-11-02 |
 
-Wave 0 remaining for its exit (section 2): WEB-3, WEB-4, OPS-1 and the staging checks that need it (deploy on merge, the restore drill, the `auth_otp` template approval, the ADR acceptances 0026, 0027, 0029, 0031, 0032, 0033, 0036, 0037).
+Wave 0 remaining for its exit (section 2): WEB-4, OPS-1 and the staging checks that need it (deploy on merge, the restore drill, the `auth_otp` template approval, the ADR acceptances 0026, 0027, 0029, 0031, 0032, 0033, 0036, 0037).
 
 ## 1. Waves and orders
 

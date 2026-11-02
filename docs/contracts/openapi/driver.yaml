@@ -44,7 +44,7 @@ paths:
     post:
       operationId: driverVerifyOtp
       summary: "Verify the OTP and register this device"
-      description: 'Single use under a row lock; invalid code and disabled driver both return otp_invalid. Binds the refresh token to the device; at most two active devices. At most 5 verification attempts per code or challenge, then it is invalidated; challenges expire after 5 minutes.'
+      description: 'Single use under a row lock; invalid code and disabled driver both return otp_invalid. Binds the refresh token to the device; at most two active devices. At most 5 verification attempts per code or challenge, then it is invalidated; challenges expire after 5 minutes. A phone that drives for more than one account and sends no account_id gets 409 account_choice_required with details.accounts [{account_id, name}] after the code matched; the code is not spent (the match counts one attempt), so the app sends it again with the chosen account_id. An account_id that matches none of the phone''s active driver rows is otp_invalid.'
       tags: [auth]
       x-wave: 1
       x-permission: core.auth.anonymous
@@ -53,8 +53,8 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OtpVerifyRequest'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DriverSession'}}}}
-        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid.'}
-        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: device_limit_reached.'}
+        '401': {$ref: './components.yaml#/components/responses/Unauthorized', description: 'Codes: otp_invalid, device_revoked (this app id was revoked by a dispatcher; a code never brings it back).'}
+        '409': {$ref: './components.yaml#/components/responses/Conflict', description: 'Codes: device_limit_reached, account_choice_required.'}
         '426': {$ref: './components.yaml#/components/responses/UpgradeRequired', description: 'Codes: app_update_required.'}
         '429': {$ref: './components.yaml#/components/responses/TooManyRequests', description: 'Codes: rate_limited.'}
         '4XX': {$ref: './components.yaml#/components/responses/ClientError'}
@@ -519,6 +519,7 @@ components:
         phone: {type: string}
         code: {type: string, pattern: '^[0-9]{6}$'}
         device: {$ref: '#/components/schemas/DeviceInfo'}
+        account_id: {type: string, format: uuid, description: 'The account to sign in to, sent after 409 account_choice_required; omitted when the phone drives for one account.'}
     DriverSession:
       type: object
       properties:

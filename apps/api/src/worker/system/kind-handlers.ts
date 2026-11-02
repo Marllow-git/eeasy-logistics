@@ -2,6 +2,7 @@ import type { Config } from '@eeasy-logistics/config';
 import type { AppDatabase, Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { Logger } from '@nestjs/common';
+import { driverPushInvalidation } from '../../modules/delivery/public/index.js';
 import { Redis } from 'ioredis';
 import { redisFeatureCache } from '../../modules/kernel/features/feature-resolver.js';
 import { kernelConsumers } from '../../modules/kernel/outbox/account-suspended.consumer.js';
@@ -10,6 +11,7 @@ import { messageKindHandlerFor } from './message-handler.js';
 import { pushKindHandlerFor } from './push-handler.js';
 import type { KindHandler } from '../../modules/kernel/outbox/kind-handlers.js';
 import { StorageLifecycleHandler } from '../../modules/kernel/outbox/storage-lifecycle.handler.js';
+import { PushTokenInvalidations } from '../../modules/kernel/push/invalidations.js';
 import type { ObjectStorage } from '../../modules/kernel/storage/object-storage.js';
 import { StubObjectStorage } from '../../modules/kernel/storage/object-storage.js';
 import { InternalEventDispatcher } from './internal-events.js';
@@ -73,8 +75,15 @@ export function buildKindHandlers(
   }
   const message = messageKindHandlerFor(config, pool, logger);
   if (message !== undefined) handlers.push(message);
-  // INT-4 plan 2.8: whenever this build has a push adapter (not with PUSH_DISABLED=true).
-  const push = pushKindHandlerFor(config, pool, logger);
+  // INT-4 plan 2.8: whenever this build has a push adapter (not with PUSH_DISABLED=true). DEL-4 plan
+  // 2.11: an invalid token is cleared on its Delivery device row (needs the elx_app pool).
+  const invalidations = new PushTokenInvalidations();
+  if (app === undefined) {
+    logger.warn('push token invalidations clear nothing: DATABASE_URL_APP not configured');
+  } else {
+    invalidations.register(driverPushInvalidation(app.db));
+  }
+  const push = pushKindHandlerFor(config, pool, logger, invalidations);
   if (push !== undefined) handlers.push(push);
   return handlers;
 }

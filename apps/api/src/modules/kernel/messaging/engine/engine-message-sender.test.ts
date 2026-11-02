@@ -246,6 +246,9 @@ describe('EngineMessageSender (plan 2A.1)', () => {
     expect(list.map((entry) => `${entry.key}:${entry.locale}`).sort()).toEqual([
       'auth_otp:ar',
       'auth_otp:en',
+      // DEL-4 plan 2.3.
+      'driver_invitation:ar',
+      'driver_invitation:en',
     ]);
   });
 });

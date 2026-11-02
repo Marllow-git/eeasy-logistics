@@ -77,9 +77,10 @@ export function runInFrame<T>(frame: Frame, fn: () => T): T {
 }
 
 /**
- * Runs `fn` with `context` as the current context, without a transaction. Not exported from the
- * package root: requests and jobs get their context from `withUnitOfWork`; tests use
- * `@eeasy-logistics/db/testing`.
+ * Runs `fn` with `context` as the current context, without a transaction. Requests and jobs get
+ * their context from `withUnitOfWork`; the API's unit-of-work interceptor uses this for a handler
+ * marked `@NoUnitOfWork()` (DEL-4 adversary H-1: the handler opens its own, only, transaction);
+ * tests use `@eeasy-logistics/db/testing`.
  */
 export function runWithContext<T>(context: RequestContext, fn: () => T): T {
   return runInFrame({ context: checkContext(context) }, fn);
