@@ -19,6 +19,7 @@ import {
   planListPage,
   presentPage,
   textQuery,
+  Feature,
 } from '../../kernel/public/index.js';
 import type { ZoneSortField } from './zones.repository.js';
 import { presentZone } from './zones.presenter.js';
@@ -38,6 +39,9 @@ const zoneSorts: ListSorts<ZoneSortField> = {
   default: '-created_at',
 };
 
+// The `delivery` module's feature gate (DEL-1 plan 2.9; ADR-0006): `403 feature_not_enabled`
+// for an account the module is not visible to (K-6).
+@Feature('delivery')
 @Controller('v1/staff/zones')
 export class ZonesController {
   private readonly cursors: CursorCodec;
