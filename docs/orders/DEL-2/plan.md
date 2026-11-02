@@ -100,11 +100,13 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 |---|---|---|---|
 | A | see `git log` (`DEL-2: A …`) | `orders-table.test.ts` 5 red (migration out of the journal) → 5 green; `tenancy.test.ts` 14 green; `sequence-allocator.test.ts` 3 green; ELX_RLS=on; `migrate` twice on a scratch database (21 applied, then nothing); second `drizzle-kit generate`: no changes | 8.2 #1, #2 |
 | B | see `git log` (`DEL-2: B …`) | `orders.http.test.ts` 5 red (controller unregistered) → 5 green; unit `order-machine` 3, `order-input` 5, `intake` 8 green; `orders-table` 5, `tenancy` 14, `features.http` 7 (Mailpit on scratch ports), `delivery-gate.http`, `route-spelling.http`, `outbox-writer` green (46 with the first three); api unit suite 1042 (2 red in `integration-projects` fixed by listing `orders-table` as a migrator file); `test:architecture` clean; ELX_RLS=on | 8.2 #3 to #9 |
+| C | see `git log` (`DEL-2: C …`) | typecheck, lint (api, db), Prettier on the changed files, `test:architecture`, contracts lint: clean; no new tests | memory `api/core` |
 
 ### 8.1 Deviations
 
 - **Contract (shared seam):** `components.yaml` `Order.pending_reason` gains `needs_location` (8.2 #4). Additive in shape; no in-flight order reads `Order`.
 - **`packages/db`:** `ScopedRepository.upsert` (protected; the target must lead with `account_id`) for the allocator and the usage counter (8.2 #1, #6).
+- **Consulted (2026-11-02):** drizzle-orm 0.45.4 and drizzle-kit 0.31.11 (`onConflictDoUpdate`, `geometry` xy mode; the installed typings and DEL-1's and PLAT-12's notes, so Context7 was not needed), NestJS 12.3.2, postgres.js 3.4.9, PostgreSQL 17.9 with PostGIS 3.7.0 locally; the plan's §1 sections as cited (domain model §1.1, §3.1 to §3.3, §3.13, §3.18, §8; data §1.3, §2.1, §3.1, §7, §8, §10; contracts README §2, §5; `createOrder` and its schemas; errors.md rows), DEL-1 §8.2 #1 to #6, DEL-4 §8.2 #10, #28, memory `api/core`.
 
 ### 8.2 Notes
 
@@ -119,5 +121,9 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 9. **Machine extras (2.6, 2.9).** `picked_up → failed` (dispatcher) is in the machine for Q-6's cancel after pickup; §3.13's diagram lacks it but its closing note implies it. A short-code hit stores the source's own confidence (1 from the register and the stub, 0.95 from Sayyar), not a fixed 1.0. The created event's `payload` carries `pending_reason`.
 
 ### 8.3 Not done here
+
+- Leg 2 (items D to F): the reads, `updateOrder` with the `If-Match` reader, the transitions and `cancelOrder`, `OrderTransitions.apply` and `OrderReader` in Delivery public, the contract scenarios, and the data.md and domain-model rows (`needs_location`, the order event types).
+- The `open_orders` site-use check (PLAT-12 `SiteUseChecks` names DEL-2) is not registered yet: deactivating a branch with open orders still passes. It belongs with leg 2's reads or a lead ruling.
+- Local verification ran the ELX_RLS=on lane only; the off lane and the full integration lanes are CI's.
 
 ## 9. Lead review and adversary
