@@ -42,6 +42,7 @@ import {
 import { CoverageQuery } from '../zones/coverage-query.js';
 import { OrderIntake } from './order-intake.js';
 import { newOrderFields, orderPatchFields } from './order-input.js';
+import { afterPickupStatuses } from './order-machine.js';
 import { OrderTransitions } from './order-transitions.js';
 import { OrderUpdates } from './order-updates.js';
 import { presentOrder, presentOrderEvent } from './orders.presenter.js';
@@ -53,7 +54,8 @@ import {
 } from './orders.repository.js';
 
 // The staff surface's `orders` tag (DEL-2 plan 2.3, 2.7 to 2.9): `createOrder`, `listOrders`,
-// `getOrder`, `listOrderEvents`, `updateOrder` (PLAT-10's guard; the `delivery` gate). The account
+// `getOrder`, `listOrderEvents`, `updateOrder`, `transitionOrder`, `cancelOrder` (PLAT-10's guard;
+// the `delivery` gate). The account
 // is the token's; a site-scoped member (site staff, cashier) reads its own sites' orders only, and
 // another site's order is `404` (README §4). Dispatcher writes carry `If-Match` (D-22).
 
@@ -62,6 +64,16 @@ const listOp = operationSchemas.listOrders;
 const getOp = operationSchemas.getOrder;
 const eventsOp = operationSchemas.listOrderEvents;
 const updateOp = operationSchemas.updateOrder;
+const transitionOp = operationSchemas.transitionOrder;
+const cancelOp = operationSchemas.cancelOrder;
+
+/** The dispatcher on the staff surface: the machine's `dispatcher`, the event's `user` (D-5). */
+const dispatcherActor = () =>
+  ({ role: 'dispatcher', type: 'user', id: getContext().userId }) as const;
+
+/** A note of a transition: trimmed, blank is none (the contract bounds it at 1000). */
+const noteOf = (note: string | undefined): string | null =>
+  note === undefined || note.trim() === '' ? null : note.trim();
 
 const orderSorts: ListSorts<OrderSortField> = {
   fields: { created_at: 'timestamp', updated_at: 'timestamp', number: 'text', status: 'text' },
@@ -79,6 +91,8 @@ const eventSorts: ListSorts<'server_ts'> = {
 export class OrdersController {
   private readonly intake: OrderIntake;
   private readonly updates: OrderUpdates;
+  private readonly transitions: OrderTransitions;
+  private readonly accounts: OrderAccounts;
   private readonly cursors: CursorCodec;
 
   constructor(
@@ -98,6 +112,8 @@ export class OrdersController {
       outbox,
     });
     const transitions = new OrderTransitions({ audit, outbox });
+    this.transitions = transitions;
+    this.accounts = accounts;
     this.updates = new OrderUpdates({ geocoder, coverage, accounts, audit, transitions });
     this.cursors = cursors ?? new CursorCodec(undefined);
   }
@@ -242,5 +258,81 @@ export class OrdersController {
       facts,
     });
     return presentOrder(updated.order, updated.items);
+  }
+
+  /**
+   * `transitionOrder` (plan 2.9): `accepted` (from `pending` with a zone, D-3; from `attempted`, the
+   * reschedule without a slot) or `failed` (from `out_for_delivery`, `attempted`, and `picked_up`
+   * for Q-6) with one of the account's reason codes.
+   */
+  @Post(':order_id/transitions')
+  @HttpCode(200)
+  @Idempotent()
+  @Operation(transitionOp)
+  async transition(
+    @Input() input: ContractInput<typeof transitionOp>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<Order> {
+    const expectedVersion = ifMatchVersion(input.headers['If-Match']);
+    const { body } = input;
+    if (body.to_status === 'failed' || body.reason_code !== undefined) {
+      await this.assertReasonCode(body.reason_code);
+    }
+    const uow = getUnitOfWork();
+    const order = await this.transitions.apply(uow, input.params.order_id, {
+      to: body.to_status,
+      actor: dispatcherActor(),
+      expectedVersion,
+      reasonCode: body.reason_code ?? null,
+      note: noteOf(body.note),
+      idempotencyKey: input.headers['Idempotency-Key'],
+      facts,
+    });
+    return presentOrder(order, await new OrderItemsRepository(uow).of(order.id));
+  }
+
+  /**
+   * `cancelOrder` (plan 2.9; Q-6): before pickup (`pending`, `accepted`, `offered`, `assigned`) the
+   * order is `cancelled`; once a driver holds the parcel (`picked_up`, `out_for_delivery`,
+   * `attempted`) it is `failed` with the reason and comes back through `returned`; a terminal or
+   * failed order is `409 invalid_transition`.
+   */
+  @Post(':order_id/cancel')
+  @HttpCode(200)
+  @Idempotent()
+  @Operation(cancelOp)
+  async cancel(
+    @Input() input: ContractInput<typeof cancelOp>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<Order> {
+    const expectedVersion = ifMatchVersion(input.headers['If-Match']);
+    await this.assertReasonCode(input.body.reason_code);
+    const uow = getUnitOfWork();
+    const seen = await new OrdersRepository(uow).find(input.params.order_id);
+    if (seen === undefined) throw new ApiException('not_found');
+    // `apply` checks the arrow again under the row lock and the version.
+    const to = afterPickupStatuses.has(seen.status) ? 'failed' : 'cancelled';
+    const order = await this.transitions.apply(uow, seen.id, {
+      to,
+      actor: dispatcherActor(),
+      expectedVersion,
+      reasonCode: input.body.reason_code,
+      note: noteOf(input.body.note),
+      idempotencyKey: input.headers['Idempotency-Key'],
+      facts,
+    });
+    return presentOrder(order, await new OrderItemsRepository(uow).of(order.id));
+  }
+
+  /** `400 validation_failed` at `/body/reason_code` unless it is one of the account's active codes. */
+  private async assertReasonCode(code: string | undefined): Promise<void> {
+    const account = await this.accounts.current();
+    if (code === undefined || !account.reasonCodes.includes(code)) {
+      throw new ApiException('validation_failed', {
+        fields: [
+          { pointer: '/body/reason_code', code: code === undefined ? 'required' : 'invalid' },
+        ],
+      });
+    }
   }
 }
