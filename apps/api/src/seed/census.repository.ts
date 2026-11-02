@@ -1,15 +1,17 @@
 import type { PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { PlatformRepository } from '@eeasy-logistics/db/platform';
-import { uuidv7 } from '@eeasy-logistics/db';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import type { UnitOfWork } from '@eeasy-logistics/db';
+import { ScopedRepository, uuidv7 } from '@eeasy-logistics/db';
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { coreAccounts } from '../modules/kernel/schema/accounts.js';
+import { coreSites } from '../modules/kernel/schema/sites.js';
 import {
   coreMemberships,
   corePlatformStaff,
   coreUsers,
 } from '../modules/kernel/schema/identity.js';
 import { coreOtpChallenges } from '../modules/kernel/schema/otp-challenges.js';
-import type { CensusAccountKey, CensusUser } from './census.js';
+import type { CensusAccountKey, CensusSite, CensusUser } from './census.js';
 
 /**
  * Puts the census identities back to their starting state (seed tool only; local and ci; WEB-2
@@ -161,5 +163,49 @@ export class CensusIdentitiesRepository extends PlatformRepository<typeof coreUs
           users.map((user) => user.id),
         ),
       );
+  }
+}
+
+/**
+ * Puts a census settings account's sites back to their starting state (WEB-3 leg 2): the seeded
+ * sites written by their deterministic ids, active, with their seeded fields, and every other site
+ * of the account deleted (those the last census run created). Seed tool only, local and ci;
+ * elx_platform may not write core_sites (0014), so this runs in a tenant unit of work on the
+ * elx_app pool for the account.
+ */
+export class CensusSitesRepository extends ScopedRepository<typeof coreSites> {
+  constructor(uow: UnitOfWork) {
+    super(uow, coreSites);
+  }
+
+  async reset(sites: readonly CensusSite[]): Promise<void> {
+    await this.deleteWhere(
+      notInArray(
+        coreSites.id,
+        sites.map((site) => site.id),
+      ),
+    );
+    for (const site of sites) {
+      // Drizzle's `xy` mode would write the point without its SRID (SitesRepository does the same).
+      const point =
+        site.point === null
+          ? sql`NULL`
+          : sql`ST_SetSRID(ST_MakePoint(${site.point.lng}::float8, ${site.point.lat}::float8), 4326)`;
+      const fields = {
+        kind: site.kind,
+        nameAr: site.nameAr,
+        nameEn: site.nameEn,
+        addressText: site.addressText,
+        nationalAddressShortCode: site.shortCode,
+        point: point as unknown as null,
+        openingHours: [...site.openingHours],
+        status: 'active' as const,
+      };
+      const [kept] = await this.updateWhere(
+        { ...fields, updatedAt: sql`now()` as unknown as Date },
+        eq(coreSites.id, site.id),
+      );
+      if (kept === undefined) await this.insertMany([{ id: site.id, ...fields }]);
+    }
   }
 }
