@@ -116,3 +116,13 @@ Official city boundary imports (§7 #1); the zones screens (WEB-6) and the map p
 - Official boundaries (§7 #1), a zones key in `AccountLimits` (§7 #2) and gating the driver surface: out of scope (§6).
 
 ## 9. Lead review
+
+Lead: architecture lead (Fable), 2026-11-02. Adversary: none (roadmap row; tenant-scoped doors through PLAT-6's frame and PLAT-10's guard; the provisioning trio follows PLAT-13's door patterns, reviewed below).
+
+**Accepted.** 8.2 #1: the cross-tenant door writes on the platform pool, so `elx_platform` holds INSERT on `del_zones` and `core_sites` and INSERT and DELETE on `del_coverage` (2.1's "none" was the lead's assumption; the door sets `elx.account_id` transaction-locally and both policies apply, proven on the `ELX_RLS=on` lane). #2: boundaries decoded in code (drizzle 0.45 has no select-time hook). #3: the list omits `boundary` (the generated schema allows it) and keeps the default limit. #7: `features.http` expectations follow the harness's `delivery = all`; the `allowlist` refusal is proven by `delivery-gate`. #8: the three audit actions are recorded in the plan and code; the catalogue table lives in the domain model's §6.3 only for outbox events, so no doc row is missing.
+
+**Checked.** Migration `20261102125922_del_zones` generated under CHORE-3's names with the hand-written GiST index, `ST_IsValid` CHECK, grants and policies; a second `generate` reports nothing; `migrate` twice. The provisioning trio answers `409 invalid_transition` on a closed account. `@Feature('delivery')` now gates DEL-4's staff doors too: an account under `allowlist` without the flag answers `403 feature_not_enabled` on them, which is the intended consequence of ADR-0006 and is the merge-danger line.
+
+**For later orders.** DEL-2 stores `outsideCoverage` as `pending_reason`; WEB-6 draws zones on the map provider (Q-19); the official boundary import waits on §7 #1; the console's provisioning screens for sites, zones and coverage are a WEB-4 follow-up (its §6 left them out while the doors did not exist).
+
+**Verdict:** ready for the gate; one-way door (the migration; the feature gate on DEL-4's doors); blast radius the Delivery staff surface and the platform provisioning doors.
