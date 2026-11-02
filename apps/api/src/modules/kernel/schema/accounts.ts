@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 export const accountStatuses = ['provisioned', 'active', 'suspended', 'closed'] as const;
 export type AccountStatus = (typeof accountStatuses)[number];
@@ -20,6 +20,11 @@ export const coreAccounts = pgTable(
     // 2A.3): allocated from `core_accounts_engine_account_id_seq` (from 2) at first use; 1 is the
     // platform's reserved id. Never taken from a request.
     engineAccountId: bigint('engine_account_id', { mode: 'number' }).unique(),
+    // AccountSettings (components.yaml; data §2.1), from PLAT-11 migration 0012: sign-in reads
+    // `second_factor_required` (plan 2.7, Q-7); PLAT-12 and PLAT-13 write the rest.
+    settings: jsonb('settings')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

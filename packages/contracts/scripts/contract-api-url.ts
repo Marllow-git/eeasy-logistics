@@ -16,7 +16,7 @@ export function resolveApiUrl(
     // pnpm forwards a literal `--` before the script's own arguments.
     const { values } = parseArgs({
       args: args.filter((arg) => arg !== '--'),
-      options: { api: { type: 'string' } },
+      options: originOptions,
     });
     flag = values.api;
   } catch (error) {
@@ -45,4 +45,54 @@ export function resolveApiUrl(
     };
   }
   return { ok: true, apiUrl };
+}
+
+const originOptions = {
+  api: { type: 'string' },
+  'web-origin': { type: 'string' },
+  'admin-origin': { type: 'string' },
+} as const;
+
+/**
+ * The `Origin` the browser surfaces send (PLAT-11 item I; ADR-0032, ADR-0038: the API refuses a
+ * staff or platform write whose `Origin` is not its `PUBLIC_WEB_URL` or `PUBLIC_ADMIN_URL`):
+ * `--web-origin` for staff, `--admin-origin` for platform; without them no `Origin` is sent and
+ * those writes answer 403. Each must be an http(s) origin (scheme, host, port; no path).
+ */
+export type OriginsResult =
+  { ok: true; origins: { staff?: string; platform?: string } } | { ok: false; message: string };
+
+export function resolveOrigins(args: string[]): OriginsResult {
+  let values: { 'web-origin'?: string; 'admin-origin'?: string };
+  try {
+    ({ values } = parseArgs({ args: args.filter((arg) => arg !== '--'), options: originOptions }));
+  } catch (error) {
+    return { ok: false, message: `test:contract: ${(error as Error).message}` };
+  }
+  const origins: { staff?: string; platform?: string } = {};
+  for (const [flag, surface] of [
+    ['web-origin', 'staff'],
+    ['admin-origin', 'platform'],
+  ] as const) {
+    const value = values[flag];
+    if (value === undefined) continue;
+    let url: URL | undefined;
+    try {
+      url = new URL(value);
+    } catch {
+      url = undefined;
+    }
+    if (
+      url === undefined ||
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.origin !== value.replace(/\/$/, '')
+    ) {
+      return {
+        ok: false,
+        message: `--${flag} must be an http(s) origin, e.g. http://localhost:3001.`,
+      };
+    }
+    origins[surface] = url.origin;
+  }
+  return { ok: true, origins };
 }

@@ -18,6 +18,10 @@ const integer = (min: number, max: number) =>
 export const port = () => integer(1, 65535);
 export const count = (max: number) => integer(1, max);
 export const seconds = () => integer(1, 31_536_000);
+/** A grace window in seconds where 0 switches the grace off (PLAT-11: the refresh reuse grace). */
+export const graceSeconds = () => integer(0, 3600);
+/** The issuer an authenticator app shows: no `:` (the otpauth label separator), at most 64. */
+export const totpIssuer = () => z.string().regex(/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/);
 /** Reverse-proxy hops in front of the API (`trust proxy`); 0 trusts no forwarded header. */
 export const hops = () => integer(0, 10);
 /** Months the audit log is kept (identity and tenancy §7: two years at least; PLAT-7). */

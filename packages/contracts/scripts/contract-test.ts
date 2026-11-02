@@ -1,10 +1,11 @@
 // `pnpm --filter contracts test:contract [-- --api <origin>]` (PLAT-15 plan 2.8, 2.10): runs the
 // harness self-test and every scenario under test/scenarios against the running API. The origin
 // comes from `--api`, else from `CONTRACT_API_URL` through packages/config; never read directly.
+// `--web-origin` and `--admin-origin` give the staff and platform writes their `Origin`.
 import { contractTestConfig } from '@eeasy-logistics/config/contract-test';
 import { createVitest } from 'vitest/node';
 import { ContractValidator } from '../test/contract/harness.ts';
-import { resolveApiUrl } from './contract-api-url.ts';
+import { resolveApiUrl, resolveOrigins } from './contract-api-url.ts';
 import { packageRoot, surfaces } from './paths.ts';
 
 const resolved = resolveApiUrl(process.argv.slice(2), contractTestConfig);
@@ -13,13 +14,19 @@ if (!resolved.ok) {
   process.exit(2);
 }
 const { apiUrl } = resolved;
+// PLAT-11 item I: the browser surfaces' `Origin`, so their auth writes reach the doors.
+const origins = resolveOrigins(process.argv.slice(2));
+if (!origins.ok) {
+  console.error(origins.message);
+  process.exit(2);
+}
 
 const vitest = await createVitest({
   root: packageRoot,
   config: false,
   watch: false,
   include: ['test/contract/self-test.test.ts', 'test/contract/scenarios.contract.ts'],
-  provide: { apiUrl },
+  provide: { apiUrl, origins: origins.origins },
 });
 try {
   // Sets process.exitCode to 1 when a test fails.

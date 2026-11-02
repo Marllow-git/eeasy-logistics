@@ -13,10 +13,13 @@ import type { Scenario } from './scenario.ts';
 declare module 'vitest' {
   export interface ProvidedContext {
     apiUrl: string;
+    /** The `Origin` of the staff and platform writes (`--web-origin`, `--admin-origin`). */
+    origins: { staff?: string; platform?: string };
   }
 }
 
 const apiUrl = inject('apiUrl');
+const origins = inject('origins');
 const scenariosDir = join(packageRoot, 'test', 'scenarios');
 
 function scenarioFiles(surface: SurfaceName): string[] {
@@ -53,7 +56,13 @@ for (const { name: surface } of surfaces) {
         );
         const scenario = ((await import(file)) as { default: Scenario }).default;
         const recorder = recordingFetch();
-        const fetcher = createFetcher({ baseUrl: apiUrl, fetch: recorder.fetch, webClient });
+        const origin = surface === 'staff' || surface === 'platform' ? origins[surface] : undefined;
+        const fetcher = createFetcher({
+          baseUrl: apiUrl,
+          fetch: recorder.fetch,
+          webClient,
+          ...(origin === undefined ? {} : { headers: { Origin: origin } }),
+        });
         try {
           await scenario.run({ apiUrl, fetcher });
         } catch (thrown) {

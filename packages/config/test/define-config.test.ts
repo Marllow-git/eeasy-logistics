@@ -400,3 +400,38 @@ describe('TRUST_PROXY_HOPS (PLAT-6 review round 2, platform §8)', () => {
     expect(defineConfig(env, { role: 'worker' }).app.trustProxyHops).toBe(0);
   });
 });
+
+describe('session settings (PLAT-11 plan 2.14)', () => {
+  it('defaults to a 12-hour platform idle expiry, a 30 s reuse grace and the product issuer', () => {
+    expect(defineConfig(minimalEnv).auth).toMatchObject({
+      platformIdleTtlSeconds: 43_200,
+      refreshReuseGraceSeconds: 30,
+      totpIssuer: 'eeasy-logistics',
+    });
+  });
+
+  it('reads 0 as no grace, and other values', () => {
+    const config = defineConfig({
+      ...minimalEnv,
+      AUTH_PLATFORM_IDLE_TTL_SECONDS: '3600',
+      AUTH_REFRESH_REUSE_GRACE_SECONDS: '0',
+      AUTH_TOTP_ISSUER: 'Eeasy Logistics',
+    });
+    expect(config.auth).toMatchObject({
+      platformIdleTtlSeconds: 3600,
+      refreshReuseGraceSeconds: 0,
+      totpIssuer: 'Eeasy Logistics',
+    });
+  });
+
+  it.each([
+    ['AUTH_PLATFORM_IDLE_TTL_SECONDS', '0'],
+    ['AUTH_REFRESH_REUSE_GRACE_SECONDS', '3601'],
+    ['AUTH_REFRESH_REUSE_GRACE_SECONDS', '-1'],
+    ['AUTH_TOTP_ISSUER', 'eeasy:logistics'],
+    ['AUTH_TOTP_ISSUER', ' leading-space'],
+  ])('refuses %s=%s', (variable, value) => {
+    const error = configError(() => defineConfig({ ...minimalEnv, [variable]: value }));
+    expect(error.issues.map((issue) => issue.variable)).toEqual([variable]);
+  });
+});

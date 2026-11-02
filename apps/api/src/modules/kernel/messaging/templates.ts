@@ -39,6 +39,12 @@ export interface TemplateDefinition {
   readonly deferrable: boolean;
   /** Mail templates: the one parameter that may carry a URL (the one-time link, PLAT-11). */
   readonly linkParam?: string;
+  /**
+   * The table whose row the outbox row is about (its aggregate id): the secret parameters are
+   * encrypted under `<table>:<aggregate id>` (PLAT-11 item J, as `core_otp_challenges:<id>` for the
+   * OTP code), so a link is readable only at send time, never from the row.
+   */
+  readonly secretContext?: string;
   /** WhatsApp templates only: the engine `message_type` it is sent as (ADR-0041). */
   readonly engineMessageType?: EngineMessageType;
 }
@@ -57,7 +63,8 @@ export const messageTemplates = {
     linkParam: 'link',
     category: 'transactional',
     params: ['account_name', 'link'],
-    secretParams: [],
+    secretParams: ['link'],
+    secretContext: 'core_invitations',
     deferrable: false,
   },
   password_reset: {
@@ -65,7 +72,8 @@ export const messageTemplates = {
     linkParam: 'link',
     category: 'transactional',
     params: ['link'],
-    secretParams: [],
+    secretParams: ['link'],
+    secretContext: 'core_password_resets',
     deferrable: false,
   },
   platform_invitation: {
@@ -73,7 +81,18 @@ export const messageTemplates = {
     linkParam: 'link',
     category: 'transactional',
     params: ['link'],
-    secretParams: [],
+    secretParams: ['link'],
+    secretContext: 'core_invitations',
+    deferrable: false,
+  },
+  // PLAT-11 plan 2.8: the re-enrolment link after `resetMemberSecondFactor` (24 hours).
+  second_factor_reset: {
+    channel: 'mail',
+    linkParam: 'link',
+    category: 'transactional',
+    params: ['link'],
+    secretParams: ['link'],
+    secretContext: 'core_auth_challenges',
     deferrable: false,
   },
 } as const satisfies Record<MessageTemplateKey, TemplateDefinition>;

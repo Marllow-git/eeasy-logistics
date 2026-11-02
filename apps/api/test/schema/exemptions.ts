@@ -28,6 +28,29 @@ export const tenancyExemptions: Readonly<Record<string, { class: string; reason:
     reason:
       'the challenge precedes knowing the account; keyed by E.164 phone (data §2.4; PLAT-9, migration 0009)',
   },
+  core_users: {
+    class: 'users',
+    reason:
+      'a person may belong to several accounts or none (data §2.4, identity §1; PLAT-11, migration 0012)',
+  },
+  core_platform_staff: {
+    class: 'users',
+    reason: 'platform staff have no membership and no account (data §2.4; PLAT-11, migration 0012)',
+  },
+  core_refresh_tokens: {
+    class: 'users',
+    reason:
+      'a session of a user; membership_id names the account when there is one (data §2.4; PLAT-11)',
+  },
+  core_password_resets: {
+    class: 'users',
+    reason: 'a reset belongs to the person, not to one of their accounts (data §2.4; PLAT-11)',
+  },
+  core_auth_challenges: {
+    class: 'users',
+    reason:
+      'sign-in steps before the account is chosen; selection pins membership ids (data §2.4, A-26; PLAT-11)',
+  },
 };
 
 /**
@@ -43,6 +66,7 @@ export const nullableAccountTables: Readonly<Record<string, string>> = {
   core_consumer_receipts: "mirrors the event's account, none for a platform-only event (PLAT-8)",
   core_consumer_dead_letters:
     "mirrors the event's account, none for a platform-only event (PLAT-8)",
+  core_invitations: 'a platform staff invitation has no account (data §2.4; PLAT-11 plan 2.1)',
 };
 
 /**
@@ -58,6 +82,8 @@ export const globalUniqueIndexes: Readonly<Record<string, readonly (readonly str
   core_consumer_dead_letters: [['consumer', 'event_id']],
   // An engine sender instance is bound to exactly one account by the engine (PLAT-9 plan 2A.4).
   core_messaging_senders: [['sender_instance_id']],
+  // The SHA-256 of 32 random bytes (data §4.1 "token hashes"; PLAT-11 plan 2.3).
+  core_invitations: [['token_hash']],
 };
 
 /**
@@ -80,6 +106,10 @@ export const piiColumns: Readonly<Record<string, readonly string[]>> = {
   core_outbox: ['payload', 'last_error'],
   core_consumer_dead_letters: ['last_error'],
   core_messaging_opt_outs: ['phone'],
+  core_users: ['name', 'email', 'phone', 'password_hash', 'second_factor_phone'],
+  core_platform_staff: ['totp_secret_ciphertext'],
+  core_invitations: ['email', 'name'],
+  core_auth_challenges: ['pending_phone', 'ip'],
 };
 
 /**

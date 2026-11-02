@@ -18,6 +18,8 @@ interface TokenFacts {
   readonly sites: readonly string[];
   /** `ver`: PLAT-11 compares it with the user's `token_version` on sensitive actions. */
   readonly tokenVersion: number;
+  /** `amr` (PLAT-11): the methods the session was started with; absent on older tokens. */
+  readonly amr?: readonly string[];
 }
 
 export interface StaffPrincipal extends TokenFacts {
@@ -123,6 +125,7 @@ function facts(claims: {
   scopes: string;
   sites: string[];
   ver: number;
+  amr?: string[] | undefined;
 }): TokenFacts {
   return {
     userId: claims.sub,
@@ -130,5 +133,6 @@ function facts(claims: {
     scopes: claims.scopes,
     sites: Object.freeze([...claims.sites]),
     tokenVersion: claims.ver,
+    amr: Object.freeze([...(claims.amr ?? [])]),
   };
 }
