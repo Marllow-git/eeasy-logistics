@@ -60,6 +60,13 @@ export const consoleRoutes = [
     write: 'platform.outbox.replay',
     navigation: { group: 'operations', label: 'outbox', order: 0 },
   },
+  // Platform staff (PLAT-13 2.9; plan 2.9): one permission reads and manages them.
+  {
+    path: '/staff',
+    read: 'platform.staff.manage',
+    write: 'platform.staff.manage',
+    navigation: { group: 'governance', label: 'staff', order: 0 },
+  },
 ] as const satisfies readonly ConsoleRoute[];
 
 export type ConsolePath = (typeof consoleRoutes)[number]['path'];
