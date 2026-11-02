@@ -168,16 +168,23 @@ export class PermissionGuard implements CanActivate {
    * ends the refresh families only. So on every platform operation the token would be admitted to
    * (a door permission, or a granted one; a denial stays `403`), the stored staff row is read on the
    * platform pool, and a row that is missing, revoked, or holds another role than the token's
-   * `roles` is `401 token_invalid` (the console signs in again). Without the platform pool (outside
+   * `roles`, or a user whose `token_version` moved past the token's `ver` (a TOTP reset, adversary
+   * round 2; joined into the same read) is `401 token_invalid` (the console signs in again). Without the platform pool (outside
    * production) the check is skipped, as `assertAccountWritable` is.
    */
   private async assertPlatformStaffCurrent(principal: Principal): Promise<void> {
     if (principal.kind !== 'platform') return;
     const store = this.identity;
     if (store === null) return;
-    const row = await store.run((tx) => tx.platformStaff.find(principal.userId));
+    const row = await store.run((tx) => tx.platformStaff.findCurrent(principal.userId));
     const [role, ...others] = principal.roles;
-    if (row === undefined || row.revoked || others.length > 0 || role !== row.role) {
+    if (
+      row === undefined ||
+      row.revoked ||
+      others.length > 0 ||
+      role !== row.role ||
+      row.tokenVersion !== principal.tokenVersion
+    ) {
       throw new ApiException('token_invalid');
     }
   }

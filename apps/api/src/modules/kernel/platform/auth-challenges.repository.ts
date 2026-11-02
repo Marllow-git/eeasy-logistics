@@ -1,6 +1,6 @@
 import type { PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { PlatformRepository } from '@eeasy-logistics/db/platform';
-import { and, arrayContains, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, arrayContains, eq, inArray, isNull, not, sql } from 'drizzle-orm';
 import type { ChallengeKind } from '../schema/identity.js';
 import { coreAuthChallenges } from '../schema/identity.js';
 
@@ -173,6 +173,24 @@ export class AuthChallengesRepository extends PlatformRepository<typeof coreAuth
           eq(coreAuthChallenges.kind, kind),
           isNull(coreAuthChallenges.consumedAt),
           arrayContains(coreAuthChallenges.amr, [marker]),
+        ),
+      );
+  }
+
+  /**
+   * Consumes every open challenge of `kind` for the user whose `amr` lacks `marker` (PLAT-13
+   * adversary round 2: a staff reset's new link replaces staff links, never the platform one).
+   */
+  async consumeOpenUnmarked(userId: string, kind: ChallengeKind, marker: string): Promise<void> {
+    await this.unscoped()
+      .update(coreAuthChallenges)
+      .set({ consumedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(coreAuthChallenges.userId, userId),
+          eq(coreAuthChallenges.kind, kind),
+          isNull(coreAuthChallenges.consumedAt),
+          not(arrayContains(coreAuthChallenges.amr, [marker])),
         ),
       );
   }

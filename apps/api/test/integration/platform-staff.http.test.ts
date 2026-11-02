@@ -4,10 +4,18 @@ import { operationSchemas, schemas } from '@eeasy-logistics/contracts/platform/s
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Invitations } from '../../src/modules/kernel/auth/invitations.js';
+import { SecondFactorResets } from '../../src/modules/kernel/auth/second-factor-resets.js';
 import { fromBase32, totpAt } from '../../src/modules/kernel/auth/totp.js';
 import { testSigningKey } from '../support/access-tokens.js';
 import { auditRowsOf } from './audit-rows.js';
-import { cookieHeader, freshEmail, insertUser, setCookies } from './identity-fixtures.js';
+import {
+  cookieHeader,
+  freshEmail,
+  insertAccount,
+  insertMembership,
+  insertUser,
+  setCookies,
+} from './identity-fixtures.js';
 import { latestMail, mailpitMessage, sendMailRow } from './mail-delivery.js';
 import type { SignedInPlatformStaff } from './platform-sessions.js';
 import { platformStaff, platformWriteHeaders } from './platform-sessions.js';
@@ -239,7 +247,8 @@ describe('platform staff doors over HTTP (PLAT-13 item G)', () => {
     const quiet = await auditRowsOf(owner, String(same.headers['x-request-id']));
     expect(quiet.map((row) => row.action)).not.toContain('core.platform_staff.roles_changed');
 
-    // Revoke: no role, the row revoked, no sign-in; a re-grant brings the role back without TOTP.
+    // Revoke: no role, the row revoked, no sign-in; a restore brings the role back with the TOTP
+    // (adversary round 2): the password alone meets the code, and no new enrolment is open.
     const revoked = await setRoles(target.userId, []).expect(200);
     expect(parseUser(revoked.body)).toMatchObject({ roles: [] });
     expect(await staffRow(target.userId)).toMatchObject({ revoked: true });
@@ -247,8 +256,16 @@ describe('platform staff doors over HTTP (PLAT-13 item G)', () => {
     const regranted = await setRoles(target.userId, ['platform_admin']).expect(200);
     expect(parseUser(regranted.body)).toMatchObject({
       roles: ['platform_admin'],
-      totp_enrolled: false,
+      totp_enrolled: true,
     });
+    const restored = schemas.PlatformLogin200Response.parse(
+      (await login(target).expect(200)).body,
+    );
+    expect(restored.totp_enrolment_required).toBe(false);
+    const enrolAgain = await post('/v1/platform/auth/totp/enrol', {
+      challenge_id: restored.challenge_id,
+    }).expect(409);
+    expect(errorOf(enrolAgain.body).code).toBe('second_factor_already_enrolled');
 
     // Another super admin can be demoted while one is left; an unknown user is 404.
     const other = await platformStaff(staff.app, config, owner, 'super_admin');
@@ -277,6 +294,9 @@ describe('platform staff doors over HTTP (PLAT-13 item G)', () => {
         token_version: (before?.token_version ?? 0) + 1,
       });
       await refresh(target).expect(401);
+      // Adversary round 2: the access token of before the reset is dead at once (`ver`).
+      const stale = await get('/v1/platform/me', target).expect(401);
+      expect(errorOf(stale.body).code).toBe('token_invalid');
       const challenge = await login(target).expect(200);
       expect(challenge.body).toMatchObject({ totp_enrolment_required: true });
 
@@ -433,6 +453,34 @@ describe('platform staff doors over HTTP (PLAT-13 item G)', () => {
     // The link is spent.
     const again = await redeem(target.password).expect(401);
     expect(errorOf(again.body).code).toBe('token_invalid');
+  });
+
+  it("keeps the platform re-enrolment link through a tenant-side reset (adversary round 2)", async () => {
+    const target = await platformStaff(staff.app, config, owner, 'support');
+    const accountId = await insertAccount(owner);
+    await insertMembership(owner, accountId, target.userId);
+    await resetTotp(target.userId, 'Ticket 7120: new phone').expect(204);
+    const mail = await latestMail(owner, target.email, 'platform_totp_reset');
+    if (mail === undefined) throw new Error('no TOTP reset mail');
+    await sendMailRow(config, mail.id);
+    const delivered = await mailpitMessage(`${mail.id}@eeasy-logistics`);
+    const link = /https?:\/\/\S+\/totp\/enrol\/(\S+)/.exec(delivered.Text)?.[1];
+    if (link === undefined) throw new Error('no link in the mail');
+
+    // The account's reset of the same person's staff second factor: a staff link of its own.
+    await staff.app.get(SecondFactorResets, { strict: false }).issueLink({
+      userId: target.userId,
+      issuedBy: null,
+      accountId,
+      requestId: `tenant-reset-${target.userId}`,
+    });
+    const redeemed = await post('/v1/platform/auth/enrolment-links/redeem', {
+      token: link,
+      password: target.password,
+    }).expect(200);
+    expect(
+      schemas.PlatformRedeemEnrolmentLink200Response.parse(redeemed.body).totp_enrolment_required,
+    ).toBe(true);
   });
 
   it('answers an invitation of an existing user with the request only (adversary L-6)', async () => {

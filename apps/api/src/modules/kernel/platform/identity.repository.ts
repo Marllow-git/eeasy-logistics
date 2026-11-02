@@ -6,7 +6,7 @@ import {
   getPlatformUnitOfWork,
   withPlatformUnitOfWork,
 } from '@eeasy-logistics/db/platform';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { coreAccounts } from '../schema/accounts.js';
 import type {
   InvitationKind,
@@ -624,6 +624,26 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
     return row;
   }
 
+  /**
+   * The staff row's role and revocation with the user's `token_version`, in one read (a join on the
+   * user's primary key): what the permission guard compares with a platform access token
+   * (PLAT-13 adversary M-1 and round 2).
+   */
+  async findCurrent(
+    userId: string,
+  ): Promise<{ role: PlatformStaffRole; revoked: boolean; tokenVersion: number } | undefined> {
+    const [row] = await this.unscoped()
+      .select({
+        role: corePlatformStaff.role,
+        revoked: sql<boolean>`${corePlatformStaff.revokedAt} IS NOT NULL`,
+        tokenVersion: coreUsers.tokenVersion,
+      })
+      .from(corePlatformStaff)
+      .innerJoin(coreUsers, eq(coreUsers.id, corePlatformStaff.userId))
+      .where(eq(corePlatformStaff.userId, userId));
+    return row;
+  }
+
   /** The staff row with its TOTP secret and replay guard, locked `FOR UPDATE` (plan 2.9). */
   async lockTotp(userId: string): Promise<PlatformStaffTotp | undefined> {
     const [row] = await this.unscoped()
@@ -665,7 +685,9 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
 
   /**
    * An accepted platform invitation (plan 2.10): the staff row with the invited role. A revoked row
-   * comes back with its TOTP cleared (enrol again); a live one only takes the role.
+   * comes back with its TOTP cleared (enrol again; the emailed invitation link is the possession
+   * proof, as the re-enrolment link is after a reset); a live one only takes the role. A role
+   * change restoring a revoked row is `restore`, which keeps the TOTP.
    */
   async grant(userId: string, role: PlatformStaffRole, grantedBy: string | null): Promise<void> {
     await this.unscoped()
@@ -683,6 +705,18 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
           updatedAt: sql`now()`,
         },
       });
+  }
+
+  /**
+   * Restores a revoked row with `role` (`platformSetStaffRoles`, PLAT-13 adversary round 2): only
+   * the role and the revocation change; the TOTP stays, so the password alone still meets the
+   * `totp` challenge. A lost device is `platformResetStaffTotp` (the emailed re-enrolment link).
+   */
+  async restore(userId: string, role: PlatformStaffRole, grantedBy: string): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({ role, grantedBy, revokedAt: null, updatedAt: sql`now()` })
+      .where(and(eq(corePlatformStaff.userId, userId), isNotNull(corePlatformStaff.revokedAt)));
   }
 
   /**
@@ -713,8 +747,8 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
   }
 
   /**
-   * Revokes the row (`roles: []`, plan 2.9): the role and the TOTP stay, so a later grant (PLAT-11's
-   * `grant`, which clears a revoked row's TOTP) starts the enrolment again.
+   * Revokes the row (`roles: []`, plan 2.9): the role and the TOTP stay; `restore` brings the row
+   * back with them, an accepted invitation (`grant`) clears the TOTP and enrols again.
    */
   async revoke(userId: string): Promise<void> {
     await this.unscoped()
