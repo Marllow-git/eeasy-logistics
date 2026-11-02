@@ -62,6 +62,9 @@ export class PlatformIdempotencyStore
   complete(id: string, status: number, body: unknown): Promise<void> {
     return this.#statements.complete(id, status, body);
   }
+  release(id: string): Promise<void> {
+    return this.#statements.release(id);
+  }
 }
 
 /** The platform store of the current platform unit of work, or undefined outside one. */

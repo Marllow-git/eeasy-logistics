@@ -121,6 +121,7 @@ function memoryStore(existing?: Partial<StoredKey>, locked = false): Idempotency
       ),
     restart: () => Promise.resolve(),
     complete: () => Promise.resolve(),
+    release: () => Promise.resolve(),
   };
 }
 

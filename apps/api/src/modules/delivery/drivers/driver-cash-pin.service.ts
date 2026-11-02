@@ -37,7 +37,7 @@ export class DriverCashPinService {
     const wasSet = driver.cashPinHash !== null;
     if (wasSet) {
       if (body.current_pin === undefined) throw new ApiException('cash_pin_invalid');
-      await this.deps.pins.check(driver.id, body.current_pin, facts);
+      await this.deps.pins.check(() => Promise.resolve(driver), body.current_pin, facts);
     } else {
       if (body.otp_code === undefined) throw new ApiException('otp_invalid');
       await this.deps.signIn.verifyOwnCode(driver.userId, body.otp_code);
@@ -71,11 +71,14 @@ export class DriverCashPinService {
     this.#logger.log(`driver cash PIN set driver_id=${row.id}`);
   }
 
-  /** `driverVerifyCashPin` (plan 2.9; ADR-0034): `204`, or `403`/`423` after the count committed. */
+  /**
+   * `driverVerifyCashPin` (plan 2.9; ADR-0034): `204`, or `403`/`423` after the count committed.
+   * The door has no request unit of work (`@NoUnitOfWork()`, adversary H-1): the driver is read in
+   * the check's own, only, transaction.
+   */
   async verify(pin: string, facts: AuditFacts): Promise<void> {
     await this.deps.signIn.chargeCashPin(facts);
-    const driver = await this.current();
-    await this.deps.pins.check(driver.id, pin, facts);
+    await this.deps.pins.check(() => this.current(), pin, facts);
   }
 
   /** The token's driver (another account's never matches); none is `404`. */

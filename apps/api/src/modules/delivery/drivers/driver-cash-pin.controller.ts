@@ -7,6 +7,7 @@ import {
   DriverSignIn,
   Idempotent,
   Input,
+  NoUnitOfWork,
   Operation,
 } from '../../kernel/public/index.js';
 import { PinCheck } from './cash-pin.js';
@@ -43,9 +44,13 @@ export class DriverCashPinController {
     await this.pins.set(input.body, facts);
   }
 
-  /** `driverVerifyCashPin` (ADR-0034): `204` when right; no idempotency key by contract. */
+  /**
+   * `driverVerifyCashPin` (ADR-0034): `204` when right; no idempotency key by contract. No request
+   * unit of work: the PIN check opens the request's only app transaction (adversary H-1).
+   */
   @Post('verify')
   @HttpCode(204)
+  @NoUnitOfWork()
   @Operation(verifyOp)
   async verify(
     @Input() input: ContractInput<typeof verifyOp>,

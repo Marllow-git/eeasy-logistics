@@ -21,7 +21,7 @@ import { from, lastValueFrom } from 'rxjs';
 import { z } from 'zod';
 import { ApiException } from '../errors/api-exception.js';
 import { currentPlatformIdempotencyStore } from '../platform/idempotency.repository.js';
-import { principalOf } from '../tenancy/frame.js';
+import { CommittedRefusal, principalOf } from '../tenancy/frame.js';
 import type {
   IdempotencyStore,
   IdempotentOptions,
@@ -138,7 +138,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
           return outcome.body;
         }
         case 'reserved': {
-          const value: unknown = await lastValueFrom(next.handle(), { defaultValue: undefined });
+          let value: unknown;
+          try {
+            value = await lastValueFrom(next.handle(), { defaultValue: undefined });
+          } catch (error) {
+            // A refusal that commits (DEL-4 H-1) must not leave the key reserved.
+            if (error instanceof CommittedRefusal) await store.release(outcome.id);
+            throw error;
+          }
           // A secret-bearing answer keeps only its id: the replay needs `resource_id` alone, and a
           // secret under any field name (`link`, `token`) is never stored (adversary M-3). Other
           // answers drop the secret fields at any depth.

@@ -95,6 +95,13 @@ export function idempotencyStatements(
         byId(id),
       );
     },
+
+    release: async (id) => {
+      await scope.updateWhere(
+        { expiresAt: sql`now() - interval '1 second'`, updatedAt: sql`now()` },
+        and(byId(id), eq(coreIdempotencyKeys.state, 'in_progress')) ?? sql`false`,
+      );
+    },
   };
 }
 
@@ -135,5 +142,8 @@ export class TenantIdempotencyStore
   }
   complete(id: string, status: number, body: unknown): Promise<void> {
     return this.#statements.complete(id, status, body);
+  }
+  release(id: string): Promise<void> {
+    return this.#statements.release(id);
   }
 }
