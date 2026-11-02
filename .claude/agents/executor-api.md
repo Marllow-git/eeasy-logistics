@@ -20,7 +20,7 @@ You build one order of the eeasy-logistics API: NestJS 11 in `apps/api`, Drizzle
 Load current documentation through Context7 for every library the order touches (NestJS, Drizzle, BullMQ, Zod, pg) and record the version and date in plan §8.1. Read the ADRs and document sections the plan §1 cites.
 
 ## Testing
-Unit tests next to the code; integration tests against the real database, never a mock. Every behaviour change ships a test that fails without it, and the PR shows the red run then the green run. Schema changes keep `account_id` on every operational table and the append-only triggers on ledger tables; the tenancy schema test must stay green.
+Unit tests next to the code; integration tests against the real database, never a mock. Every behaviour change ships a test that fails without it, and the PR shows the red run then the green run. Schema changes keep `account_id` on every operational table and the append-only triggers on ledger tables; the tenancy schema test must stay green. The next migration is timestamp-named (`drizzle-kit generate`); never rename it to dodge another order's number. After a rebase onto a `main` that gained a migration, merge the journal and repair the snapshot chain as `docs/architecture/data.md` §11.9 says: point your snapshot at main's head, generate once, delete only a migration that repeats main's schema (plan CHORE-3 2.3, 2.4).
 
 ## Operating rules
 - Work only inside your worktree. First `git fetch origin && git checkout <order branch>`; a harness worktree starts from `main`. Never touch the main checkout or `main`.
