@@ -1,5 +1,6 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
+import type { Callback, Result } from 'ioredis';
 import { Redis } from 'ioredis';
 import type { ShiftStatus } from '../../kernel/public/index.js';
 import { shiftStatuses } from '../../kernel/public/index.js';
@@ -12,6 +13,39 @@ import { shiftStatuses } from '../../kernel/public/index.js';
 // maps' fallback), and nothing logs a position.
 
 export const LOCATION_FANOUT = Symbol('LOCATION_FANOUT');
+
+/**
+ * Writes the latest hash only when the new `client_ts` (ARGV[1], an ISO-8601 UTC time, so the
+ * string order is the time order) is newer than the stored one, and then sets the TTL (ARGV[6]):
+ * two batches whose Redis writes overtake each other after their commits never put the older point
+ * back on the maps (DEL-5 adversary round 1, finding 3). Returns 1 when written, 0 when kept.
+ */
+export const latestIfNewerLua = `
+local stored = redis.call('HGET', KEYS[1], 'client_ts')
+if stored and stored >= ARGV[1] then return 0 end
+redis.call('HSET', KEYS[1], 'client_ts', ARGV[1], 'lat', ARGV[2], 'lng', ARGV[3],
+  'server_ts', ARGV[4], 'shift_status', ARGV[5])
+redis.call('EXPIRE', KEYS[1], ARGV[6])
+return 1
+`;
+
+/** The command name `latestIfNewerLua` is defined under on each client. */
+export const latestIfNewerCommand = 'elxLatestIfNewer';
+
+declare module 'ioredis' {
+  interface RedisCommander<Context> {
+    elxLatestIfNewer(
+      key: string,
+      clientTs: string,
+      lat: string,
+      lng: string,
+      serverTs: string,
+      shiftStatus: string,
+      ttlSeconds: number,
+      callback?: Callback<number>,
+    ): Result<number, Context>;
+  }
+}
 
 export const latestTtlSeconds = 600;
 
@@ -31,7 +65,10 @@ export interface LatestPosition {
 
 /** The port the ingest and the staff reads use; `null` when the API runs without Redis. */
 export interface LocationFanout {
-  /** Stores the newest point and publishes each accepted point, oldest first. */
+  /**
+   * Stores the newest point unless the hash already holds a newer one, and publishes each
+   * accepted point, oldest first.
+   */
   publish(
     accountId: string,
     latest: LatestPosition,
@@ -63,15 +100,20 @@ export class RedisLocationFanout implements LocationFanout, OnApplicationShutdow
   readonly #redis: Redis;
   readonly #logger = new Logger('LocationFanout');
 
-  constructor(url: string) {
-    this.#redis = new Redis(url, {
-      connectTimeout: 2000,
-      commandTimeout: 500,
-      maxRetriesPerRequest: 0,
-      enableOfflineQueue: false,
-      retryStrategy: (attempt) => Math.min(attempt * 200, 2000),
-    });
+  /** `connection`: the Redis URL, or a client (unit tests). */
+  constructor(connection: string | Redis) {
+    this.#redis =
+      typeof connection === 'string'
+        ? new Redis(connection, {
+            connectTimeout: 2000,
+            commandTimeout: 500,
+            maxRetriesPerRequest: 0,
+            enableOfflineQueue: false,
+            retryStrategy: (attempt) => Math.min(attempt * 200, 2000),
+          })
+        : connection;
     this.#redis.on('error', () => undefined);
+    this.#redis.defineCommand(latestIfNewerCommand, { numberOfKeys: 1, lua: latestIfNewerLua });
   }
 
   async publish(
@@ -82,14 +124,15 @@ export class RedisLocationFanout implements LocationFanout, OnApplicationShutdow
     const key = latestKey(accountId, latest.driverId);
     const multi = this.#redis
       .multi()
-      .hset(key, {
-        lat: String(latest.lat),
-        lng: String(latest.lng),
-        client_ts: latest.clientTs,
-        server_ts: latest.serverTs,
-        shift_status: latest.shiftStatus,
-      })
-      .expire(key, latestTtlSeconds);
+      .elxLatestIfNewer(
+        key,
+        latest.clientTs,
+        String(latest.lat),
+        String(latest.lng),
+        latest.serverTs,
+        latest.shiftStatus,
+        latestTtlSeconds,
+      );
     for (const point of points) {
       multi.publish(
         locationChannel(accountId),

@@ -57,7 +57,8 @@ export class LocationHeadsRepository extends ScopedRepository<typeof delDriverLo
    * `last_seq + count` with the newest point as the latest (data §6: one `UPDATE … RETURNING` per
    * batch); returns the new `last_seq`.
    */
-  async advance(driverId: string, count: number, newest: AcceptedPoint): Promise<number> {
+  /** The head after taking `count` new points up to `newest` (its `last_seq`, point and times). */
+  async advance(driverId: string, count: number, newest: AcceptedPoint): Promise<HeadRow> {
     const [row] = await this.updateWhere(
       {
         lastSeq: sql`${delDriverLocationHeads.lastSeq} + ${count}` as unknown as number,
@@ -68,7 +69,7 @@ export class LocationHeadsRepository extends ScopedRepository<typeof delDriverLo
       eq(delDriverLocationHeads.driverId, driverId),
     );
     if (row === undefined) throw new Error('The location head vanished under the driver lock');
-    return row.lastSeq;
+    return row;
   }
 
   async find(driverId: string): Promise<HeadRow | undefined> {

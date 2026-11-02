@@ -1,6 +1,6 @@
 import type { AppDatabase } from '@eeasy-logistics/db';
 import { getContext, getUnitOfWork, withUnitOfWork } from '@eeasy-logistics/db';
-import type { RateLimiter } from '../../kernel/public/index.js';
+import type { RateLimiter, ShiftStatus } from '../../kernel/public/index.js';
 import { ApiException, getMetrics } from '../../kernel/public/index.js';
 import { DriversRepository } from '../drivers/drivers.repository.js';
 import { tokenDriver } from '../drivers/token-driver.js';
@@ -8,7 +8,7 @@ import { ShiftsRepository } from '../shifts/shifts.repository.js';
 import type { LatestPosition, LocationFanout } from './location-fanout.js';
 import type { DropReason, PointInput } from './location-input.js';
 import { pointProblems, selectPoints } from './location-input.js';
-import type { TrailView } from './locations.repository.js';
+import type { HeadRow, TrailView } from './locations.repository.js';
 import {
   LocationHeadsRepository,
   LocationRingRepository,
@@ -53,26 +53,21 @@ export class LocationsService {
       const head = await heads.ensure(driver.id);
       const { kept, dropped } = selectPoints(points, now, head.lastClientTs);
       const newest = kept.at(-1);
+      let latest: LatestPosition | undefined;
       if (newest !== undefined) {
-        const lastSeq = await heads.advance(driver.id, kept.length, newest);
-        await new LocationRingRepository(uow).write(driver.id, shift.id, lastSeq, kept);
+        const advanced = await heads.advance(driver.id, kept.length, newest);
+        await new LocationRingRepository(uow).write(driver.id, shift.id, advanced.lastSeq, kept);
+        latest = latestOf(driver.id, advanced, shift.status);
       }
-      return { driverId: driver.id, status: shift.status, kept, dropped };
+      return { kept, dropped, latest };
     });
-    const serverTs = new Date();
-    record(outcome.kept.length, outcome.dropped, outcome.kept, serverTs);
-    const newest = outcome.kept.at(-1);
-    if (newest === undefined || this.deps.fanout === null) return;
+    record(outcome.kept.length, outcome.dropped, outcome.kept, new Date());
+    // The head's state as committed (adversary round 1, finding 3): its point, device time and
+    // database time; the hash takes it only when it is newer than what Redis holds.
+    if (outcome.latest === undefined || this.deps.fanout === null) return;
     await this.deps.fanout.publish(
       context.accountId,
-      {
-        driverId: outcome.driverId,
-        lat: newest.lat,
-        lng: newest.lng,
-        clientTs: newest.clientTs.toISOString(),
-        serverTs: serverTs.toISOString(),
-        shiftStatus: outcome.status,
-      },
+      outcome.latest,
       outcome.kept.map((point) => ({
         lat: point.lat,
         lng: point.lng,
@@ -156,4 +151,19 @@ function record(
   for (const point of kept) {
     metrics.record('driver_ping_lag_ms', serverTs.getTime() - point.clientTs.getTime(), {});
   }
+}
+
+/** The latest position a committed head describes (`advance` always sets every field). */
+function latestOf(driverId: string, head: HeadRow, shiftStatus: ShiftStatus): LatestPosition {
+  if (head.lastPoint === null || head.lastClientTs === null || head.lastServerTs === null) {
+    throw new Error('An advanced location head has no latest point');
+  }
+  return {
+    driverId,
+    lat: head.lastPoint.y,
+    lng: head.lastPoint.x,
+    clientTs: head.lastClientTs.toISOString(),
+    serverTs: head.lastServerTs.toISOString(),
+    shiftStatus,
+  };
 }
