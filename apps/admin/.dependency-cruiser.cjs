@@ -60,7 +60,16 @@ module.exports = {
       from: { pathNot: ['^next\\.config\\.ts$', '^src/proxy\\.ts$', '^src/server/'] },
       to: { path: '(?:^|/)packages/config/src/web-server\\.ts$' },
     },
-    ...environmentRules({ configEntry: ['web.ts', 'web-server.ts'] }),
+    {
+      name: 'admin-census-config-in-tests-only',
+      comment:
+        'WEB-2 plan 2.14: @eeasy-logistics/config/census (the stack Mailpit, WhatsApp stub and ' +
+        'signing key of the census) is a test tool; app code never imports it.',
+      severity: 'error',
+      from: { pathNot: '^tests/' },
+      to: { path: '(?:^|/)packages/config/src/census\\.ts$' },
+    },
+    ...environmentRules({ configEntry: ['web.ts', 'web-server.ts', 'census.ts'] }),
     noUnresolvable,
   ],
   options,

@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, LogOut } from 'lucide-react';
+import { ChevronDown, CircleUserRound, LogOut } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components/button/button';
 import {
@@ -31,7 +31,10 @@ export function UserMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" aria-label={`${t('user_menu')}: ${name}`}>
-          <span dir="auto" className="max-w-40 truncate">
+          <CircleUserRound aria-hidden className="size-4" />
+          {/* At 390 px the top bar holds the brand, this menu and the locale switch: the name
+              shows from the `sm` breakpoint, the label names it at every width. */}
+          <span dir="auto" className="hidden max-w-40 truncate sm:inline">
             {name}
           </span>
           <ChevronDown aria-hidden />

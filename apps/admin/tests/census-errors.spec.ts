@@ -13,6 +13,7 @@ import {
   settle,
   test,
 } from './census/helpers';
+import { platformSignIn, projectOf } from './census/session';
 
 // Census of the console's error pages and Sentry tunnel, the checks of apps/web's
 // census-errors.spec.ts (PLAT-14 plan 2.9, web §10.4): each group's error page renders inside its
@@ -32,6 +33,10 @@ for (const fault of faults) {
     page,
     locale,
   }) => {
+    // WEB-2: the console needs a session (the layout reads platformGetMe).
+    if (fault.shell === 'navigation') {
+      await platformSignIn(page, 'errors', projectOf(test.info().project.name));
+    }
     const response = await page.goto(fault.path);
     expect(response?.status(), `HTTP status of ${fault.path}`).toBe(500);
     await settle(page);
@@ -89,6 +94,7 @@ test('a browser error is reported through /monitoring without phone or cookie', 
   locale,
 }) => {
   const envelopes = await captureMonitoring(page);
+  await platformSignIn(page, 'errors', projectOf(test.info().project.name));
   const response = await page.goto(
     `/census-fault?at=client&phone=${encodeURIComponent(plantedPhone)}`,
   );
