@@ -6,6 +6,7 @@ import { deepFreeze, parseVariables } from './fields.ts';
 import type { AppEnv, LogLevel } from './formats.ts';
 import {
   appEnvs,
+  appVersion,
   boolean,
   count,
   hops,
@@ -172,6 +173,12 @@ export const serverVariables = {
   PUSH_DISABLED: boolean().default(false),
   EXPO_ACCESS_TOKEN: secret().optional(),
   EXPO_PUSH_URL: httpUrl().default(expoPushServiceUrl),
+  // drivers (DEL-4 plan 2.3, 2.10, 2.14): the link of the WhatsApp app invitation (a placeholder
+  // landing until DRV-6 names the store listing) and the lowest driver app version each platform
+  // still serves (Q-24: absent means no minimum).
+  DRIVER_APP_URL: httpUrl().default('https://eeasy.sa/driver'),
+  DRIVER_MIN_APP_VERSION_IOS: appVersion().optional(),
+  DRIVER_MIN_APP_VERSION_ANDROID: appVersion().optional(),
   // geo
   HUDHUD_API_KEY: secret().optional(),
   VROOM_URL: httpUrl().optional(),
@@ -249,6 +256,9 @@ export const serverExpectations = {
   PUSH_DISABLED: 'true or false',
   EXPO_ACCESS_TOKEN: 'an Expo access token',
   EXPO_PUSH_URL: 'an http(s) URL',
+  DRIVER_APP_URL: 'an http(s) URL',
+  DRIVER_MIN_APP_VERSION_IOS: 'a version major.minor.patch, digits only (e.g. 1.4.0)',
+  DRIVER_MIN_APP_VERSION_ANDROID: 'a version major.minor.patch, digits only (e.g. 1.4.0)',
   HUDHUD_API_KEY: 'a Hudhud API key',
   VROOM_URL: 'an http(s) URL',
   OSRM_URL: 'an http(s) URL',
@@ -346,6 +356,15 @@ export interface Config {
     readonly expoAccessToken: Secret | undefined;
     /** The Expo push service's base URL (`https://exp.host`). */
     readonly expoPushUrl: string;
+  };
+  readonly drivers: {
+    /** The link of the driver app invitation (`DRIVER_APP_URL`, default the store landing). */
+    readonly appUrl: string;
+    /** The lowest app version served per platform (`426 app_update_required` below it). */
+    readonly minAppVersion: {
+      readonly ios: string | undefined;
+      readonly android: string | undefined;
+    };
   };
   readonly geo: {
     readonly hudhudApiKey: Secret | undefined;
@@ -530,6 +549,13 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       disabled: v.PUSH_DISABLED,
       expoAccessToken: v.EXPO_ACCESS_TOKEN,
       expoPushUrl: v.EXPO_PUSH_URL,
+    },
+    drivers: {
+      appUrl: v.DRIVER_APP_URL,
+      minAppVersion: {
+        ios: v.DRIVER_MIN_APP_VERSION_IOS,
+        android: v.DRIVER_MIN_APP_VERSION_ANDROID,
+      },
     },
     geo: { hudhudApiKey: v.HUDHUD_API_KEY, vroomUrl: v.VROOM_URL, osrmUrl: v.OSRM_URL },
     observability: {
