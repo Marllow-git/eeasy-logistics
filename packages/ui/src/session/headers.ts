@@ -55,9 +55,7 @@ export function securityHeaders(options: HeaderOptions): Record<string, string> 
   return {
     'Content-Security-Policy': options.policy,
     'Reporting-Endpoints': `csp="${cspReportPath}"`,
-    ...(options.hsts
-      ? { 'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload' }
-      : {}),
+    ...(options.hsts ? { 'Strict-Transport-Security': 'max-age=63072000; includeSubDomains' } : {}),
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': options.noReferrer ? 'no-referrer' : 'strict-origin-when-cross-origin',
     'X-Frame-Options': 'DENY',
@@ -71,6 +69,9 @@ export interface CspViolation {
   /** The blocked resource's origin, or a CSP keyword (`inline`, `eval`, …), or `other`. */
   readonly blockedOrigin: string;
 }
+
+/** A browser sends one violation per report; a body of more is batched or forged (adversary M-2). */
+const maxViolationsPerReport = 5;
 
 const keywords = new Set(['inline', 'eval', 'data', 'blob', 'self', 'wasm-eval']);
 
@@ -88,7 +89,8 @@ function blockedOriginOf(value: unknown): string {
 /**
  * The violations of a report body (the Reporting API's array of `csp-violation` reports, or the
  * older `{ "csp-report": … }` form), reduced to directive and origin: never the page URL, the
- * sample or anything else the browser sends (plan 2.6). At most 20 per body; junk gives none.
+ * sample or anything else the browser sends (plan 2.6). At most five per body (adversary M-2); junk
+ * gives none.
  */
 export function cspViolations(body: string): CspViolation[] {
   let parsed: unknown;
@@ -99,7 +101,7 @@ export function cspViolations(body: string): CspViolation[] {
   }
   const reports: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
   const violations: CspViolation[] = [];
-  for (const report of reports.slice(0, 20)) {
+  for (const report of reports.slice(0, maxViolationsPerReport)) {
     if (typeof report !== 'object' || report === null) continue;
     const entry = report as Record<string, unknown>;
     const legacy = entry['csp-report'];

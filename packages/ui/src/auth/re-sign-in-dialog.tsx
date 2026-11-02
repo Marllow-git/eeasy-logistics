@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../components/button/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/dialog/dialog';
 import { useTranslations } from '../intl';
@@ -39,21 +39,47 @@ export interface ReSignInDialogProps {
  * Hero and Rocket Money references): over the dimmed page, the password, then the code when the
  * API asks for it; the page and its state stay under it, and the failed request is retried once the
  * user is back (the session fetcher does that with its original `Idempotency-Key`).
+ *
+ * Every opening starts afresh (adversary M-1): the steps below are keyed by the opening, so a
+ * change of `open` in either direction drops the step, the typed password, the code and the error,
+ * and an answer that arrives after the dialog closed is ignored.
  */
-export function ReSignInDialog({
-  open,
+export function ReSignInDialog({ open, onDismiss, ...steps }: ReSignInDialogProps) {
+  const [opening, setOpening] = useState({ open, count: 0 });
+  if (opening.open !== open) setOpening({ open, count: opening.count + 1 });
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onDismiss();
+      }}
+    >
+      <DialogContent>
+        <ReSignInSteps key={opening.count} {...steps} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReSignInSteps({
   reauthentication,
   onSignedIn,
-  onDismiss,
   onOtherAccount,
   codeDescription,
-}: ReSignInDialogProps) {
+}: Omit<ReSignInDialogProps, 'open' | 'onDismiss'>) {
   const t = useTranslations('auth');
   const [step, setStep] = useState<'password' | 'code'>('password');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const live = useRef(false);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
 
   const settle = (outcome: ReauthOutcome) => {
     if (outcome.kind === 'done') {
@@ -74,16 +100,20 @@ export function ReSignInDialog({
   const run = async (work: () => Promise<ReauthOutcome>) => {
     setBusy(true);
     try {
-      settle(await work());
+      const outcome = await work();
+      if (live.current) settle(outcome);
     } finally {
-      setBusy(false);
+      if (live.current) setBusy(false);
     }
   };
 
   const submitPassword = (event: FormEvent) => {
     event.preventDefault();
     if (password === '' || busy) return;
-    void run(() => reauthentication.password(password));
+    const sent = password;
+    // The password leaves React state as soon as it is sent (adversary M-1).
+    setPassword('');
+    void run(() => reauthentication.password(sent));
   };
   const submitCode = (value: string) => {
     if (value.length !== codeLength || busy) return;
@@ -91,60 +121,53 @@ export function ReSignInDialog({
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) onDismiss();
-      }}
-    >
-      <DialogContent>
-        <DialogTitle>{t('session.dialog_title')}</DialogTitle>
-        <DialogDescription>
-          {step === 'password'
-            ? t('session.dialog_description')
-            : (codeDescription ?? t('session.dialog_code_description'))}
-        </DialogDescription>
-        {step === 'password' ? (
-          <form className="flex flex-col gap-4" onSubmit={submitPassword} noValidate>
-            <PasswordField
-              label={t('fields.password')}
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              error={error}
-              disabled={busy}
-              required
-            />
-            <Button type="submit" disabled={busy || password === ''}>
-              {t('session.dialog_submit')}
-            </Button>
-          </form>
-        ) : (
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitCode(code);
-            }}
-            noValidate
-          >
-            <CodeInput
-              value={code}
-              onChange={setCode}
-              onComplete={submitCode}
-              error={error}
-              disabled={busy}
-              autoFocus
-            />
-            <Button type="submit" disabled={busy || code.length !== codeLength}>
-              {t('session.dialog_verify')}
-            </Button>
-          </form>
-        )}
-        <Button type="button" variant="ghost" onClick={onOtherAccount}>
-          {t('session.dialog_other_user')}
-        </Button>
-      </DialogContent>
-    </Dialog>
+    <>
+      <DialogTitle>{t('session.dialog_title')}</DialogTitle>
+      <DialogDescription>
+        {step === 'password'
+          ? t('session.dialog_description')
+          : (codeDescription ?? t('session.dialog_code_description'))}
+      </DialogDescription>
+      {step === 'password' ? (
+        <form className="flex flex-col gap-4" onSubmit={submitPassword} noValidate>
+          <PasswordField
+            label={t('fields.password')}
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            error={error}
+            disabled={busy}
+            required
+          />
+          <Button type="submit" disabled={busy || password === ''}>
+            {t('session.dialog_submit')}
+          </Button>
+        </form>
+      ) : (
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitCode(code);
+          }}
+          noValidate
+        >
+          <CodeInput
+            value={code}
+            onChange={setCode}
+            onComplete={submitCode}
+            error={error}
+            disabled={busy}
+            autoFocus
+          />
+          <Button type="submit" disabled={busy || code.length !== codeLength}>
+            {t('session.dialog_verify')}
+          </Button>
+        </form>
+      )}
+      <Button type="button" variant="ghost" onClick={onOtherAccount}>
+        {t('session.dialog_other_user')}
+      </Button>
+    </>
   );
 }

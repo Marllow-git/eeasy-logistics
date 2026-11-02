@@ -190,7 +190,7 @@ Content-Security-Policy:
   frame-ancestors 'none';            (embed path: the account's embed origins)
   form-action 'self'; base-uri 'none'; object-src 'none';
   report-to csp
-Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Strict-Transport-Security: max-age=63072000; includeSubDomains   (preload after the owner submits the domain)
 X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin   (recipient group: no-referrer)
 X-Frame-Options: DENY                               (omitted on the embed path)

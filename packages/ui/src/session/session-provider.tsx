@@ -78,6 +78,12 @@ function hardNavigate(path: string): void {
   sessionNavigation.assign(path);
 }
 
+/** The steps of a closed dialog: nothing can submit to them, and none holds a challenge. */
+const closedSteps: Reauthentication = {
+  password: () => Promise.resolve({ kind: 'error', message: '' }),
+  code: () => Promise.resolve({ kind: 'error', message: '' }),
+};
+
 const here = () => `${window.location.pathname}${window.location.search}`;
 
 /**
@@ -186,9 +192,11 @@ export function SessionProvider<Me extends SessionMe>({
     }),
     [me, controller],
   );
+  // Made afresh at each opening of the dialog and dropped at its close, so a code challenge (held
+  // inside the steps) never outlives the dialog it was asked in (adversary M-1).
   const steps = useMemo(
-    () => reauthentication(controller.fetcher, me),
-    [reauthentication, controller, me],
+    () => (dialogOpen ? reauthentication(controller.fetcher, me) : closedSteps),
+    [reauthentication, controller, me, dialogOpen],
   );
 
   return (

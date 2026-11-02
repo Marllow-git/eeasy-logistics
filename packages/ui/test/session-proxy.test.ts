@@ -135,9 +135,8 @@ describe('security headers (web §3.6)', () => {
       'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self)',
     });
     const strict = securityHeaders({ policy: 'p', hsts: true, noReferrer: true });
-    expect(strict['Strict-Transport-Security']).toBe(
-      'max-age=63072000; includeSubDomains; preload',
-    );
+    // No `preload` (adversary L-5): a one-way door the owner opens by submitting the domain.
+    expect(strict['Strict-Transport-Security']).toBe('max-age=63072000; includeSubDomains');
     expect(strict['Referrer-Policy']).toBe('no-referrer');
   });
 
@@ -190,6 +189,18 @@ describe('isNavigation and rewriteCookieHeader', () => {
     expect(isNavigation(request({ 'sec-fetch-dest': 'image' }))).toBe(false);
     expect(isNavigation(request({ accept: 'text/html' }))).toBe(true);
     expect(isNavigation(request({ 'sec-fetch-dest': 'document' }, 'POST'))).toBe(false);
+  });
+
+  it('never counts a segment prefetch or a browser speculative load as a navigation', () => {
+    // Adversary L-6: Next 16.4.3's segment cache sends `Next-Router-Segment-Prefetch` (with `RSC`),
+    // and Chromium marks speculation-rule and `<link rel=prefetch>` loads with `Sec-Purpose`.
+    expect(isNavigation(request({ rsc: '1', 'next-router-segment-prefetch': '/_tree' }))).toBe(
+      false,
+    );
+    expect(
+      isNavigation(request({ 'sec-purpose': 'prefetch;prerender', 'sec-fetch-dest': 'document' })),
+    ).toBe(false);
+    expect(isNavigation(request({ 'sec-purpose': 'prefetch', accept: 'text/html' }))).toBe(false);
   });
 
   it('replaces the refreshed cookies and drops cleared ones', () => {
@@ -361,5 +372,40 @@ describe('createSessionProxy (web §3.2)', () => {
     ]);
     const expired = await proxy(navigate('/sign-in', `el_staff_at=${jwt({ exp: now - 5 })}`));
     expect(expired.headers.get('location')).toBeNull();
+  });
+
+  it('clears the cookies on /sign-in?reason=ended only for a same-site or typed navigation', async () => {
+    // Adversary L-1: a cross-site page linking there must not sign the user out.
+    const { proxy } = setup(() => new Response(null, { status: 204 }));
+    const live = `el_staff_at=${jwt({ exp: now + 600 })}; el_staff_rt=r`;
+    for (const site of ['same-origin', 'same-site', 'none', undefined]) {
+      const extra: Record<string, string> = site === undefined ? {} : { 'sec-fetch-site': site };
+      const response = await proxy(navigate('/sign-in?reason=ended', live, extra));
+      expect(response.headers.getSetCookie(), String(site)).toHaveLength(2);
+    }
+    const crossSite = await proxy(
+      navigate('/sign-in?reason=ended&next=%2Forders', live, { 'sec-fetch-site': 'cross-site' }),
+    );
+    expect(crossSite.headers.getSetCookie()).toEqual([]);
+    // The notice renders: no clearing, and no redirect back into the session either.
+    expect(crossSite.headers.get('location')).toBeNull();
+    expect(crossSite.headers.get('content-security-policy')).not.toBeNull();
+  });
+
+  it('never takes a redirect target from the Host header', async () => {
+    // Adversary L-2: the redirect is built on the configured public origin, which Next's adapter
+    // then turns into a relative Location for a same-host request.
+    const { proxy } = setup(() => new Response(null, { status: 401 }));
+    const foreign = (path: string, cookie: string) =>
+      new NextRequest(`http://evil.example${path}`, {
+        headers: { 'sec-fetch-dest': 'document', cookie, host: 'evil.example' },
+      });
+    const ended = await proxy(foreign('/orders', 'el_staff_rt=r'));
+    expect(ended.headers.get('location')).toBe(
+      'http://localhost:3001/sign-in?next=%2Forders&reason=ended',
+    );
+    const live = `el_staff_at=${jwt({ exp: now + 600 })}`;
+    const signedIn = await proxy(foreign('/sign-in?next=%2Forders', live));
+    expect(signedIn.headers.get('location')).toBe('http://localhost:3001/orders');
   });
 });

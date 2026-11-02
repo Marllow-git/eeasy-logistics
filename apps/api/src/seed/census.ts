@@ -185,6 +185,9 @@ export interface CensusSeedSummary {
 
 /** Writes the census identities (see the top of this file). */
 export async function seedCensus(config: Config): Promise<CensusSeedSummary> {
+  // The guard holds whoever calls the seed, not only `census-main.ts` (adversary L-4).
+  const refusal = censusSeedRefusal(config.app.env);
+  if (refusal !== undefined) throw new Error(refusal);
   if (config.credentials === null) throw new Error('seed:census needs CREDENTIALS_KEYS');
   const cipher = createCredentialsCipher(config.credentials);
   const pool = createPlatformPool(

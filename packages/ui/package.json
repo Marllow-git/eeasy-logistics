@@ -22,6 +22,7 @@
     "./session/proxy": "./src/session/proxy.ts",
     "./session/tokens": "./src/session/tokens.ts",
     "./session/headers": "./src/session/headers.ts",
+    "./session/csp-sink": "./src/session/csp-sink.ts",
     "./auth/*": "./src/auth/*.tsx",
     "./session": "./src/session/session-provider.tsx",
     "./session/user-menu": "./src/session/user-menu.tsx"
