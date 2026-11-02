@@ -94,6 +94,18 @@ export const metricCatalogue = {
     description: 'Share of the monthly message budget an account used (PLAT-9)',
     labels: ['account'],
   },
+  // INT-4 plan 2.9: push messages by outcome (per message), and receipts by status.
+  push_messages_total: {
+    kind: 'counter',
+    description:
+      'Push messages by outcome: sent, device_not_registered, rate_limited, transient, permanent, unauthorised, stale, no_device (INT-4)',
+    labels: ['outcome'],
+  },
+  push_receipts_total: {
+    kind: 'counter',
+    description: 'Push receipts checked, by status: ok, error, no_receipt (INT-4)',
+    labels: ['status'],
+  },
   channel_publication_drift: {
     kind: 'gauge',
     description: 'Stock publications behind per channel connection (INT orders)',

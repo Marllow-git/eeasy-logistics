@@ -41,8 +41,10 @@ export {
   type PlatformInvitation,
   type StaffInvitation,
 } from '../auth/invitations.js';
-// Push (INT-4 plan 2.1, 2.5): the port and the token invalidation registry DEL-4 fills with "clear
-// `push_token` on that device row".
+// Push (INT-4 plan 2.1, 2.3, 2.5): the port, the `push` row payload the Delivery producers write,
+// and the token invalidation registry DEL-4 fills with "clear `push_token` on that device row".
+export type { PushPayload } from '../push/push.handler.js';
+export type { PushTemplateKey } from '../push/push-templates.js';
 export type {
   PushChannel,
   PushMessage,
