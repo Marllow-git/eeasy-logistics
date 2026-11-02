@@ -474,6 +474,9 @@ describe('the account doors run in one platform transaction (lead ruling on 8.2 
 
   it('suspends, reactivates, suspends and closes on a one-connection platform pool (item E)', async () => {
     const id = await insertAccount(owner);
+    await staff.member(id, ['owner']);
+    // Item F: the member list reads users and the account's language through the door too.
+    await call('get', `/v1/platform/accounts/${id}/members`).expect(200);
     for (const action of ['suspend', 'reactivate', 'suspend', 'close']) {
       await call('post', `/v1/platform/accounts/${id}/${action}`).send({ reason }).expect(200);
     }
