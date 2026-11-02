@@ -40,5 +40,211 @@
       "dead_link": "{value} dead",
       "lag": "{value} s"
     }
+  },
+  "authz": {
+    "not_permitted": "Your console role does not allow this."
+  },
+  "features": {
+    "delivery": "Delivery",
+    "wms": "Warehouse"
+  },
+  "locales": {
+    "ar": "Arabic",
+    "en": "English"
+  },
+  "account_status": {
+    "provisioned": "Provisioned",
+    "active": "Active",
+    "suspended": "Suspended",
+    "closed": "Closed"
+  },
+  "accounts": {
+    "description": "Every merchant account on the platform. Open one to act on it with a support reason.",
+    "provision": "Provision account",
+    "table_label": "Merchant accounts",
+    "columns": {
+      "name": "Account",
+      "status": "Status",
+      "locale": "Language",
+      "created": "Created"
+    },
+    "filters": {
+      "status": "Status",
+      "all": "All",
+      "search": "Search by name"
+    },
+    "empty": "No account yet",
+    "empty_hint": "Provision the first merchant account to start.",
+    "empty_filtered": "No account matches these filters",
+    "empty_filtered_hint": "Try again by editing the filters.",
+    "clear_filters": "Clear filters"
+  },
+  "provision": {
+    "title": "Provision an account",
+    "description": "The account starts as provisioned and turns active when its owner accepts the invitation.",
+    "sections": {
+      "account": "Account",
+      "limits": "Limits",
+      "limits_hint": "Every limit is required; 0 allows none. You can raise them later.",
+      "modules": "Modules",
+      "modules_hint": "The modules this account gets from the start. Each still follows its rollout mode.",
+      "modules_none": "No module is registered.",
+      "owner": "Owner",
+      "owner_hint": "We email the owner an invitation. The account becomes active when they accept it."
+    },
+    "fields": {
+      "name": "Account name",
+      "name_hint": "1 to 80 characters on one line, no web address.",
+      "default_locale": "Default language",
+      "owner_email": "Owner's email",
+      "owner_name": "Owner's name"
+    },
+    "limits": {
+      "orders_per_month": "Orders per month",
+      "orders_per_month_hint": "New orders the account may create in a calendar month.",
+      "drivers": "Drivers",
+      "drivers_hint": "Drivers the account may have at once.",
+      "sites": "Sites",
+      "sites_hint": "Branches and warehouses the account may have.",
+      "api_keys": "API keys",
+      "api_keys_hint": "Keys for the merchant's own integrations."
+    },
+    "submit": "Provision and invite the owner",
+    "invited_notice": "Account provisioned. The owner's invitation went to {email}."
+  },
+  "account": {
+    "loading": "Loading the account…",
+    "failed": "The account could not be loaded.",
+    "short_id": "No. {id}",
+    "banner": {
+      "label": "Acting on account",
+      "title": "Acting on {name}",
+      "reason": "Support reason:",
+      "exit": "Exit account"
+    },
+    "gate": {
+      "title": "Why are you opening {name}?",
+      "description": "Every read of this account's data is recorded with this reason in the audit log. It stays with this tab until you exit the account.",
+      "label": "Support reason",
+      "confirm": "Open the account"
+    },
+    "header": {
+      "locale": "Language: {locale}",
+      "created": "Created {date}"
+    },
+    "tabs": {
+      "label": "Account sections",
+      "details": "Details",
+      "flags": "Modules"
+    },
+    "notice": {
+      "suspended": "This account is suspended",
+      "closed": "This account is closed",
+      "reason": "Reason:",
+      "suspended_hint": "Its staff cannot sign in and its outgoing messages are held until it is reactivated.",
+      "closed_hint": "Closing is permanent. Its data is kept and stays readable here."
+    },
+    "details": {
+      "title": "Details",
+      "description": "Name, language and limits. Lowering a limit below what is used only blocks new ones.",
+      "read_only": "Only a platform admin with the provisioning permission changes these.",
+      "usage": "{used} in use",
+      "save": "Save details"
+    },
+    "invite": {
+      "button": "Invite owner",
+      "title": "Invite an owner",
+      "description": "We email an invitation. An account may have more than one owner.",
+      "submit": "Send invitation",
+      "already_active": "This person is already an active owner of the account.",
+      "sent": "Invitation sent to {email}."
+    },
+    "lifecycle": {
+      "title": "Account status",
+      "description": "Suspend stops the account for now; close ends it for good.",
+      "suspend": {
+        "button": "Suspend…",
+        "title": "Suspend {name}?",
+        "consequences": {
+          "a": "Its staff are signed out and cannot sign in or refresh a session.",
+          "b": "Its outgoing messages and integrations are held.",
+          "c": "Its data is kept. You can reactivate it later."
+        },
+        "confirm": "Suspend account",
+        "done": "The account is suspended."
+      },
+      "reactivate": {
+        "button": "Reactivate…",
+        "title": "Reactivate {name}?",
+        "consequences": {
+          "a": "Its staff can sign in again.",
+          "b": "Held messages and integrations resume."
+        },
+        "confirm": "Reactivate account",
+        "done": "The account is active again."
+      },
+      "close": {
+        "button": "Close…",
+        "title": "Close {name} for good?",
+        "consequences": {
+          "a": "Closing is permanent: the account cannot be reopened from the console.",
+          "b": "Every session ends and open invitations stop working.",
+          "c": "Its data is kept as the retention rules require."
+        },
+        "type_name": "Type the account name to confirm",
+        "confirm": "Close account",
+        "done": "The account is closed."
+      },
+      "not_allowed": {
+        "suspend": "Only an active account can be suspended.",
+        "reactivate": "Only a suspended account can be reactivated.",
+        "close": "Only a suspended or provisioned account can be closed."
+      },
+      "conflict": "The account changed in the meantime. The page now shows its current status."
+    }
+  },
+  "flags": {
+    "title": "Modules",
+    "description": "Turn a module on or off for this account. Each change needs a reason and is recorded.",
+    "delay_notice": "A change can take up to a minute to reach the account.",
+    "enabled_at": "On since {date}",
+    "provisioned_by": "Set by {who}",
+    "never": "Never turned on",
+    "switch_label": "{feature} for this account",
+    "effect": {
+      "all": "On for every account: the rollout mode is all.",
+      "off": "Off for every account: the rollout mode is off.",
+      "on_here": "On for this account: it is on the allowlist.",
+      "off_here": "Off for this account: it is not on the allowlist."
+    },
+    "dialog": {
+      "on_title": "Turn on {feature} for {name}?",
+      "off_title": "Turn off {feature} for {name}?",
+      "description": "The reason is recorded with the change in the audit log.",
+      "on_confirm": "Turn on",
+      "off_confirm": "Turn off"
+    },
+    "done": "Saved. A change can take up to a minute to reach the account."
+  },
+  "rollout": {
+    "description": "Who gets each module. Only a super admin changes a mode; each change needs a reason.",
+    "modes": {
+      "off": "Off",
+      "allowlist": "Allowlist",
+      "all": "All"
+    },
+    "meaning": {
+      "off": "No account gets this module, whatever its own setting.",
+      "allowlist": "Only the accounts where it is turned on get this module.",
+      "all": "Every account gets this module."
+    },
+    "updated": "Changed {date} by {who}",
+    "never_changed": "Never changed: the default is allowlist.",
+    "dialog": {
+      "title": "Set {feature} to {mode}?",
+      "confirm": "Change mode"
+    },
+    "done": "Saved. A change can take up to a minute to apply.",
+    "updated_on": "Changed {date}"
   }
 }
