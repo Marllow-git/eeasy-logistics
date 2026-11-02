@@ -7,6 +7,7 @@ import { FeatureResolver } from '../../src/modules/kernel/features/feature-resol
 import { featureStoreOnPool } from '../../src/modules/kernel/platform/features.repository.js';
 import { PLATFORM_POOL } from '../../src/modules/kernel/platform/tokens.js';
 import { testSigningKey } from '../support/access-tokens.js';
+import { driverAddress, plantDriver, signIn } from './driver-fixtures.js';
 import { insertAccount } from './identity-fixtures.js';
 import type { SignedInPlatformStaff } from './platform-sessions.js';
 import { platformStaff, platformWriteHeaders } from './platform-sessions.js';
@@ -19,8 +20,10 @@ import { plantSite } from './zone-fixtures.js';
 // module. The harness runs with the mode `all` (global-setup.ts), so this suite's app reads the
 // rollout mode as `allowlist` (its resolver's store answers so, without a cache) and the account's
 // flag from the table: without the flag every staff Delivery door answers `403
-// feature_not_enabled`; after `platformSetFeatureFlag` they answer; the driver surface and the
-// platform provisioning doors are not gated.
+// feature_not_enabled`; after `platformSetFeatureFlag` they answer; the platform provisioning doors
+// are not gated. DEL-5 adversary round 1 (finding 2): the driver shift and location doors are gated
+// the same way, while DEL-4's driver-auth doors are not (a driver must sign in to learn the module
+// is off).
 
 const signing = testSigningKey();
 const config = integrationConfig({
@@ -116,5 +119,46 @@ describe('the delivery feature gate (DEL-1 item D)', () => {
     const statuses: number[] = [];
     for (const door of doors) statuses.push((await door().set('Cookie', member.cookie)).status);
     expect(statuses).toEqual([200, 200, 200, 200, 200, 200]);
+  });
+
+  it('refuses the driver shift and location doors without the flag; driver-auth stays open', async () => {
+    const accountId = await insertAccount(owner);
+    const driver = await plantDriver(owner, { accountId });
+    // Sign-in and `driverGetMe` are DEL-4's driver-auth doors: not gated.
+    const session = await signIn(() => staff.http(), owner, config, driver.phone);
+    const bearer = `Bearer ${session.tokens?.access_token ?? ''}`;
+    const doors = [
+      () => staff.http().get('/v1/driver/shifts'),
+      () =>
+        staff
+          .http()
+          .post('/v1/driver/locations')
+          .send({ points: [{ client_ts: new Date().toISOString(), lat: 24.7, lng: 46.7 }] }),
+    ];
+    const send = (door: (typeof doors)[number]) =>
+      door().set('Authorization', bearer).set('X-Forwarded-For', driverAddress());
+    await staff
+      .http()
+      .get('/v1/driver/me')
+      .set('Authorization', bearer)
+      .set('X-Forwarded-For', driverAddress())
+      .expect(200);
+    for (const door of doors) {
+      const response = await send(door).expect(403);
+      expect(errorOf(response.body).code).toBe('feature_not_enabled');
+    }
+
+    await staff
+      .http()
+      .put(`/v1/platform/accounts/${accountId}/feature-flags/delivery`)
+      .set(platformWriteHeaders(config))
+      .set('Cookie', admin.cookie)
+      .set('Idempotency-Key', nextKey())
+      .send({ enabled: true, reason: 'DEL-5 gate suite' })
+      .expect(200);
+    const statuses: number[] = [];
+    for (const door of doors) statuses.push((await send(door)).status);
+    // The list answers; the ingest reaches the service (no live shift: `409 shift_not_active`).
+    expect(statuses).toEqual([200, 409]);
   });
 });
