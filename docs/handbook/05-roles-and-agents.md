@@ -14,7 +14,7 @@ Owner rule of 2026-10-31: **Haiku researches, Opus builds, Fable reviews.** The 
 | Executor, API | `executor-api` | Opus | none; API orders carry tenancy, ledger and auth risk | its order branch, in its worktree | merges; edits `main`; answers owner questions; touches the shared dev database |
 | Executor, web | `executor-web` | Opus | Sonnet for an order whose roadmap row says `Adv. no`, whose plan has no open §7 question and whose items are screens over existing contracts | same | same |
 | Executor, driver app | `executor-driver` | Opus | same rule as web | same | same |
-| Adversary | `adversary` | Fable | none | nothing; returns a verdict | fixes code |
+| Adversary | `adversary` | Opus (owner ruling 2026-11-02: token cost; Fable before) | none | nothing; returns a verdict | fixes code |
 | Code review | `/code-review` subagent | Fable | Opus at `medium` for docs-only or chore PRs | findings | – |
 | Sweeps | `Explore` agent | Haiku | – | nothing | – |
 | Census | Playwright in CI, `ar` and `en` | – | – | – | – |
