@@ -38,6 +38,11 @@ export const geocodeRedisPrefix = 'elx:geocode';
 export interface GeocodeOptions {
   /** Answer `unavailable` instead of throwing a provider failure (plan 2.6). */
   readonly degraded?: boolean;
+  /**
+   * Caps the chain below its own 6 s (DEL-2 adversary round 1: the order doors ask with 2 s, so a
+   * slow provider costs a dispatcher two seconds at most). Unset keeps the chain's deadline.
+   */
+  readonly deadlineMs?: number | undefined;
 }
 
 export interface GeocoderServiceParts {
@@ -93,7 +98,7 @@ export class GeocoderService {
     if (query.locale !== 'ar' && query.locale !== 'en') throw new GeocoderInputError('text');
     const normalised: GeocodeQuery = { text, locale: query.locale, ...(city ? { city } : {}) };
     return await this.#lookup('geocode', geocodeKey(normalised), options, (chain) =>
-      chain.geocode(normalised),
+      chain.geocode(normalised, options.deadlineMs),
     );
   }
 
@@ -105,7 +110,7 @@ export class GeocoderService {
     const shortCode = normaliseShortCode(code);
     if (shortCode === undefined) throw new GeocoderInputError('code');
     return await this.#lookup('shortcode', shortCodeKey(shortCode), options, (chain) =>
-      chain.lookupShortCode(shortCode),
+      chain.lookupShortCode(shortCode, options.deadlineMs),
     );
   }
 
@@ -116,7 +121,7 @@ export class GeocoderService {
     if (!valid(point?.lat, 90) || !valid(point?.lng, 180)) throw new GeocoderInputError('point');
     const rounded = roundedPoint(point);
     return await this.#lookup('reverse', reverseKey(rounded), options, (chain) =>
-      chain.reverse(rounded),
+      chain.reverse(rounded, options.deadlineMs),
     );
   }
 

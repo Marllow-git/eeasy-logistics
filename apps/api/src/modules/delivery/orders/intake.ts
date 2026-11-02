@@ -15,6 +15,18 @@ import type { OrderAddressFields } from './order-input.js';
 /** Plan §7 #2: a constant until `AccountSettings` gains a threshold key (a contract change). */
 export const geocodeConfidenceThreshold = 0.6;
 
+/**
+ * The order doors' cap on one address lookup, short code and text together (DEL-2 adversary round
+ * 1): the doors run it before the request's transaction, and a dispatcher waits at most this long.
+ */
+export const intakeGeocodeDeadlineMs = 2_000;
+
+export interface LocateOptions {
+  /** The whole lookup's deadline; the geocoder's own chain deadline when unset. */
+  readonly deadlineMs?: number;
+  readonly now?: () => number;
+}
+
 export interface Located {
   readonly point: { readonly lat: number; readonly lng: number };
   readonly pinSource: PinSource;
@@ -29,18 +41,30 @@ export async function locate(
   geocoder: Pick<GeocoderService, 'geocode' | 'lookupShortCode'>,
   address: OrderAddressFields,
   locale: GeocodeLocale,
+  options: LocateOptions = {},
 ): Promise<Located | undefined> {
   if (address.point !== null) return { point: address.point, pinSource: 'manual', confidence: 1 };
+  const now = options.now ?? Date.now;
+  const started = now();
+  /** What is left of the lookup's deadline for the next call; undefined without one. */
+  const remaining = () =>
+    options.deadlineMs === undefined ? undefined : options.deadlineMs - (now() - started);
   try {
     if (address.shortCode !== null) {
-      const hit = await geocoder.lookupShortCode(address.shortCode, { degraded: true });
+      const hit = await geocoder.lookupShortCode(address.shortCode, {
+        degraded: true,
+        deadlineMs: remaining(),
+      });
       if (hit.kind === 'found') {
         return { point: hit.point, pinSource: 'geocoded', confidence: hit.confidence };
       }
     }
+    const left = remaining();
+    // The short code spent the whole deadline: no point, the order lands `needs_location`.
+    if (left !== undefined && left <= 0) return undefined;
     const found = await geocoder.geocode(
       { text: address.text, city: address.city, locale },
-      { degraded: true },
+      { degraded: true, deadlineMs: left },
     );
     if (found.kind === 'found' && found.confidence >= geocodeConfidenceThreshold) {
       return { point: found.point, pinSource: 'geocoded', confidence: found.confidence };

@@ -2,6 +2,7 @@
 export { ApiException, type FieldProblem } from '../errors/api-exception.js';
 export type { ErrorCode } from '../errors/error-codes.js';
 export { CommittedRefusal, NoUnitOfWork, Public } from '../tenancy/frame.js';
+export { requestTenantContext } from '../tenancy/unit-of-work.interceptor.js';
 export { CrossTenant } from '../tenancy/cross-tenant.js';
 export { AUDIT_SINK, type AuditEvent, type AuditSink } from '../audit/audit-sink.js';
 export { Idempotent } from '../idempotency/idempotency.interceptor.js';

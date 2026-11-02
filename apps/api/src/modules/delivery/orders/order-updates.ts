@@ -9,9 +9,10 @@ import type {
 } from '../../kernel/public/index.js';
 import { ApiException, assertVersion } from '../../kernel/public/index.js';
 import type { CoverageQuery } from '../zones/coverage-query.js';
-import type { Located } from './intake.js';
-import { intakeOutcome, locate } from './intake.js';
+import { intakeGeocodeDeadlineMs, intakeOutcome, locate } from './intake.js';
 import type { AuditFacts, CreatedOrder } from './order-intake.js';
+import type { Prelocated } from './order-locating.js';
+import { settlePrelocated } from './order-locating.js';
 import type { OrderPatch, PatchKey } from './order-input.js';
 import { patchKeys } from './order-input.js';
 import { isTerminal, prePickupStatuses } from './order-machine.js';
@@ -26,9 +27,10 @@ import {
 // `updateOrder` (DEL-2 plan 2.8; domain model §3.1, §3.2, D-4, D-22; integrations §6.2; data §10).
 // A PATCH of the sent parts under the `If-Match` version: recipient, address and items (the list
 // replaced whole) and COD change only before pickup; notes until the order is terminal; nothing on
-// a terminal order (`409 order_locked`). A new address is located again (before any lock: the
-// geocoder is I/O) unless the order holds a pin of higher trust than the geocoder's (a recipient,
-// driver or dispatcher pin is never overwritten by geocoding), and its zone is resolved again in
+// a terminal order (`409 order_locked`). A new address is located again (by `OrderLocating`,
+// before the request's transaction: the geocoder is I/O) unless the order holds a pin of higher
+// trust than the geocoder's (a recipient, driver or dispatcher pin is never overwritten by
+// geocoding), and its zone is resolved again in
 // the transaction; a `pending` order's intake rule is applied again, so an address fix may clear
 // its reason and, under `auto_accept`, accept it (a system arrow through `OrderTransitions`). The
 // edit is one `note` event with the changed parts and one audit row naming them; only COD shows
@@ -46,7 +48,6 @@ const prePickupParts: ReadonlySet<PatchKey> = new Set([
 ]);
 
 export interface UpdateDependencies {
-  readonly geocoder: Pick<GeocoderService, 'geocode' | 'lookupShortCode'>;
   readonly coverage: Pick<CoverageQuery, 'coverage'>;
   readonly accounts: Pick<OrderAccounts, 'current'>;
   readonly audit: AuditSink;
@@ -59,10 +60,9 @@ export interface UpdateRequest {
   readonly patch: OrderPatch;
   readonly idempotencyKey: string;
   readonly facts: AuditFacts;
+  /** `OrderLocating`'s answer for a sent address (lead ruling 1: located before the transaction). */
+  readonly prelocated: Prelocated | undefined;
 }
-
-/** Where a new address puts the order: undefined keeps the current point. */
-type Relocation = { readonly located: Located | undefined } | undefined;
 
 /** The parts of `patch` that were sent, in `patchKeys` order. */
 export function changedParts(patch: OrderPatch): PatchKey[] {
@@ -109,7 +109,9 @@ export class OrderUpdates {
     if (seen === undefined) throw new ApiException('not_found');
     assertVersion(seen, request.expectedVersion);
     assertEditable(seen, parts);
-    const relocation = await this.relocate(seen, patch);
+    // The guard's answer was taken against this version: an unchanged row gives the same decision.
+    const relocation =
+      patch.address === undefined ? undefined : settlePrelocated(request.prelocated);
     const account =
       patch.address !== undefined && seen.status === 'pending'
         ? await this.deps.accounts.current()
@@ -140,7 +142,7 @@ export class OrderUpdates {
       values.addressCity = patch.address.city;
       values.addressDistrict = patch.address.district;
       values.nationalAddressShortCode = patch.address.shortCode;
-      if (relocation !== undefined) {
+      if (relocation?.kind === 'located') {
         const { located } = relocation;
         point = located?.point ?? null;
         values.pinSource = located?.pinSource ?? null;
@@ -230,21 +232,26 @@ export class OrderUpdates {
     }
     return { order, items };
   }
+}
 
-  /**
-   * Where a sent address puts the order (integrations §6.2): a sent point is the dispatcher's
-   * (`manual`); an order already pinned by a recipient, a driver or a dispatcher keeps its point;
-   * otherwise the geocoder is asked again. Undefined when no address was sent or the point stays.
-   */
-  private async relocate(order: OrderRow, patch: OrderPatch): Promise<Relocation> {
-    const address = patch.address;
-    if (address === undefined) return undefined;
-    if (address.point === null && order.pinSource !== null && trustedPins.has(order.pinSource)) {
-      return undefined;
-    }
-    const locale: GeocodeLocale = patch.recipient?.language ?? order.recipientLanguage ?? 'ar';
-    return { located: await locate(this.deps.geocoder, address, locale) };
+/**
+ * Where a sent address puts the order (integrations §6.2), for `OrderLocating`: a sent point is the
+ * dispatcher's (`manual`); an order already pinned by a recipient, a driver or a dispatcher keeps
+ * its point; otherwise the geocoder is asked again within the doors' deadline.
+ */
+export async function relocationFor(
+  geocoder: Pick<GeocoderService, 'geocode' | 'lookupShortCode'>,
+  order: OrderRow,
+  patch: OrderPatch,
+): Promise<Prelocated> {
+  const address = patch.address;
+  if (address === undefined) return { kind: 'kept' };
+  if (address.point === null && order.pinSource !== null && trustedPins.has(order.pinSource)) {
+    return { kind: 'kept' };
   }
+  const locale: GeocodeLocale = patch.recipient?.language ?? order.recipientLanguage ?? 'ar';
+  const located = await locate(geocoder, address, locale, { deadlineMs: intakeGeocodeDeadlineMs });
+  return { kind: 'located', located };
 }
 
 function pointOf(order: OrderRow): { lat: number; lng: number } | null {

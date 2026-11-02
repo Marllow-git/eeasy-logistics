@@ -104,6 +104,7 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 | D | see `git log` (`DEL-2: D …`) | `orders-read.http.test.ts` 5 red (only `createOrder` routed) → 6 green; its `open_orders` case 1 red without `OrderSiteUse` → green; unit `if-match` 15, `order-updates` 14 new (orders and contract unit 45 green); `orders.http` 5, `sites.http`, `orders-table` 5 green (27 with `orders-read`); `integration-projects`, `idempotent-routes`, `operation-routes` green; typecheck (api, db), lint, Prettier, `test:architecture` clean; ELX_RLS=on | 8.2 #10 to #15 |
 | E | see `git log` (`DEL-2: E …`) | `orders-transitions.http.test.ts` 6 red (item D's controller) → 6 green; the five order and site suites 33 green; unit (delivery, kernel accounts, contract, outbox, route guards) 145 green; seven contract scenarios (401) typecheck and lint clean, the contract run is CI's; typecheck, lint, Prettier, `test:architecture` clean; ELX_RLS=on | 8.2 #16 to #19 |
 | F | see `git log` (`DEL-2: F …`) | docs and memories only: Prettier on data.md, domain-model.md, the plan and the memories clean; no new tests | memories `core`, `api/core` |
+| R1-1 | `DEL-2: R1-1 …` | `orders-locating.http.test.ts` 2 red (the geocoder ran in the tenant context: `[true ×6]`, `[true]`) → 2 green; `chain-geocoder` +1 (caller's deadline); orders and geocoding unit 161 green; `orders`, `orders-read`, `orders-transitions` with the new file 19 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #20 |
 
 ### 8.1 Deviations
 
