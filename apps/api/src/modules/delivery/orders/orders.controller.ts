@@ -5,12 +5,21 @@ import type {
 } from '@eeasy-logistics/contracts/staff/schemas';
 import { operationSchemas } from '@eeasy-logistics/contracts/staff/schemas';
 import { getContext, getUnitOfWork } from '@eeasy-logistics/db';
-import { Controller, Get, HttpCode, Inject, Optional, Patch, Post, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Optional,
+  Patch,
+  Post,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import type {
   AuditSink,
   ContractInput,
-  GeocoderService,
   ListSorts,
   RequestFacts,
 } from '../../kernel/public/index.js';
@@ -22,7 +31,6 @@ import {
   entityTag,
   enumListFilter,
   Feature,
-  GEOCODER,
   Idempotent,
   ifMatchVersion,
   Input,
@@ -42,6 +50,8 @@ import {
 import { CoverageQuery } from '../zones/coverage-query.js';
 import { OrderIntake } from './order-intake.js';
 import { newOrderFields, orderPatchFields } from './order-input.js';
+import type { Prelocated } from './order-locating.js';
+import { OrderLocating, PreLocated } from './order-locating.js';
 import { afterPickupStatuses } from './order-machine.js';
 import { OrderTransitions } from './order-transitions.js';
 import { OrderUpdates } from './order-updates.js';
@@ -97,14 +107,12 @@ export class OrdersController {
 
   constructor(
     @Inject(AUDIT_SINK) audit: AuditSink,
-    @Inject(GEOCODER) geocoder: GeocoderService,
     outbox: OutboxWriter,
     accounts: OrderAccounts,
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
   ) {
     const coverage = new CoverageQuery();
     this.intake = new OrderIntake({
-      geocoder,
       coverage,
       accounts,
       sequences: new SequenceAllocator(),
@@ -114,7 +122,7 @@ export class OrdersController {
     const transitions = new OrderTransitions({ audit, outbox });
     this.transitions = transitions;
     this.accounts = accounts;
-    this.updates = new OrderUpdates({ geocoder, coverage, accounts, audit, transitions });
+    this.updates = new OrderUpdates({ coverage, accounts, audit, transitions });
     this.cursors = cursors ?? new CursorCodec(undefined);
   }
 
@@ -122,10 +130,12 @@ export class OrdersController {
   @HttpCode(201)
   @Idempotent()
   @SiteScoped({ from: 'body', name: 'site_id' })
+  @UseGuards(OrderLocating)
   @Operation(createOp)
   async create(
     @Input() input: ContractInput<typeof createOp>,
     @AuthRequest() facts: RequestFacts,
+    @PreLocated() prelocated: Prelocated | undefined,
   ): Promise<Order> {
     const fields = newOrderFields(input.body);
     const created = await this.intake.create(getUnitOfWork(), {
@@ -133,6 +143,7 @@ export class OrdersController {
       source: 'manual',
       idempotencyKey: input.headers['Idempotency-Key'],
       facts,
+      prelocated,
     });
     return presentOrder(created.order, created.items);
   }
@@ -236,14 +247,19 @@ export class OrdersController {
     return presentPage(page, presentOrderEvent);
   }
 
-  /** `updateOrder` (plan 2.8): the sent parts under the `If-Match` version. */
+  /**
+   * `updateOrder` (plan 2.8): the sent parts under the `If-Match` version; a sent address was
+   * located by `OrderLocating` before the transaction opened.
+   */
   @Patch(':order_id')
   @HttpCode(200)
   @Idempotent()
+  @UseGuards(OrderLocating)
   @Operation(updateOp)
   async update(
     @Input() input: ContractInput<typeof updateOp>,
     @AuthRequest() facts: RequestFacts,
+    @PreLocated() prelocated: Prelocated | undefined,
   ): Promise<Order> {
     const expectedVersion = ifMatchVersion(input.headers['If-Match']);
     const uow = getUnitOfWork();
@@ -256,6 +272,7 @@ export class OrdersController {
       patch,
       idempotencyKey: input.headers['Idempotency-Key'],
       facts,
+      prelocated,
     });
     return presentOrder(updated.order, updated.items);
   }

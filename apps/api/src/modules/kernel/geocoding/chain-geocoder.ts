@@ -21,7 +21,7 @@ import { isOutage } from './source-http.js';
 // failure (a timeout, a 5xx, a refused key, an open breaker) moves on and is counted; when no source
 // answered, or one failed and the rest said not found, the last failure is raised (the service's
 // degraded path makes it `unavailable`, and an uncertain not-found is never cached). The whole
-// chain is capped at 6 s.
+// chain is capped at 6 s, or lower when the caller passes its own deadline (DEL-2 intake, 2 s).
 
 export type GeocodeMethod = 'geocode' | 'shortcode' | 'reverse';
 
@@ -63,16 +63,17 @@ export class ChainGeocoder {
     return this.#for(method).map((source) => source.provider);
   }
 
-  geocode(query: GeocodeQuery): Promise<ChainAnswer<GeocodeResult>> {
-    return this.#run('geocode', (source) => source.geocode?.(query));
+  /** `deadlineMs` caps this lookup below the chain's own deadline (DEL-2 intake: 2 s). */
+  geocode(query: GeocodeQuery, deadlineMs?: number): Promise<ChainAnswer<GeocodeResult>> {
+    return this.#run('geocode', (source) => source.geocode?.(query), deadlineMs);
   }
 
-  lookupShortCode(code: string): Promise<ChainAnswer<ShortCodeResult>> {
-    return this.#run('shortcode', (source) => source.lookupShortCode?.(code));
+  lookupShortCode(code: string, deadlineMs?: number): Promise<ChainAnswer<ShortCodeResult>> {
+    return this.#run('shortcode', (source) => source.lookupShortCode?.(code), deadlineMs);
   }
 
-  reverse(point: GeoPoint): Promise<ChainAnswer<ReverseResult>> {
-    return this.#run('reverse', (source) => source.reverse?.(point));
+  reverse(point: GeoPoint, deadlineMs?: number): Promise<ChainAnswer<ReverseResult>> {
+    return this.#run('reverse', (source) => source.reverse?.(point), deadlineMs);
   }
 
   #for(method: GeocodeMethod): GeocoderSource[] {
@@ -88,7 +89,9 @@ export class ChainGeocoder {
   async #run<T>(
     method: GeocodeMethod,
     ask: (source: GeocoderSource) => Promise<T | NotFound> | undefined,
+    deadlineMs: number | undefined,
   ): Promise<ChainAnswer<T>> {
+    const limitMs = Math.min(this.#deadlineMs, deadlineMs ?? Number.POSITIVE_INFINITY);
     const sources = this.#for(method);
     const count = (source: string, outcome: string) =>
       getMetrics().add('geocoder_calls_total', 1, { method, source, outcome });
@@ -96,7 +99,7 @@ export class ChainGeocoder {
     let failure: ProviderFailure | undefined;
     let last: GeocoderProviderName | undefined;
     for (const source of sources) {
-      const remaining = this.#deadlineMs - (this.#now() - started);
+      const remaining = limitMs - (this.#now() - started);
       if (remaining <= 0) {
         failure = new ProviderFailure('transient', 'the geocoder chain ran out of time', {
           status: 'TIMEOUT',

@@ -2,8 +2,6 @@ import type { UnitOfWork } from '@eeasy-logistics/db';
 import { getContext, uuidv7 } from '@eeasy-logistics/db';
 import type {
   AuditSink,
-  GeocodeLocale,
-  GeocoderService,
   OrderAccounts,
   OrderSource,
   OutboxWriter,
@@ -12,9 +10,10 @@ import type {
 } from '../../kernel/public/index.js';
 import { ApiException, holdSites, siteSummaries } from '../../kernel/public/index.js';
 import type { CoverageQuery } from '../zones/coverage-query.js';
-import type { Located } from './intake.js';
-import { intakeOutcome, locate } from './intake.js';
+import { intakeOutcome } from './intake.js';
 import type { NewOrderFields } from './order-input.js';
+import type { Prelocated } from './order-locating.js';
+import { settlePrelocated } from './order-locating.js';
 import type { OrderItemRow, OrderRow } from './orders.repository.js';
 import {
   OrderEventsRepository,
@@ -24,8 +23,9 @@ import {
 
 // Order intake (DEL-2 plan 2.3 to 2.6; domain model §3.1, D-2, D-3, D-14; integrations §6.2;
 // data §10). One path for every source: the staff door now, the CSV import (DEL-3) and WMS-7's
-// `OwnFleetOrderPort.createFromPackage` later. The site is checked and the address located first
-// (the geocoder is I/O, so it runs before any lock is taken); then, in the caller's unit of work,
+// `OwnFleetOrderPort.createFromPackage` later. The address is located before the caller's unit of
+// work opens (the geocoder is I/O: `OrderLocating` on the staff door, lead ruling 1 of adversary
+// round 1) and handed in; the site is checked, then, in the caller's unit of work,
 // the month's order count, the number, the zone of the point under the site's coverage, the intake
 // rule, the order, its items and its first event, the audit row and the outbox row. Neither the
 // audit row nor the event carries the recipient's name or phone (data §3.1, §10).
@@ -33,7 +33,6 @@ import {
 export type AuditFacts = Pick<RequestFacts, 'requestId' | 'clientRequestId' | 'ip' | 'userAgent'>;
 
 export interface IntakeDependencies {
-  readonly geocoder: Pick<GeocoderService, 'geocode' | 'lookupShortCode'>;
   readonly coverage: Pick<CoverageQuery, 'coverage'>;
   readonly accounts: Pick<OrderAccounts, 'current' | 'chargeOrder'>;
   readonly sequences: Pick<SequenceAllocator, 'next'>;
@@ -47,6 +46,8 @@ export interface IntakeRequest {
   /** The request's `Idempotency-Key`: the first event's key (D-15). */
   readonly idempotencyKey: string;
   readonly facts: AuditFacts;
+  /** The address located before the transaction opened (`OrderLocating`, `locate`). */
+  readonly prelocated: Prelocated | undefined;
 }
 
 export interface CreatedOrder {
@@ -61,8 +62,8 @@ export class OrderIntake {
     const { fields } = request;
     await this.assertDispatchSite(uow, fields.siteId);
     const account = await this.deps.accounts.current();
-    const locale: GeocodeLocale = fields.recipient.language ?? 'ar';
-    const located: Located | undefined = await locate(this.deps.geocoder, fields.address, locale);
+    const pre = settlePrelocated(request.prelocated);
+    const located = pre.kind === 'located' ? pre.located : undefined;
     const zoneId =
       located === undefined
         ? null

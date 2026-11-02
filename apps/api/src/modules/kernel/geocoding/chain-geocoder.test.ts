@@ -171,6 +171,18 @@ describe('ChainGeocoder', () => {
     });
     expect(calls).toEqual(['sayyar']);
   });
+
+  it("caps a lookup at the caller's deadline below the chain's own (DEL-2 intake, 2 s)", async () => {
+    const calls: string[] = [];
+    const geocoder = new ChainGeocoder({
+      sources: [scripted('sayyar', ['slow'], calls)],
+      breaker: new SourceBreaker(memoryBreakerStore()),
+    });
+    const started = Date.now();
+    expect(await failureOf(geocoder.geocode(query, 40))).toMatchObject({ status: 'TIMEOUT' });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(calls).toEqual(['sayyar']);
+  });
 });
 
 describe('the source breaker in the chain', () => {

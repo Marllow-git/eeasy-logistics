@@ -55,6 +55,17 @@ export function tenantContext(
   });
 }
 
+/**
+ * The tenant context the unit of work will open for `request`, for a route guard that must read
+ * before it on a short transaction of its own (DEL-2 adversary round 1: the order doors locate the
+ * address before the request's transaction). Undefined without a staff or driver principal.
+ */
+export function requestTenantContext(request: Request): RequestContext | undefined {
+  const principal = principalOf(request);
+  if (principal === undefined || principal.kind === 'platform') return undefined;
+  return tenantContext(principal, serverRequestIdOf(request), requestSiteScope(request));
+}
+
 /** The `User-Agent` header, when it is one string. */
 export function userAgentOf(request: Request): string | null {
   const value = request.headers['user-agent'];
