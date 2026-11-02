@@ -8,6 +8,7 @@ import { Invitations } from '../auth/invitations.js';
 import type { PermissionResolver } from '../authz/permission-resolver.js';
 import { PERMISSION_RESOLVER } from '../authz/permission-resolver.js';
 import type { RequestFacts } from '../auth/request-facts.js';
+import { SecondFactorResets } from '../auth/second-factor-resets.js';
 import { AuthRequest } from '../auth/request-facts.js';
 import type { ContractInput } from '../contract/contract-pipe.js';
 import { Input, Operation } from '../contract/contract-pipe.js';
@@ -30,16 +31,18 @@ import type { Member, MemberSortField } from './members.service.js';
 import { MembersService } from './members.service.js';
 
 // The staff surface's `members` tag (PLAT-12 plan 2.4, 2.7 to 2.11): `listMembers`, `getMember`,
-// `inviteMember`, `updateMember`, `revokeMember`. The account is the token's; a membership of another account is `404`. Members
-// are an account resource, not a site one: no door here is site-scoped (2.11). `x-permission`
-// (`core.members.read`, `core.members.manage`) is enforced by PLAT-10's guard. Registered by
-// `AuthModule`, whose `Invitations` the invitation is delegated to (2.9).
+// `inviteMember`, `updateMember`, `revokeMember`, `resetMemberSecondFactor`. The account is the
+// token's; a membership of another account is `404`. Members are an account resource, not a site
+// one: no door here is site-scoped (2.11). `x-permission` (`core.members.read`,
+// `core.members.manage`) is enforced by PLAT-10's guard. Registered by `AuthModule`, whose
+// `Invitations` and `SecondFactorResets` the invitation and the reset are delegated to (2.9).
 
 const listOp = operationSchemas.listMembers;
 const getOp = operationSchemas.getMember;
 const inviteOp = operationSchemas.inviteMember;
 const updateOp = operationSchemas.updateMember;
 const revokeOp = operationSchemas.revokeMember;
+const resetOp = operationSchemas.resetMemberSecondFactor;
 
 const memberSorts: ListSorts<MemberSortField> = {
   fields: { created_at: 'timestamp', name: 'text', status: 'text' },
@@ -56,6 +59,7 @@ export class MembersController {
   constructor(
     @Inject(AUDIT_SINK) audit: AuditSink,
     invitations: Invitations,
+    resets: SecondFactorResets,
     @Optional() @Inject(PLATFORM_POOL) pool?: Parameters<typeof identityStoreOnPool>[0],
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
     @Optional() @Inject(PERMISSION_RESOLVER) resolver?: PermissionResolver | null,
@@ -67,6 +71,7 @@ export class MembersController {
       invitations,
       audit,
       resolver: resolver ?? undefined,
+      resets,
     });
   }
 
@@ -134,5 +139,22 @@ export class MembersController {
     @AuthRequest() facts: RequestFacts,
   ): Promise<void> {
     await this.members.revoke(input.params.membership_id, facts, facts.principal?.tokenVersion);
+  }
+
+  /** Not on oneself; the member's sessions end and a re-enrolment link is mailed (plan 2.10). */
+  @Post(':membership_id/second-factor/reset')
+  @HttpCode(204)
+  @Idempotent()
+  @Operation(resetOp)
+  async resetSecondFactor(
+    @Input() input: ContractInput<typeof resetOp>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<void> {
+    await this.members.resetSecondFactor(
+      input.params.membership_id,
+      input.body.reason,
+      facts,
+      facts.principal?.tokenVersion,
+    );
   }
 }
