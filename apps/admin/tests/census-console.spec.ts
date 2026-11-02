@@ -13,9 +13,14 @@ import {
 } from './census/helpers';
 import {
   acceptOwnerInvitation,
+  censusPassword,
   consoleAccount,
+  mailedLink,
+  origin,
+  platformEmail,
   platformSignIn,
   projectOf,
+  totpCode,
   type CensusProject,
 } from './census/session';
 import type { Request, Route } from '@playwright/test';
@@ -538,4 +543,143 @@ test('outbox: an account filter with a reason, the dead row, its drawer and the 
   ).toBeVisible();
   expect(bulks).toHaveLength(1);
   expect(bulks[0]!.postDataJSON()).toEqual({ account_id: account.id, kind: 'webhook', reason });
+});
+
+// Leg 2 (WEB-4 plan 2.9, 2.10): a super admin invites a staff member (the mail in Mailpit), sees
+// every action locked on their own row, changes the role of `colleague` and revokes it, and resets
+// the authenticator of `relink`; `relink` is then told at sign-in to use the mailed link, opens it,
+// confirms the password, enrols a new authenticator and lands signed in.
+
+/** The row of a staff member by email, and its actions menu. */
+function staffRow(page: Page, locale: Locale, email: string) {
+  const row = page
+    .getByRole('table', { name: p(locale, 'staff.table_label') })
+    .getByRole('row')
+    .filter({ hasText: email });
+  return {
+    row,
+    open: () => row.getByRole('button', { name: /.+/ }).last().click(),
+  };
+}
+
+test('staff: invite, own row locked, change a role, revoke, reset an authenticator', async ({
+  page,
+  locale,
+}) => {
+  const census = project();
+  await platformSignIn(page, 'staff', census);
+  await page.goto('/staff');
+  await expect(page.getByRole('heading', { level: 1, name: p(locale, 'nav.staff') })).toBeVisible();
+  const own = staffRow(page, locale, platformEmail('staff', census));
+  await expect(own.row).toContainText(p(locale, 'staff.you'));
+  await page.waitForLoadState('networkidle');
+  await checkPage(page, locale);
+  await expect(page).toHaveScreenshot('console-staff.png', {
+    mask: [...masks(page), page.getByRole('table').locator('tbody')],
+  });
+
+  // Never on oneself: every action of the own row is disabled with why.
+  await own.open();
+  const menu = page.getByRole('menu');
+  await expect(
+    menu.getByRole('menuitem', { name: new RegExp(p(locale, 'staff.role.button')) }),
+  ).toHaveAttribute('aria-disabled', 'true');
+  await expect(menu).toContainText(p(locale, 'staff.locks.self'));
+  await page.keyboard.press('Escape');
+
+  // Invite: one role from the list with its sentence; the invitation reaches Mailpit.
+  const hire = platformEmail('hire', census);
+  await page.getByRole('button', { name: p(locale, 'staff.invite.button') }).click();
+  const invite = page.getByRole('alertdialog', { name: p(locale, 'staff.invite.title') });
+  await invite.getByLabel(p(locale, 'staff.invite.email')).fill(hire);
+  await invite.getByLabel(p(locale, 'staff.invite.name')).fill('Census hire');
+  await invite
+    .getByRole('radio', { name: p(locale, 'staff.roles.platform_support.label'), exact: true })
+    .check();
+  await checkPage(page, locale);
+  await expect(page).toHaveScreenshot('console-staff-invite.png', {
+    mask: [...masks(page), page.getByRole('table').locator('tbody')],
+  });
+  await invite.getByRole('button', { name: p(locale, 'staff.invite.submit') }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: p(locale, 'staff.invite.done', { email: hire }) }),
+  ).toBeVisible();
+  expect(await mailedLink(hire, 'invitations')).toContain(`${origin}/invitations/`);
+
+  // Change the role of `colleague` (support → admin), then revoke it.
+  const colleague = staffRow(page, locale, platformEmail('colleague', census));
+  await colleague.open();
+  await page.getByRole('menuitem', { name: new RegExp(p(locale, 'staff.role.button')) }).click();
+  const change = page.getByRole('alertdialog');
+  await expect(change).toContainText(p(locale, 'staff.role.sessions'));
+  await change
+    .getByRole('radio', { name: p(locale, 'staff.roles.platform_admin.label'), exact: true })
+    .check();
+  await change.getByRole('button', { name: p(locale, 'staff.role.confirm') }).click();
+  await expect(colleague.row).toContainText(p(locale, 'staff.roles.platform_admin.label'));
+  await colleague.open();
+  await page.getByRole('menuitem', { name: new RegExp(p(locale, 'staff.revoke.button')) }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: p(locale, 'staff.revoke.confirm') })
+    .click();
+  await expect(colleague.row).toContainText(p(locale, 'staff.revoked'));
+
+  // Reset the authenticator of `relink` with a reason: the one-time link is mailed.
+  const relink = staffRow(page, locale, platformEmail('relink', census));
+  await relink.open();
+  await page.getByRole('menuitem', { name: new RegExp(p(locale, 'staff.reset.button')) }).click();
+  const reset = page.getByRole('alertdialog');
+  await reset.getByRole('textbox').fill(reasonFor(locale, 'lost phone'));
+  await reset.getByRole('button', { name: p(locale, 'staff.reset.confirm') }).click();
+  await expect(page.getByRole('status').filter({ hasText: /.+/ }).first()).toBeVisible();
+  await expect(relink.row).toContainText(p(locale, 'staff.totp_off'));
+});
+
+test('a reset authenticator: the sign-in points to the link, the link re-enrols and signs in', async ({
+  page,
+  locale,
+}) => {
+  const census = project();
+  const email = platformEmail('relink', census);
+  // The reset of the previous case mailed the link; this case runs after it in the project.
+  const link = await mailedLink(email, 'totp/enrol');
+  await page.goto('/sign-in');
+  await page.getByLabel(message(locale, 'auth', 'sign_in.email')).fill(email);
+  await page
+    .getByLabel(message(locale, 'auth', 'fields.password'), { exact: true })
+    .fill(censusPassword);
+  await page.getByRole('button', { name: message(locale, 'auth', 'sign_in.submit') }).click();
+  await expect(
+    page.getByText(message(locale, 'auth', 'totp.enrolment_link_required')),
+  ).toBeVisible();
+
+  await page.goto(link);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    message(locale, 'auth', 'totp.relink_title'),
+  );
+  await checkPage(page, locale);
+  await expect(page).toHaveScreenshot('console-relink.png', { fullPage: true });
+  await page
+    .getByLabel(message(locale, 'auth', 'fields.password'), { exact: true })
+    .fill(censusPassword);
+  await page.getByRole('button', { name: message(locale, 'auth', 'totp.relink_submit') }).click();
+  await expect(page).toHaveURL(`${origin}/sign-in/totp`);
+  const key = page.getByTestId('totp-manual-key');
+  await expect(key).toHaveText(/^[A-Z2-7]{4}( [A-Z2-7]{1,4})+$/);
+  const secret = (await key.textContent())!.replace(/\s+/g, '');
+  await page.getByRole('textbox').first().fill(totpCode(secret));
+  await expect(page).toHaveURL(`${origin}/`);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(p(locale, 'nav.home'));
+
+  // The link is spent: opened again, it says so.
+  await page.context().clearCookies({ name: /^el_platform_/ });
+  await page.goto(link);
+  await page
+    .getByLabel(message(locale, 'auth', 'fields.password'), { exact: true })
+    .fill(censusPassword);
+  await page.getByRole('button', { name: message(locale, 'auth', 'totp.relink_submit') }).click();
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(
+    message(locale, 'auth', 'link.invalid_title'),
+  );
 });

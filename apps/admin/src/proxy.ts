@@ -8,7 +8,7 @@ import type { NextRequest } from 'next/server';
 // headers with a nonce on every page, and the platform session (its own cookies, host-only on the
 // admin hostname) refreshed on a navigation under (platform). (auth) never refreshes.
 
-const authPaths = /^\/(?:sign-in|signed-out|invitations)(?:\/|$)/;
+const authPaths = /^\/(?:sign-in|signed-out|invitations|totp)(?:\/|$)/;
 const otherPaths = /^\/census-global-fault(?:\/|$)/;
 
 /** The route group of a path of the console. */

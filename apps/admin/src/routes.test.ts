@@ -37,6 +37,11 @@ void describe('consoleRoutes', () => {
     assert.equal(routeOpen(form, { permissions: undefined }), false);
   });
 
+  void it('opens staff management to the staff permission only (never to support)', () => {
+    assert.equal(routeOpen(routeOf('/staff'), superAdmin), true);
+    assert.equal(routeOpen(routeOf('/staff'), support), false);
+  });
+
   void it('opens the outbox to every outbox reader', () => {
     assert.equal(routeOpen(routeOf('/outbox'), support), true);
     assert.equal(routeOpen(routeOf('/outbox'), { permissions: ['platform.accounts.read'] }), false);
@@ -68,6 +73,7 @@ void describe('navigationFor', () => {
         ],
       },
       { group: 'operations', items: [{ href: '/outbox', label: 'outbox', prefix: false }] },
+      { group: 'governance', items: [{ href: '/staff', label: 'staff', prefix: false }] },
     ]);
   });
 

@@ -368,5 +368,79 @@
       "action": "Action",
       "all_actions": "All actions"
     }
+  },
+  "staff": {
+    "description": "The platform team: who can use this console and with which role. Every change ends the person's sessions.",
+    "table_label": "Platform staff",
+    "columns": {
+      "name": "Name",
+      "role": "Role",
+      "totp": "Authenticator",
+      "created": "Joined"
+    },
+    "you": "(you)",
+    "revoked": "Revoked",
+    "totp_on": "Set up",
+    "totp_off": "Not set up",
+    "empty": "No staff member yet.",
+    "actions": "Actions",
+    "actions_for": "Actions for {name}",
+    "roles": {
+      "platform_super_admin": {
+        "label": "Super admin",
+        "sentence": "Everything, including rollout modes, staff and their roles, and authenticator resets."
+      },
+      "platform_admin": {
+        "label": "Admin",
+        "sentence": "Provisions and manages accounts, sets modules, replays the outbox; no rollout modes, no staff."
+      },
+      "platform_support": {
+        "label": "Support",
+        "sentence": "Reads accounts, their members, the outbox and the audit log with a reason; changes nothing."
+      }
+    },
+    "locks": {
+      "self": "Not on yourself",
+      "last_super_admin": "The last super admin keeps the role",
+      "super_admin_only": "A super admin only",
+      "revoked": "Access is revoked: invite them again"
+    },
+    "invite": {
+      "button": "Invite staff",
+      "title": "Invite a platform staff member",
+      "description": "We email an invitation. They choose a password and set up an authenticator app.",
+      "email": "Work email",
+      "name": "Name",
+      "role": "Role",
+      "submit": "Send invitation",
+      "already": "This person is already on the platform team. Change their role instead.",
+      "done": "Invitation sent to {email}."
+    },
+    "role": {
+      "button": "Change role…",
+      "title": "Change the role of {name}?",
+      "label": "New role",
+      "pick": "Choose the new role.",
+      "sessions": "They are signed out everywhere and get the new role at their next sign-in.",
+      "confirm": "Change role",
+      "done": "{name} is now {role}."
+    },
+    "revoke": {
+      "button": "Revoke access…",
+      "title": "Revoke the console access of {name}?",
+      "sessions": "They are signed out everywhere and can no longer sign in to the console.",
+      "again": "To give access back, invite them again.",
+      "confirm": "Revoke access",
+      "done": "The access of {name} is revoked."
+    },
+    "reset": {
+      "button": "Reset authenticator…",
+      "title": "Reset the authenticator of {name}?",
+      "description": "Use this when they lost their phone or their authenticator app. The reset and its reason are recorded.",
+      "link": "We email them a one-time link, valid for 24 hours, to set up a new authenticator.",
+      "sessions": "They are signed out everywhere until they do.",
+      "confirm": "Reset authenticator",
+      "done": "The authenticator of {name} is reset; the link is on its way."
+    }
   }
 }
