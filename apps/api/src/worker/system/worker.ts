@@ -19,6 +19,9 @@ import { OutboxRelay } from './outbox-relay.js';
 import { OutboxWorkers } from './outbox-workers.js';
 import type { OtpPurgeRun } from './otp-purge.js';
 import { otpPurgeIntervalMs, runOtpPurge } from './otp-purge.js';
+import { PushKindHandler } from '../../modules/kernel/push/push.handler.js';
+import type { PushReceiptsRun } from './push-receipts.js';
+import { pushReceiptsIntervalMs, runPushReceipts } from './push-receipts.js';
 
 // `--role worker` (platform §2). The system jobs run on timers: the hourly idempotency purge
 // (PLAT-6 plan 2.9) and the single-leader outbox relay (PLAT-8 plan 2.3); the outbox queue
@@ -30,7 +33,8 @@ export type WorkerJob =
   | 'outbox-prune'
   | 'outbox-relay'
   | 'outbox-queues'
-  | 'outbox-gauges';
+  | 'outbox-gauges'
+  | 'push-receipts';
 
 /** A started background job: stopped on shutdown. */
 export interface StartedJob {
@@ -78,6 +82,12 @@ export interface WorkerDependencies {
   readonly logger: Pick<Logger, 'log' | 'warn'>;
   /** One outbox gauge run: one query, values stored for the next metric export (PLAT-14). */
   readonly outboxGauges: (db: PlatformDatabase) => Promise<void>;
+  /** One push receipts run under its Redis lock, with the push handler's adapter (INT-4 2.4). */
+  readonly pushReceipts: (
+    pool: Pool<PlatformDatabase>,
+    redis: PurgeRedis,
+    push: PushKindHandler,
+  ) => Promise<PushReceiptsRun>;
 }
 
 /** The real relay: its own BullMQ connection, the handler registry of this build, LISTEN. */
@@ -158,6 +168,15 @@ const defaults: WorkerDependencies = {
   outboxPrune: (db, redis) => runOutboxPrune(db, redis),
   otpPurge: (pool, redis) => runOtpPurge(pool.db, redis, new AuditWriter(pool)),
   outboxGauges: (db) => runOutboxGauges(db, getMetrics(), new Logger('OutboxGauges')),
+  pushReceipts: (pool, redis, push) =>
+    runPushReceipts({
+      db: pool.db,
+      redis,
+      sender: push.sender,
+      invalidations: push.invalidations,
+      audit: new AuditWriter(pool),
+      logger: new Logger('PushReceipts'),
+    }),
   logger: new Logger('Worker'),
 };
 
@@ -289,6 +308,35 @@ export async function startWorker(
   await deps.outboxGauges(pool.db);
   const gaugeTimer = setInterval(() => void deps.outboxGauges(pool.db), gaugeIntervalMs);
   jobs.push('outbox-gauges');
+  // INT-4 plan 2.4: push receipts every 5 minutes, whenever this build has a push handler.
+  let receiptsTimer: NodeJS.Timeout | undefined;
+  const push = registry.get('push');
+  if (push instanceof PushKindHandler) {
+    const receipts = async () => {
+      try {
+        if (redis.status === 'wait') await redis.connect();
+        const run = await deps.pushReceipts(pool, redis, push);
+        if (run.ran) {
+          const c = run.counts;
+          deps.logger.log(
+            `Push receipts: ${c.checked} tickets checked (${c.ok} ok, ${c.error} error, ` +
+              `${c.noReceipt} without receipt), ${c.invalidated} tokens invalidated, ` +
+              `${c.purged} tickets purged`,
+          );
+        }
+      } catch (error) {
+        deps.logger.warn(
+          `Push receipts skipped: ${error instanceof Error ? error.name : 'unknown error'}`,
+        );
+      }
+    };
+    await receipts();
+    receiptsTimer = setInterval(() => void receipts(), pushReceiptsIntervalMs);
+    jobs.push('push-receipts');
+    deps.logger.log('Push receipts scheduled every 5 minutes');
+  } else {
+    deps.logger.log('Push receipts off: no push handler');
+  }
   return {
     jobs,
     stop: async () => {
@@ -296,6 +344,7 @@ export async function startWorker(
       clearInterval(otpTimer);
       clearInterval(pruneTimer);
       clearInterval(gaugeTimer);
+      clearInterval(receiptsTimer);
       // The relay first (no new jobs), then the workers drain (platform §5), then the clients.
       await relay?.stop();
       await queues.stop();

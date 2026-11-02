@@ -21,12 +21,13 @@ import { connectAs, integrationConfig } from './support.js';
 
 // The outbox queue workers on the real database and Redis (PLAT-8 item D; plan 2.4, 2.9). Redis
 // keys of this run live under their own prefix and are deleted afterwards. The workers here
-// consume one test-only kind, `push` (no other suite writes it), through a test handler.
+// consume one kind no suite relays, `webhook`, through a test handler (INT-4: `push` has a real
+// handler now, and the push suite relays its pending rows).
 
 const config = integrationConfig();
 const run = randomBytes(4).toString('hex');
 const prefix = `elx-test-${run}`;
-const kind: OutboxKind = 'push';
+const kind: OutboxKind = 'webhook';
 const quiet = { log: () => undefined, warn: () => undefined };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
