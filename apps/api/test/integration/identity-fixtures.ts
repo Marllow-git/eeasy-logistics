@@ -69,6 +69,23 @@ export async function insertPlatformStaff(
   await owner`INSERT INTO core_platform_staff (user_id, role) VALUES (${userId}, ${role})`;
 }
 
+/**
+ * A live platform staff member for a minted platform token's `sub` (PLAT-13 adversary M-1: the
+ * permission guard admits a platform token only while its stored staff row is live and holds the
+ * token's role). `id` is the token's `sub` (a fresh one by default); returns it.
+ */
+export async function insertPlatformSubject(
+  owner: postgres.Sql,
+  role: 'super_admin' | 'admin' | 'support' = 'super_admin',
+  id: string = uuidv7(),
+): Promise<string> {
+  await owner`
+    INSERT INTO core_users (id, name, email, locale)
+    VALUES (${id}, 'Platform Subject', ${freshEmail('platform-subject')}, 'en')`;
+  await insertPlatformStaff(owner, id, role);
+  return id;
+}
+
 /** The `Set-Cookie` values of a response, by cookie name: value and Max-Age. */
 export function setCookies(
   headers: Record<string, unknown>,

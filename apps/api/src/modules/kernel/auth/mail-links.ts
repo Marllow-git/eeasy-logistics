@@ -24,7 +24,11 @@ export interface MailRow {
   readonly aggregate: { readonly type: string; readonly id: string };
   readonly template: Extract<
     TemplateKey,
-    'invitation' | 'platform_invitation' | 'password_reset' | 'second_factor_reset'
+    | 'invitation'
+    | 'platform_invitation'
+    | 'password_reset'
+    | 'second_factor_reset'
+    | 'platform_totp_reset'
   >;
   readonly to: string;
   readonly locale: Locale;

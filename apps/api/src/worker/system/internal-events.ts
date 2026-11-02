@@ -48,6 +48,8 @@ export interface InternalEventDispatcherDependencies {
   /** The clock for the parking window; tests advance it. Must match the worker's. */
   readonly now?: () => Date;
   readonly policy?: QueuePolicy;
+  /** Releases what the consumers hold (PLAT-13: the feature cache's Redis connection). */
+  readonly close?: () => Promise<void>;
 }
 
 const list = (values: readonly string[]): SQL =>
@@ -79,6 +81,10 @@ export class InternalEventDispatcher implements KindHandler {
 
   constructor(deps: InternalEventDispatcherDependencies) {
     this.#deps = deps;
+  }
+
+  async close(): Promise<void> {
+    await this.#deps.close?.();
   }
 
   /** Per aggregate (integrations §4.1; domain model §6.2). */

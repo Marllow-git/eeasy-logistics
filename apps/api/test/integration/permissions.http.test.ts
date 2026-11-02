@@ -20,6 +20,7 @@ import type { TestSigningKey } from '../support/access-tokens.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import { webClientHeaders } from '../support/web-client.js';
 import { auditRowsOf } from './audit-rows.js';
+import { insertPlatformSubject } from './identity-fixtures.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-10 items C (plan 2.4, 2.5, 2.8, 2.9, 2.10) on the real database: the permission guard reads
@@ -117,8 +118,17 @@ describe('permission guard (PLAT-10 item C)', () => {
     `${staffCookie}=${await signAccessToken(signing, 'staff', {
       claims: { acc: accountId, roles, sub },
     })}`;
-  const platform = async (roles: string[], sub = uuidv7()) =>
-    `${platformCookie}=${await signAccessToken(signing, 'platform', { claims: { roles, sub } })}`;
+  /**
+   * A platform token; a single platform role gets its live staff row (PLAT-13 adversary M-1: an
+   * admitted platform token's stored row must hold its role), any other role list none.
+   */
+  const platform = async (roles: string[], sub = uuidv7()) => {
+    const [role, ...others] = roles;
+    if (others.length === 0 && (role === 'super_admin' || role === 'admin' || role === 'support')) {
+      await insertPlatformSubject(owner, role, sub);
+    }
+    return `${platformCookie}=${await signAccessToken(signing, 'platform', { claims: { roles, sub } })}`;
+  };
   const driver = async (roles: string[]) =>
     `Bearer ${await signAccessToken(signing, 'driver', { claims: { roles } })}`;
   const staffWrite = (path: string, cookie: string) =>
@@ -274,6 +284,22 @@ describe('permission guard (PLAT-10 item C)', () => {
     // With the marker and JSON, the same viewer is refused by the permission guard and audited.
     const audited = await staffWrite('/v1/staff/authz-probe/sites', cookie).expect(403);
     expect(await auditRowsOf(owner, audited.headers['x-request-id'] as string)).toHaveLength(1);
+  });
+
+  it('refuses a platform token with no staff row or another stored role (adversary M-1)', async () => {
+    const orphan = `${platformCookie}=${await signAccessToken(signing, 'platform', {
+      claims: { roles: ['super_admin'], sub: uuidv7() },
+    })}`;
+    const none = await http()
+      .get('/v1/platform/authz-probe/accounts')
+      .set('Cookie', orphan)
+      .expect(401);
+    expect((none.body as { code: string }).code).toBe('token_invalid');
+    const sub = await insertPlatformSubject(owner, 'support');
+    const elevated = `${platformCookie}=${await signAccessToken(signing, 'platform', {
+      claims: { roles: ['super_admin'], sub },
+    })}`;
+    await platformWrite('/v1/platform/authz-probe/rollout', elevated).expect(401);
   });
 
   it('records a platform denial with no account', async () => {

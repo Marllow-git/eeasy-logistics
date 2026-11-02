@@ -702,6 +702,8 @@ Idempotency key is the envelope `id` unless stated. "Webhook" means exposed to m
 |---|---|---|---|---|
 | `core.account.provisioned` | kernel | kernel (defaults, coverage step) | account, limits, modules | no |
 | `core.account.suspended` | kernel | Delivery (end shifts), kernel relay (pause) | reason | no |
+| `core.account.reactivated` | kernel | Delivery (shifts may start again); the relay resumes from the status alone (A-26, PLAT-13) | reason | no |
+| `core.account.closed` | kernel | none in wave 0; the wave 1 export and deletion tool (A-26, PLAT-13) | reason | no |
 | `core.feature_flag.changed` | kernel | all (cache bust) | feature key, mode or enabled | no |
 | `core.site.updated` | kernel | Delivery, WMS (cache bust) | site, kind, point | no |
 | `core.channel_order.received` | kernel | WMS or Delivery by account flags | connection, channel order ref, recipient, address, lines, COD | no |
