@@ -29,13 +29,13 @@ Updated by the lead at every order close (handbook 01 stage 9) and read with the
 | WEB-3 merchant settings screens | merged | #109 | 2026-11-02 |
 | DEL-4 drivers, devices and driver auth | merged (two adversary runs, three fix rounds; migration `20261102122929_del_drivers`; `driverVerifyOtp` gains `account_id`) | #114 | 2026-11-02 |
 | OPS-1 host, registry and staging | waits on the owner's go (Q-10, Q-12); the wave 0 exit criteria need it | – | – |
-| WEB-4 platform console screens | both legs built; adversary pass running | #129 | 2026-11-02 |
+| WEB-4 platform console screens | merged (one adversary run, fixes in; Linux baselines committed) | #129 | 2026-11-02 |
 | DEL-1 zones and coverage | merged (migration `20261102125922_del_zones`; the `delivery` feature gate on the staff delivery doors) | #132 | 2026-11-02 |
 | DEL-2 orders and intake rules | registered (#134); leg 1 building (the critical path's next step) | – | 2026-11-02 |
 | DRV-1 driver app shell and sign-in | registered (#130); leg 1 building | – | 2026-11-02 |
 | DEL-5 shifts and location pings | registered (#137); leg 1 building | – | 2026-11-02 |
 
-Wave 0 remaining for its exit (section 2): WEB-4, OPS-1 and the staging checks that need it (deploy on merge, the restore drill, the `auth_otp` template approval, the ADR acceptances 0026, 0027, 0029, 0031, 0032, 0033, 0036, 0037).
+Wave 0 remaining for its exit (section 2): OPS-1 and the staging checks that need it (deploy on merge, the restore drill, the `auth_otp` template approval, the ADR acceptances 0026, 0027, 0029, 0031, 0032, 0033, 0036, 0037).
 
 ## 1. Waves and orders
 
