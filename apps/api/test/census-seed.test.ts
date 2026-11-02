@@ -3,10 +3,16 @@ import type * as ConfigNode from '@eeasy-logistics/config/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as CensusSeed from '../src/seed/census.js';
 import {
+  censusAccounts,
+  censusMemberInvitee,
+  censusPendingMember,
   censusPlatformInvitee,
   censusPlatformStaff,
   censusProjects,
   censusSeedRefusal,
+  censusSettingsAccount,
+  censusSites,
+  censusUsers,
   seedCensus,
 } from '../src/seed/census.js';
 
@@ -107,5 +113,64 @@ describe('the console census staff', () => {
       ]);
       expect(staff.map((member) => member.email)).not.toContain(censusPlatformInvitee(project));
     }
+  });
+});
+
+describe('the settings census staff (WEB-3)', () => {
+  it("puts each project's owner, viewer and site staff on that project's own account", () => {
+    const accounts = censusProjects.map((project) => {
+      const users = censusUsers(project).filter((user) =>
+        ['settings', 'viewer', 'sitestaff'].some((role) =>
+          user.email.startsWith(`census-${role}-`),
+        ),
+      );
+      expect(users.map((user) => user.memberships[0]?.roles[0])).toEqual([
+        'owner',
+        'viewer',
+        'site_staff',
+      ]);
+      const keys = new Set(users.flatMap((user) => user.memberships.map((m) => m.account)));
+      expect(keys.size).toBe(1);
+      return [...keys][0]!;
+    });
+    expect(new Set(accounts).size).toBe(censusProjects.length);
+    for (const key of accounts) expect(censusAccounts[key].factor).toBe(false);
+    for (const [index, project] of censusProjects.entries()) {
+      expect(censusSettingsAccount(project)).toBe(accounts[index]);
+    }
+  });
+});
+
+describe('the settings census sites and members (WEB-3 leg 2)', () => {
+  it('gives each project a branch and a warehouse of its own, valid for the site rules', () => {
+    const ids = censusProjects.flatMap((project) => censusSites(project).map((site) => site.id));
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const project of censusProjects) {
+      const sites = censusSites(project);
+      expect(sites.map((site) => site.kind)).toEqual(['branch', 'warehouse']);
+      for (const site of sites) {
+        // The column check of 0014 and the one-line names of PLAT-12 2.5.
+        expect(site.shortCode).toMatch(/^[A-Z]{4}[0-9]{4}$/);
+        expect([...site.nameAr].length).toBeLessThanOrEqual(120);
+        expect(site.nameEn).not.toMatch(/[\r\n]/);
+        for (const row of site.openingHours) {
+          expect(row.weekday).toBeGreaterThanOrEqual(0);
+          expect(row.weekday).toBeLessThanOrEqual(6);
+          expect(row.opens).toMatch(/^\d{2}:\d{2}$/);
+        }
+      }
+    }
+  });
+
+  it('invites a member and leaves one pending per project, never a seeded user', () => {
+    const users = new Set(
+      censusProjects.flatMap((project) => censusUsers(project).map((user) => user.email)),
+    );
+    const emails = censusProjects.flatMap((project) => [
+      censusMemberInvitee(project),
+      censusPendingMember(project),
+    ]);
+    expect(new Set(emails).size).toBe(emails.length);
+    for (const email of emails) expect(users.has(email)).toBe(false);
   });
 });
