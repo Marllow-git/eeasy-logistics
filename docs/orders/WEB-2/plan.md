@@ -192,3 +192,22 @@ Fix round 1 (2026-11-02, after the adversary pass):
 - Switch account (#14: `Me.memberships` goes to WEB-3) and a form library (WEB-3) are not built.
 
 ## 9. Lead review and adversary
+
+Lead review (Fable), 2026-11-02, both legs against §2 and §8.2 on heads 1c40c6f (leg 1), 6c25b7b (leg 2) and e46419a (the fix round): no defect found in the order's own code. Leg 1 (A to D): the Next 16 `proxy.ts` with the `config` export, refresh on document and App Router navigations with the forwarded `Cookie` rewrite, the CSP with a per-request nonce, `safeNextPath` on every redirect, the single-flight session fetcher with the retained `Idempotency-Key`, step tokens in `sessionStorage` only, the census seed with its `APP_ENV` guard; 8.2 deviations #1, #2, #4, #5, #14, #16, #23, #25, #27 accepted. Leg 2 (E, F): the console doors with the TOTP enrolment view holding the URI and secret in component memory, the platform session helper with the reduced profile, the seed refusal before any configuration is read, 66 linux baselines from the first CI artifact, the Arabic release note; 8.2 #32 to #43 accepted (#40 the user menu at 390 px, #42 the root README). Fix round: L-2 built as the proxy composing the target on the public origin and Next emitting it relative (Next 16.4.3 refuses a relative `Location`; verified against the built apps with a foreign `Host`, `X-Forwarded-Host` and `Forwarded`), accepted; #51 (Next 16.4.3 has only the two prefetch headers, both already refused) accepted.
+
+Adversary pass (Fable, read-only, head 6c25b7b): **PASS**, no critical or high. Rulings:
+
+| Finding | Severity | Abuse | Ruling | Fixed in |
+|---|---|---|---|---|
+| M-1 | medium | the re-sign-in dialog kept the password, code and challenge across a dismiss | fix: state reset on open and close, the password cleared after each submit; the wrappers rebuild the steps at each opening | f937f28 |
+| M-2 | medium | the CSP report sink accepted any origin's `text/plain` body and logged up to 20 lines per request | fix: `application/reports+json` or `application/csp-report` only (415), 5 per body, dedupe per directive and origin in a 60 s window, 30 a minute per address (429); census-checked on both apps | f937f28, e46419a |
+| L-1 | low | a cross-site top-level GET of `/sign-in?reason=ended` cleared the cookies (logout CSRF) | fix: cleared only for `Sec-Fetch-Site` same-origin, same-site, none or absent | f937f28 |
+| L-2 | low | `Location` built from the `Host` header | fix: composed on the public origin, emitted relative by Next (verified against the built apps) | e46419a |
+| L-3 | low | the proxy forwards the client's `X-Forwarded-For` and `User-Agent` verbatim on the refresh call | accepted: the edge contract (OPS-1 pins `Host`, sets XFF and `TRUST_PROXY_HOPS`); README line for OPS-1 (8.2 #44) | – |
+| L-4 | low | `seedCensus` exported without the environment guard | fix: `censusSeedRefusal` thrown inside `seedCensus` too | f937f28 |
+| L-5 | low | HSTS `preload` on both hostnames before the owner submits the domain | fix: `preload` dropped, `includeSubDomains` kept (leaf hostnames, ADR-0038); web.md §3.6 amended | f937f28 |
+| L-6 | low | segment prefetches could rotate the refresh token | fix: `Next-Router-Segment-Prefetch` excluded; Next 16.4.3 sends two prefetch headers, both refused (8.2 #51) | f937f28 |
+
+No re-check (standing ruling 2026-11-01). Identity §9 as it applies to the client: 1 (same body for every sign-in failure: the `errors` catalogue by code), 4 (no token, code, secret or URI in a URL, log, analytics event or Sentry report: census-asserted), 6 (every session event audited by the API; the client adds analytics by name only).
+
+Gate: PR #91 marked ready on e46419a; merged by the lead under the two-way-door delegation after `tools/pr-gate.sh 91` passed on the head it reports.
