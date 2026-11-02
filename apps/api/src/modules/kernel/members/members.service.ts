@@ -7,7 +7,7 @@ import type { Invitations } from '../auth/invitations.js';
 import type { SecondFactorResets } from '../auth/second-factor-resets.js';
 import type { PermissionResolver } from '../authz/permission-resolver.js';
 import { assertRoleCombination } from '../authz/separation.js';
-import type { ListPage, ListPagePlan, PageKey } from '../contract/list-page.js';
+import type { ListPage, ListPagePlan, ListSorts, PageKey } from '../contract/list-page.js';
 import { keysetSlice } from '../contract/list-page.js';
 import { oneLineTextProblem } from '../contract/text-rules.js';
 import type { FieldProblem } from '../errors/api-exception.js';
@@ -33,6 +33,12 @@ import { MemberInvitationsRepository, MembersRepository } from './members.reposi
 
 /** The documented sort fields of `listMembers` (plan 2.4; `name` is the user's). */
 export type MemberSortField = 'created_at' | 'name' | 'status';
+
+/** The sorts of the member lists (`listMembers`; PLAT-13's `platformListAccountMembers`). */
+export const memberSorts: ListSorts<MemberSortField> = {
+  fields: { created_at: 'timestamp', name: 'text', status: 'text' },
+  default: '-created_at',
+};
 
 /**
  * The person a membership shows (adversary M-2). Once `active`, its user's stored fields; before
