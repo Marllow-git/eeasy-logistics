@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import type { RequestContext } from './context.ts';
+import type { Frame, RequestContext } from './context.ts';
 import { checkContext, currentFrame, runInFrame } from './context.ts';
 import type { AppDatabase } from './pools.ts';
 
@@ -63,18 +63,20 @@ export function transactionOf(uow: UnitOfWork): Transaction {
  * Starts tenant work for `context` on an open transaction (package-internal): the first statement
  * is `set_config('elx.account_id', <account>, true)`, then `fn` runs with the context and the unit
  * of work as the current frame. Used by `withUnitOfWork` (elx_app) and by the cross-tenant door
- * (`withCrossTenantUnitOfWork`, elx_platform).
+ * (`withCrossTenantUnitOfWork`, elx_platform), which also puts its platform unit of work on the
+ * same transaction in the frame (`door`).
  */
 export async function runTenantTransaction<T>(
   tx: Transaction,
   context: RequestContext,
   fn: (uow: UnitOfWork) => Promise<T>,
+  door?: Pick<Frame, 'doorUnitOfWork'>,
 ): Promise<T> {
   await tx.execute(sql`SELECT set_config('elx.account_id', ${context.accountId}, true)`);
   const uow: UnitOfWork = Object.freeze({ context });
   transactions.set(uow, tx);
   try {
-    return await runInFrame({ context, unitOfWork: uow }, () => fn(uow));
+    return await runInFrame({ context, unitOfWork: uow, ...door }, () => fn(uow));
   } finally {
     retire(uow, transactions);
   }

@@ -1,6 +1,10 @@
 import type { Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase, PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
-import { PlatformRepository, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
+import {
+  PlatformRepository,
+  getCrossTenantPlatformUnitOfWork,
+  withPlatformUnitOfWork,
+} from '@eeasy-logistics/db/platform';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { coreAccounts } from '../schema/accounts.js';
 import type {
@@ -893,6 +897,15 @@ export function identityStore(db: PlatformDatabase): IdentityStore {
   return {
     run: (fn) => withPlatformUnitOfWork(db, (uow) => fn(identityTransactionOf(uow))),
   };
+}
+
+/**
+ * The identity repositories on the current cross-tenant door's own transaction (PLAT-13 lead
+ * ruling on 8.2 #11): a door never holds a second platform connection. `run` is not a transaction
+ * of its own here: what `fn` writes commits or rolls back with the door.
+ */
+export function doorIdentityStore(): IdentityStore {
+  return { run: (fn) => fn(identityTransactionOf(getCrossTenantPlatformUnitOfWork())) };
 }
 
 /** The store on the API's platform pool, or null without one (`DATABASE_URL_PLATFORM` unset). */

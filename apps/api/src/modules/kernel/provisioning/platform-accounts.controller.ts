@@ -30,19 +30,19 @@ import { Idempotent } from '../idempotency/idempotency.interceptor.js';
 import { presentMember } from '../members/members.presenter.js';
 import { MembersService } from '../members/members.service.js';
 import { OutboxWriter } from '../outbox/outbox-writer.js';
-import { accountStoreOnPool } from '../platform/accounts.repository.js';
-import { identityStoreOnPool } from '../platform/identity.repository.js';
+import { doorAccountStore } from '../platform/accounts.repository.js';
+import { doorIdentityStore } from '../platform/identity.repository.js';
 import type { AccountSortField } from '../platform/provisioning.repository.js';
-import { PLATFORM_POOL } from '../platform/tokens.js';
 import { accountStatuses } from '../schema/accounts.js';
-import { CrossTenant } from '../tenancy/cross-tenant.js';
+import { CrossTenant, optionalReason } from '../tenancy/cross-tenant.js';
 import { presentListedAccount, presentPlatformAccount } from './platform-accounts.presenter.js';
 import { ProvisioningService } from './provisioning.service.js';
 
 // The platform surface's `accounts` tag (PLAT-13 plan 2.2 to 2.4; ADR-0006; K-1): list,
 // provision, read, change, invite the owner. The list and the provisioning door are platform
 // work (accounts are a platform table); the others name their account as `:account_id` through
-// the cross-tenant door (`X-Support-Reason`, one audit row per call; PLAT-6). `x-permission`
+// the cross-tenant door (one audit row per call; PLAT-6), whose `X-Support-Reason` is optional:
+// their contract declares no `SupportReason` (lead ruling on 8.2 #8), so the row carries it when sent. `x-permission`
 // (`platform.accounts.read`, `platform.accounts.provision`) is PLAT-10's guard. Registered by
 // `AuthModule`, whose `Invitations` the owner's invitation is delegated to.
 // `platformProvisionZone` and `platformProvisionCoverage` are DEL-1's (ADR-0015); `suspend`,
@@ -71,16 +71,18 @@ export class PlatformAccountsController {
     outbox: OutboxWriter,
     invitations: Invitations,
     resets: SecondFactorResets,
-    @Optional() @Inject(PLATFORM_POOL) pool?: Parameters<typeof accountStoreOnPool>[0],
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
     @Optional() @Inject(PERMISSION_RESOLVER) resolver?: PermissionResolver | null,
   ) {
     this.cursors = cursors ?? new CursorCodec(undefined);
-    const store = accountStoreOnPool(pool ?? null);
+    // The door's own transaction (lead ruling on 8.2 #11): the account row, the identity tables and
+    // the audit rows of the account doors are read and written there, never on a second platform
+    // connection. Provisioning and the list run in the request's platform unit of work.
+    const store = doorAccountStore();
     this.provisioning = new ProvisioningService({ invitations, audit, outbox, accounts: store });
     this.accounts = new AccountService(store, audit);
     this.members = new MembersService({
-      identity: identityStoreOnPool(pool ?? null),
+      identity: doorIdentityStore(),
       accounts: store,
       invitations,
       audit,
@@ -121,7 +123,7 @@ export class PlatformAccountsController {
   }
 
   @Get(':account_id')
-  @CrossTenant()
+  @CrossTenant(optionalReason)
   @Operation(getOp)
   async get(@Input() _input: ContractInput<typeof getOp>): Promise<Account> {
     return presentPlatformAccount(await this.accounts.read());
@@ -130,7 +132,7 @@ export class PlatformAccountsController {
   /** A PATCH merge: only the fields the body sent change (plan 2.4). */
   @Patch(':account_id')
   @HttpCode(200)
-  @CrossTenant()
+  @CrossTenant(optionalReason)
   @Idempotent()
   @Operation(updateOp)
   async update(
@@ -143,7 +145,7 @@ export class PlatformAccountsController {
 
   @Post(':account_id/owner-invitations')
   @HttpCode(201)
-  @CrossTenant()
+  @CrossTenant(optionalReason)
   @Idempotent()
   @Operation(inviteOwnerOp)
   async inviteOwner(

@@ -255,11 +255,9 @@ describe('provisioning doors over HTTP (PLAT-13 item B)', () => {
     expect(errorOf(response.body).code).toBe('forbidden');
   });
 
-  it('reads an account through the door: reason required, usage counted, one door row', async () => {
+  it('reads an account through the door: usage counted, one door row with the reason when sent', async () => {
     const created = await provision(provisionBody()).expect(201);
     const id = String((created.body as { id: string }).id);
-    const refused = await platformGet(`/v1/platform/accounts/${id}`).expect(400);
-    expect(errorOf(refused.body).code).toBe('reason_required');
     const response = await platformGet(`/v1/platform/accounts/${id}`)
       .set('X-Support-Reason', reason)
       .expect(200);
@@ -270,6 +268,32 @@ describe('provisioning doors over HTTP (PLAT-13 item B)', () => {
     expect(audit).toMatchObject([
       { action: 'platform.cross_tenant.accessed', accountId: id, reason },
     ]);
+    // A reason that is sent is still checked (PLAT-6's bound).
+    const tooLong = await platformGet(`/v1/platform/accounts/${id}`)
+      .set('X-Support-Reason', 'x'.repeat(201))
+      .expect(400);
+    expect(errorOf(tooLong.body).code).toBe('validation_failed');
+  });
+
+  it('answers the account configuration doors without X-Support-Reason, one door row each (lead ruling on 8.2 #8)', async () => {
+    const created = await provision(provisionBody()).expect(201);
+    const id = String((created.body as { id: string }).id);
+    const calls = [
+      await platformGet(`/v1/platform/accounts/${id}`).expect(200),
+      await platformWrite('patch', `/v1/platform/accounts/${id}`)
+        .send({ name: `No reason ${runTag}` })
+        .expect(200),
+      await platformWrite('post', `/v1/platform/accounts/${id}/owner-invitations`)
+        .send({ email: freshEmail('owner-optional'), name: 'Optional Owner' })
+        .expect(201),
+      await platformGet(`/v1/platform/accounts/${id}/feature-flags`).expect(200),
+    ];
+    for (const call of calls) {
+      const audit = await auditRowsOf(owner, String(call.headers['x-request-id']));
+      expect(audit.filter((row) => row.action === 'platform.cross_tenant.accessed')).toMatchObject([
+        { accountId: id, reason: null, after: { outcome: 'ok' } },
+      ]);
+    }
   });
 
   it('changes name, language and limits under audit; a no-op writes nothing', async () => {
@@ -383,5 +407,68 @@ describe('provisioning doors over HTTP (PLAT-13 item B)', () => {
     expect(literal.data.every((account) => account.name?.includes('%'))).toBe(true);
     const badStatus = await platformGet('/v1/platform/accounts?status=gone').expect(400);
     expect(errorOf(badStatus.body).code).toBe('validation_failed');
+  });
+});
+
+describe('the account doors run in one platform transaction (lead ruling on 8.2 #11)', () => {
+  // A platform pool of one connection: a door that asked for a second platform connection while it
+  // holds its own would wait forever, so every call answering at all proves it ran in one.
+  const single = integrationConfig({
+    AUTH_SIGNING_KEY_ID: signing.keyId,
+    AUTH_SIGNING_KEY: signing.key,
+    CREDENTIALS_KEYS: `provisioning-one:${randomBytes(32).toString('base64')}`,
+    CREDENTIALS_ACTIVE_KEY_ID: 'provisioning-one',
+    TRUST_PROXY_HOPS: '1',
+    DATABASE_POOL_SIZE_PLATFORM: '1',
+  });
+  let staff: StaffApp;
+  let owner: postgres.Sql;
+  let admin: SignedInPlatformStaff;
+
+  beforeAll(async () => {
+    owner = connectAs('owner', single);
+    staff = await startStaffApp(single, owner);
+    admin = await platformStaff(staff.app, single, owner, 'admin');
+  });
+
+  afterAll(async () => {
+    await staff?.close();
+    await owner?.end();
+  });
+
+  const call = (method: 'get' | 'post' | 'patch', path: string) => {
+    const pending = staff
+      .http()
+      [method](path)
+      .set('Cookie', admin.cookie)
+      .set('X-Support-Reason', reason)
+      .timeout(8000);
+    if (method === 'get') return pending.set('Accept-Language', 'en');
+    return pending.set(platformWriteHeaders(single)).set('Idempotency-Key', nextKey());
+  };
+
+  it('reads, changes and invites an owner on a one-connection platform pool', async () => {
+    const created = await call('post', '/v1/platform/accounts')
+      .send({
+        name: `One connection ${randomBytes(3).toString('hex')}`,
+        default_locale: 'ar',
+        limits,
+        modules: [],
+        owner: { email: freshEmail('owner-one'), name: 'Owner One' },
+      })
+      .expect(201);
+    const id = String((created.body as { id: string }).id);
+    await call('get', `/v1/platform/accounts/${id}`).expect(200);
+    await call('patch', `/v1/platform/accounts/${id}`)
+      .send({ name: `One connection renamed ${randomBytes(3).toString('hex')}` })
+      .expect(200);
+    const invited = await call('post', `/v1/platform/accounts/${id}/owner-invitations`)
+      .send({ email: freshEmail('owner-one-b'), name: 'Owner Two' })
+      .expect(201);
+    const audit = await auditRowsOf(owner, String(invited.headers['x-request-id']));
+    expect(audit.map((row) => row.action).sort()).toEqual([
+      'core.member.invited',
+      'platform.cross_tenant.accessed',
+    ]);
   });
 });
