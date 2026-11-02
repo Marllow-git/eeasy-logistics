@@ -62,11 +62,17 @@ export function platformOnlyResolver(
 }
 
 /** The decryption context of a template's secret parameters, from the row (data §10). */
-function secretContext(template: TemplateKey, payload: MessagePayload): string | undefined {
+function secretContext(
+  template: TemplateKey,
+  payload: MessagePayload,
+  row: Pick<OutboxRow, 'aggregateId'>,
+): string | undefined {
   if (template === 'auth_otp' && payload.challenge_id !== undefined) {
     return `core_otp_challenges:${payload.challenge_id}`;
   }
-  return undefined;
+  // PLAT-11 item J: a mail link is encrypted under the row it is about (`<table>:<aggregate id>`).
+  const table = (messageTemplates[template] as TemplateDefinition).secretContext;
+  return table === undefined ? undefined : `${table}:${row.aggregateId}`;
 }
 
 /** A row that can never be sent: dead at once, with a fixed message (never the payload). */
@@ -178,7 +184,7 @@ export class MessageKindHandler implements KindHandler {
       if (skipped !== undefined) return this.#skip(skipped, template, payload);
     }
 
-    const params = this.#params(template, definition, payload);
+    const params = this.#params(template, definition, payload, row);
     if (typeof params === 'string') return deadRow('params', params);
 
     let route: EngineRoute | undefined;
@@ -320,6 +326,7 @@ export class MessageKindHandler implements KindHandler {
     template: TemplateKey,
     definition: TemplateDefinition,
     payload: MessagePayload,
+    row: Pick<OutboxRow, 'aggregateId'>,
   ): Record<string, string> | string {
     const params: Record<string, string> = {};
     for (const name of definition.params) {
@@ -331,7 +338,7 @@ export class MessageKindHandler implements KindHandler {
         params[name] = value;
         continue;
       }
-      const context = secretContext(template, payload);
+      const context = secretContext(template, payload, row);
       if (!secret || context === undefined || this.#deps.cipher === null) {
         return `parameter ${name} cannot be decrypted`;
       }

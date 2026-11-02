@@ -132,6 +132,24 @@ export const metricCatalogue = {
     description: 'Failed OTP sends and verifications, by stage (PLAT-11)',
     labels: ['stage'],
   },
+  // PLAT-11 plan 2.15: the sign-in doors (staff and platform).
+  auth_logins_total: {
+    kind: 'counter',
+    description:
+      'Password steps of login and platformLogin by outcome: ok, second_factor, invalid_credentials, rate_limited (PLAT-11)',
+    labels: ['surface', 'outcome'],
+  },
+  auth_refresh_total: {
+    kind: 'counter',
+    description: 'Session refreshes by outcome: ok, grace, reuse_revoked, invalid (PLAT-11)',
+    labels: ['surface', 'outcome'],
+  },
+  auth_family_revocations_total: {
+    kind: 'counter',
+    description:
+      'Refresh families revoked, by reason: reuse, logout, switch_account, password_reset, revoked (PLAT-11)',
+    labels: ['reason'],
+  },
   ledger_assertion_drift: {
     kind: 'gauge',
     description: 'Difference found by the nightly ledger assertion, per ledger (ledger orders)',

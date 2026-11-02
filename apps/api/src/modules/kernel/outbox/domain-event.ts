@@ -15,6 +15,10 @@ export const domainEventTypes = [
   // PLAT-9: the `message` row of an OTP challenge (an effect of the kernel, never an internal event;
   // not a row of domain model §6.3, which lists business events only).
   'core.otp_challenge.created',
+  // PLAT-11: the `message` rows of an invitation and a password reset (mail; kernel effects too).
+  'core.invitation.created',
+  'core.password_reset.requested',
+  'core.second_factor.reset',
 ] as const;
 export type DomainEventType = (typeof domainEventTypes)[number];
 

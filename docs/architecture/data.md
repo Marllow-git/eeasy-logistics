@@ -52,14 +52,15 @@ Abbreviations: **AO** append-only (trigger, 3.1); **IO** insert-only, same trigg
 |---|---|---|---|---|
 | `core_accounts` | Account §2.1; platform | `name`, `country char(2) CHECK = 'SA'`, `default_locale`, `timezone`, `status` CHECK provisioned, active, suspended, closed; `limits jsonb` (AccountLimits), `settings jsonb` (AccountSettings: intake rule, max attempts, proof policy, reason codes, auto-dispatch, tolerances), `provisioned_by → core_users`, `closed_at`, `version` | `(status)` | |
 | `core_usage_counters` | usage counters §2.1 | `metric` CHECK orders, drivers, sites, api_keys; `period date` (month start), `value integer` | PK `(account_id, metric, period)` | |
-| `core_users` | User §2.2; platform | `name`, `email citext`, `phone`, `locale`, `password_hash` (Argon2id), `token_version integer`, `second_factor_enabled`, `last_login_at` | PU `(email)` and PU `(phone)` where not null | |
+| `core_users` | User §2.2; platform | `name`, `email citext`, `phone`, `locale`, `password_hash` (Argon2id), `token_version integer`, `second_factor_enabled`, `second_factor_phone` (the enrolled E.164, the only number a second-factor OTP goes to; A-26), `disabled_at`, `last_login_at` | PU `(email)` and PU `(phone)` where not null | |
 | `core_platform_staff` | platform staff, document 4 §1, §3.3 | `user_id` PK `→ core_users`, `role` CHECK super_admin, admin, support; `totp_secret_ciphertext bytea`, `totp_key_id`, `granted_by`, `revoked_at` | | |
 | `core_roles` | system roles, document 4 §2 | `key text` PK, `permissions text[]`, `custom boolean DEFAULT false` | seeded by migration | |
 | `core_memberships` | Membership §2.2 | `user_id → core_users`, `roles text[]`, `site_ids uuid[]`, `status` CHECK invited, active, revoked | unique `(account_id, user_id)`; `(account_id, status)`; GIN `(site_ids)` | |
-| `core_invitations` | invitation, document 4 §3.1 | `membership_id`, `email`, `token_hash bytea`, `expires_at` (72 h), `accepted_at` | unique `(token_hash)`; `(account_id, membership_id)` | |
-| `core_refresh_tokens` | refresh rotation, document 4 §4 | `user_id`, `membership_id` (null for platform staff), `device_id uuid` (opaque Delivery device), `family_id`, `token_hash bytea`, `expires_at`, `used_at`, `revoked_at` | unique `(token_hash)`; `(user_id)`; `(family_id)` | |
-| `core_otp_challenges` | driver and second-factor OTP, document 4 §3.2 | `phone`, `purpose` CHECK driver_login, second_factor; `code_hash bytea`, `expires_at` (5 min), `attempts smallint`, `consumed_at`, `ip inet` | `(phone, created_at DESC)`; single use by row lock on verify | |
+| `core_invitations` | invitation, document 4 §3.1 | `kind` CHECK staff, platform (A-26: `account_id` and `membership_id` NULL exactly for `platform`, which carries `platform_role`); `membership_id`, `email`, `name`, `locale`, `token_hash bytea`, `expires_at` (72 h), `accepted_at`, `invited_by` | unique `(token_hash)`; `(account_id, membership_id)` | |
+| `core_refresh_tokens` | refresh rotation, document 4 §4 | `surface` CHECK staff, platform, driver; `user_id`, `membership_id` (null for platform staff), `device_id uuid` (opaque Delivery device), `family_id`, `token_hash bytea`, `token_version`, `amr text[]`, `user_agent_hash bytea`, `successor_ciphertext bytea` (the successor, encrypted for the Q-23 reuse grace, nulled an hour after use; A-26), `expires_at`, `used_at`, `revoked_at`, `revoked_reason` | unique `(token_hash)`; `(user_id)`; `(family_id)` | |
+| `core_otp_challenges` | driver and second-factor OTP, document 4 §3.2 | `phone`, `purpose` CHECK driver_login, second_factor, second_factor_enrol (a staff enrolment's codes apart from sign-in, PLAT-11 adversary M-1); `code_hash bytea`, `expires_at` (5 min), `attempts smallint`, `consumed_at`, `ip inet` | `(phone, created_at DESC)`; single use by row lock on verify | |
 | `core_password_resets` | reset, document 4 §3.1 | `user_id`, `token_hash bytea`, `expires_at` (30 min), `used_at` | unique `(token_hash)` | |
+| `core_auth_challenges` | sign-in steps before a session (A-26): second factor, TOTP, account selection, enrolment, emailed enrolment link | `kind` CHECK second_factor, totp, selection, enrolment, enrolment_link; `user_id`, `secret_hash bytea` (the client holds `<id>.<secret>`), `amr text[]`, `membership_ids uuid[]` (selection), `pending_phone`, `pending_secret_ciphertext bytea` + `pending_key_id` (an enrolment until confirmed), `attempts smallint`, `expires_at`, `consumed_at`, `ip inet` | unique `(secret_hash)`; `(user_id)` | |
 | `core_api_keys` | API keys, document 4 §3.4 | `name`, `prefix`, `secret_hash bytea` (SHA-256), `scopes text[]`, `expires_at` (rotation overlap), `revoked_at`, `last_used_at`, `created_by` | unique `(prefix)`; `(account_id, revoked_at)` | |
 | `core_api_key_usage` | usage per key per day | `api_key_id`, `day date`, `requests integer` | PK `(account_id, api_key_id, day)` | |
 | `core_sites` | Site §2.3, ADR-0018 | `kind` CHECK branch, warehouse, both; `name_ar`, `name_en`, `address_text`, `national_address_short_code` CHECK `^[A-Z]{4}[0-9]{4}$`, `point geometry(Point,4326)`, `opening_hours jsonb`, `status` CHECK active, inactive; `version` | `(account_id, status)`; GiST `(point)` | |
@@ -151,10 +152,10 @@ The schema test (4.1) holds this list; any other table without `account_id` fail
 | Table | Class | Why |
 |---|---|---|
 | `core_accounts`, `core_rollout_modes`, `core_roles` | platform tables | the tenant itself and platform-wide settings |
-| `core_users`, `core_platform_staff`, `core_password_resets`, `core_refresh_tokens` | users | a person may belong to several accounts or none (document 4 §1); `core_refresh_tokens.membership_id` names the account when there is one |
+| `core_users`, `core_platform_staff`, `core_password_resets`, `core_refresh_tokens`, `core_auth_challenges` | users | a person may belong to several accounts or none (document 4 §1); `core_refresh_tokens.membership_id` names the account when there is one |
 | `core_otp_challenges` | users | the challenge precedes knowing the account; keyed by E.164 phone |
 | `wms_projection_cursors` | worker cursor | document 4's "outbox relay cursor" class: one global position per projector (3.3); the outbox relay itself needs no cursor (5.2) |
-| `core_audit_log`, `core_idempotency_keys` | nullable account | carry `account_id` and its index but allow NULL for platform actors (document 4 §7; platform-surface writes) |
+| `core_audit_log`, `core_idempotency_keys`, `core_invitations` | nullable account | carry `account_id` and its index but allow NULL for platform actors (document 4 §7; platform-surface writes) |
 
 ## 3. Ledgers and projections
 
@@ -443,10 +444,10 @@ Every column below carries `COMMENT ON COLUMN … IS 'pii:<actor>'`; the schema 
 | Driver | `core_users.name`, `phone`; `del_drivers.cash_pin_hash`; `del_driver_devices.device_id`, `push_token` | life of the membership; the push token is cleared on archive |
 | Driver | `del_driver_locations`, `del_driver_location_heads` | ring overwritten within one hour; deleted when the driver is archived |
 | Driver | `del_driver_trails.path` | 90 days (ADR-0028) |
-| Staff, platform staff | `core_users.name`, `email`, `phone`, `password_hash`; `core_platform_staff.totp_secret_ciphertext` | life of the user |
+| Staff, platform staff | `core_users.name`, `email`, `phone`, `password_hash`, `second_factor_phone`; `core_platform_staff.totp_secret_ciphertext`; `core_invitations.email`, `name` | life of the user (invitations: 7 days after acceptance or expiry) |
 | Any actor | `core_audit_log.actor_id`, `ip`, `user_agent`, `before`, `after` | two years (document 4 §7), by dropping monthly partitions |
 | Any actor | `core_otp_challenges.phone`, `ip` | deleted 1 hour after `expires_at` (OTP lifetime 5 minutes) |
-| Any actor | `core_refresh_tokens`, `core_invitations`, `core_password_resets` | deleted 7 days after expiry or use |
+| Any actor | `core_refresh_tokens`, `core_invitations`, `core_password_resets`, `core_auth_challenges` (`pending_phone`, `ip`) | deleted 7 days after expiry or use |
 | Supplier contact | `wms_suppliers.contact` | life of the account |
 
 Rules:

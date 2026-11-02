@@ -28,6 +28,22 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
+  if (role === 'bootstrap') {
+    // The first super admin's invitation (PLAT-11 plan 2.12): prints the accept link once; no
+    // telemetry, no Nest graph. Exit 0 created, 1 refused (staff exist), 64 bad arguments.
+    const { runBootstrap } = await import('./bootstrap.js');
+    let code = 1;
+    try {
+      code = await runBootstrap(config, process.argv.slice(2), {
+        log: (line) => process.stdout.write(`${line}\n`),
+        error: (line) => logger.error(line),
+      });
+    } catch (error) {
+      logger.error(`Bootstrap failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+    process.exit(code);
+  }
+
   // OpenTelemetry for the api and worker only (PLAT-14 plan 2.1), before Nest and ioredis load so
   // the loader hook sees them; the migration job above never loads it.
   const { serviceNames, startTelemetry } = await import('./modules/kernel/telemetry/sdk.js');

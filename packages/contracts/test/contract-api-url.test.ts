@@ -1,6 +1,6 @@
 // `--api` and CONTRACT_API_URL resolution of test:contract (PLAT-15 lead review round 2, finding 2).
 import { describe, expect, it } from 'vitest';
-import { resolveApiUrl } from '../scripts/contract-api-url.ts';
+import { resolveApiUrl, resolveOrigins } from '../scripts/contract-api-url.ts';
 
 const unset = () => ({ apiUrl: undefined });
 const fromEnv = () => ({ apiUrl: 'http://127.0.0.1:4000' });
@@ -38,5 +38,23 @@ describe('resolveApiUrl', () => {
       message: expect.stringContaining('--api') as unknown,
     });
     expect(resolveApiUrl(['--apu', 'x'], unset)).toMatchObject({ ok: false });
+  });
+});
+
+describe('resolveOrigins (PLAT-11 item I)', () => {
+  it('reads the web and admin origins beside --api, and none by default', () => {
+    const args = ['--', '--api', 'http://127.0.0.1:3000', '--web-origin', 'http://localhost:3001'];
+    expect(resolveOrigins([...args, '--admin-origin=https://admin.example.test'])).toEqual({
+      ok: true,
+      origins: { staff: 'http://localhost:3001', platform: 'https://admin.example.test' },
+    });
+    expect(resolveApiUrl([...args], unset)).toEqual({ ok: true, apiUrl: 'http://127.0.0.1:3000' });
+    expect(resolveOrigins(['--api', 'http://127.0.0.1:3000'])).toEqual({ ok: true, origins: {} });
+  });
+
+  it('refuses anything but an http(s) origin', () => {
+    for (const value of ['localhost:3001', 'ftp://h', 'http://h/path', '']) {
+      expect(resolveOrigins(['--web-origin', value]), value).toMatchObject({ ok: false });
+    }
   });
 });

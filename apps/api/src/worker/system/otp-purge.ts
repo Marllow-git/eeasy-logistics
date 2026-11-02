@@ -5,6 +5,8 @@ import type { Redis } from 'ioredis';
 import type { AuditSink } from '../../modules/kernel/audit/audit-sink.js';
 import type { OtpPurgeCounts } from '../../modules/kernel/platform/messaging.repository.js';
 import { MessagingRepository } from '../../modules/kernel/platform/messaging.repository.js';
+import type { AuthPurgeCounts } from '../../modules/kernel/platform/identity.repository.js';
+import { purgeAuthRows } from './auth-purge.js';
 
 // The OTP purge (PLAT-9 plan 2.6, 2A.6; data §10; integrations §4.1 row `message`): every hour,
 // under the Redis lock `elx:lock:otp-prune`, one platform transaction deletes
@@ -14,6 +16,8 @@ import { MessagingRepository } from '../../modules/kernel/platform/messaging.rep
 // - `core_otp_challenges` an hour after `expires_at`;
 // - `core_engine_callback_nonces` older than 24 h (engine contract §2.5 retention);
 // and writes one audit row with the counts (`core.otp_rows.purged`), in the same transaction.
+// PLAT-11 plan 2.13: under the same lock, a second transaction purges the identity rows
+// (auth-purge.ts, audit `core.auth_rows.purged`).
 
 export const otpPurgeLockKey = 'elx:lock:otp-prune';
 /** The lock outlives one run and expires before the next hourly one. */
@@ -22,7 +26,13 @@ export const otpPurgeIntervalMs = 60 * 60 * 1000;
 export const otpPurgeAuditAction = 'core.otp_rows.purged';
 
 export type OtpPurgeRun =
-  { readonly ran: true; readonly counts: OtpPurgeCounts } | { readonly ran: false };
+  | {
+      readonly ran: true;
+      readonly counts: OtpPurgeCounts;
+      /** The identity rows (PLAT-11); absent when that set failed after the OTP set committed. */
+      readonly auth?: AuthPurgeCounts;
+    }
+  | { readonly ran: false };
 
 /** One purge pass and its audit row, in one platform transaction. */
 export async function purgeOtpRows(
@@ -55,5 +65,6 @@ export async function runOtpPurge(
 ): Promise<OtpPurgeRun> {
   const acquired = await redis.set(lockKey, randomUUID(), 'PX', otpPurgeLockTtlMs, 'NX');
   if (acquired !== 'OK') return { ran: false };
-  return { ran: true, counts: await purgeOtpRows(db, audit) };
+  const counts = await purgeOtpRows(db, audit);
+  return { ran: true, counts, auth: await purgeAuthRows(db, audit) };
 }
