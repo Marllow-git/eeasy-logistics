@@ -120,7 +120,7 @@ jobs:
           owner_url="postgres://elx_owner:${ELX_OWNER_PASSWORD}@$("${probe_db[@]}" port postgres-ci 5432)/elx"
           migrate() { docker run --rm --network host -e APP_ENV=ci -e DATABASE_URL_OWNER="$owner_url" "$LOCAL_TAG" --role migrate; }
           migrate | tee migrate.log
-          grep -Eq 'Applied [0-9]+ migration\(s\); the database is at [0-9]{4}_' migrate.log ||
+          grep -Eq 'Applied [0-9]+ migration\(s\); the database is at ([0-9]{4}|[0-9]{14})_' migrate.log ||
             { echo "::error::--role migrate did not apply the migrations"; exit 1; }
           migrate | tee migrate-again.log
           grep -q 'Nothing to migrate; the database is at ' migrate-again.log ||
