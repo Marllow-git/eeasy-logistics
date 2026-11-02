@@ -19,13 +19,17 @@ import { PinCheck } from './drivers/cash-pin.js';
 import { DriverCashPinController } from './drivers/driver-cash-pin.controller.js';
 import { DriversController } from './drivers/drivers.controller.js';
 import { VehiclesController } from './vehicles/vehicles.controller.js';
+import { CoverageController } from './zones/coverage.controller.js';
+import { PlatformZonesController } from './zones/platform-zones.controller.js';
+import { ZonesController } from './zones/zones.controller.js';
 
 /**
  * Delivery context (`del_` tables). Imports other contexts only from their `public/` (ADR-0026).
  * `DeliveryModule` alone registers nothing; `forRoot(config)` adds the doors that need the stack:
  * DEL-4's staff driver, device, PIN and vehicle doors (the kernel's audit sink and outbox writer
  * through `KernelModule`, the driver's person and membership through `DriverIdentities`) and the
- * driver's own doors (the code check and the tokens through the kernel's `DriverSignIn`).
+ * driver's own doors (the code check and the tokens through the kernel's `DriverSignIn`); DEL-1's
+ * zone, coverage and coverage check doors and the platform's zone and coverage provisioning doors.
  */
 @Module({})
 export class DeliveryModule {
@@ -38,6 +42,9 @@ export class DeliveryModule {
         VehiclesController,
         DriverAuthController,
         DriverCashPinController,
+        ZonesController,
+        CoverageController,
+        PlatformZonesController,
       ],
       providers: [
         driverIdentitiesProvider,

@@ -38,10 +38,15 @@ describe('core_rollout_modes, core_feature_flags (migration 0016)', () => {
       SELECT feature_key, mode, updated_by FROM core_rollout_modes
       WHERE feature_key = ANY(${[...featureKeys]}) ORDER BY feature_key`;
     expect(rows.map((row) => ({ ...row }))).toEqual(
-      [...featureKeys]
-        .sort()
-        .map((key) => ({ feature_key: key, mode: 'allowlist', updated_by: null })),
+      [...featureKeys].sort().map((key) => ({
+        feature_key: key,
+        // The harness row in global-setup.ts sets `delivery` to `all` (DEL-1 plan 2.9) and leaves
+        // `updated_by` null, so every other key keeps the seeded `allowlist`.
+        mode: key === 'delivery' ? 'all' : 'allowlist',
+        updated_by: null,
+      })),
     );
+    expect(rows.find((row) => row.feature_key === 'wms')?.mode).toBe('allowlist');
     expect(
       await sqlState(
         platform`UPDATE core_rollout_modes SET mode = 'beta' WHERE feature_key = 'wms'`,

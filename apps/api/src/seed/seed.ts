@@ -4,7 +4,7 @@ import { runMigrations } from '@eeasy-logistics/db/migrate';
 import { verifyPoolRole } from '@eeasy-logistics/db';
 import { createPlatformPool, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { migrationsFolder } from '../migrate/run.js';
-import { accountFixtures } from './fixtures.js';
+import { accountFixtures, coverageFixtures, siteFixtures, zoneFixtures } from './fixtures.js';
 import { FixtureAccountsRepository } from './fixtures.repository.js';
 
 /** The template database `tools/stack.sh clone` copies (data §11.7). */
@@ -12,16 +12,23 @@ export const seedTemplateDatabase = 'elx_seed';
 
 /**
  * Writes the fixtures through the `elx_platform` pool (accounts are platform rows; the
- * platform_access policy lets it write under RLS too). Idempotent: existing fixture rows are kept.
- * Returns the number of rows inserted.
+ * platform_access policy lets it write under RLS too), then DEL-1's branches, zones and coverage
+ * (plan 2.8). Idempotent: existing fixture rows are kept. Returns the number of rows inserted.
  */
 export async function seedFixtures(db: Config['db']): Promise<number> {
   const pool = createPlatformPool({ ...db, poolSize: { ...db.poolSize, platform: 1 } }, 'elx-seed');
   try {
     await verifyPoolRole(pool.db, 'elx_platform');
-    return await withPlatformUnitOfWork(pool.db, (uow) =>
-      new FixtureAccountsRepository(uow).insertMissing(accountFixtures),
-    );
+    return await withPlatformUnitOfWork(pool.db, async (uow) => {
+      const fixtures = new FixtureAccountsRepository(uow);
+      const accounts = await fixtures.insertMissing(accountFixtures);
+      const coverage = await fixtures.insertMissingCoverage({
+        sites: siteFixtures,
+        zones: zoneFixtures,
+        coverage: coverageFixtures,
+      });
+      return accounts + coverage;
+    });
   } finally {
     await pool.close();
   }

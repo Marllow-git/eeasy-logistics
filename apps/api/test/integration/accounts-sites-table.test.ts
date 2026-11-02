@@ -143,7 +143,7 @@ describe('core_accounts, core_sites, core_usage_counters (migration 0014)', () =
     expect(await count('sites', -1)).toBe('23514');
   });
 
-  it('lets elx_app work its own rows of the two tenant tables and elx_platform only read them', async () => {
+  it('lets elx_app work its own rows of the two tenant tables and elx_platform read them and insert sites only (DEL-1)', async () => {
     const grants = await owner<{ table_name: string; grantee: string; privileges: string }[]>`
       SELECT table_name, grantee, string_agg(privilege_type, ',' ORDER BY privilege_type) AS privileges
       FROM information_schema.role_table_grants
@@ -155,7 +155,8 @@ describe('core_accounts, core_sites, core_usage_counters (migration 0014)', () =
       { table_name: 'core_accounts', grantee: 'elx_app', privileges: 'SELECT' },
       { table_name: 'core_accounts', grantee: 'elx_platform', privileges: writes },
       { table_name: 'core_sites', grantee: 'elx_app', privileges: writes },
-      { table_name: 'core_sites', grantee: 'elx_platform', privileges: 'SELECT' },
+      // DEL-1 (plan §9, 8.2 #1): the cross-tenant provisioning doors insert sites as elx_platform.
+      { table_name: 'core_sites', grantee: 'elx_platform', privileges: 'INSERT,SELECT' },
       { table_name: 'core_usage_counters', grantee: 'elx_app', privileges: writes },
       { table_name: 'core_usage_counters', grantee: 'elx_platform', privileges: 'SELECT' },
     ]);
@@ -165,7 +166,13 @@ describe('core_accounts, core_sites, core_usage_counters (migration 0014)', () =
         platform`INSERT INTO core_sites (id, account_id, kind, name_ar, name_en)
                  VALUES (${uuidv7()}, ${accountId}, 'branch', 'ف', 'B')`,
       ),
+    ).toBe('none');
+    expect(
+      await sqlState(platform`UPDATE core_sites SET name_en = 'X' WHERE account_id = ${accountId}`),
     ).toBe('42501');
+    expect(await sqlState(platform`DELETE FROM core_sites WHERE account_id = ${accountId}`)).toBe(
+      '42501',
+    );
     expect(
       await sqlState(
         platform`INSERT INTO core_usage_counters (account_id, metric, period)
