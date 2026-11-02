@@ -89,9 +89,18 @@ Zones and coverage provisioning (`platformProvisionZone`, `platformProvisionCove
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (counts, red then green) | 8.2 |
+|---|---|---|---|
+| A | this commit | migration `0015_core_rollout` (the next free number on `origin/main` at generation: main ends at 0014; INT-4's 0015 is not merged); integration `rollout-table.test.ts` (new, 4) with `test/schema/tenancy.test.ts`: red 6 failed / 12 passed with the migration as drizzle-kit generated it (no policies, no `elx_app` revoke, no seed: the schema test names the two missing policies and the platform-table write, the table test the seed, the grants and the FK to the unseeded key); green 26/26 with `rls.test.ts` in both `ELX_RLS=off` and `on`; migration job twice on a scratch database (`elx_plat13_a`): 16 applied to `0015_core_rollout`, then nothing to migrate; api typecheck, eslint and prettier clean | #1, #2 |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes
+
+Leg 1 (items A to D):
+
+1. **Migration number and shape:** `0015_core_rollout` is the next free number after `origin/main` (0014, PLAT-12) when it was generated; INT-4 regenerates its tickets migration as 0015 on its branch, so whichever merges second regenerates (the lead renumbers this plan if INT-4 goes first). drizzle-kit output from `schema/rollout.ts`, with the header, the `elx_app` revoke, the two policies and the seed appended by hand. `core_feature_flags` is keyed by its primary key `(account_id, feature_key)` (the unique pair of 2.1; it also leads with `account_id`, so no separate index), has `created_at`/`updated_at` and `version >= 1` beyond 2.1's list, and its `feature_key` is a foreign key to `core_rollout_modes` (named `core_feature_flags_feature_key_fk`: drizzle-kit's generated name is 64 bytes and PostgreSQL would truncate it), so no flag can name an unregistered feature. No CHECK lists the keys: a later module adds its key with a seed row, not a constraint change.
+2. **Seed and registry:** `modules/kernel/features/feature-keys.ts` holds `featureKeys = ['delivery', 'wms']` (§7 #1); the migration seeds both in `allowlist` with `updated_by` NULL, `ON CONFLICT DO NOTHING`; `rollout-table.test.ts` fails when the seeded rows and the registry differ. Grants: `elx_app` SELECT only on both tables, `elx_platform` all four on both.
 
 ### 8.3 Not done here
 
