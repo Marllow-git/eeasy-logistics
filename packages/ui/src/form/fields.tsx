@@ -116,7 +116,14 @@ export function NumberField<Values extends FieldValues, Name extends FieldPath<V
   min,
   max,
   step = 1,
-}: FieldProps<Values, Name> & { min?: number; max?: number; step?: number | 'any' }) {
+  decimal = false,
+}: FieldProps<Values, Name> & {
+  min?: number;
+  max?: number;
+  step?: number | 'any';
+  /** A decimal (a coordinate): the keyboard offers the decimal point. */
+  decimal?: boolean;
+}) {
   return (
     <FormField<Values, Name>
       name={name}
@@ -129,7 +136,7 @@ export function NumberField<Values extends FieldValues, Name extends FieldPath<V
           {...control}
           disabled={disabled ?? control.disabled}
           type="number"
-          inputMode="numeric"
+          inputMode={decimal ? 'decimal' : 'numeric'}
           dir="ltr"
           lang="en"
           min={min}

@@ -203,5 +203,106 @@
       "submit": "Reset second factor",
       "done": "Second factor reset. The member gets an email with a link to enrol again."
     }
+  },
+  "sites": {
+    "description": "The branches and warehouses of this account: their names, address, location and opening hours.",
+    "table_label": "Sites of this account",
+    "new": "New site",
+    "columns": {
+      "name": "Name",
+      "kind": "Kind",
+      "status": "Status",
+      "address": "Address",
+      "created": "Added"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "kinds": {
+      "branch": "Branch",
+      "warehouse": "Warehouse",
+      "both": "Branch and warehouse"
+    },
+    "kind_hints": {
+      "branch": "Dispatches orders to drivers and holds their cash.",
+      "warehouse": "Holds stock: receiving, storage and packing.",
+      "both": "Does both from the same address."
+    },
+    "filters": {
+      "status": "Status",
+      "all": "All",
+      "kind": "Kind",
+      "all_kinds": "All kinds"
+    },
+    "empty": "No sites yet.",
+    "empty_hint": "Add the branches and warehouses your team works from.",
+    "empty_filtered": "No sites match these filters.",
+    "clear_filters": "Clear filters",
+    "back": "All sites",
+    "new_title": "New site",
+    "new_description": "A branch dispatches orders, a warehouse holds stock. You can change the details later.",
+    "created": "Site created.",
+    "saved": "Site saved.",
+    "form": {
+      "details_title": "Site details",
+      "kind": "Kind",
+      "names": "Name",
+      "names_hint": "In Arabic and English, up to 120 characters each.",
+      "address": "Address",
+      "address_hint": "Up to 500 characters.",
+      "short_code": "National Address short code",
+      "short_code_hint": "Four letters and four digits, for example RRRD2929.",
+      "location_title": "Location",
+      "lat": "Latitude",
+      "lng": "Longitude",
+      "location_hint": "Copy the coordinates of the short code from the National Address, with up to 5 decimals. A map arrives in a later release.",
+      "open_in_maps": "Open in maps",
+      "hours_title": "Opening hours",
+      "hours_hint": "Times in 24-hour HH:MM, for example 09:00. A closing time before the opening time runs past midnight.",
+      "open_on": "Open on {day}",
+      "opens": "Opens",
+      "closes": "Closes",
+      "closed": "Closed",
+      "same_every_day": "Same every day",
+      "save": "Save site",
+      "create": "Create site"
+    },
+    "weekdays": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "state": {
+      "title": "Status",
+      "active_line": "This site takes new work.",
+      "inactive_banner": "This site is inactive: it takes no new work. Activate it to use it again."
+    },
+    "deactivate": {
+      "action": "Deactivate site",
+      "title": "Deactivate {name}?",
+      "consequence_work": "It takes no new orders, cash or stock.",
+      "consequence_keep": "Its history stays, and you can activate it again at any time.",
+      "confirm": "Deactivate",
+      "done": "Site deactivated.",
+      "in_use": "The site is still in use:"
+    },
+    "activate": {
+      "action": "Activate site",
+      "title": "Activate {name}?",
+      "consequence": "It takes new work again and counts toward the account's site limit.",
+      "confirm": "Activate",
+      "done": "Site activated."
+    },
+    "limit_reached": "Your account has reached its limit of {limit} active sites. Deactivate a site or ask the platform team for a higher limit.",
+    "in_use_reasons": {
+      "open_orders": "Orders that are not finished yet",
+      "unsettled_cash": "Cash that is not settled yet",
+      "stock_on_hand": "Stock still on hand"
+    }
   }
 }
