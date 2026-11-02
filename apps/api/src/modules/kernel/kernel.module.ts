@@ -10,6 +10,9 @@ import { OperationRoutesCheck } from './authz/operation-routes.check.js';
 import { PermissionGuard } from './authz/permission.guard.js';
 import { PlatformAuditLogController } from './audit/platform-audit-log.controller.js';
 import { ContractPipe } from './contract/contract-pipe.js';
+import type { GeocoderSetup } from './geocoding/geocoders.js';
+import { GEOCODER_SETUP } from './geocoding/geocoders.js';
+import { GEOCODER, GeocoderService } from './geocoding/geocoder.service.js';
 import { IdempotentRoutesCheck } from './idempotency/idempotency.interceptor.js';
 import { ApiExceptionFilter } from './errors/exception.filter.js';
 import { OutboxWriter } from './outbox/outbox-writer.js';
@@ -72,8 +75,15 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
     OutboxWriter,
     // PLAT-12 plan 2.6: the site in-use checks DEL and WMS register at module init (none in wave 0).
     { provide: SiteUseChecks, useValue: new SiteUseChecks() },
+    // INT-2 plan 2.6: the geocoder port on the parts `RequestFrameModule.forRoot` builds; without
+    // them every lookup answers `unavailable` (`no_source`).
+    {
+      provide: GEOCODER,
+      inject: [{ token: GEOCODER_SETUP, optional: true }],
+      useFactory: (setup?: GeocoderSetup) => new GeocoderService(setup?.parts),
+    },
   ],
-  exports: [AUDIT_SINK, OutboxWriter, SiteUseChecks],
+  exports: [AUDIT_SINK, OutboxWriter, SiteUseChecks, GEOCODER],
 })
 export class KernelModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

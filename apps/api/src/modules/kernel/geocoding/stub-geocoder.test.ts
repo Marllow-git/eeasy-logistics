@@ -17,8 +17,8 @@ describe('the geocode fixture', () => {
     }
     const ids = new Set<string>();
     for (const district of fixture.districts) {
-      expect(district.name_ar).toMatch(/[؀-ۿ]/);
-      expect(district.city_ar).toMatch(/[؀-ۿ]/);
+      expect(district.name_ar).toMatch(/[\u0600-\u06ff]/);
+      expect(district.city_ar).toMatch(/[\u0600-\u06ff]/);
       expect(district.name_en).toMatch(/^[A-Za-z][A-Za-z ']+$/);
       expect(district.lat).toBeGreaterThan(16);
       expect(district.lat).toBeLessThan(33);

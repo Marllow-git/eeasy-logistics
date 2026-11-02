@@ -60,7 +60,7 @@ export function loadGeocodeFixture(): GeocodeFixture {
 export function matchText(value: string): string {
   const folded = value
     .toLowerCase()
-    .replace(/[ً-ٰٟـ]/g, '')
+    .replace(/[\u064b-\u065f\u0670\u0640]/g, '')
     .replace(/[أإآٱ]/g, 'ا')
     .replace(/ة/g, 'ه')
     .replace(/ى/g, 'ي')
