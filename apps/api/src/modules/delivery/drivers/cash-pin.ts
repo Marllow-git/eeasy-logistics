@@ -63,6 +63,13 @@ export class PinCheck {
    * `delivery.driver.cash_pin_locked`); a right PIN clears the failures. Every answer costs one
    * Argon2id verification. Never logs the PIN. Opens a transaction only when none is current, so
    * it never waits for a second app connection while holding one.
+   *
+   * Inside a request's unit of work the check must be the handler's first write (DEL-4 adversary
+   * round 1, L): its refusal is a `CommittedRefusal`, which commits the whole transaction, so
+   * anything the handler wrote before the check would be committed by a wrong PIN. The one write
+   * allowed before it is the idempotency reservation, which the idempotency interceptor deletes
+   * before the refusal commits. The unit of work tracks no writes, so this is not enforced here
+   * (plan 8.3, for DEL-8's brief).
    */
   async check(driverOf: () => Promise<DriverRow>, pin: string, facts: AuditFacts): Promise<void> {
     const run = async () => this.#check((await driverOf()).id, pin, facts);

@@ -34,7 +34,8 @@ export const NoUnitOfWork = (): MethodDecorator => SetMetadata(NO_UNIT_OF_WORK, 
  * A refusal whose writes must stay (DEL-4 adversary H-1: a wrong cash PIN counts even though the
  * request answers `403`). Thrown inside the request's unit of work, it commits that transaction
  * and is then answered as the `ApiException` it is; the idempotency interceptor first deletes its
- * reservation, so the key is not stored (errors.md `cash_pin_invalid`).
+ * reservation, so the key is not stored (errors.md `cash_pin_invalid`). Everything else the
+ * transaction wrote before the throw commits with it: throw it before the handler's other writes.
  */
 export class CommittedRefusal extends ApiException {}
 
