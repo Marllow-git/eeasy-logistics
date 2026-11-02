@@ -96,9 +96,16 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (red → green) | Interpretation |
+|---|---|---|---|
+| A | see `git log` (`DEL-2: A …`) | `orders-table.test.ts` 5 red (migration out of the journal) → 5 green; `tenancy.test.ts` 14 green; `sequence-allocator.test.ts` 3 green; ELX_RLS=on; `migrate` twice on a scratch database (21 applied, then nothing); second `drizzle-kit generate`: no changes | 8.2 #1, #2 |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes
+
+1. **`core_sequences` (2.1, 2.2).** No migration on `main` created it, so this one does, as data §2.1 names it (`next_value`, the name CHECK of §7), not the plan's `value`. Provisioning does not create the rows yet, so `SequenceAllocator` upserts (`INSERT … ON CONFLICT DO UPDATE`, the row lock held to commit) through a new `ScopedRepository.upsert` in `packages/db`, whose target must lead with `account_id`.
+2. **Columns beyond data §2.2 (2.1).** `del_order_items.position` keeps the request's item order (UUIDv7 ids of one millisecond are not monotonic); `del_order_events.note` is the contract's `OrderEvent.note`; a CHECK ties `type = transition` to a `to_status`. `idempotency_key` is nullable (system events carry none). `elx_platform` reads the four tables and writes none.
 
 ### 8.3 Not done here
 

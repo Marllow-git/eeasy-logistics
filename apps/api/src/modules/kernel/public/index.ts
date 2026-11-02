@@ -140,3 +140,30 @@ export { delCoverage, delZones, zoneSources, type ZoneSource } from '../schema/z
 export { siteSummaries, type SiteSummary } from '../sites/sites.repository.js';
 export { assertProvisionable } from '../provisioning/provisioning-door.js';
 export { optionalReason } from '../tenancy/cross-tenant.js';
+// Orders (DEL-2 plan 2.1, 2.2): the order tables (kernel-owned schema files) and the human number
+// allocator every numbered aggregate uses in its creating transaction (domain model §1.1, D-2).
+export {
+  delOrderEvents,
+  delOrderItems,
+  delOrders,
+  itemDirections,
+  orderActorTypes,
+  orderKinds,
+  orderSources,
+  orderStatuses,
+  pendingReasons,
+  pinSources,
+  type ItemDirection,
+  type OrderActorType,
+  type OrderKind,
+  type OrderSource,
+  type OrderStatus,
+  type PendingReason,
+  type PinSource,
+} from '../schema/orders.js';
+export type { SequenceName } from '../schema/sequences.js';
+export {
+  displayNumber,
+  parseDisplayNumber,
+  SequenceAllocator,
+} from '../sequences/sequence-allocator.js';
