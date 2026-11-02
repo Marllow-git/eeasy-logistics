@@ -3,7 +3,13 @@ import { client, type DriverMe, type TokenPair } from '@eeasy-logistics/contract
 import type { Fetcher, Locale } from '@eeasy-logistics/contracts/http';
 import { argon2id } from '../platform/argon2';
 import { appDatabase, preferences } from '../platform/database';
-import { appPlatform, appVersion, randomBytes, randomUuid } from '../platform/device';
+import {
+  appPlatform,
+  appVersion,
+  installRandomValues,
+  randomBytes,
+  randomUuid,
+} from '../platform/device';
 import { secretKeys, secureStore, type SecretStore } from '../platform/secure-store';
 import { isOlderThan } from '../domain/version';
 import { createDriverFetcher } from './api';
@@ -59,6 +65,7 @@ export function driverApp(): DriverApp {
 }
 
 function buildDriverApp(locale: () => Locale): DriverApp {
+  installRandomValues();
   const config = publicConfig();
   const secrets = secureStore;
   const verifier = new PinVerifier({ secrets, argon2id, randomBytes });

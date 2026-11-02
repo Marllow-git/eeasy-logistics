@@ -1,0 +1,15 @@
+# DRV-1 item B: a driver of one account signs in with the stub's code and lands on the PIN step.
+# Run: maestro test -e LOCALE=ar|en -e METRO_URL=… -e STUB_URL=… -e SHOTS=… maestro/sign-in.yaml
+appId: sa.eeasy.logistics.driver
+name: sign-in
+env:
+  PHONE: '500000102'
+---
+- runFlow: subflows/launch.yaml
+- runFlow: subflows/sign-in.yaml
+- extendedWaitUntil:
+    visible:
+      id: 'pin-continue'
+    timeout: 20000
+- assertVisible: "${LOCALE == 'en' ? 'Create your cash PIN' : 'أنشئ رمز النقد'}"
+- takeScreenshot: ${SHOTS}/${LOCALE}-03-pin-setup
