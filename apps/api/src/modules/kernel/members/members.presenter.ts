@@ -1,30 +1,30 @@
 import type { Membership, Role } from '@eeasy-logistics/contracts/staff/schemas';
-import type { UserRow } from '../platform/identity.repository.js';
-import type { MemberRow } from './members.repository.js';
+import type { Member } from './members.service.js';
 
 /**
- * `Membership` (components.yaml) with its `User` (PLAT-12 plan 2.7): the email, `phone` null (staff
- * sign in by email; the second-factor phone is never shown), `second_factor_enabled`. Never a
+ * `Membership` (components.yaml) with its `User` (PLAT-12 plan 2.7): the person the membership shows
+ * (`MembersService`: the user's stored fields once `active`, the invitation's before; adversary
+ * M-2), `phone` null (staff sign in by email; the second-factor phone is never shown). Never a
  * password hash or a token version.
  */
-export function presentMember(member: MemberRow, user: UserRow): Membership {
+export function presentMember({ row, person }: Member): Membership {
   return {
-    id: member.id,
-    created_at: member.createdAt.toISOString(),
-    updated_at: member.updatedAt.toISOString(),
+    id: row.id,
+    created_at: row.createdAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
     user: {
-      id: user.id,
-      created_at: user.createdAt.toISOString(),
-      updated_at: user.updatedAt.toISOString(),
-      name: user.name,
-      email: user.email,
+      id: person.id,
+      created_at: person.createdAt.toISOString(),
+      updated_at: person.updatedAt.toISOString(),
+      name: person.name,
+      email: person.email,
       phone: null,
-      locale: user.locale,
-      second_factor_enabled: user.secondFactorEnabled,
+      locale: person.locale,
+      second_factor_enabled: person.secondFactorEnabled,
     },
     // Membership roles are bundle keys of the staff surface; the contract's `Role` enum lists them.
-    roles: member.roles as Role[],
-    site_ids: [...member.siteIds],
-    status: member.status,
+    roles: row.roles as Role[],
+    site_ids: [...row.siteIds],
+    status: row.status,
   };
 }

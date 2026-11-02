@@ -1,3 +1,4 @@
+import type { PlatformUnitOfWork } from '@eeasy-logistics/db/committed';
 import type { AuditActorType } from '../schema/audit-log.js';
 
 /**
@@ -36,10 +37,13 @@ export interface AuditEvent {
  *   back with the action it describes; it throws outside a unit of work.
  * - `recordCommitted` writes on a transaction of its own, committed whatever the request does
  *   (refusals, and the outcome of a cross-tenant call; PLAT-6 rulings M-5 and L-4).
+ * - `recordIn` writes in the platform unit of work it is given, so a change a tenant request makes
+ *   on the platform pool commits together with its row (PLAT-12 adversary M-1, K-7).
  */
 export interface AuditSink {
   record(event: AuditEvent): Promise<void>;
   recordCommitted(event: AuditEvent): Promise<void>;
+  recordIn(uow: PlatformUnitOfWork, event: AuditEvent): Promise<void>;
 }
 
 export const AUDIT_SINK = Symbol('AUDIT_SINK');
