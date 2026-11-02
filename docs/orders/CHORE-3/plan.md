@@ -59,6 +59,10 @@ None (the owner ruled timestamp names on 2026-11-02).
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (red, then green) | Interpretation |
+|---|---|---|---|
+| A | `CHORE-3: A, timestamp prefix and the runner applies older entries in journal order` | `packages/db` unit `test/migrate-history.test.ts` against main's `checkHistory` (only `export` added): 4 failed, 2 passed; green: `packages/db` 4 files, 19 passed, depcruise clean. `apps/api` integration `migrate.test.ts` + `test/schema/tenancy.test.ts` against main's runner: 1 failed (the older-entry case: "Migration 20261102091756_early is older than the last applied one; regenerate it"), 25 passed; green: 26 passed with `ELX_RLS=off` and 26 passed with `ELX_RLS=on`. `test/integration-projects.test.ts` 4 passed. A scratch database migrated by main's runner (`Applied 16 migration(s)`) then reports `Nothing to migrate; the database is at 0015_core_push_tickets.` twice under the new runner; a fresh one migrated by the new runner applies 16, then nothing; the 16 `drizzle.__drizzle_migrations` rows (id, hash, created_at) of the two databases are identical. `drizzle-kit generate` with the prefix on the unchanged schema: "No schema changes, nothing to migrate", no file written. `turbo typecheck lint` for db and api: 8 of 8 tasks; `format:check` clean | 8.2 #1 to #3 |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes
