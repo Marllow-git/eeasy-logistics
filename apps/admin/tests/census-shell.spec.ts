@@ -11,20 +11,23 @@ import {
   test,
   type Locale,
 } from './census/helpers';
+import { platformSignIn, projectOf } from './census/session';
 
-// Census of the platform console's shell (WEB-1 plan 2.9, leg 2): the placeholder routes of the
-// `(platform)` and `(auth)` groups render inside the shared shell in the project's locale, pass the
-// locale, accessibility and security checks, and match their screenshot baselines. Replaces
-// WEB-19's smoke-locale.spec.ts.
+// Census of the platform console's shell (WEB-1 plan 2.9, leg 2): the routes of the `(platform)`
+// and `(auth)` groups render inside the shared shell in the project's locale, pass the locale,
+// accessibility and security checks, and match their screenshot baselines. Replaces WEB-19's
+// smoke-locale.spec.ts. WEB-2: `/sign-in/totp` needs a sign-in in progress, so its screenshots
+// moved to census-auth.spec.ts (the code entry and the enrolment view).
 
 const routes = [
-  { name: 'platform', path: '/', title: ['platform', 'nav.home'] },
-  { name: 'sign-in', path: '/sign-in', title: ['auth', 'sign_in.title'] },
-  { name: 'sign-in-totp', path: '/sign-in/totp', title: ['platform', 'sign_in.totp_title'] },
+  { name: 'platform', path: '/', title: ['platform', 'nav.home'], session: true },
+  { name: 'sign-in', path: '/sign-in', title: ['auth', 'sign_in.title'], session: false },
 ] as const;
 
 for (const route of routes) {
   test(`${route.name} (${route.path}) in the project locale`, async ({ page, locale }) => {
+    // WEB-2: the console needs a session (the layout reads platformGetMe).
+    if (route.session) await platformSignIn(page, 'shell', projectOf(test.info().project.name));
     const response = await page.goto(route.path);
     expect(response?.status(), `HTTP status of ${route.path}`).toBe(200);
     await settle(page);
@@ -49,6 +52,7 @@ test('the locale switch changes the language and direction of the page', async (
   locale,
 }) => {
   const other: Locale = locale === 'ar' ? 'en' : 'ar';
+  await platformSignIn(page, 'shell', projectOf(test.info().project.name));
   await page.goto('/');
   await page.getByRole('button', { name: message(locale, 'common', 'locale.label') }).click();
   await expectLocale(page, other);

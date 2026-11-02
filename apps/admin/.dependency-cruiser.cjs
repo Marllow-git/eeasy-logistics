@@ -51,7 +51,25 @@ module.exports = {
       from: { pathNot: ['(?:^|/)packages/contracts/', '(?:^|/)tests/'] },
       to: { path: '(?:^|/)packages/contracts/src/mocks/' },
     },
-    ...environmentRules({ configEntry: 'web.ts' }),
+    {
+      name: 'admin-server-config-on-the-server-only',
+      comment:
+        'WEB-2 plan 2.5, 2.13: API_INTERNAL_URL and the public URLs are read by next.config.ts, the ' +
+        'proxy and the server API client only; a client component would see them undefined.',
+      severity: 'error',
+      from: { pathNot: ['^next\\.config\\.ts$', '^src/proxy\\.ts$', '^src/server/'] },
+      to: { path: '(?:^|/)packages/config/src/web-server\\.ts$' },
+    },
+    {
+      name: 'admin-census-config-in-tests-only',
+      comment:
+        'WEB-2 plan 2.14: @eeasy-logistics/config/census (the stack Mailpit, WhatsApp stub and ' +
+        'signing key of the census) is a test tool; app code never imports it.',
+      severity: 'error',
+      from: { pathNot: '^tests/' },
+      to: { path: '(?:^|/)packages/config/src/census\\.ts$' },
+    },
+    ...environmentRules({ configEntry: ['web.ts', 'web-server.ts', 'census.ts'] }),
     noUnresolvable,
   ],
   options,

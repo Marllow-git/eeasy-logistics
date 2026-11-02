@@ -11,7 +11,10 @@
 /** Longest text the patterns ever see; the rest is dropped before any pattern runs. */
 export const maxInputLength = 4096;
 
-/** Path segments whose next segment is a secret: recipient and invitation tokens (web §9, §1.1). */
+/**
+ * Path segments whose next segment is a secret: recipient and invitation tokens (web §9, §1.1), and
+ * the emailed re-enrolment link `/second-factor/enrol/<token>` (WEB-2 plan 2.12).
+ */
 const tokenMarkers = new Set([
   'track',
   'reschedule',
@@ -19,6 +22,7 @@ const tokenMarkers = new Set([
   'invitations',
   'password-reset',
   'reset-password',
+  'enrol',
 ]);
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -109,6 +113,9 @@ const secretKeyTokens: ReadonlySet<string> = new Set([
   'iban',
   'sig',
   'verificationcode',
+  // WEB-2 plan 2.12: the sign-in steps' fields (`challenge_id`) and the TOTP enrolment URI.
+  'challenge',
+  'otpauth',
 ]);
 
 /** The lower-cased tokens of a key: split on `_`, `-`, `.` and camelCase (`APIKey` → api, key). */

@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "migrate": "pnpm run build && node dist/main.js --role migrate",
     "seed": "pnpm run build && node dist/seed/main.js",
+    "seed:census": "pnpm run build && node dist/seed/census-main.js",
     "test": "vitest run && pnpm run test:architecture",
     "test:unit": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
