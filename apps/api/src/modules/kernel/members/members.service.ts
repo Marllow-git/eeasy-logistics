@@ -89,6 +89,17 @@ export interface MemberPatch {
 /** The longest invited name (as a site name, 2.5); the contract leaves it unbounded. */
 const maxNameLength = 120;
 
+/**
+ * A membership whose roles are exactly `['driver']` (DEL-4 adversary H-3, lead ruling round 2): its
+ * person row holds the name and locale the first account to create the person typed, so the member
+ * doors leave it out (`list`) or answer `404` (`get`); the account's drivers are Delivery's
+ * (`listDrivers`, `getDriver`, which show `del_drivers.name`). A membership holding `driver` beside
+ * a staff role was invited as staff by this account and stays.
+ */
+function isDriverOnly(row: MemberRow): boolean {
+  return row.roles.length === 1 && row.roles[0] === 'driver';
+}
+
 /** The cursor key of a member for `field`. */
 export function memberKeyOf(field: MemberSortField, member: Member): PageKey {
   const value =
@@ -184,7 +195,8 @@ export class MembersService {
    * the shown name and email (case-insensitive, every character literal), so it never finds an
    * invited person by fields they keep in another account (adversary M-2); then ordered and cut
    * by the keyset in memory, because the `name` sort and `q` need fields elx_app cannot read in
-   * SQL (plan 2.9). Every state is listed.
+   * SQL (plan 2.9). Every state is listed; driver-only memberships never (`isDriverOnly`,
+   * filtered in SQL by `matching`).
    */
   async list(request: MemberListRequest): Promise<ListPage<Member>> {
     const rows = await new MembersRepository(getUnitOfWork()).matching({
@@ -203,10 +215,13 @@ export class MembersService {
     return plan.page(keysetSlice(plan, members, keyOf), keyOf);
   }
 
-  /** `getMember`: a membership of the token's account in any state; another account's is `404`. */
+  /**
+   * `getMember`: a membership of the token's account in any state; another account's, or a
+   * driver-only one (`isDriverOnly`), is `404`.
+   */
   async get(id: string): Promise<Member> {
     const row = await new MembersRepository(getUnitOfWork()).find(id);
-    if (row === undefined) throw new ApiException('not_found');
+    if (row === undefined || isDriverOnly(row)) throw new ApiException('not_found');
     return this.memberOf(row);
   }
 
