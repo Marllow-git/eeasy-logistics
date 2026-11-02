@@ -40,6 +40,7 @@ interface SessionContextValue {
   readonly signOut: () => Promise<void>;
   readonly registerUnsaved: () => () => void;
   readonly registerSignOutCleanup: (cleanup: () => void) => () => void;
+  readonly registerSessionEndCleanup: (cleanup: () => void) => () => void;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -98,6 +99,7 @@ class SessionController {
   #listeners = new Set<() => void>();
   #reported: ((reason: SessionEndReason) => void) | undefined;
   #signOutCleanups = new Set<() => void>();
+  #endCleanups = new Set<() => void>();
 
   constructor(readonly surface: SessionSurface) {
     this.fetcher = createSessionFetcher({
@@ -123,10 +125,20 @@ class SessionController {
     for (const listener of this.#listeners) listener();
   }
 
+  /** Runs what an ending session must forget (`useSessionEndCleanup`), then leaves for `path`. */
+  #leave(path: string): void {
+    this.#forget();
+    hardNavigate(path);
+  }
+
+  #forget(): void {
+    for (const cleanup of this.#endCleanups) cleanup();
+  }
+
   ended(reason: SessionEndReason): Promise<boolean> {
     this.#reported?.(reason);
     if (reason === 'account_suspended') {
-      hardNavigate(suspendedPath);
+      this.#leave(suspendedPath);
       return Promise.resolve(false);
     }
     if (this.#unsaved > 0) {
@@ -138,9 +150,15 @@ class SessionController {
       }
       return this.#pending.promise;
     }
-    hardNavigate(signInPath(here(), 'ended'));
+    this.#leave(signInPath(here(), 'ended'));
     return Promise.resolve(false);
   }
+
+  /** The re-sign-in dialog's "another account": the session is over, as on any other ending. */
+  readonly leaveForAnotherAccount = () => {
+    this.closeDialog(false);
+    this.#leave(signInPath(here(), 'ended'));
+  };
 
   readonly closeDialog = (resumed: boolean) => {
     this.#pending?.resolve(resumed);
@@ -166,6 +184,19 @@ class SessionController {
     };
   };
 
+  /**
+   * What any end of the session must forget before the page leaves: sign-out, idle expiry, a
+   * refused refresh, `401 token_invalid`, a suspended account and the dialog's "another account"
+   * (WEB-4 adversary fix round 1, M: the console's support reasons). Not run while the re-sign-in
+   * dialog keeps the page for the same user.
+   */
+  readonly registerSessionEndCleanup = (cleanup: () => void) => {
+    this.#endCleanups.add(cleanup);
+    return () => {
+      this.#endCleanups.delete(cleanup);
+    };
+  };
+
   readonly signOut = async () => {
     try {
       await this.fetcher(sessionPaths[this.surface].logout, { method: 'POST' });
@@ -175,6 +206,7 @@ class SessionController {
     }
     // The query cache registers its clear here (WEB-3); the event stream will too (WEB-5).
     for (const cleanup of this.#signOutCleanups) cleanup();
+    this.#forget();
     window.sessionStorage.clear();
     hardNavigate(signedOutPath);
   };
@@ -201,6 +233,7 @@ export function SessionProvider<Me extends SessionMe>({
       signOut: controller.signOut,
       registerUnsaved: controller.registerUnsaved,
       registerSignOutCleanup: controller.registerSignOutCleanup,
+      registerSessionEndCleanup: controller.registerSessionEndCleanup,
     }),
     [me, controller],
   );
@@ -220,10 +253,7 @@ export function SessionProvider<Me extends SessionMe>({
         codeDescription={codeDescription}
         onSignedIn={() => controller.closeDialog(true)}
         onDismiss={() => controller.closeDialog(false)}
-        onOtherAccount={() => {
-          controller.closeDialog(false);
-          hardNavigate(signInPath(here(), 'ended'));
-        }}
+        onOtherAccount={controller.leaveForAnotherAccount}
       />
     </SessionContext.Provider>
   );
@@ -266,4 +296,13 @@ export function useUnsavedState(active: boolean): void {
 export function useSignOutCleanup(cleanup: () => void): void {
   const { registerSignOutCleanup } = useSessionContext();
   useEffect(() => registerSignOutCleanup(cleanup), [registerSignOutCleanup, cleanup]);
+}
+
+/**
+ * Runs `cleanup` whenever the session ends on this page, sign-out included, before the page leaves
+ * (the provider's `registerSessionEndCleanup`).
+ */
+export function useSessionEndCleanup(cleanup: () => void): void {
+  const { registerSessionEndCleanup } = useSessionContext();
+  useEffect(() => registerSessionEndCleanup(cleanup), [registerSessionEndCleanup, cleanup]);
 }

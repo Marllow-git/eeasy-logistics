@@ -7,6 +7,7 @@ import type { OutboxWriter } from '../outbox/outbox-writer.js';
 import type { RolloutRow } from '../platform/features.repository.js';
 import { currentFeatureRows } from '../platform/features.repository.js';
 import type { RolloutModeValue } from '../schema/rollout.js';
+import { refusedReasonCharacter } from '../tenancy/cross-tenant.js';
 import type { FeatureKey } from './feature-keys.js';
 import { featureKeys, isFeatureKey } from './feature-keys.js';
 import type { FeatureResolver } from './feature-resolver.js';
@@ -19,7 +20,10 @@ import { FeatureFlagsRepository } from './feature-flags.repository.js';
 // `core.feature_flag.changed` (the `internal_event` whose kernel consumer busts the gate's cache
 // after commit) and forgets the cached value in the request.
 
-/** The reason of a rollout change (plan 2.6): 5 to 500 characters, no control characters. */
+/**
+ * The reason of a rollout change (plan 2.6): 5 to 500 characters, no control or format characters
+ * (the cross-tenant door's rule, WEB-4 adversary fix round 1).
+ */
 export function rolloutReasonProblem(
   reason: string,
 ): 'too_short' | 'too_long' | 'invalid' | undefined {
@@ -27,7 +31,7 @@ export function rolloutReasonProblem(
   const length = [...trimmed].length;
   if (length < 5) return 'too_short';
   if (length > 500) return 'too_long';
-  return /\p{Cc}/u.test(trimmed) ? 'invalid' : undefined;
+  return refusedReasonCharacter.test(trimmed) ? 'invalid' : undefined;
 }
 
 const aggregateNamespace = Buffer.from('6c0f1d7e5a2b4f0e9c3d8a1b2e4f6a70', 'hex');

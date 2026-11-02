@@ -43,7 +43,12 @@ for (const route of routes) {
     if ((page.viewportSize()?.width ?? 0) <= 390) await expectNoHorizontalOverflow(page);
     await expectAxeClean(page);
 
-    await expect(page).toHaveScreenshot(`${route.name}.png`, { fullPage: true });
+    // WEB-4: the home's consumers block holds live counts and lag (or, on a stack without queues,
+    // the read failure: 8.3); its content is masked.
+    await expect(page).toHaveScreenshot(`${route.name}.png`, {
+      fullPage: true,
+      mask: [page.locator('[aria-labelledby="consumers-title"] > div:last-child')],
+    });
   });
 }
 

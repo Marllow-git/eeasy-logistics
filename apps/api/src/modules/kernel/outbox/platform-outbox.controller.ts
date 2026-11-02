@@ -105,7 +105,7 @@ export class PlatformOutboxController {
     this.cursors = cursors ?? new CursorCodec(undefined);
   }
 
-  /** Replays and the consumer list need the queues (Redis); production requires `REDIS_URL`. */
+  /** Replays need the queues (Redis); production requires `REDIS_URL`. */
   private requireQueues(): OutboxQueues {
     if (this.queues === undefined || this.queues === null) {
       new Logger('PlatformOutbox').warn('REDIS_URL is not set: outbox replays are refused');
@@ -294,18 +294,24 @@ export class PlatformOutboxController {
   /**
    * `platformListConsumers`: per internal consumer, the lag (oldest open event of its types
    * without its receipt), the events parked for it (open rows whose last outcome parked it and
-   * whose job waits delayed in BullMQ) and its live dead letters. Counts only, no payload.
+   * whose job waits delayed in BullMQ) and its live dead letters. Counts only, no payload. Without
+   * the queues (no `REDIS_URL`: a local or census API; production requires it) the database
+   * counts still answer and `parked`, which needs BullMQ's delayed jobs, is 0 (lead ruling on
+   * WEB-4 8.3 #2): never a 500 for the console's home.
    */
   @Get('consumers')
   @Operation(consumersOp)
   async listConsumers(): Promise<ConsumerList> {
-    const queues = this.requireQueues();
     const outbox = currentPlatformOutbox();
-    const parkedRows = await outbox.parkedRows(parkedScanLimit);
-    const delayed = await queues.delayedAmong(
-      'internal_event',
-      parkedRows.map((row) => row.id),
-    );
+    const queues = this.queues ?? null;
+    const parkedRows = queues === null ? [] : await outbox.parkedRows(parkedScanLimit);
+    const delayed =
+      queues === null
+        ? new Set<string>()
+        : await queues.delayedAmong(
+            'internal_event',
+            parkedRows.map((row) => row.id),
+          );
     const parked = new Map<string, number>();
     for (const row of parkedRows) {
       if (!delayed.has(row.id)) continue;

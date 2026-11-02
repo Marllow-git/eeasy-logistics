@@ -97,5 +97,11 @@
     "load_more": "عرض المزيد",
     "loading_more": "جارٍ التحميل…",
     "shown": "{count, plural, zero {لا شيء معروض} one {عنصر واحد معروض} two {عنصران معروضان} few {{value} عناصر معروضة} many {{value} عنصرًا معروضًا} other {{value} عنصر معروض}}"
+  },
+  "reason": {
+    "label": "السبب",
+    "too_short": "{min} أحرف على الأقل.",
+    "count": "{count} / {max}",
+    "too_long": "{max} حرفًا على الأكثر."
   }
 }

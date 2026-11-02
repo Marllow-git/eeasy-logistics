@@ -116,15 +116,42 @@ function rawTarget(request: Request, source: CrossTenantSource): unknown {
 
 function rawReason(request: Request, source: CrossTenantSource): unknown {
   if (source.reason === 'body') return objectOf(request.body)?.reason;
-  return request.headers[supportReasonHeader];
+  const header = request.headers[supportReasonHeader];
+  return typeof header === 'string' ? decodedHeaderReason(header) : header;
+}
+
+/**
+ * What no audited reason may hold, header or body: control characters (`Cc`) and format characters
+ * (`Cf`: the bidirectional overrides and isolates U+202A to U+202E and U+2066 to U+2069, the
+ * zero-width space), which would make the audit row read other than what was stored (WEB-4
+ * adversary fix round 1, L). Refused as `invalid`. Five `Cf` marks that Arabic and Persian
+ * keyboards insert in ordinary text stay allowed as text (lead ruling, WEB-4 round 2): the Arabic
+ * letter mark U+061C, the zero-width non-joiner and joiner U+200C and U+200D, and the left-to-right
+ * and right-to-left marks U+200E and U+200F.
+ */
+export const refusedReasonCharacter = /(?![؜‌-‏])[\p{Cc}\p{Cf}]/u;
+
+/**
+ * The header's reason as the person typed it (lead ruling on WEB-4 8.2 #5): a header carries
+ * Latin-1 only, so a reason outside it (Arabic) is sent percent-encoded as UTF-8. A value with `%`
+ * that decodes is the decoded text; one that does not decode (a literal `%`) is used as sent. The
+ * bound and the control-character check then run on what is returned.
+ */
+export function decodedHeaderReason(value: string): string {
+  if (!value.includes('%')) return value;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 /**
  * The target and reason of a `@CrossTenant()` request, or why it is refused, or undefined when a
  * query- or body-declared parameter is absent (no door). A missing or blank reason is
- * `400 reason_required` (errors.md §5), except on a `reason: 'optional'` door (no reason, null); a reason over its bound (200 characters in the header, 500 in the body) or
- * with control characters is
- * `400 validation_failed`; a malformed id (a repeated query value included) is `404 not_found`,
+ * `400 reason_required` (errors.md §5), except on a `reason: 'optional'` door (no reason, null); a
+ * reason over its bound (200 characters in the header, 500 in the body) or with a control or
+ * format character (`refusedReasonCharacter`) is `400 validation_failed`; a malformed id (a repeated query value included) is `404 not_found`,
  * like an unknown one. The caller audits refusals too (identity and tenancy §5).
  */
 export function crossTenantTarget(
@@ -140,7 +167,7 @@ export function crossTenantTarget(
     return { outcome: 'reason_missing', accountId, error: new ApiException('reason_required') };
   }
   const pointer = source.reason === 'body' ? '/body/reason' : `/header/${supportReasonHeader}`;
-  const hasControl = /\p{Cc}/u.test(reason);
+  const hasControl = refusedReasonCharacter.test(reason);
   const maxLength = source.reason === 'body' ? bodyReasonMaxLength : supportReasonMaxLength;
   if (hasControl || [...reason].length > maxLength) {
     const code = hasControl ? 'invalid' : 'too_long';

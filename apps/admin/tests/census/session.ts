@@ -1,6 +1,6 @@
 import { censusConfig } from '@eeasy-logistics/config/census';
 import { expect, type BrowserContext, type Page } from '@playwright/test';
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 // Console sessions for the census (WEB-2 plan 2.14, leg 2): the identities `pnpm --filter api
 // seed:census` writes (apps/api/src/seed/census.ts; these values mirror it), sign-in through the
@@ -36,7 +36,21 @@ export type PlatformRole =
   | 'session'
   | 'dialog'
   | 'logout'
-  | 'invitee';
+  | 'invitee'
+  // WEB-4: super admins for the accounts, lifecycle and rollout checks; an `admin` and a `support`.
+  | 'accounts'
+  | 'lifecycle'
+  | 'rollout'
+  | 'operator'
+  | 'support'
+  // WEB-4 leg 2: super admins for the outbox and staff screens; the staff census's two targets
+  // (`colleague`: role changed then revoked; `relink`: TOTP reset then re-enrolled); `hire` is
+  // invited from the console by mail.
+  | 'outbox'
+  | 'staff'
+  | 'colleague'
+  | 'relink'
+  | 'hire';
 
 export function platformEmail(role: PlatformRole, project: CensusProject): string {
   return `census-platform-${role}-${project.replace('-', '')}@census.test`;
@@ -203,9 +217,13 @@ interface MailSummary {
 }
 
 /** The newest link to `path` in a mail to `email` (Mailpit). */
-export async function mailedLink(email: string, path: string): Promise<string> {
+export async function mailedLink(
+  email: string,
+  path: string,
+  linkOrigin: string = origin,
+): Promise<string> {
   const mailpit = censusConfig().mailpitUrl;
-  const pattern = new RegExp(`${origin}/${path}/[A-Za-z0-9._~-]+`);
+  const pattern = new RegExp(`${linkOrigin}/${path}/[A-Za-z0-9._~-]+`);
   let link: string | undefined;
   await expect
     .poll(
@@ -230,4 +248,54 @@ export async function mailedLink(email: string, path: string): Promise<string> {
     )
     .toBeDefined();
   return link!;
+}
+
+// WEB-4: the console census accounts of apps/api/src/seed/census.ts (`censusConsoleAccounts`),
+// mirrored here as the staff values are: ids from the seed's deterministic hash, the names.
+
+function censusId(name: string): string {
+  const hex = createHash('sha256').update(`census:${name}`).digest('hex');
+  return `01920000-0000-7${hex.slice(0, 3)}-8${hex.slice(3, 6)}-${hex.slice(6, 18)}`;
+}
+
+const consoleNames = {
+  ar: { active: 'متجر نجران', suspended: 'متجر حائل', provisioned: 'متجر القريات' },
+  'ar-390': { active: 'متجر جازان', suspended: 'متجر الباحة', provisioned: 'متجر سكاكا' },
+  en: { active: 'متجر تبوك', suspended: 'متجر عرعر', provisioned: 'متجر ينبع' },
+} as const;
+
+/** A project's console accounts: acted on (active), left suspended, left provisioned. */
+export function consoleAccount(
+  kind: 'active' | 'suspended' | 'provisioned',
+  project: CensusProject,
+): { id: string; name: string } {
+  const prefix = kind === 'active' ? 'console' : kind;
+  return {
+    id: censusId(`account-${prefix}-${project.replace('-', '')}`),
+    name: consoleNames[project][kind],
+  };
+}
+
+/** A console staff member's id (`censusId('platform-<role>-<project>')` of the seed). */
+export function platformUserId(role: PlatformRole, project: CensusProject): string {
+  return censusId(`platform-${role}-${project}`);
+}
+
+/** The merchant web's origin (`PUBLIC_WEB_URL` of `.env.example`): a staff invitation's link. */
+export const webOrigin = 'http://localhost:3001';
+
+/**
+ * Accepts a merchant owner's invitation as the owner would in apps/web (WEB-4 plan 2.13): the
+ * token from the mail in Mailpit, `acceptInvitation` on the stack API with the web's Origin (the
+ * console does not rewrite the staff surface).
+ */
+export async function acceptOwnerInvitation(email: string, name: string): Promise<void> {
+  const link = await mailedLink(email, 'invitations', webOrigin);
+  const token = link.slice(link.lastIndexOf('/') + 1);
+  const answer = await fetch(`${censusConfig().apiUrl}/v1/staff/auth/invitations/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-EL-Client': 'web', Origin: webOrigin },
+    body: JSON.stringify({ token, name, password: censusPassword }),
+  });
+  expect(answer.status, 'acceptInvitation of the provisioned owner').toBe(200);
 }
