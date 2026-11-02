@@ -79,6 +79,10 @@ Callers: DEL-2's intake (writes `address_point`, `pin_source`, `geocode_confiden
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (red, then green) | Interpretation |
+|---|---|---|---|
+| A | `INT-2: A migration, config, fixture` | config `vitest`: red 17 failed of 21 in the new `geocoder.test.ts` against main's config, green 199 of 199 in 10 files (no existing test changed); integration `test/schema/tenancy.test.ts`: red 3 of 14 with the migration and no exemption (no `account_id`, no foreign key or index, no policies), green with `migrate.test.ts` (migrates twice) 23 of 23 with `ELX_RLS=off` and 23 of 23 with `on`; `turbo typecheck lint` config and api 8 of 8 | migration **0016** (highest on `origin/main` at generation: 0015); built on the amended plan (d5ec28e: `GEOCODER_SOURCES`, `provider` CHECK spl, sayyar, hudhud); elx_app gets no grant on the table (§8.1 #1); the fixture is copied into the image (§8.2 #3) |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes

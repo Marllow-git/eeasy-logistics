@@ -31,7 +31,15 @@ import {
   engineUrl,
   serviceIdentityPattern,
 } from './formats.ts';
-import { expoPushServiceUrl, productionRefusals } from './refusals.ts';
+import {
+  defaultGeocoderSources,
+  expoPushServiceUrl,
+  geocoderServiceUrls,
+  geocoderSources,
+  productionRefusals,
+  splitGeocoderSources,
+  type GeocoderSource,
+} from './refusals.ts';
 import { Secret } from './secret.ts';
 
 // `bootstrap` (PLAT-11 plan 2.12): the one-shot command that invites the first super admin.
@@ -54,6 +62,20 @@ export type PushProvider = (typeof pushProviders)[number];
 
 /** The Expo push service; production refuses any other `EXPO_PUSH_URL` (INT-4 plan 2.6). */
 export { expoPushServiceUrl };
+
+/** The geocoder's sources and their production hosts (INT-2 plan 2.7, 2.11). */
+export { defaultGeocoderSources, geocoderServiceUrls, geocoderSources, type GeocoderSource };
+
+/** `GEOCODER_SOURCES`: a comma-separated list of distinct sources, in chain order. */
+const sourceList = () =>
+  z.string().transform((text, ctx) => {
+    const sources = splitGeocoderSources(text);
+    if (sources === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'not a list of distinct sources' });
+      return z.NEVER;
+    }
+    return sources;
+  });
 
 /** `CREDENTIALS_KEYS`: comma-separated `<key id>:<base64 of exactly 32 bytes>` entries. */
 const credentialsKeys = () =>
@@ -172,8 +194,17 @@ export const serverVariables = {
   PUSH_DISABLED: boolean().default(false),
   EXPO_ACCESS_TOKEN: secret().optional(),
   EXPO_PUSH_URL: httpUrl().default(expoPushServiceUrl),
-  // geo
+  // geo (INT-2 plan 2.7, 2.11): the geocoder's sources in chain order, the explicit pause, the
+  // official National Address API key, Hudhud's secret key, and each source's base URL (a local
+  // server in tests).
+  GEOCODER_SOURCES: sourceList().optional(),
+  GEOCODER_DISABLED: boolean().default(false),
+  NATIONAL_ADDRESS_API_KEY: secret().optional(),
   HUDHUD_API_KEY: secret().optional(),
+  HUDHUD_API_URL: httpUrl().default(geocoderServiceUrls.HUDHUD_API_URL),
+  SPL_API_URL: httpUrl().default(geocoderServiceUrls.SPL_API_URL),
+  SPL_POI_URL: httpUrl().default(geocoderServiceUrls.SPL_POI_URL),
+  SAYYAR_URL: httpUrl().default(geocoderServiceUrls.SAYYAR_URL),
   VROOM_URL: httpUrl().optional(),
   OSRM_URL: httpUrl().optional(),
   // observability
@@ -249,7 +280,14 @@ export const serverExpectations = {
   PUSH_DISABLED: 'true or false',
   EXPO_ACCESS_TOKEN: 'an Expo access token',
   EXPO_PUSH_URL: 'an http(s) URL',
+  GEOCODER_SOURCES: `a comma-separated list of distinct sources: ${geocoderSources.join(', ')}`,
+  GEOCODER_DISABLED: 'true or false',
+  NATIONAL_ADDRESS_API_KEY: 'a National Address API key',
   HUDHUD_API_KEY: 'a Hudhud API key',
+  HUDHUD_API_URL: 'an http(s) URL',
+  SPL_API_URL: 'an http(s) URL',
+  SPL_POI_URL: 'an http(s) URL',
+  SAYYAR_URL: 'an http(s) URL',
   VROOM_URL: 'an http(s) URL',
   OSRM_URL: 'an http(s) URL',
   OTEL_EXPORTER_OTLP_ENDPOINT: 'an http(s) URL',
@@ -348,7 +386,25 @@ export interface Config {
     readonly expoPushUrl: string;
   };
   readonly geo: {
+    /**
+     * The geocoder's sources in chain order (`GEOCODER_SOURCES`); unset means `stub` in local and
+     * ci and `spl,sayyar,hudhud` elsewhere (INT-2 plan 2.11). A source without its key is skipped.
+     */
+    readonly geocoderSources: readonly GeocoderSource[];
+    /** `GEOCODER_DISABLED=true`: every geocoder call answers `unavailable` (INT-2 plan 2.7). */
+    readonly geocoderDisabled: boolean;
+    /** The official National Address API key (SPL short-code lookups); sent as `api_key`. */
+    readonly nationalAddressApiKey: Secret | undefined;
+    /** Hudhud's secret key, sent only as the bearer token to `hudhudApiUrl`. */
     readonly hudhudApiKey: Secret | undefined;
+    /** Hudhud's API base URL (`https://b.hudhud.sa`). */
+    readonly hudhudApiUrl: string;
+    /** The official National Address API (`https://apina.address.gov.sa`). */
+    readonly splApiUrl: string;
+    /** The National Address POI API, the reverse lookup (`https://beta-api.address.gov.sa`). */
+    readonly splPoiUrl: string;
+    /** The Sayyar mirror (`https://sayyar.com`). */
+    readonly sayyarUrl: string;
     readonly vroomUrl: string | undefined;
     readonly osrmUrl: string | undefined;
   };
@@ -457,6 +513,7 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
     raw: (variable) => (Object.hasOwn(env, variable) ? env[variable] : undefined),
     messagingDisabled: v.MESSAGING_DISABLED,
     pushDisabled: v.PUSH_DISABLED,
+    geocoderDisabled: v.GEOCODER_DISABLED,
     role,
   });
   issues.push(...refusals.filter((issue) => !reported.has(issue.variable)));
@@ -531,7 +588,18 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       expoAccessToken: v.EXPO_ACCESS_TOKEN,
       expoPushUrl: v.EXPO_PUSH_URL,
     },
-    geo: { hudhudApiKey: v.HUDHUD_API_KEY, vroomUrl: v.VROOM_URL, osrmUrl: v.OSRM_URL },
+    geo: {
+      geocoderSources: v.GEOCODER_SOURCES ?? defaultGeocoderSources(appEnv),
+      geocoderDisabled: v.GEOCODER_DISABLED,
+      nationalAddressApiKey: v.NATIONAL_ADDRESS_API_KEY,
+      hudhudApiKey: v.HUDHUD_API_KEY,
+      hudhudApiUrl: v.HUDHUD_API_URL,
+      splApiUrl: v.SPL_API_URL,
+      splPoiUrl: v.SPL_POI_URL,
+      sayyarUrl: v.SAYYAR_URL,
+      vroomUrl: v.VROOM_URL,
+      osrmUrl: v.OSRM_URL,
+    },
     observability: {
       otlpEndpoint: v.OTEL_EXPORTER_OTLP_ENDPOINT,
       otlpHeaders: v.OTEL_EXPORTER_OTLP_HEADERS,
