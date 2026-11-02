@@ -14,6 +14,7 @@ import { PLATFORM_POOL } from '../platform/tokens.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { RATE_LIMITER } from '../rate-limit/rate-limiter.js';
 import { MembersController } from '../members/members.controller.js';
+import { PlatformAccountsController } from '../provisioning/platform-accounts.controller.js';
 import { AccessTokenIssuer } from './access-token.js';
 import { Invitations } from './invitations.js';
 import { PasswordResets } from './password-resets.js';
@@ -39,8 +40,14 @@ export class AuthModule {
       module: AuthModule,
       imports: [KernelModule],
       // PLAT-12: the staff surface's member doors, here because they delegate to `Invitations` and
-      // `SecondFactorResets` (plan 2.9).
-      controllers: [StaffAuthController, PlatformAuthController, MembersController],
+      // `SecondFactorResets` (plan 2.9). PLAT-13: the platform account doors, here because the
+      // provisioning door and `platformInviteOwner` delegate the owner's invitation to `Invitations`.
+      controllers: [
+        StaffAuthController,
+        PlatformAuthController,
+        MembersController,
+        PlatformAccountsController,
+      ],
       providers: [
         { provide: PasswordHasher, useFactory: () => new PasswordHasher() },
         // Read once at boot; a missing or malformed list stops the boot (plan 2.2).

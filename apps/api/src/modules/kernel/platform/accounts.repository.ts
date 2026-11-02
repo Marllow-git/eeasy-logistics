@@ -40,7 +40,8 @@ export interface AccountRecord {
   readonly updatedAt: Date;
 }
 
-const recordColumns = {
+/** The columns of an `AccountRecord` (PLAT-13's provisioning repository selects the same). */
+export const recordColumns = {
   id: coreAccounts.id,
   name: coreAccounts.name,
   status: coreAccounts.status,
