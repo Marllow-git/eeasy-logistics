@@ -3,6 +3,7 @@ import type {
   Membership,
   PlatformListAccountMembers200,
   PlatformListAccounts200,
+  Site,
 } from '@eeasy-logistics/contracts/platform/schemas';
 import { operationSchemas } from '@eeasy-logistics/contracts/platform/schemas';
 import { findContext, findPlatformContext } from '@eeasy-logistics/db';
@@ -37,6 +38,10 @@ import type { AccountSortField } from '../platform/provisioning.repository.js';
 import { accountStatuses } from '../schema/accounts.js';
 import { CrossTenant, accountIdParam, optionalReason } from '../tenancy/cross-tenant.js';
 import { presentListedAccount, presentPlatformAccount } from './platform-accounts.presenter.js';
+import { SiteUseChecks } from '../sites/site-use.js';
+import { presentSite } from '../sites/sites.presenter.js';
+import { SitesService } from '../sites/sites.service.js';
+import { assertProvisionable } from './provisioning-door.js';
 import { ProvisioningService } from './provisioning.service.js';
 
 // The platform surface's `accounts` tag (PLAT-13 plan 2.2 to 2.4; ADR-0006; K-1): list,
@@ -46,7 +51,9 @@ import { ProvisioningService } from './provisioning.service.js';
 // their contract declares no `SupportReason` (lead ruling on 8.2 #8), so the row carries it when
 // sent. `x-permission` (`platform.accounts.read`, `platform.accounts.provision`) is PLAT-10's
 // guard. Registered by `AuthModule`, whose `Invitations` the owner's invitation is delegated to.
-// `platformProvisionZone` and `platformProvisionCoverage` are DEL-1's (ADR-0015). Suspension,
+// DEL-1 (plan 2.6; ADR-0015) adds `platformProvisionSite`: PLAT-12's `createSite` rules and limit
+// under the door's account, written on the door's platform transaction; `platformProvisionZone` and
+// `platformProvisionCoverage` are Delivery's (`delivery/zones/platform-zones.controller.ts`). Suspension,
 // reactivation and closure (leg 2, plan 2.7) are doors too, with the reason in the body
 // (`platform.accounts.suspend`). `platformListAccountMembers` (plan 2.8, `support` tag) reads the
 // account's members through the door with `X-Support-Reason` required: PLAT-12's list and
@@ -61,6 +68,7 @@ const suspendOp = operationSchemas.platformSuspendAccount;
 const reactivateOp = operationSchemas.platformReactivateAccount;
 const closeOp = operationSchemas.platformCloseAccount;
 const membersOp = operationSchemas.platformListAccountMembers;
+const provisionSiteOp = operationSchemas.platformProvisionSite;
 
 /** The lifecycle doors carry their reason in the body (`PlatformReasonRequest`), as the door's. */
 const bodyReason = { from: 'path', name: accountIdParam, reason: 'body' } as const;
@@ -76,12 +84,14 @@ export class PlatformAccountsController {
   private readonly provisioning: ProvisioningService;
   private readonly accounts: AccountService;
   private readonly members: MembersService;
+  private readonly sites: SitesService;
 
   constructor(
     @Inject(AUDIT_SINK) audit: AuditSink,
     outbox: OutboxWriter,
     invitations: Invitations,
     resets: SecondFactorResets,
+    checks: SiteUseChecks,
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
     @Optional() @Inject(PERMISSION_RESOLVER) resolver?: PermissionResolver | null,
   ) {
@@ -100,6 +110,7 @@ export class PlatformAccountsController {
       resolver: resolver ?? undefined,
       resets,
     });
+    this.sites = new SitesService({ checks, accounts: store, audit, outbox });
   }
 
   @Get()
@@ -197,6 +208,24 @@ export class PlatformAccountsController {
       q: undefined,
     });
     return presentPage(page, presentMember);
+  }
+
+  /**
+   * `platformProvisionSite` (DEL-1 plan 2.6): the account's site as `createSite` makes it (rules,
+   * `limits.sites` under the account's site lock, audited), with the platform user as the actor;
+   * a closed account is `409 invalid_transition`.
+   */
+  @Post(':account_id/sites')
+  @HttpCode(201)
+  @CrossTenant(optionalReason)
+  @Idempotent()
+  @Operation(provisionSiteOp)
+  async provisionSite(
+    @Input() input: ContractInput<typeof provisionSiteOp>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<Site> {
+    await assertProvisionable();
+    return presentSite(await this.sites.create(input.body, facts));
   }
 
   /** `active → suspended` (plan 2.7); the body's reason is the door's and the audit row's. */

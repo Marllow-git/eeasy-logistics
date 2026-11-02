@@ -134,3 +134,9 @@ export {
 // Feature gate (PLAT-13 plan 2.5): DEL and WMS routes carry `@Feature('delivery' | 'wms')`.
 export { Feature, FeatureGate } from '../features/feature-gate.js';
 export { featureKeys, type FeatureKey } from '../features/feature-keys.js';
+// Zones and coverage (DEL-1 plan 2.1, 2.4, 2.6): the tables (kernel-owned schema files), the kind
+// and status of the sites a coverage door names, the provisioning doors' account check and door.
+export { delCoverage, delZones, zoneSources, type ZoneSource } from '../schema/zones.js';
+export { siteSummaries, type SiteSummary } from '../sites/sites.repository.js';
+export { assertProvisionable } from '../provisioning/provisioning-door.js';
+export { optionalReason } from '../tenancy/cross-tenant.js';

@@ -58,6 +58,25 @@ function pointValue(point: LatLng | null): SQL {
     : sql`ST_SetSRID(ST_MakePoint(${point.lng}::float8, ${point.lat}::float8), 4326)`;
 }
 
+/** A site's id, kind and status: what another context checks before it references a site. */
+export interface SiteSummary {
+  readonly id: string;
+  readonly kind: SiteKind;
+  readonly status: SiteStatus;
+}
+
+/**
+ * The sites of the unit of work's account among `ids`, any status (DEL-1 plan 2.4, 2.6: the
+ * coverage doors check kind and status; another account's id is simply absent).
+ */
+export async function siteSummaries(
+  uow: UnitOfWork,
+  ids: readonly string[],
+): Promise<SiteSummary[]> {
+  if (ids.length === 0) return [];
+  return new SitesRepository(uow).summaries(ids);
+}
+
 /** `core_sites` of the context's account (PLAT-12 plan 2.2, 2.5; ADR-0018). */
 export class SitesRepository extends ScopedRepository<typeof coreSites> {
   constructor(uow: UnitOfWork) {
@@ -76,6 +95,13 @@ export class SitesRepository extends ScopedRepository<typeof coreSites> {
    */
   lockWrites(): Promise<void> {
     return this.transactionLock('core_sites');
+  }
+
+  summaries(ids: readonly string[]): Promise<SiteSummary[]> {
+    return this.selectWhere<SiteSummary>(
+      { id: coreSites.id, kind: coreSites.kind, status: coreSites.status },
+      inArray(coreSites.id, [...ids]),
+    );
   }
 
   async find(id: string): Promise<SiteRow | undefined> {

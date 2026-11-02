@@ -3,7 +3,6 @@
 //   seed --template    rebuilds elx_seed from zero (migrate plus seed) for tools/stack.sh clone
 import { loadConfig } from '@eeasy-logistics/config/node';
 import { Logger } from '@nestjs/common';
-import { accountFixtures } from './fixtures.js';
 import { buildSeedTemplate, seedFixtures, seedTemplateDatabase } from './seed.js';
 
 const logger = new Logger('Seed');
@@ -20,9 +19,7 @@ async function main(): Promise<void> {
     return;
   }
   const inserted = await seedFixtures(config.db);
-  logger.log(
-    `Seeded ${inserted} of ${accountFixtures.length} fixture account(s); the rest existed.`,
-  );
+  logger.log(`Seeded ${inserted} fixture row(s); the rest existed.`);
 }
 
 try {

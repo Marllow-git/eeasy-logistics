@@ -28,6 +28,7 @@ import {
   planListPage,
   presentPage,
   textQuery,
+  Feature,
 } from '../../kernel/public/index.js';
 import { DRIVER_APP_URL } from '../delivery.tokens.js';
 import { presentDriverDevice } from './driver-devices.presenter.js';
@@ -60,6 +61,9 @@ const driverSorts: ListSorts<DriverSortField> = {
   default: '-created_at',
 };
 
+// The `delivery` module's feature gate (DEL-1 plan 2.9; ADR-0006): `403 feature_not_enabled`
+// for an account the module is not visible to (K-6).
+@Feature('delivery')
 @Controller('v1/staff/drivers')
 export class DriversController {
   private readonly cursors: CursorCodec;
