@@ -1,7 +1,8 @@
 // The support reason of a tab (web §3.5; WEB-4 plan 2.4, §7 #4): held in `sessionStorage` under
-// `elx:support:<accountId>`, so it survives a reload in that tab and is never shared with another
-// tab; removed when the tab leaves the account's routes and on sign-out. Pure functions over a
-// `Storage`, no runtime imports, so `node --test` runs them as they are.
+// `elx:support:<userId>:<accountId>`, so it survives a reload in that tab, is never shared with
+// another tab and is never read by another staff member signing in on the same tab (adversary fix
+// round 1, M); removed when the tab leaves the account's routes and whenever the session ends.
+// Pure functions over a `Storage`, no runtime imports, so `node --test` runs them as they are.
 
 export const reasonPrefix = 'elx:support:';
 
@@ -20,18 +21,29 @@ export function accountOfPath(pathname: string | null): string | undefined {
   return id !== undefined && uuid.test(id) ? id.toLowerCase() : undefined;
 }
 
-export function readReason(storage: ReasonStorage, accountId: string): string | undefined {
-  const value = storage.getItem(reasonPrefix + accountId.toLowerCase());
+/** Whose reason for which account: the signed-in staff member's, for one account. */
+export interface ReasonOwner {
+  readonly userId: string;
+  readonly accountId: string;
+}
+
+/** The storage key of `owner`'s reason. */
+export function reasonKey({ userId, accountId }: ReasonOwner): string {
+  return `${reasonPrefix}${userId.toLowerCase()}:${accountId.toLowerCase()}`;
+}
+
+export function readReason(storage: ReasonStorage, owner: ReasonOwner): string | undefined {
+  const value = storage.getItem(reasonKey(owner));
   return value === null || value === '' ? undefined : value;
 }
 
-export function writeReason(storage: ReasonStorage, accountId: string, reason: string): void {
-  storage.setItem(reasonPrefix + accountId.toLowerCase(), reason);
+export function writeReason(storage: ReasonStorage, owner: ReasonOwner, reason: string): void {
+  storage.setItem(reasonKey(owner), reason);
 }
 
-/** Removes every account's reason but `keep`'s (none: all of them). */
-export function keepOnly(storage: ReasonStorage, keep: string | undefined): void {
-  const kept = keep === undefined ? undefined : reasonPrefix + keep.toLowerCase();
+/** Removes every stored reason, any user's and any account's, but `keep`'s (none: all of them). */
+export function keepOnly(storage: ReasonStorage, keep: ReasonOwner | undefined): void {
+  const kept = keep === undefined ? undefined : reasonKey(keep);
   const stale: string[] = [];
   for (let index = 0; index < storage.length; index++) {
     const key = storage.key(index);

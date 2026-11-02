@@ -35,26 +35,42 @@ class MemoryStorage implements ReasonStorage {
 
 const one = '01920000-0000-7aaa-8bbb-000000000001';
 const two = '01920000-0000-7aaa-8bbb-000000000002';
+const support = '01930000-0000-7aaa-8bbb-00000000000a';
+const operator = '01930000-0000-7aaa-8bbb-00000000000b';
 
 void describe('the support reason store', () => {
-  void it('holds a reason per account, never another account’s', () => {
+  void it('holds a reason per user and account, never another account’s or user’s', () => {
     const storage = new MemoryStorage();
-    writeReason(storage, one, 'Ticket 4411: driver cannot see orders');
-    assert.equal(readReason(storage, one), 'Ticket 4411: driver cannot see orders');
-    assert.equal(readReason(storage, two), undefined);
-    assert.equal(readReason(storage, one.toUpperCase()), 'Ticket 4411: driver cannot see orders');
+    writeReason(
+      storage,
+      { userId: support, accountId: one },
+      'Ticket 4411: driver cannot see orders',
+    );
+    assert.equal(
+      readReason(storage, { userId: support, accountId: one }),
+      'Ticket 4411: driver cannot see orders',
+    );
+    assert.equal(readReason(storage, { userId: support, accountId: two }), undefined);
+    assert.equal(
+      readReason(storage, { userId: support.toUpperCase(), accountId: one.toUpperCase() }),
+      'Ticket 4411: driver cannot see orders',
+    );
+    // Adversary fix round 1 (M): another staff member signing in on the tab never reads it.
+    assert.equal(readReason(storage, { userId: operator, accountId: one }), undefined);
   });
 
-  void it('keeps only the account the tab is on, and nothing once it leaves', () => {
+  void it('keeps only the user and account the tab is on, and nothing once it leaves', () => {
     const storage = new MemoryStorage();
     storage.setItem('elx:table:accounts', 'kept');
-    writeReason(storage, one, 'first reason');
-    writeReason(storage, two, 'second reason');
-    keepOnly(storage, two);
-    assert.equal(readReason(storage, one), undefined);
-    assert.equal(readReason(storage, two), 'second reason');
+    writeReason(storage, { userId: support, accountId: one }, 'first reason');
+    writeReason(storage, { userId: support, accountId: two }, 'second reason');
+    writeReason(storage, { userId: operator, accountId: two }, 'the other user’s reason');
+    keepOnly(storage, { userId: support, accountId: two });
+    assert.equal(readReason(storage, { userId: support, accountId: one }), undefined);
+    assert.equal(readReason(storage, { userId: operator, accountId: two }), undefined);
+    assert.equal(readReason(storage, { userId: support, accountId: two }), 'second reason');
     keepOnly(storage, undefined);
-    assert.equal(readReason(storage, two), undefined);
+    assert.equal(readReason(storage, { userId: support, accountId: two }), undefined);
     assert.equal(storage.getItem('elx:table:accounts'), 'kept');
   });
 

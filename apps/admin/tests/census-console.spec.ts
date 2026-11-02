@@ -20,6 +20,8 @@ import {
   platformEmail,
   platformSignIn,
   projectOf,
+  replaceCookie,
+  sessionCookie,
   totpCode,
   type CensusProject,
 } from './census/session';
@@ -267,6 +269,51 @@ test('the support reason: asked once per tab and account, kept, cleared on exit'
   expect(stored, 'support reasons left in the tab after exit').toEqual([]);
   await page.goto(`/accounts/${account.id}`);
   await expect(gate).toBeVisible();
+});
+
+/** The access token with its claims kept and a signature the API refuses (`401 token_invalid`). */
+function refusedCopy(token: string): string {
+  const [header = '', payload = ''] = token.split('.');
+  return `${header}.${payload}.${Buffer.from('not the signature').toString('base64url')}`;
+}
+
+// Adversary fix round 1 (M): a stored support reason must not outlive the session. The admin's
+// edit is unsaved, so the refused token opens the re-sign-in dialog; "another account" ends the
+// session, which drops every stored reason before the sign-in page; the next user is asked again.
+test('an ended session forgets the support reasons: the next user is asked again', async ({
+  page,
+  locale,
+}) => {
+  await platformSignIn(page, 'operator', project());
+  const account = consoleAccount('active', project());
+  await openAccount(page, locale, account);
+  await page
+    .getByLabel(p(locale, 'provision.fields.name'), { exact: true })
+    .fill(`${account.name} 2`);
+  const access = (await sessionCookie(page.context(), 'el_platform_at'))!;
+  await replaceCookie(page.context(), 'el_platform_at', refusedCopy(access.value));
+  await page.getByRole('button', { name: p(locale, 'account.details.save') }).click();
+  const dialog = page.getByRole('dialog', {
+    name: message(locale, 'auth', 'session.dialog_title'),
+  });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByRole('button', { name: message(locale, 'auth', 'session.dialog_other_user') })
+    .click();
+  await expect(page).toHaveURL(/\/sign-in\?.*reason=ended/);
+  const stored = await page.evaluate(() =>
+    Object.keys(window.sessionStorage).filter((key) => key.startsWith('elx:support:')),
+  );
+  expect(stored, 'support reasons left in the tab after the session ended').toEqual([]);
+
+  await page.context().clearCookies({ name: /^el_platform_/ });
+  await platformSignIn(page, 'support', project());
+  await page.goto(`/accounts/${account.id}`);
+  await expect(
+    page.getByRole('alertdialog', {
+      name: p(locale, 'account.gate.title', { name: account.name }),
+    }),
+  ).toBeVisible();
 });
 
 test('suspend with a reason shows the notice; reactivate restores the account', async ({
