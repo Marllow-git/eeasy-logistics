@@ -6,6 +6,8 @@ import { AccountController } from './accounts/account.controller.js';
 import { AuditLogController } from './audit/audit-log.controller.js';
 import { AuditWriter } from './audit/audit-writer.js';
 import { DenialAuditThrottle } from './authz/denial-throttle.js';
+import { FeatureGate } from './features/feature-gate.js';
+import { PlatformFeaturesController } from './features/platform-features.controller.js';
 import { OperationRoutesCheck } from './authz/operation-routes.check.js';
 import { PermissionGuard } from './authz/permission.guard.js';
 import { PlatformAuditLogController } from './audit/platform-audit-log.controller.js';
@@ -37,13 +39,14 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
   // platform outbox operations (PLAT-8): list, read and replay rows, list the consumers.
   // PLAT-12: the staff surface's account doors (getAccount, getAccountSettings,
   // updateAccountSettings) and site doors (listSites, createSite, getSite, updateSite,
-  // deactivateSite, activateSite).
+  // deactivateSite, activateSite). PLAT-13: the rollout modes and an account's feature flags.
   controllers: [
     AuditLogController,
     PlatformAuditLogController,
     PlatformOutboxController,
     AccountController,
     SitesController,
+    PlatformFeaturesController,
   ],
   providers: [
     IdempotentRoutesCheck,
@@ -60,6 +63,9 @@ import { UnitOfWorkInterceptor } from './tenancy/unit-of-work.interceptor.js';
     // JSON bodies only (adversary H-1): a form post is refused before any interceptor.
     { provide: APP_GUARD, useClass: ContentTypeGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
+    // PLAT-13 plan 2.5: K-6 for a `@Feature()` route, after its permission (a caller without the
+    // permission is `403 forbidden` whatever the feature's state).
+    { provide: APP_GUARD, useClass: FeatureGate },
     // PLAT-14: the operation id on the request span; opens nothing, so the unit of work stays the
     // first interceptor that does.
     { provide: APP_INTERCEPTOR, useClass: RequestTelemetryInterceptor },

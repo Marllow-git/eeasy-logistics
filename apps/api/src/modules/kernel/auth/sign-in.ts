@@ -19,7 +19,7 @@ import { countedLogin, countRevocations } from './auth-metrics.js';
 import { authenticationMethods } from './access-token.js';
 import type { IssuedSession } from './cookies.js';
 import type { StaffMeView } from './me.js';
-import { permissionsOf, staffPrincipal } from './me.js';
+import { featuresOf, permissionsOf, staffPrincipal } from './me.js';
 import type { BreachedPasswords, PasswordHasher } from './passwords.js';
 import { passwordProblem } from './passwords.js';
 import type { Principal } from './principal.js';
@@ -446,7 +446,7 @@ export class StaffSignIn {
         user,
         membership,
         permissions: permissionsOf(this.#deps.resolver, principal),
-        features: [],
+        features: await featuresOf(tx, membership.accountId),
       },
     };
   }
