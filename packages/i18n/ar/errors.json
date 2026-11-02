@@ -25,6 +25,7 @@
     "reauthentication_required": "أكّد كلمة المرور للمتابعة.",
     "second_factor_already_enrolled": "عامل التحقق الثاني مُعدّ من قبل.",
     "otp_invalid": "الرمز غير صحيح أو منتهي الصلاحية.",
+    "account_choice_required": "اختر الحساب الذي تريد الدخول إليه.",
     "device_limit_reached": "بلغت الحد الأقصى لعدد الأجهزة.",
     "device_revoked": "سُجّل خروج هذا الجهاز.",
     "app_update_required": "حدّث التطبيق للمتابعة.",

@@ -79,23 +79,45 @@ export class DriverSignIn {
   }
 
   /**
-   * The code check of `driverVerifyOtp` (plan 2.7, 2.12): `driver_verify_ip` charged, PLAT-9's
-   * verification (single use under its row lock, five attempts) run once for every phone, then the
-   * driver the phone may sign in as (the most recently changed when it drives for several
-   * accounts). No driver (a disabled person, a membership or account not active, a suspended or
-   * archived driver) is the same `401 otp_invalid` as a wrong code.
+   * The code check of `driverVerifyOtp` (plan 2.7, 2.12; adversary H-2): `driver_verify_ip`
+   * charged, the drivers the phone may sign in as looked up (for every phone, so the door costs the
+   * same), then PLAT-9's verification (single use under its row lock, five attempts). A phone with
+   * several `active` driver rows and no `accountId` is `409 account_choice_required` listing their
+   * accounts, after the code matched and without spending it (the match counts one attempt), so
+   * the app sends the same code again with the choice; a membership is never picked silently. An
+   * `accountId` that names none of the phone's rows, and no driver at all (a disabled person, a
+   * membership or account not active, a suspended or archived driver), are the same `401
+   * otp_invalid` as a wrong code.
    */
   async verifyCode(
-    input: { readonly phone: string; readonly code: string },
+    input: { readonly phone: string; readonly code: string; readonly accountId?: string },
     facts: Pick<RequestFacts, 'ip'>,
   ): Promise<SignedInDriver> {
     await this.#deps.limiter?.charge('driver_verify_ip', `ip:${addressKey(facts.ip ?? undefined)}`);
+    const normal = normalisePhone(input.phone);
+    const drivers =
+      normal === undefined
+        ? []
+        : await this.#identity().run((tx) => tx.memberships.driversOfPhone(normal));
+    const choose = input.accountId === undefined && drivers.length > 1;
     const { phone } = await this.#deps.otp.verify({
       phone: input.phone,
       purpose: 'driver_login',
       code: input.code,
+      consume: !choose,
     });
-    const [driver] = await this.#identity().run((tx) => tx.memberships.driversOfPhone(phone));
+    if (choose) {
+      this.#logger.log(`driver sign-in needs an account choice phone=${phoneTail(phone)}`);
+      throw new ApiException('account_choice_required', {
+        details: {
+          accounts: drivers.map((row) => ({ account_id: row.accountId, name: row.accountName })),
+        },
+      });
+    }
+    const driver =
+      input.accountId === undefined
+        ? drivers[0]
+        : drivers.find((row) => row.accountId === input.accountId);
     if (driver === undefined) {
       this.#logger.log(`driver sign-in refused: no eligible driver phone=${phoneTail(phone)}`);
       throw new ApiException('otp_invalid');

@@ -132,6 +132,61 @@ describe('driver sign-in over HTTP (DEL-4 item D)', () => {
     expect(again.device).toMatchObject({ id: session.device?.id, revoked_at: null });
   });
 
+  it('asks a phone that drives for two accounts to choose, without spending the code (adversary H-2)', async () => {
+    const inA = await plantDriver(owner);
+    const inB = await plantDriver(owner, { userId: inA.userId, phone: inA.phone });
+    const names = await owner<{ id: string; name: string }[]>`
+      SELECT id, name FROM core_accounts WHERE id IN (${inA.accountId}, ${inB.accountId})`;
+    await requestCode(http, owner, inA.phone);
+    const code = await codeOf(owner, config, inA.phone);
+    const verify = (body: object) =>
+      http()
+        .post('/v1/driver/auth/otp/verify')
+        .set('X-Forwarded-For', driverAddress())
+        .set('Accept-Language', 'en')
+        .send({ phone: inA.phone, code, device: newDevice(), ...body });
+
+    const choice = await verify({}).expect(409);
+    const body = errorOf(choice.body);
+    expect(body.code).toBe('account_choice_required');
+    const accounts = (body.details as { accounts: { account_id: string; name: string }[] })
+      .accounts;
+    expect([...accounts].sort((x, y) => x.account_id.localeCompare(y.account_id))).toEqual(
+      names
+        .map((row) => ({ account_id: row.id, name: row.name }))
+        .sort((x, y) => x.account_id.localeCompare(y.account_id)),
+    );
+    // No session, no device row yet; the same code then signs into the chosen account, once.
+    const [devices] = await owner<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM del_driver_devices
+      WHERE driver_id IN (${inA.driverId}, ${inB.driverId})`;
+    expect(devices?.n).toBe(0);
+    const chosen = await verify({ account_id: inB.accountId }).expect(200);
+    expect(schemas.DriverVerifyOtp200Response.parse(chosen.body).driver?.id).toBe(inB.driverId);
+    expect(errorOf((await verify({ account_id: inB.accountId }).expect(401)).body).code).toBe(
+      'otp_invalid',
+    );
+  });
+
+  it('answers otp_invalid for an account_id that names none of the phone\'s active drivers', async () => {
+    const driver = await plantDriver(owner);
+    const suspended = await plantDriver(owner, {
+      userId: driver.userId,
+      phone: driver.phone,
+      driverStatus: 'suspended',
+    });
+    const other = await plantDriver(owner);
+    for (const accountId of [suspended.accountId, other.accountId]) {
+      const response = await verifyOn(http, owner, config, driver.phone, newDevice(), accountId);
+      expect(response.status).toBe(401);
+      expect(errorOf(response.body).code).toBe('otp_invalid');
+    }
+    // One active row: no choice needed, and naming it works too.
+    const session = await signIn(http, owner, config, driver.phone, newDevice(), driver.accountId);
+    expect(session.driver?.id).toBe(driver.driverId);
+    expect((await signIn(http, owner, config, driver.phone)).driver?.id).toBe(driver.driverId);
+  });
+
   it('answers 400 for a device the table would refuse, before the code is spent', async () => {
     const driver = await plantDriver(owner);
     await requestCode(http, owner, driver.phone);

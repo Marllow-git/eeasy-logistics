@@ -87,6 +87,12 @@ export interface OtpVerification {
   readonly phone: string;
   readonly purpose: OtpPurpose;
   readonly code: string;
+  /**
+   * False: a right code proves possession without being spent (DEL-4 adversary H-2: the driver
+   * still has to choose an account and sends the same code again). The match counts as one of the
+   * challenge's five attempts, so a code answers at most five times. Default true.
+   */
+  readonly consume?: boolean;
 }
 
 /** What `verify` proves: the E.164 phone that received the code. */
@@ -242,7 +248,8 @@ export class OtpService {
       }
       const ids = live.map((challenge) => challenge.id);
       if (matched && wellFormed) {
-        await challenges.consumeAll(ids);
+        if (input.consume === false) await challenges.recordFailures(ids);
+        else await challenges.consumeAll(ids);
         return true;
       }
       await challenges.recordFailures(ids);

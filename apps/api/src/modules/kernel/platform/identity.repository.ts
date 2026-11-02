@@ -407,6 +407,7 @@ export class MembershipsRepository extends PlatformRepository<typeof coreMembers
         tokenVersion: coreUsers.tokenVersion,
         membershipId: coreMemberships.id,
         accountId: coreMemberships.accountId,
+        accountName: coreAccounts.name,
         roles: coreMemberships.roles,
         siteIds: coreMemberships.siteIds,
         driverId: delDrivers.id,
@@ -441,6 +442,8 @@ export interface DriverSignInRow {
   readonly tokenVersion: number;
   readonly membershipId: string;
   readonly accountId: string;
+  /** The account's name: the choice `account_choice_required` offers (adversary H-2). */
+  readonly accountName: string;
   readonly roles: string[];
   readonly siteIds: string[];
   readonly driverId: string;
