@@ -41,6 +41,22 @@ export {
   type PlatformInvitation,
   type StaffInvitation,
 } from '../auth/invitations.js';
+// Push (INT-4 plan 2.1, 2.3, 2.5): the port, the `push` row payload the Delivery producers write,
+// and the token invalidation registry DEL-4 fills with "clear `push_token` on that device row".
+export type { PushPayload } from '../push/push.handler.js';
+export type { PushTemplateKey } from '../push/push-templates.js';
+export type {
+  PushChannel,
+  PushMessage,
+  PushReceipt,
+  PushSender,
+  PushTicket,
+} from '../push/push-sender.js';
+export {
+  PushTokenInvalidations,
+  type PushTokenInvalidation,
+  type PushTokenInvalidationHandler,
+} from '../push/invalidations.js';
 // Second-factor resets (PLAT-11 plan 2.8): PLAT-12's `resetMemberSecondFactor`.
 export {
   SecondFactorResets,

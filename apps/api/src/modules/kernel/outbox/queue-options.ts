@@ -87,10 +87,12 @@ export const outboxQueuePolicies: Readonly<Record<OutboxKind, QueuePolicy>> = {
   },
   push: {
     concurrency: 4,
-    limiter: { max: 500, durationMs: second, per: 'queue', toConfirm: true },
+    // INT-4 plan 2.8: confirmed below Expo's 600 notifications per second per project (Expo Push
+    // HTTP API, read 2026-11-02); a 429 still reschedules at Retry-After without an attempt.
+    limiter: { max: 500, durationMs: second, per: 'queue', toConfirm: false },
     backoff: { type: 'steps', delaysMs: [10 * second, 30 * second, 2 * minute] },
     deadAfter: { failures: 3 },
-    note: 'batches of 100 (PushSender)',
+    note: 'batches of 100 (PushSender); our access token refused waits 5 min without an attempt',
   },
   channel_publish: {
     concurrency: 8,

@@ -40,7 +40,8 @@ describe('outbox queue options (integrations §4.2)', () => {
     expect(p.internal_event.limiter).toBeNull();
     expect(p.webhook.limiter).toBeNull();
     expect(p.message.limiter).toEqual({ max: 40, durationMs: s, per: 'queue', toConfirm: true });
-    expect(p.push.limiter).toEqual({ max: 500, durationMs: s, per: 'queue', toConfirm: true });
+    // INT-4 plan 2.8: Expo publishes 600 per second per project (read 2026-11-02); 500 is below it.
+    expect(p.push.limiter).toEqual({ max: 500, durationMs: s, per: 'queue', toConfirm: false });
     expect(p.channel_publish.limiter).toEqual({
       max: 1,
       durationMs: s,

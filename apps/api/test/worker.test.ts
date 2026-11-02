@@ -4,6 +4,10 @@ import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { purgeIntervalMs, purgeLockKey } from '../src/worker/system/idempotency-purge.js';
 import { pruneIntervalMs } from '../src/worker/system/outbox-prune.js';
+import { PushTokenInvalidations } from '../src/modules/kernel/push/invalidations.js';
+import { PushKindHandler } from '../src/modules/kernel/push/push.handler.js';
+import { RecorderPushSender } from '../src/modules/kernel/push/recorder-push-sender.js';
+import { pushReceiptsIntervalMs } from '../src/worker/system/push-receipts.js';
 import type { WorkerDependencies } from '../src/worker/system/worker.js';
 import { startWorker } from '../src/worker/system/worker.js';
 
@@ -153,6 +157,48 @@ describe('worker startup', () => {
     );
     await vi.advanceTimersByTimeAsync(purgeIntervalMs);
     expect(set).toHaveBeenCalledTimes(2);
+  });
+
+  it('checks push receipts at once and every 5 minutes when a push handler exists (INT-4 plan 2.4)', async () => {
+    vi.useFakeTimers();
+    const { deps, log } = doubles();
+    const push = new PushKindHandler({
+      sender: new RecorderPushSender(),
+      tickets: { insertTickets: () => Promise.resolve() },
+      invalidations: new PushTokenInvalidations({ log: () => undefined, warn: () => undefined }),
+    });
+    const counts = { checked: 2, ok: 1, error: 1, noReceipt: 0, invalidated: 1, purged: 0 };
+    const pushReceipts = vi.fn<WorkerDependencies['pushReceipts']>(() =>
+      Promise.resolve({ ran: true as const, counts }),
+    );
+    const worker = await startWorker(
+      config({ DATABASE_URL_PLATFORM: platformUrl, REDIS_URL: redisUrl }),
+      { ...deps, kindHandlers: () => [push], pushReceipts },
+    );
+    expect(worker.jobs).toContain('push-receipts');
+    expect(pushReceipts).toHaveBeenCalledTimes(1);
+    expect(pushReceipts.mock.calls[0]?.[2]).toBe(push);
+    expect(log).toHaveBeenCalledWith(
+      'Push receipts: 2 tickets checked (1 ok, 1 error, 0 without receipt), 1 tokens invalidated, 0 tickets purged',
+    );
+    await vi.advanceTimersByTimeAsync(pushReceiptsIntervalMs);
+    expect(pushReceipts).toHaveBeenCalledTimes(2);
+    await worker.stop();
+    await vi.advanceTimersByTimeAsync(pushReceiptsIntervalMs);
+    expect(pushReceipts).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs no receipts job without a push handler', async () => {
+    const { deps, log } = doubles();
+    const pushReceipts = vi.fn();
+    const worker = await startWorker(
+      config({ DATABASE_URL_PLATFORM: platformUrl, REDIS_URL: redisUrl }),
+      { ...deps, pushReceipts },
+    );
+    expect(worker.jobs).not.toContain('push-receipts');
+    expect(pushReceipts).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith('Push receipts off: no push handler');
+    await worker.stop();
   });
 
   it('with OUTBOX_RELAY=off runs no relay but the queues (PLAT-8 plan 2.11)', async () => {

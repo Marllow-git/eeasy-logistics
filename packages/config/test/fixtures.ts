@@ -51,6 +51,9 @@ export const productionEnv: Record<string, string> = {
   ELX_RELEASE: 'sha-0123456789abcdef0123456789abcdef01234567',
   MAIL_SMTP_URL: 'smtps://mailer:fake-smtp-pw@smtp.example.test:465',
   MAIL_FROM: 'Eeasy Logistics <no-reply@example.test>',
+  // INT-4 plan 2.6: the worker's push decision.
+  PUSH_PROVIDER: 'expo',
+  EXPO_ACCESS_TOKEN: 'fake-expo-access-token-0123456789',
 };
 
 /**
