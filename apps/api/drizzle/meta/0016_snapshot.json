@@ -1,5 +1,5 @@
 {
-  "id": "19e754f5-3934-4ce5-a127-477bd40a5494",
+  "id": "0e6bee35-39bb-4510-a532-f03494e53814",
   "prevId": "de846a9b-6d84-4a3d-ba3e-df5dda27dd47",
   "version": "7",
   "dialect": "postgresql",
@@ -379,89 +379,6 @@
         "core_audit_log_action_check": {
           "name": "core_audit_log_action_check",
           "value": "\"core_audit_log\".\"action\" ~ '^[a-z]+\\.[a-z_]+\\.[a-z_]+$'"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.core_geocode_cache": {
-      "name": "core_geocode_cache",
-      "schema": "",
-      "columns": {
-        "key": {
-          "name": "key",
-          "type": "bytea",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "method": {
-          "name": "method",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "result": {
-          "name": "result",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "core_geocode_cache_expires_idx": {
-          "name": "core_geocode_cache_expires_idx",
-          "columns": [
-            {
-              "expression": "expires_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "core_geocode_cache_key_check": {
-          "name": "core_geocode_cache_key_check",
-          "value": "octet_length(\"core_geocode_cache\".\"key\") = 32"
-        },
-        "core_geocode_cache_method_check": {
-          "name": "core_geocode_cache_method_check",
-          "value": "\"core_geocode_cache\".\"method\" IN ('geocode', 'shortcode', 'reverse')"
-        },
-        "core_geocode_cache_provider_check": {
-          "name": "core_geocode_cache_provider_check",
-          "value": "\"core_geocode_cache\".\"provider\" IN ('spl', 'sayyar', 'hudhud')"
-        },
-        "core_geocode_cache_expiry_check": {
-          "name": "core_geocode_cache_expiry_check",
-          "value": "\"core_geocode_cache\".\"expires_at\" > \"core_geocode_cache\".\"created_at\""
         }
       },
       "isRLSEnabled": false
@@ -2918,6 +2835,186 @@
         "core_roles_surface_check": {
           "name": "core_roles_surface_check",
           "value": "\"core_roles\".\"surface\" IN ('staff', 'driver', 'platform')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.core_feature_flags": {
+      "name": "core_feature_flags",
+      "schema": "",
+      "columns": {
+        "account_id": {
+          "name": "account_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feature_key": {
+          "name": "feature_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "provisioned_by": {
+          "name": "provisioned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enabled_at": {
+          "name": "enabled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "core_feature_flags_account_id_core_accounts_id_fk": {
+          "name": "core_feature_flags_account_id_core_accounts_id_fk",
+          "tableFrom": "core_feature_flags",
+          "tableTo": "core_accounts",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "core_feature_flags_provisioned_by_core_users_id_fk": {
+          "name": "core_feature_flags_provisioned_by_core_users_id_fk",
+          "tableFrom": "core_feature_flags",
+          "tableTo": "core_users",
+          "columnsFrom": [
+            "provisioned_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "core_feature_flags_feature_key_fk": {
+          "name": "core_feature_flags_feature_key_fk",
+          "tableFrom": "core_feature_flags",
+          "tableTo": "core_rollout_modes",
+          "columnsFrom": [
+            "feature_key"
+          ],
+          "columnsTo": [
+            "feature_key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "core_feature_flags_pkey": {
+          "name": "core_feature_flags_pkey",
+          "columns": [
+            "account_id",
+            "feature_key"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "core_feature_flags_provisioned_check": {
+          "name": "core_feature_flags_provisioned_check",
+          "value": "NOT \"core_feature_flags\".\"enabled\" OR \"core_feature_flags\".\"provisioned_by\" IS NOT NULL"
+        },
+        "core_feature_flags_version_check": {
+          "name": "core_feature_flags_version_check",
+          "value": "\"core_feature_flags\".\"version\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.core_rollout_modes": {
+      "name": "core_rollout_modes",
+      "schema": "",
+      "columns": {
+        "feature_key": {
+          "name": "feature_key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'allowlist'"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "core_rollout_modes_updated_by_core_users_id_fk": {
+          "name": "core_rollout_modes_updated_by_core_users_id_fk",
+          "tableFrom": "core_rollout_modes",
+          "tableTo": "core_users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "core_rollout_modes_mode_check": {
+          "name": "core_rollout_modes_mode_check",
+          "value": "\"core_rollout_modes\".\"mode\" IN ('off', 'allowlist', 'all')"
         }
       },
       "isRLSEnabled": false

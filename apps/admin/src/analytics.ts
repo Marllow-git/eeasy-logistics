@@ -44,6 +44,17 @@ export type AnalyticsCatalogue = IdsAndEnumsOnly<{
     boundary: 'segment' | 'global';
     group: 'platform' | 'auth' | 'root';
   };
+  /** A console sign-in was submitted (WEB-2 plan 2.12): the surface only, never the email. */
+  'auth.sign_in.started': { surface: 'platform' };
+  /**
+   * A console sign-in ended in a session: how many factors it took (the `amr` length, always 2:
+   * password and TOTP), and whether the TOTP was enrolled on the way.
+   */
+  'auth.sign_in.succeeded': { surface: 'platform'; amr_count: number; enrolled: boolean };
+  /** The page's session ended (WEB-2 plan 2.12): why, nothing about who. */
+  'auth.session.ended': {
+    reason: 'token_invalid' | 'refresh_refused' | 'account_suspended';
+  };
 }>;
 
 export type AnalyticsEvent = keyof AnalyticsCatalogue;
@@ -51,6 +62,9 @@ export type AnalyticsEvent = keyof AnalyticsCatalogue;
 /** The event names at run time, for the census (`expectAnalyticsEvents`). */
 export const analyticsEvents = [
   'shell.error_page.shown',
+  'auth.sign_in.started',
+  'auth.sign_in.succeeded',
+  'auth.session.ended',
 ] as const satisfies readonly AnalyticsEvent[];
 
 // Every catalogue event is listed above, and nothing else.

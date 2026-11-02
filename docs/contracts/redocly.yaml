@@ -89,6 +89,7 @@ rules:
       - platformAcceptInvitation
       - platformEnrolTotp
       - platformConfirmTotp
+      - platformRedeemEnrolmentLink
       - platformRefresh
       - platformLogout
       # read-only computations sent as POST

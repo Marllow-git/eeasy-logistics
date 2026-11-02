@@ -24,6 +24,7 @@ describe('web public config (NEXT_PUBLIC_*)', () => {
       posthogKey: undefined,
       release: 'dev',
       posthogHost: 'https://eu.i.posthog.com',
+      storageOrigin: undefined,
     });
     expect(Object.isFrozen(config)).toBe(true);
   });
@@ -43,6 +44,7 @@ describe('web public config (NEXT_PUBLIC_*)', () => {
       'posthogKey',
       'release',
       'posthogHost',
+      'storageOrigin',
     ]);
   });
 
@@ -82,6 +84,7 @@ describe('publicConfig() entry points', () => {
     vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'phc_fake_project_key');
     vi.stubEnv('NEXT_PUBLIC_RELEASE', 'sha-census');
     vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', 'https://posthog.example.test');
+    vi.stubEnv('NEXT_PUBLIC_STORAGE_ORIGIN', 'https://files.example.test/bucket');
     const { publicConfig } = await import('../src/web.ts');
     expect(publicConfig()).toEqual({
       appEnv: 'ci',
@@ -89,6 +92,19 @@ describe('publicConfig() entry points', () => {
       posthogKey: 'phc_fake_project_key',
       release: 'sha-census',
       posthogHost: 'https://posthog.example.test',
+      storageOrigin: 'https://files.example.test',
+    });
+  });
+
+  it('web-server reads API_INTERNAL_URL and the public URLs (WEB-2)', async () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_ENV', 'ci');
+    vi.stubEnv('API_INTERNAL_URL', 'http://127.0.0.1:3000');
+    vi.stubEnv('PUBLIC_ADMIN_URL', 'http://localhost:3002');
+    const { webServerConfig } = await import('../src/web-server.ts');
+    expect(webServerConfig('admin')).toEqual({
+      appEnv: 'ci',
+      apiInternalUrl: 'http://127.0.0.1:3000',
+      publicOrigin: 'http://localhost:3002',
     });
   });
 

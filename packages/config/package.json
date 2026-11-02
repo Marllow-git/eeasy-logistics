@@ -8,8 +8,10 @@
     ".": "./src/index.ts",
     "./node": "./src/node.ts",
     "./web": "./src/web.ts",
+    "./web-server": "./src/web-server.ts",
     "./driver": "./src/driver.ts",
-    "./contract-test": "./src/contract-test.ts"
+    "./contract-test": "./src/contract-test.ts",
+    "./census": "./src/census.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

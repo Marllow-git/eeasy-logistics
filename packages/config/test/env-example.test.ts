@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { defineConfig, serverVariables } from '../src/index.ts';
+import { censusVariables } from '../src/census.ts';
 import { contractTestVariables } from '../src/contract-test.ts';
 import { driverPublicVariables, webPublicVariables } from '../src/public.ts';
+import { webServerVariables } from '../src/web-server.ts';
 
 // .env.example at the repository root documents every variable (plan item F).
 const text = readFileSync(new URL('../../../.env.example', import.meta.url), 'utf8');
@@ -31,6 +33,8 @@ describe('.env.example', () => {
     ...Object.keys(webPublicVariables),
     ...Object.keys(driverPublicVariables),
     ...Object.keys(contractTestVariables),
+    ...Object.keys(webServerVariables),
+    ...Object.keys(censusVariables),
   ];
 
   it('lists every variable the package reads, each under a comment', () => {

@@ -12,6 +12,7 @@ import { platformCookie, staffCookie } from '../../src/modules/kernel/auth/princ
 import { Idempotent, Operation, Public } from '../../src/modules/kernel/public/index.js';
 import { probeOperations } from '../support/probe-operations.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
+import { insertPlatformSubject } from './identity-fixtures.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-6 item G (plan 2.11, 2.13; ADR-0032, ADR-0038): staff and platform writes need
@@ -121,6 +122,7 @@ describe('web client marker on staff and platform writes (PLAT-6 item G)', () =>
 
   beforeAll(async () => {
     owner = connectAs('owner', config);
+    await insertPlatformSubject(owner, 'super_admin', platformUser);
     await owner`INSERT INTO core_accounts (id, name) VALUES (${account}, 'Marker account')`;
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule.forRoot(config)],

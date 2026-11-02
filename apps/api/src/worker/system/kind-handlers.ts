@@ -2,6 +2,8 @@ import type { Config } from '@eeasy-logistics/config';
 import type { AppDatabase, Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase } from '@eeasy-logistics/db/platform';
 import { Logger } from '@nestjs/common';
+import { Redis } from 'ioredis';
+import { redisFeatureCache } from '../../modules/kernel/features/feature-resolver.js';
 import { kernelConsumers } from '../../modules/kernel/outbox/account-suspended.consumer.js';
 import { DomainEventConsumerRegistry } from '../../modules/kernel/outbox/domain-event-consumers.js';
 import { messageKindHandlerFor } from './message-handler.js';
@@ -41,12 +43,25 @@ export function buildKindHandlers(
   if (app === undefined) {
     logger.warn('internal_event has no handler: DATABASE_URL_APP not configured');
   } else {
+    // PLAT-13 plan 2.5: the feature cache bust deletes the gate's cached values after commit.
+    const url = config.redis.url?.reveal();
+    const redis =
+      url === undefined
+        ? null
+        : new Redis(url, { connectTimeout: 2000, commandTimeout: 500, maxRetriesPerRequest: 1 });
+    redis?.on('error', () => undefined);
     handlers.push(
       new InternalEventDispatcher({
         db: pool.db,
         app: app.db,
-        consumers: new DomainEventConsumerRegistry(kernelConsumers()),
+        consumers: new DomainEventConsumerRegistry(
+          kernelConsumers({ featureCache: redis === null ? null : redisFeatureCache(redis) }),
+        ),
         logger,
+        close: () => {
+          redis?.disconnect();
+          return Promise.resolve();
+        },
       }),
     );
   }

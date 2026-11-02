@@ -18,6 +18,11 @@ export const tenancyExemptions: Readonly<Record<string, { class: string; reason:
     class: 'platform table',
     reason: 'the system role bundles (data §2.4), seeded by migration 0008; runtime SELECT only',
   },
+  core_rollout_modes: {
+    class: 'platform table',
+    reason:
+      'one platform-wide rollout mode per feature key (data §2.4, ADR-0006); seeded by migration 0016, written only by a super admin (PLAT-13)',
+  },
   core_engine_callback_nonces: {
     class: 'platform table',
     reason:
@@ -26,7 +31,7 @@ export const tenancyExemptions: Readonly<Record<string, { class: string; reason:
   core_geocode_cache: {
     class: 'platform table',
     reason:
-      'the geocoder answer for an address text is the same for every tenant and carries no tenant data; platform pool only (INT-2 plan 2.4, migration 0016)',
+      'the geocoder answer for an address text is the same for every tenant and carries no tenant data; platform pool only (INT-2 plan 2.4, migration 20261102115811_core_geocode_cache)',
   },
   core_otp_challenges: {
     class: 'users',

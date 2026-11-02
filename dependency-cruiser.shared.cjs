@@ -4,10 +4,11 @@
 // rules in packages/config-eslint, which also forbid aliasing `process`.
 
 /**
- * Rules for every workspace. `configEntry` is the only `packages/config/src/` file the workspace may
- * import directly (`web.ts` for apps/web, `driver.ts` for apps/driver); omit it for server code.
+ * Rules for every workspace. `configEntry` is the only `packages/config/src/` file (or the list of
+ * files) the workspace may import directly (`web.ts` and `web-server.ts` for apps/web and
+ * apps/admin, `driver.ts` for apps/driver); omit it for server code.
  * `databaseDriver` is true only for packages/db, the one workspace that may open connections.
- * @param {{ configEntry?: string, databaseDriver?: boolean }} [options]
+ * @param {{ configEntry?: string | string[], databaseDriver?: boolean }} [options]
  * @returns {import('dependency-cruiser').IForbiddenRuleType[]}
  */
 function environmentRules({ configEntry, databaseDriver = false } = {}) {
@@ -40,15 +41,16 @@ function environmentRules({ configEntry, databaseDriver = false } = {}) {
     });
   }
   if (configEntry !== undefined) {
-    const entry = configEntry.replace(/[.]/g, '\\.');
+    const entries = Array.isArray(configEntry) ? configEntry : [configEntry];
+    const entry = entries.map((name) => name.replace(/[.]/g, '\\.')).join('|');
     rules.push({
       name: 'only-public-config-entry',
       comment:
-        `PLAT-4: this app reads configuration only through packages/config/src/${configEntry} ` +
-        '(public values); the package root and /node are server code holding secrets.',
+        `PLAT-4: this app reads configuration only through packages/config/src/${entries.join(' and ')}` +
+        ': the package root and /node are server code holding secrets.',
       severity: 'error',
       from: { pathNot: '(?:^|/)packages/config/' },
-      to: { path: `(?:^|/)packages/config/src/(?!${entry}$)` },
+      to: { path: `(?:^|/)packages/config/src/(?!(?:${entry})$)` },
     });
   }
   return rules;

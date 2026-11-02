@@ -14,6 +14,7 @@ import { CursorCodec, cursorHmacKey } from '../../src/modules/kernel/audit/curso
 import { platformCookie, staffCookie } from '../../src/modules/kernel/auth/principal.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import { auditRowsOf } from './audit-rows.js';
+import { insertPlatformSubject } from './identity-fixtures.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-7 item C on the real database: the three audit list operations through the whole request
@@ -55,6 +56,7 @@ describe('audit log reads (PLAT-7 item C)', () => {
 
   beforeAll(async () => {
     owner = connectAs('owner', config);
+    await insertPlatformSubject(owner, 'super_admin', platformUser);
     await owner`INSERT INTO core_accounts (id, name) VALUES
       (${accountA}, 'Audit A'), (${accountB}, 'Audit B')`;
     const [month] = await owner<{ start: string }[]>`

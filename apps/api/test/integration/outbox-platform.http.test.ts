@@ -28,6 +28,7 @@ import { pruneOutbox, runOutboxPrune } from '../../src/worker/system/outbox-prun
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import { webClientHeaders } from '../support/web-client.js';
 import { auditRowsOf } from './audit-rows.js';
+import { insertPlatformSubject } from './identity-fixtures.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-8 item G on the real database and Redis: the five platform outbox operations through the
@@ -146,6 +147,7 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
     owner = connectAs('owner', config);
     pool = createPlatformPool(config.db, 'outbox-platform-test');
     appPool = createAppPool(config.db, 'outbox-platform-test-app');
+    await insertPlatformSubject(owner, 'super_admin', platformUser);
     const token = await signAccessToken(signing, 'platform', { claims: { sub: platformUser } });
     platform = `${platformCookie}=${token}`;
     await owner`INSERT INTO core_accounts (id, name) VALUES
@@ -599,7 +601,8 @@ describe('platform outbox operations (PLAT-8 item G)', () => {
       const long = await post('/v1/platform/outbox/replay-dead', {
         account_id: accountA,
         kind: 'channel_publish',
-        reason: 'x'.repeat(201),
+        // A body reason is bounded at the contract's 500 (PLAT-13 adversary L-1; the header at 200).
+        reason: 'x'.repeat(501),
       }).expect(400);
       expect(errorOf(long.body).details?.fields).toEqual([
         expect.objectContaining({ pointer: '/body/reason' }),

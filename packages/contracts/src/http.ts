@@ -176,6 +176,210 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   return result as T;
 }
 
+// ---------------------------------------------------------------------------------------------
+// The browser's session fetcher (web §3.2, §3.4; ADR-0032; WEB-2 plan 2.4, 2.8).
+
+/** The two browser session surfaces, each on its own web application (ADR-0038). */
+export type SessionSurface = 'staff' | 'platform';
+
+/** The session doors per surface, as the contracts spell them (`refreshSession`, `logout`, …). */
+export const sessionPaths = {
+  staff: {
+    refresh: '/v1/staff/auth/refresh',
+    logout: '/v1/staff/auth/logout',
+    doors: '/v1/staff/auth/',
+    authenticatedDoors: ['/v1/staff/auth/switch-account'],
+  },
+  platform: {
+    refresh: '/v1/platform/auth/refresh',
+    logout: '/v1/platform/auth/logout',
+    doors: '/v1/platform/auth/',
+    authenticatedDoors: [],
+  },
+} as const satisfies Record<
+  SessionSurface,
+  { refresh: string; logout: string; doors: string; authenticatedDoors: readonly string[] }
+>;
+
+/** The Web Locks name of the refresh per surface: one refresh per browser (web §3.2, §3.5). */
+export const refreshLockNames = {
+  staff: 'el-staff-refresh',
+  platform: 'el-platform-refresh',
+} as const satisfies Record<SessionSurface, string>;
+
+/** Why the page's session ended (`onSessionEnded`). */
+export type SessionEndReason = 'token_invalid' | 'refresh_refused' | 'account_suspended';
+
+/** The part of the Web Locks API the fetcher uses (a test passes its own). */
+export interface RefreshLocks {
+  request<T>(
+    name: string,
+    options: { ifAvailable?: boolean },
+    callback: (lock: unknown) => Promise<T>,
+  ): Promise<T>;
+}
+
+export interface SessionFetcherOptions extends Omit<FetcherOptions, 'webClient' | 'baseUrl'> {
+  surface: SessionSurface;
+  /** Same-origin by default (`''`): the API is on the page's origin (ADR-0032). */
+  baseUrl?: string;
+  /** `el-staff-refresh` or `el-platform-refresh` by default. */
+  lockName?: string;
+  /**
+   * The session ended: a refused refresh, a token the API no longer accepts, a suspended account.
+   * Resolve `true` once the user signed in again (the re-sign-in dialog), and the failed request is
+   * sent once more with its original `Idempotency-Key`; anything else returns the failure.
+   */
+  onSessionEnded?: (reason: SessionEndReason) => boolean | void | Promise<boolean | void>;
+  /** `navigator.locks` by default; without it a module-level promise keeps one refresh per tab. */
+  locks?: RefreshLocks | null;
+  /** UUID v7 by default. */
+  idempotencyKey?: () => string;
+}
+
+/** A UUID v7 (RFC 9562 §5.7) for `Idempotency-Key`: time-ordered, 74 random bits. */
+export function uuidv7(now: number = Date.now()): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const time = BigInt(now);
+  for (let index = 0; index < 6; index++) {
+    bytes[index] = Number((time >> BigInt(8 * (5 - index))) & 0xffn);
+  }
+  bytes[6] = (bytes[6]! & 0x0f) | 0x70; // version 7
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // variant 10
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** The `code` of a 401 body, read from a clone so the caller still gets the response. */
+async function unauthorizedCode(response: Response): Promise<string | undefined> {
+  if (response.status !== 401) return undefined;
+  const body = await readBody(response.clone()).catch(() => undefined);
+  return isRecord(body) && typeof body.code === 'string' ? body.code : undefined;
+}
+
+/**
+ * A 401 that means the page has no session any more: a token the API refuses (`token_invalid`), or
+ * no credential at all (`unauthenticated`: the cookies were cleared by a refused refresh, maybe in
+ * another tab).
+ */
+const sessionGone = (code: string | undefined) =>
+  code === 'token_invalid' || code === 'unauthenticated';
+
+type RefreshOutcome = 'refreshed' | 'refused' | 'suspended' | 'failed';
+
+/** The in-flight refresh of this tab when Web Locks are missing (none we support; guarded). */
+const tabRefresh = new Map<string, Promise<RefreshOutcome>>();
+
+function defaultLocks(): RefreshLocks | null {
+  const locks = (globalThis.navigator as { locks?: RefreshLocks } | undefined)?.locks;
+  return locks !== undefined && typeof locks.request === 'function' ? locks : null;
+}
+
+/**
+ * The fetcher of a browser page: `createFetcher` plus the session rules of web §3.2 to §3.4.
+ * Every call is same-origin with the cookies (`credentials: 'same-origin'`); every non-GET carries
+ * `X-EL-Client: web` and an `Idempotency-Key` (UUID v7, unless the caller set one) that a retry
+ * keeps. A `401 token_expired` from an authenticated operation refreshes the session once per
+ * browser through the Web Locks API (`lockName`): the lock holder calls the surface's refresh, and
+ * a request that waited for the lock first retries itself (another tab may have refreshed), then
+ * refreshes only if it still gets `token_expired`. The original request is retried once. A
+ * `401 token_invalid` or `unauthenticated` (the cookies are gone) or a refused refresh calls
+ * `onSessionEnded`, once per request; concurrent requests share the one dialog the app shows. The session doors themselves
+ * (sign-in, refresh, …), whose 401 codes speak of their own tokens, never refresh.
+ */
+export function createSessionFetcher(options: SessionFetcherOptions): Fetcher {
+  const paths = sessionPaths[options.surface];
+  const baseUrl = (options.baseUrl ?? '').replace(/\/+$/, '');
+  const lockName = options.lockName ?? refreshLockNames[options.surface];
+  const newKey = options.idempotencyKey ?? (() => uuidv7());
+  const doFetch = (...args: Parameters<typeof globalThis.fetch>) =>
+    (options.fetch ?? globalThis.fetch)(...args);
+  const base = createFetcher({ ...options, baseUrl, fetch: doFetch, webClient: true });
+  const send: Fetcher = (path, init) => base(path, { ...init, credentials: 'same-origin' });
+
+  async function refresh(): Promise<RefreshOutcome> {
+    let response: Response;
+    try {
+      response = await send(paths.refresh, { method: 'POST' });
+    } catch {
+      return 'failed';
+    }
+    if (response.ok) return 'refreshed';
+    if (response.status === 401) return 'refused';
+    if (response.status === 403) {
+      const body = await readBody(response).catch(() => undefined);
+      if (isRecord(body) && body.code === 'account_suspended') return 'suspended';
+    }
+    return 'failed';
+  }
+
+  /** Runs `work` under the browser-wide lock; `waited` says whether another holder came first. */
+  async function underLock<T>(work: (waited: boolean) => Promise<T>): Promise<T> {
+    const locks = options.locks === undefined ? defaultLocks() : options.locks;
+    if (locks === null) {
+      const running = tabRefresh.get(lockName);
+      if (running !== undefined) {
+        await running.catch(() => undefined);
+        return work(true);
+      }
+      let done!: (outcome: RefreshOutcome) => void;
+      tabRefresh.set(lockName, new Promise<RefreshOutcome>((resolve) => (done = resolve)));
+      try {
+        return await work(false);
+      } finally {
+        tabRefresh.delete(lockName);
+        done('refreshed');
+      }
+    }
+    const immediate = await locks.request(lockName, { ifAvailable: true }, async (lock) =>
+      lock === null ? undefined : { value: await work(false) },
+    );
+    if (immediate !== undefined) return immediate.value;
+    return locks.request(lockName, {}, () => work(true));
+  }
+
+  async function ended(reason: SessionEndReason): Promise<boolean> {
+    return (await options.onSessionEnded?.(reason)) === true;
+  }
+
+  return async (path, init) => {
+    const method = (init.method ?? 'GET').toUpperCase();
+    const headers = new Headers(init.headers);
+    if (method !== 'GET' && method !== 'HEAD' && !headers.has('idempotency-key')) {
+      headers.set('Idempotency-Key', newKey());
+    }
+    const request = { ...init, method, headers };
+    const response = await send(path, request);
+    const isDoor =
+      path.startsWith(paths.doors) &&
+      !(paths.authenticatedDoors as readonly string[]).some((door) => path.startsWith(door));
+    if (response.status !== 401 || isDoor) return response;
+
+    const code = await unauthorizedCode(response);
+    if (sessionGone(code)) {
+      return (await ended('token_invalid')) ? send(path, request) : response;
+    }
+    if (code !== 'token_expired') return response;
+
+    const outcome = await underLock(async (waited): Promise<Response | RefreshOutcome> => {
+      if (waited) {
+        // Another holder may have refreshed: try once with the cookies the browser has now.
+        const retried = await send(path, request);
+        if ((await unauthorizedCode(retried)) !== 'token_expired') return retried;
+      }
+      return refresh();
+    });
+    if (outcome instanceof Response) {
+      if (!sessionGone(await unauthorizedCode(outcome))) return outcome;
+      return (await ended('token_invalid')) ? send(path, request) : outcome;
+    }
+    if (outcome === 'refreshed') return send(path, request);
+    if (outcome === 'failed') return response;
+    const resumed = await ended(outcome === 'suspended' ? 'account_suspended' : 'refresh_refused');
+    return resumed ? send(path, request) : response;
+  };
+}
+
 /** Error type of the generated TanStack Query hooks; Orval passes the error body type, unused here. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export type ErrorType<_Body> = ApiError;
