@@ -578,7 +578,7 @@ components:
         number: {type: string, readOnly: true, example: D-000123}
         kind: {$ref: '#/components/schemas/OrderKind'}
         status: {$ref: '#/components/schemas/OrderStatus'}
-        pending_reason: {type: [string, 'null'], enum: [outside_coverage, awaiting_review, null], readOnly: true, description: D-3}
+        pending_reason: {type: [string, 'null'], enum: [outside_coverage, awaiting_review, needs_location, null], readOnly: true, description: 'D-3; needs_location: no reliable point yet (integrations §6.2, DEL-2)'}
         site_id: {type: string, format: uuid}
         source: {type: string, enum: [manual, csv, api, channel, wms_package], readOnly: true}
         source_ref: {type: [string, 'null']}

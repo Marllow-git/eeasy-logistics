@@ -27,6 +27,7 @@ export const domainEventTypes = [
   'delivery.driver.created',
   // PLAT-13: the notice mail of a platform user's TOTP reset (a kernel effect, no link).
   'core.platform_staff.totp_reset',
+  'delivery.order.created',
 ] as const;
 export type DomainEventType = (typeof domainEventTypes)[number];
 
