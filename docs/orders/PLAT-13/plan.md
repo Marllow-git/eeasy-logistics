@@ -227,3 +227,27 @@ Fix round 2:
 15. Accepted by the lead (8.2 #71): the `now()` of `expireOpenPlatform`/`expireOpenOfAccount` against the accepting transaction's `now()`; not changed. CI's Compose lanes and `ELX_RLS=off` are not run here; no migration.
 
 ## 9. Lead review and adversary
+
+Lead: architecture lead (Fable), 2026-11-02. Adversary: Opus, two runs (owner ruling 2026-11-02).
+
+**Lead review.** Leg 1 and leg 2 deviations ruled in 8.2 (#8 optional reason on the four configuration doors, one platform transaction per door; #33 body reasons 500; #43 one role in wave 0; #36 the per-write status read stays until DEL's write volume). The fix rounds read as ruled: H-1 supersession under the roles lock with `token_invalid` before `token_expired`; M-1 the staff row and `token_version` re-read on every admitted platform call (one joined read on the platform pool); M-2 the reset mails a sealed one-time 24-hour link and the password alone no longer enrols (the `totp_last_step` marker instead of a migration, 8.1 #7, accepted); L-1, L-2, L-3, L-5, L-6 as the table below. Migration stays `0016_core_rollout` (this order merges first; INT-2 and DEL-4 regenerate theirs under CHORE-3's timestamp names).
+
+**Adversary, run 1 (CHANGES REQUIRED → fixed in 1c4499c):**
+
+| Finding | Ruling | Result |
+|---|---|---|
+| H-1 stale platform invitations regrant roles | fix | invite and role change expire the email's open platform links; accept under the roles lock refuses superseded links and live staff |
+| M-1 platform tokens not re-read | fix | guard re-reads the staff row (round 2: and `token_version`); `401 token_invalid` |
+| M-2 TOTP reset re-enrol with the password alone | fix, additive contract | `platformRedeemEnrolmentLink`; link `PUBLIC_ADMIN_URL/totp/enrol/<token>` (WEB-4 2.10) |
+| L-1 body reason refused over 200 | fix | 500 in the body, 200 in the header |
+| L-2 sign-in race with suspension | fix | status re-read `FOR SHARE` after the refresh row |
+| L-3 `provisioned` cannot close | fix | `provisioned → closed` allowed; owner invitations expired |
+| L-4 per-write status read | accepted | Redis cache later (8.3 #7) |
+| L-5 cache-bust consumer swallowed a failed delete | fix | rethrow; the outbox retries |
+| L-6 invite echoed the existing user | fix | request's email and name only |
+
+**Adversary, run 2 (PASS; three items fixed in 4ea2769, one accepted):** restoring a revoked staff member cleared the authenticator (medium: `restore` keeps the TOTP; `grant` stays on the invitation path only); the guard ignored `token_version` after a reset (low: compared in the same read); a tenant-side second-factor reset spent the platform link (low: `consumeOpenUnmarked`); `expires_at = now()` of the expiring transaction against the accepting transaction's `now()` (low, accepted: the window lies between `BEGIN` and the first statement under the roles lock). Known and accepted (8.2 #68): a member revoked and restored with the same role within 15 minutes keeps a still-valid access token until it expires; the revoke ended the refresh families.
+
+**For later orders.** WEB-4 builds the link page and the `enrolment_link_required` message (plan WEB-4 2.10). The pools have no idle-in-transaction or statement timeout (raised again by the DEL-4 adversary): proposed as a chore to the owner. `messages_per_month` is not an account limit (8.3 #3): the owner decides with the messaging budget order.
+
+**Verdict:** ready for the gate; one-way door (migration 0016, the provisioning door); blast radius the platform surface and the permission guard (every platform request now reads the staff row).
