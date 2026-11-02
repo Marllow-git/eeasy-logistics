@@ -13,3 +13,6 @@ export {
   type CoverageAnswer,
   type CoveragePoint,
 } from '../zones/coverage-query.js';
+// DEL-5: `ShiftQuery` (plan 2.2): the driver's live shift for DEL-6's offers (D-12) and DEL-7's
+// driver transitions (D-6), in the caller's unit of work.
+export { ShiftQuery, type LiveShift } from '../shifts/shift-query.js';

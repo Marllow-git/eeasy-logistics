@@ -93,9 +93,16 @@ The SSE streams and the polling twins' event framing (DEL-6, which subscribes to
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (red, then green) | Interpretation |
+|---|---|---|---|
+| A | see `git log` (`DEL-5: A`) | unit `shift-machine.test.ts` 4/4 (new module; red = module absent); integration `ELX_RLS=on` `tenancy` + `shifts-locations-table` (new): red `tenancy` 1 failed / 14 without the three `globalUniqueIndexes` rows, green 2 files 18/18; `drizzle-kit generate` twice: second "No schema changes"; `migrate` twice on `elx_del5_scratch` (`ELX_RLS=on`): applied 21, then "Nothing to migrate"; typecheck, eslint, Prettier clean | 8.2 #1 (grants), #2 (globally unique keys) |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes
+
+1. **Grants (2.1).** All four tables: elx_app CRUD, elx_platform SELECT only (the plan names shifts; I applied the same to the ring, heads and trails). Leg 2's jobs therefore scan on the platform pool and write per account in elx_app transactions (the worker's app pool, as the internal-event consumers do); a job that must write cross-tenant needs a grant in its own migration.
+2. **Keys without `account_id`.** `globalUniqueIndexes` gains `del_driver_shifts (driver_id)` (the live partial index), `del_driver_locations (driver_id, slot)` and `del_driver_location_heads (driver_id)`: a driver id belongs to one account. `pii:driver` on `point`, `last_point`, `path`. The shift table adds `stale_alerted_at` (2.8) and CHECKs `started_at` set once started, `ended_at` set iff `ended`.
 
 ### 8.3 Not done here
 
