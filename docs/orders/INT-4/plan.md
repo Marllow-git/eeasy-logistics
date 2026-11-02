@@ -72,6 +72,10 @@ Producers of `push` rows (DEL-2 offers, DEL-6 assignments, DEL-8 cash notices, D
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (red, then green) | Interpretation |
+|---|---|---|---|
+| A | `INT-4: A migration, config, catalogue` | config `vitest`: red 11 failed of 178 (the new `push.test.ts` and `.env.example`), green 178 of 178 in 9 files; i18n `vitest`: red `push.test.ts` fails to load without `src/push.ts`, green 62 of 62 in 6 files; integration `test/schema/tenancy.test.ts` + `migrate.test.ts` (migrates twice, the second run applies nothing): red 1 of 14 (`core_push_tickets_ticket_id_idx omits account_id` without the exemption), green 23 of 23 with `ELX_RLS=off` and `on`; `turbo typecheck lint` config, i18n, api 9 of 9 | migration **0014** (highest on `origin/main` at generation: 0013); the push refusal binds the worker role only (§8.2 #1); `order_number` is a reference, `expires_in_min` a count (§8.2 #3) |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes

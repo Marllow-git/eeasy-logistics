@@ -84,6 +84,8 @@ export const globalUniqueIndexes: Readonly<Record<string, readonly (readonly str
   core_messaging_senders: [['sender_instance_id']],
   // The SHA-256 of 32 random bytes (data §4.1 "token hashes"; PLAT-11 plan 2.3).
   core_invitations: [['token_hash']],
+  // Expo's ticket id, minted by the push service and unique across projects (INT-4 plan 2.4).
+  core_push_tickets: [['ticket_id']],
 };
 
 /**

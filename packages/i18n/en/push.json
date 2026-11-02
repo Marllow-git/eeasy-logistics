@@ -1,0 +1,22 @@
+{
+  "offer_received": {
+    "title": "New delivery offer",
+    "body": "You have a new offer. Minutes left to accept: {expires_in_min}"
+  },
+  "order_assigned": {
+    "title": "New order on your run",
+    "body": "Order {order_number} was assigned to you."
+  },
+  "order_cancelled": {
+    "title": "Order cancelled",
+    "body": "Order {order_number} was cancelled and your run is updated."
+  },
+  "cash_block_notice": {
+    "title": "Cash limit",
+    "body": "You are close to your cash limit. Hand over cash to keep receiving orders."
+  },
+  "sync_needed": {
+    "title": "Sync needed",
+    "body": "Open the app to sync your data."
+  }
+}
