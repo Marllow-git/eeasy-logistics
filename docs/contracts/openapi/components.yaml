@@ -201,11 +201,12 @@ components:
         message: {type: string}
     Base:
       type: object
+      description: Server-assigned fields of every resource; never request input (readOnly).
       required: [id, created_at]
       properties:
-        id: {type: string, format: uuid, description: UUIDv7}
-        created_at: {type: string, format: date-time}
-        updated_at: {type: string, format: date-time}
+        id: {type: string, format: uuid, description: UUIDv7, readOnly: true}
+        created_at: {type: string, format: date-time, readOnly: true}
+        updated_at: {type: string, format: date-time, readOnly: true}
     Money:
       type: object
       required: [amount, currency]

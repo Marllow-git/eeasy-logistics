@@ -1,6 +1,6 @@
 import { isIP } from 'node:net';
 import { findContext, getUnitOfWork } from '@eeasy-logistics/db';
-import type { PlatformDatabase, Pool } from '@eeasy-logistics/db/committed';
+import type { PlatformDatabase, PlatformUnitOfWork, Pool } from '@eeasy-logistics/db/committed';
 import { withCommittedSideEffect } from '@eeasy-logistics/db/committed';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { PlatformAuditLog, currentPlatformAuditLog } from '../platform/audit-log.repository.js';
@@ -71,6 +71,16 @@ export class AuditWriter implements AuditSink {
       return;
     }
     await currentPlatformAuditLog().append(row);
+  }
+
+  /**
+   * In the platform unit of work `uow`, whatever the ambient frame is: a tenant request that writes
+   * a platform table (the account settings) audits the change in the transaction that makes it, so
+   * the two commit or roll back together, independently of the request's own app transaction
+   * (PLAT-12 adversary M-1, K-7). The event's account is stored as given.
+   */
+  async recordIn(uow: PlatformUnitOfWork, event: AuditEvent): Promise<void> {
+    await new PlatformAuditLog(uow).append(auditRow(event));
   }
 
   /**

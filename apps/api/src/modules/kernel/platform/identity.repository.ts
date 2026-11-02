@@ -81,6 +81,19 @@ export class UsersRepository extends PlatformRepository<typeof coreUsers> {
     return row;
   }
 
+  /**
+   * The users of `ids` (PLAT-12 `listMembers`, `getMember`: the people behind an account's
+   * memberships), read only. `q` is matched by the door over what each membership shows
+   * (adversary M-2), not here.
+   */
+  async findByIds(ids: readonly string[]): Promise<UserRow[]> {
+    if (ids.length === 0) return [];
+    return this.unscoped()
+      .select(userColumns)
+      .from(coreUsers)
+      .where(inArray(coreUsers.id, [...new Set(ids)]));
+  }
+
   /** The user locked `FOR UPDATE` (password and version changes). */
   async lock(id: string): Promise<UserRow | undefined> {
     const [row] = await this.unscoped()

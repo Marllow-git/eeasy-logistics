@@ -9,7 +9,10 @@
 //    keyed by operationId, with its `params`, `query`, `header`, `body` and per-status `responses`
 //    schemas, so apps/api's ContractPipe (PLAT-6) finds an operation's schema by its id; each
 //    entry also carries its operationId, surface and `x-permission` for the API's permission
-//    guard, with `operationPermissions` and `crossTenantOperations` beside it (PLAT-10 plan 2.2).
+//    guard, with `operationPermissions` and `crossTenantOperations` beside it (PLAT-10 plan 2.2);
+//    a request body that inherits `readOnly` fields through `allOf` (`Base`'s `id`, `created_at`,
+//    `updated_at`) gets them omitted, because Orval drops a body's own `readOnly` properties but
+//    not an `allOf` part's (PLAT-12 plan 2.5: the `Site` body less the read-only fields).
 // Run: pnpm --filter contracts build (after build:client)
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -70,6 +73,63 @@ export function bundleOperationIds(surface: SurfaceName): string[] {
   return bundleOperations(surface).map((operation) => operation.id);
 }
 
+interface JsonSchema {
+  readonly $ref?: string;
+  readonly allOf?: readonly JsonSchema[];
+  readonly properties?: Readonly<Record<string, JsonSchema>>;
+  readonly readOnly?: boolean;
+}
+
+type BundleDocument = {
+  paths?: Record<string, Record<string, { operationId?: string; requestBody?: unknown }>>;
+  components?: { schemas?: Record<string, JsonSchema> };
+};
+
+/**
+ * The `readOnly` fields each operation's JSON request body inherits through `allOf`, keyed by
+ * operationId (only operations that have some). A field the body declares itself is not listed:
+ * Orval already leaves out the body's own `readOnly` properties, and a body that redeclares an
+ * inherited field keeps its own declaration.
+ */
+export function inheritedReadOnlyBodyFields(surface: SurfaceName): Record<string, string[]> {
+  const doc = JSON.parse(
+    readFileSync(join(generatedDir, 'openapi', `${surface}.json`), 'utf8'),
+  ) as BundleDocument;
+  const components = doc.components?.schemas ?? {};
+  const resolve = (schema: JsonSchema | undefined): JsonSchema | undefined => {
+    const ref = schema?.$ref;
+    if (ref === undefined) return schema;
+    const name = /^#\/components\/schemas\/(.+)$/.exec(ref)?.[1];
+    return name === undefined ? undefined : resolve(components[name]);
+  };
+  /** Every `readOnly` property of `schema` and of its `allOf` parts, recursively. */
+  const readOnlyOf = (schema: JsonSchema | undefined): string[] => {
+    const resolved = resolve(schema);
+    if (resolved === undefined) return [];
+    const own = Object.entries(resolved.properties ?? {})
+      .filter(([, property]) => resolve(property)?.readOnly === true)
+      .map(([name]) => name);
+    return [...own, ...(resolved.allOf ?? []).flatMap((part) => readOnlyOf(part))];
+  };
+  const result: Record<string, string[]> = {};
+  for (const item of Object.values(doc.paths ?? {})) {
+    for (const method of methods) {
+      const operation = item[method];
+      const id = operation?.operationId;
+      const body = operation?.requestBody as
+        { content?: Record<string, { schema?: JsonSchema }> } | undefined;
+      const schema = resolve(body?.content?.['application/json']?.schema);
+      if (id === undefined || schema === undefined) continue;
+      const declared = new Set(Object.keys(schema.properties ?? {}));
+      const inherited = [
+        ...new Set((schema.allOf ?? []).flatMap((part) => readOnlyOf(part))),
+      ].filter((name) => !declared.has(name));
+      if (inherited.length > 0) result[id] = inherited.sort();
+    }
+  }
+  return result;
+}
+
 /**
  * Assigns each exported schema of `schemas.ts` to its operation by Orval's naming
  * (`<OperationId>{Params,QueryParams,Header,Body}`, `<OperationId><status>Response`). Fails when a
@@ -124,6 +184,9 @@ export function renderOperations(
   surface: SurfaceName,
   map: Record<string, OperationSchemaNames>,
   access: readonly OperationAccess[],
+  readOnlyBodyFields: Readonly<Record<string, readonly string[]>> = inheritedReadOnlyBodyFields(
+    surface,
+  ),
 ): string {
   const byId = new Map(access.map((operation) => [operation.id, operation]));
   const lines = Object.entries(map).map(([id, entry]) => {
@@ -136,7 +199,13 @@ export function renderOperations(
       `crossTenant: ${String(operation.crossTenant)}`,
       ...(['params', 'query', 'header', 'body'] as const)
         .filter((part) => entry[part] !== undefined)
-        .map((part) => `${part}: schemas.${entry[part]}`),
+        .map((part) => {
+          const omitted = part === 'body' ? (readOnlyBodyFields[id] ?? []) : [];
+          const mask = omitted.map((name) => `${name}: true`).join(', ');
+          return omitted.length === 0
+            ? `${part}: schemas.${entry[part]}`
+            : `${part}: schemas.${entry[part]}.omit({ ${mask} })`;
+        }),
     ];
     const responses = Object.entries(entry.responses).map(
       ([status, name]) => `'${status}': schemas.${name}`,
@@ -206,9 +275,17 @@ export function processSurface(surface: SurfaceName): Record<string, OperationSc
     access.map((operation) => operation.id),
     exportNames(source),
   );
+  const readOnlyBodyFields = inheritedReadOnlyBodyFields(surface);
+  for (const id of Object.keys(readOnlyBodyFields)) {
+    const body = map[id]?.body;
+    // `.omit()` exists on an object schema only; anything else would be a contract shape to review.
+    if (body === undefined || !source.includes(`export const ${body} = zod.strictObject(`)) {
+      throw new Error(`${surface} ${id}: a body with inherited read-only fields is not an object`);
+    }
+  }
   writeFileSync(
     join(generatedDir, surface, 'operations.ts'),
-    renderOperations(surface, map, access),
+    renderOperations(surface, map, access, readOnlyBodyFields),
   );
   return map;
 }

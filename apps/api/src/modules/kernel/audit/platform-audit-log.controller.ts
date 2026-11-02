@@ -10,9 +10,9 @@ import { Input, Operation } from '../contract/contract-pipe.js';
 import { currentPlatformAuditLog } from '../platform/audit-log.repository.js';
 import { CrossTenant, accountIdParam } from '../tenancy/cross-tenant.js';
 import { presentPlatformAuditPage } from './audit-log.presenter.js';
+import { CURSOR_CODEC, CursorCodec, planListPage } from '../contract/list-page.js';
+import { auditKeyOf, auditListSorts, auditPageQuery } from './audit-log.query.js';
 import { AuditLogRepository } from './audit-log.repository.js';
-import { planAuditPage } from './audit-page.js';
-import { CURSOR_CODEC, CursorCodec } from './cursor.js';
 
 // The platform surface's audit reads (PLAT-7 plan 2.7). Account rows only through the cross-tenant
 // door (`@CrossTenant()`, `X-Support-Reason`, one committed audit row per call); the platform's own
@@ -45,21 +45,23 @@ export class PlatformAuditLogController {
     @Input() input: ContractInput<typeof accountAudit>,
   ): Promise<PlatformListAccountAudit200> {
     const { query } = input;
-    const plan = planAuditPage(this.cursors, {
+    const plan = planListPage(this.cursors, {
       operation: 'platformListAccountAudit',
-      principal: `platform:${getContext().userId ?? ''}`,
+      reader: `platform:${getContext().userId ?? ''}`,
       filters: {
         account_id: input.params.account_id,
         created_from: query.created_from,
         created_to: query.created_to,
       },
-      repositoryFilters: { from: query.created_from, to: query.created_to },
+      sorts: auditListSorts,
       sort: query.sort,
       cursor: query.cursor,
       limit: query.limit,
     });
-    const rows = await new AuditLogRepository(getUnitOfWork()).page(plan.query);
-    return presentPlatformAuditPage(plan.page(rows));
+    const rows = await new AuditLogRepository(getUnitOfWork()).page(
+      auditPageQuery(plan, { from: query.created_from, to: query.created_to }),
+    );
+    return presentPlatformAuditPage(plan.page(rows, auditKeyOf));
   }
 
   /**
@@ -72,9 +74,9 @@ export class PlatformAuditLogController {
   @Operation(platformAudit)
   async list(@Input() input: ContractInput<typeof platformAudit>): Promise<PlatformListAudit200> {
     const { query } = input;
-    const plan = planAuditPage(this.cursors, {
+    const plan = planListPage(this.cursors, {
       operation: 'platformListAudit',
-      principal: `platform:${platformUserId(query.account_id)}`,
+      reader: `platform:${platformUserId(query.account_id)}`,
       filters: {
         account_id: query.account_id,
         actor_id: query.actor_id,
@@ -82,23 +84,24 @@ export class PlatformAuditLogController {
         created_from: query.created_from,
         created_to: query.created_to,
       },
-      repositoryFilters: {
-        actorId: query.actor_id,
-        action: query.action,
-        from: query.created_from,
-        to: query.created_to,
-      },
+      sorts: auditListSorts,
       sort: query.sort,
       cursor: query.cursor,
       limit: query.limit,
     });
+    const page = auditPageQuery(plan, {
+      actorId: query.actor_id,
+      action: query.action,
+      from: query.created_from,
+      to: query.created_to,
+    });
     if (query.account_id === undefined) {
-      const rows = await currentPlatformAuditLog().platformPage(plan.query);
-      return presentPlatformAuditPage(plan.page(rows));
+      const rows = await currentPlatformAuditLog().platformPage(page);
+      return presentPlatformAuditPage(plan.page(rows, auditKeyOf));
     }
     // The door ran on the same parameter; a mismatch is a programming error, never a read.
     if (getContext().accountId !== query.account_id) throw new Error('Door and query disagree');
-    const rows = await new AuditLogRepository(getUnitOfWork()).page(plan.query);
-    return presentPlatformAuditPage(plan.page(rows));
+    const rows = await new AuditLogRepository(getUnitOfWork()).page(page);
+    return presentPlatformAuditPage(plan.page(rows, auditKeyOf));
   }
 }

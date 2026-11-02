@@ -69,6 +69,16 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
     return rows as InferSelectModel<TTable>[];
   }
 
+  /** How many rows of the context's account match `condition` (a limit check, a usage figure). */
+  protected async countWhere(condition?: SQL): Promise<number> {
+    const table: PgTable = this.table;
+    const [row] = await this.#tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(table)
+      .where(this.scoped(condition));
+    return row?.count ?? 0;
+  }
+
   protected async insertMany(
     rows: readonly TenantInsert<TTable>[],
   ): Promise<InferSelectModel<TTable>[]> {
@@ -107,6 +117,17 @@ export abstract class ScopedRepository<TTable extends TenantTable> {
       sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${`${this.accountId}/${name}`}, 0)) AS locked`,
     );
     return rows[0]?.locked === true;
+  }
+
+  /**
+   * Takes a transaction-scoped advisory lock on `<account>/<name>`, waiting for the transaction
+   * that holds it: writes of one account that check a count before they insert (a limit) run one
+   * after the other, each seeing the rows the previous one committed.
+   */
+  protected async transactionLock(name: string): Promise<void> {
+    await this.#tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${this.accountId}/${name}`}, 0))`,
+    );
   }
 
   protected async updateWhere(
