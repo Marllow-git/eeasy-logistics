@@ -185,6 +185,7 @@ Append-only `core_audit_log` (document 4 §7): actor, acting account, target typ
 | `source`, `source_ref` | `∈ {manual, csv, api, channel, wms_package}`; opaque external or package id |
 | recipient | name, phone (E.164), alternate phone, preferred language |
 | address | text, city, district, `national_address_short_code`, `point` geometry(Point, 4326), `pin_source ∈ {geocoded, recipient_pin, driver_pin, manual}`, geocode confidence |
+| `pending_reason` | why a `pending` order waits: `outside_coverage` (D-3), `needs_location` (no reliable point, integrations §6.2; DEL-2), `awaiting_review`; null once it leaves `pending` |
 | `zone_id`, `slot_id` | resolved at acceptance; slot optional |
 | `cod_amount` | integer halalas, `currency` `SAR`; zero when no COD |
 | `executor_account_id` | nullable, reserved, nothing built on it (ADR-0005, D-1) |
@@ -740,6 +741,8 @@ Idempotency key is the envelope `id` unless stated. "Webhook" means exposed to m
 | `wms.return.received` | WMS | none (webhook) | lines, condition | yes |
 | `wms.count_session.posted` | WMS | none | variances | no |
 | `wms.channel_publication.dead` | WMS | staff alert | connection, product, last error | no |
+
+Order status events (DEL-2): every arrow of 3.13 goes through Delivery's one write path, which writes `delivery.order.<to_status>` (`internal_event`) with order, number, from and to status, reason code, actor type, site and zone; recipient data stays on the row (data §10). `delivery.order.created` carries the same kind of summary (no recipient), so the "recipient, address" of its row above is for the webhook render, which reads the order. An edit (`updateOrder`) writes no event type; its change is a `note` row in `del_order_events`.
 
 Ordering scope is the aggregate in the event name (order, package, fulfilment order, product summary for `wms.stock.available_changed`, movement batch for `wms.movement.recorded`).
 

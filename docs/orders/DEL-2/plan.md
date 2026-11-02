@@ -103,11 +103,15 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 | C | see `git log` (`DEL-2: C …`) | typecheck, lint (api, db), Prettier on the changed files, `test:architecture`, contracts lint: clean; no new tests | memory `api/core` |
 | D | see `git log` (`DEL-2: D …`) | `orders-read.http.test.ts` 5 red (only `createOrder` routed) → 6 green; its `open_orders` case 1 red without `OrderSiteUse` → green; unit `if-match` 15, `order-updates` 14 new (orders and contract unit 45 green); `orders.http` 5, `sites.http`, `orders-table` 5 green (27 with `orders-read`); `integration-projects`, `idempotent-routes`, `operation-routes` green; typecheck (api, db), lint, Prettier, `test:architecture` clean; ELX_RLS=on | 8.2 #10 to #15 |
 | E | see `git log` (`DEL-2: E …`) | `orders-transitions.http.test.ts` 6 red (item D's controller) → 6 green; the five order and site suites 33 green; unit (delivery, kernel accounts, contract, outbox, route guards) 145 green; seven contract scenarios (401) typecheck and lint clean, the contract run is CI's; typecheck, lint, Prettier, `test:architecture` clean; ELX_RLS=on | 8.2 #16 to #19 |
+| F | see `git log` (`DEL-2: F …`) | docs and memories only: Prettier on data.md, domain-model.md, the plan and the memories clean; no new tests | memories `core`, `api/core` |
 
 ### 8.1 Deviations
 
 - **Contract (shared seam):** `components.yaml` `Order.pending_reason` gains `needs_location` (8.2 #4). Additive in shape; no in-flight order reads `Order`.
 - **`packages/db`:** `ScopedRepository.upsert` (protected; the target must lead with `account_id`) for the allocator and the usage counter (8.2 #1, #6).
+- **Leg 2, contract:** no shape change; seven contract scenarios added (unauthenticated `401`, as the other staff doors). Text drift for the lead: `cancelOrder`'s description (8.2 #17), the `OrderEvent` note payload (8.2 #15).
+- **Leg 2, `packages/db`:** `ScopedRepository.findMany` gains `forUpdate`, and `sharedTransactionLock` joins `transactionLock` (8.2 #13, #15). **Kernel:** `contract/if-match.ts` and the pipe's `428` (8.2 #10), `holdSites`, inactive reason codes dropped by `orderAccountOf`, ten `delivery.order.<status>` event types.
+- **Leg 2, consulted (2026-11-02):** the same pins; drizzle-orm 0.45.4 `.for('update')` and `getTableColumns` from the installed typings (Context7 had no match for the row-lock query); PostgreSQL 17 `pg_advisory_xact_lock_shared`, `clock_timestamp()`; contracts README §5, `listOrders` to `cancelOrder` and their schemas, errors.md rows `version_required`, `version_conflict`, `invalid_transition`, `order_locked`, `outside_coverage`; domain model §3.18 D-5, D-8, D-22, §6.3; data §10; integrations §6.2 step 3; PLAT-12 `site-use.ts`, `site-scope.ts`; memory `api/core`.
 - **Consulted (2026-11-02):** drizzle-orm 0.45.4 and drizzle-kit 0.31.11 (`onConflictDoUpdate`, `geometry` xy mode; the installed typings and DEL-1's and PLAT-12's notes, so Context7 was not needed), NestJS 12.3.2, postgres.js 3.4.9, PostgreSQL 17.9 with PostGIS 3.7.0 locally; the plan's §1 sections as cited (domain model §1.1, §3.1 to §3.3, §3.13, §3.18, §8; data §1.3, §2.1, §3.1, §7, §8, §10; contracts README §2, §5; `createOrder` and its schemas; errors.md rows), DEL-1 §8.2 #1 to #6, DEL-4 §8.2 #10, #28, memory `api/core`.
 
 ### 8.2 Notes
@@ -135,8 +139,10 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 
 ### 8.3 Not done here
 
-- Leg 2 (items D to F): the reads, `updateOrder` with the `If-Match` reader, the transitions and `cancelOrder`, `OrderTransitions.apply` and `OrderReader` in Delivery public, the contract scenarios, and the data.md and domain-model rows (`needs_location`, the order event types).
-- The `open_orders` site-use check (PLAT-12 `SiteUseChecks` names DEL-2) is not registered yet: deactivating a branch with open orders still passes. It belongs with leg 2's reads or a lead ruling.
-- Local verification ran the ELX_RLS=on lane only; the off lane and the full integration lanes are CI's.
+- `rescheduleOrder` (wave 2 in the contract) and `slot_id`: no route until the slots order (plan 2.9, 2a); the route answers `404`.
+- `driver_id` on `listOrders` answers an empty page until DEL-6 creates `del_assignments`.
+- The contract run (`pnpm --filter contracts test:contract`, live API) and the `ELX_RLS=off` lane were not run locally; both are CI's. The `orders-*` suites and `sites.http` ran on the `on` lane only.
+- No outbox row for an edit (`updateOrder`): the catalogue has no type for it and DEL-6's board stream may want one (`delivery.order.updated`, a catalogue row).
+- Default reason codes for new accounts (8.2 #18) are a provisioning or WEB-5 matter.
 
 ## 9. Lead review and adversary
