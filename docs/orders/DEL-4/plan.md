@@ -90,9 +90,17 @@ Shifts, position reporting, `driverListShifts` and the shift doors (DEL-5); offe
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (counts, red then green) | 8.2 |
+|---|---|---|---|
+| A | this commit | config `test/drivers.test.ts` (new, 3): red 3/3 failed on the old schema, green 3/3; config package 187/187 (`env-example.test.ts` red once until each new line had its own comment). Integration `drivers-table.test.ts` (new, 4) with `test/schema/tenancy.test.ts`: red 5 failed / 13 passed without migration 0016 (no tables, the `pii:driver` columns missing), green 18/18 with `ELX_RLS=off`, 26/26 with `rls.test.ts` and `ELX_RLS=on`; the migration job run twice on scratch `elx_del4_a` (applied 17, then "nothing to migrate"); api and config typecheck and lint clean | #1, #2, #3 |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes
+
+1. **Migration number 0016** (brief, 2026-11-02): the next free after `origin/main`'s 0015 when generated; PLAT-13 and INT-2 hold 0016 and 0017 on their branches, so whichever merges first, this branch is rebased and the migration regenerated (never renamed) to follow them, and the number named here and in the PR's merge-danger line is updated.
+2. **Bounds the plan leaves open, held by CHECKs:** `cash_pin_failures` 0 to 5 (the fifth failure locks, 2.9), `plate` 1 to 20 characters (2.6), `device_id` 1 to 200 (DeviceInfo), `app_version` 1 to 64 and `push_token` at most 4096 characters (the contract leaves both unbounded; leg 2 answers `400` before an insert would fail). `version` on all three tables (2.1). The partial index on active devices is not unique: the two-device cap is counted under the driver row lock (data §2.2), and the table test asserts a third active row is not refused by the schema. Indexes are the ones 2.1 lists; the FKs `driver_id`, `membership_id`, `home_site_id` have no index of their own (the tenant indexes lead with `account_id`, and nothing deletes a referenced row).
+3. **Config:** `DRIVER_APP_URL` (`httpUrl()`, default `https://eeasy.sa/driver`), `DRIVER_MIN_APP_VERSION_IOS` and `_ANDROID` (`^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}$`: the plan's pattern with each part capped at nine digits so it compares as an integer), read as `config.drivers.appUrl` and `config.drivers.minAppVersion.{ios,android}`; no production refusal (the default is a public landing, the minimum optional per Q-24).
 
 ### 8.3 Not done here
 
