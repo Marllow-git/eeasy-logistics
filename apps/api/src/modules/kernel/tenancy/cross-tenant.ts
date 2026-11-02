@@ -123,10 +123,13 @@ function rawReason(request: Request, source: CrossTenantSource): unknown {
 /**
  * What no audited reason may hold, header or body: control characters (`Cc`) and format characters
  * (`Cf`: the bidirectional overrides and isolates U+202A to U+202E and U+2066 to U+2069, the
- * zero-width marks), which would make the audit row read other than what was stored (WEB-4
- * adversary fix round 1, L). Refused as `invalid`.
+ * zero-width space), which would make the audit row read other than what was stored (WEB-4
+ * adversary fix round 1, L). Refused as `invalid`. Five `Cf` marks that Arabic and Persian
+ * keyboards insert in ordinary text stay allowed as text (lead ruling, WEB-4 round 2): the Arabic
+ * letter mark U+061C, the zero-width non-joiner and joiner U+200C and U+200D, and the left-to-right
+ * and right-to-left marks U+200E and U+200F.
  */
-export const refusedReasonCharacter = /[\p{Cc}\p{Cf}]/u;
+export const refusedReasonCharacter = /(?![؜‌-‏])[\p{Cc}\p{Cf}]/u;
 
 /**
  * The header's reason as the person typed it (lead ruling on WEB-4 8.2 #5): a header carries

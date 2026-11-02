@@ -68,6 +68,17 @@ describe('X-Support-Reason decoding', () => {
     }
   });
 
+  it('allows the Arabic letter mark, the directional marks and the zero-width joiners in the header', () => {
+    // Lead ruling, WEB-4 round 2: Arabic and Persian keyboards insert these in ordinary text.
+    const arabic = 'مراجعة‏ طلب‌ الدعم؜‍‎ 42';
+    expect(crossTenantTarget(request(encodeURIComponent(arabic)), door)).toEqual({
+      accountId,
+      reason: arabic,
+    });
+    const target = crossTenantTarget(request(encodeURIComponent('مراجعة‏ ‮طلب')), door);
+    expect(target !== undefined && isRefusal(target) && target.outcome).toBe('reason_invalid');
+  });
+
   it('refuses format characters in a body reason at the door', () => {
     const body = { from: 'path', name: 'account_id', reason: 'body' } as const;
     const target = crossTenantTarget(
