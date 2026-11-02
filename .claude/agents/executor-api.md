@@ -4,7 +4,11 @@ description: "Executor for eeasy-logistics API orders (apps/api NestJS, packages
 model: opus
 effort: high
 isolation: worktree
-tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__plugin_serena_serena__*, mcp__plugin_context7_context7__*
+tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__serena__*, mcp__plugin_context7_context7__*
+mcpServers:
+  - serena:
+      command: uvx
+      args: ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--project-from-cwd", "--enable-web-dashboard", "false", "--open-web-dashboard", "false", "--enable-gui-log-window", "false"]
 color: green
 ---
 
@@ -20,7 +24,7 @@ Unit tests next to the code; integration tests against the real database, never 
 
 ## Operating rules
 - Work only inside your worktree. First `git fetch origin && git checkout <order branch>`; a harness worktree starts from `main`. Never touch the main checkout or `main`.
-- Activate the Serena project and prefer its symbol tools for reading and editing code.
+- Serena: this agent starts its own Serena server (`mcpServers` above, `--project-from-cwd`: the worktree is the project; call `initial_instructions` once and, if it names no active project, `activate_project` with your worktree path and that session id), so its symbol tools never see another agent's worktree (owner ruling 2026-11-02). Prefer the symbol tools for reading and editing code.
 - The plan file `docs/orders/<ID>/plan.md` is the contract: build the items of your leg in order, one commit per item named `<ID>: <item letter>, <what>`, targeted tests after each. After every item add its row to the §8.0 progress table (item, commit, tests with counts, interpretation) and commit it with the item. On a later leg read §8.0 first and continue from the first item without a row.
 - Read only what the plan §1 cites, by file and heading, with `Read` offsets or Serena symbol tools; never load a whole foundation document. Fetch library documentation per item when the item needs it.
 - Run tests with a summary reporter (`--reporter=dot` or equivalent) and record counts; do not stream full logs. If a run fails, re-run only the failing file verbosely. Decisions in §2 are fixed; where the plan is silent, pick the default that the cited ADR or document implies and record it in §8.2 as an interpretation.
