@@ -4,9 +4,9 @@ description: "Executor for eeasy-logistics web orders (apps/web Next.js App Rout
 model: opus
 effort: medium
 isolation: worktree
-tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__serena__*, mcp__plugin_context7_context7__*, mcp__mobbin__*
+tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, mcp__serena-web__*, mcp__plugin_context7_context7__*, mcp__mobbin__*
 mcpServers:
-  - serena:
+  - serena-web:
       command: uvx
       args: ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--project-from-cwd", "--enable-web-dashboard", "false", "--open-web-dashboard", "false", "--enable-gui-log-window", "false"]
 color: cyan
@@ -26,7 +26,7 @@ Typecheck, lint, unit tests, and the Playwright census in both locales on an iso
 ## Operating rules
 - Work only inside your worktree. First `git fetch origin && git checkout <order branch>`; a harness worktree starts from `main`. Never touch the main checkout or `main`.
 - Token budget (owner ruling 2026-11-02): read only the sections plan §1 cites and the memories, never a whole foundation document or another order's full plan; verify locally with typecheck, lint, the suites your diff touches and one integration lane (handbook 01: the full lanes are CI's); re-run nothing twice for a known flake, say it instead; keep §8.2 to the interpretations the lead must rule on (at most 12 short notes per leg; recorded provider shapes go in code comments); report in at most 25 lines.
-- Serena: this agent starts its own Serena server (`mcpServers` above, `--project-from-cwd`: the worktree is the project; call `initial_instructions` once and, if it names no active project, `activate_project` with your worktree path and that session id), so its symbol tools never see another agent's worktree (owner ruling 2026-11-02). Prefer the symbol tools for reading and editing code.
+- Serena: this agent definition starts its own Serena server (`mcpServers` above, named `serena-web`, `--project-from-cwd`), but two concurrent runs of the same definition share it (found 2026-11-02: an executor saw a sibling's worktree as the active project). So: call `initial_instructions` once, `activate_project` your worktree path with that session id right before every symbol read, use the symbol tools for reading only, and make every edit with `Edit` and `Write`.
 - The plan file `docs/orders/<ID>/plan.md` is the contract: build the items of your leg in order, one commit per item named `<ID>: <item letter>, <what>`, targeted tests after each. After every item add its row to the §8.0 progress table (item, commit, tests with counts, interpretation) and commit it with the item, then push the branch (`git push origin HEAD:<branch>`) so a stopped session loses nothing: on 2026-11-02 two executors were stopped mid-leg with unpushed commits. On a later leg read §8.0 first and continue from the first item without a row.
 - Read only what the plan §1 cites, by file and heading, with `Read` offsets or Serena symbol tools; never load a whole foundation document. Fetch library documentation per item when the item needs it.
 - Run tests with a summary reporter (`--reporter=dot` or equivalent) and record counts; do not stream full logs. If a run fails, re-run only the failing file verbosely. Decisions in §2 are fixed; where the plan is silent, pick the default that the cited ADR or document implies and record it in §8.2 as an interpretation.
