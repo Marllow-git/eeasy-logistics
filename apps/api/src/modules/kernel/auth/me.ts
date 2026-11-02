@@ -1,5 +1,7 @@
 import { ApiException } from '../errors/api-exception.js';
 import type { PermissionResolver } from '../authz/permission-resolver.js';
+import { visibleFeatures } from '../features/feature-rules.js';
+import { featureStateIn } from '../platform/features.repository.js';
 import type {
   IdentityTransaction,
   MembershipRow,
@@ -10,8 +12,8 @@ import type { Principal } from './principal.js';
 
 // `Me` and `PlatformMe` (PLAT-11 plan 2.4; components.yaml `Me`, platform.yaml `PlatformMe`): the
 // user, the membership and its account (staff), the permissions the session's roles grant (PLAT-10
-// `PermissionResolver`, the same grants the guard enforces) and the visible features. `features` is
-// empty until PLAT-13 adds the rollout flags (K-6).
+// `PermissionResolver`, the same grants the guard enforces) and the visible features (PLAT-13 plan
+// 2.5: K-6 over the rollout modes and the account's flags, the rules the feature gate applies).
 
 export interface StaffMeView {
   readonly user: UserRow;
@@ -53,6 +55,12 @@ export function staffPrincipal(
   };
 }
 
+/** The feature keys visible to `accountId` (K-6), read in the identity transaction. */
+export async function featuresOf(tx: IdentityTransaction, accountId: string): Promise<string[]> {
+  const { modes, flags } = await featureStateIn(tx.uow, accountId);
+  return visibleFeatures(modes, flags);
+}
+
 /** `Me` of a staff principal; `401 unauthenticated` when its user or membership is gone. */
 export async function staffMe(
   tx: IdentityTransaction,
@@ -69,7 +77,12 @@ export async function staffMe(
   ) {
     throw new ApiException('unauthenticated');
   }
-  return { user, membership, permissions: permissionsOf(resolver, principal), features: [] };
+  return {
+    user,
+    membership,
+    permissions: permissionsOf(resolver, principal),
+    features: await featuresOf(tx, membership.accountId),
+  };
 }
 
 /** `PlatformMe` of a platform principal; `401 unauthenticated` when the staff row is gone. */

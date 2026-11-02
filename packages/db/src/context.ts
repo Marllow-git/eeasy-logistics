@@ -37,6 +37,12 @@ export interface Frame {
   readonly context?: RequestContext;
   readonly platform?: PlatformContext;
   readonly unitOfWork?: object;
+  /**
+   * Inside the cross-tenant door only (PLAT-13 lead ruling on 8.2 #11): a platform unit of work on
+   * the door's own transaction, so platform code reaches platform tables (`core_accounts`, the
+   * identity tables) without a second connection. Read through `getCrossTenantPlatformUnitOfWork`.
+   */
+  readonly doorUnitOfWork?: object;
 }
 
 const storage = new AsyncLocalStorage<Frame>();

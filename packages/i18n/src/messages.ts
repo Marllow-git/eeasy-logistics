@@ -3,11 +3,13 @@ import arCommon from '../ar/common.json';
 import arErrors from '../ar/errors.json';
 import arNav from '../ar/nav.json';
 import arRecipient from '../ar/recipient.json';
+import arSettings from '../ar/settings.json';
 import enAuth from '../en/auth.json';
 import enCommon from '../en/common.json';
 import enErrors from '../en/errors.json';
 import enNav from '../en/nav.json';
 import enRecipient from '../en/recipient.json';
+import enSettings from '../en/settings.json';
 import type { Locale } from './locales.ts';
 
 // The Arabic catalogue is the reference shape (web §5): `Messages` is generated from it, so an
@@ -23,6 +25,7 @@ const ar = {
   auth: arAuth,
   errors: arErrors,
   recipient: arRecipient,
+  settings: arSettings,
 };
 
 export type Messages = typeof ar;
@@ -36,6 +39,7 @@ export const messages: Record<Locale, Messages> = {
     auth: enAuth,
     errors: enErrors,
     recipient: enRecipient,
+    settings: enSettings,
   },
 };
 

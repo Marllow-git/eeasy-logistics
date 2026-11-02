@@ -9,6 +9,10 @@ import { PrincipalResolver } from './auth/principal.js';
 import { IDEMPOTENCY_HMAC_KEY } from './idempotency/idempotency.interceptor.js';
 import { idempotencyHmacKey } from './idempotency/request-hash.js';
 import { PERMISSION_RESOLVER } from './authz/permission-resolver.js';
+import { FEATURE_RESOLVER } from './features/feature-gate.js';
+import type { FeatureStore } from './features/feature-resolver.js';
+import { FeatureResolver, redisFeatureCache } from './features/feature-resolver.js';
+import { featureStoreOnPool } from './platform/features.repository.js';
 import { PLATFORM_POOL, PlatformModule } from './platform/platform.module.js';
 import { loadPermissionResolver } from './platform/roles.repository.js';
 import { defaultBudgets, namedBudgetsWith } from './rate-limit/budgets.js';
@@ -26,6 +30,20 @@ class ApiOutboxQueues extends OutboxQueues implements OnApplicationShutdown {
   async onApplicationShutdown(): Promise<void> {
     await this.close();
     this.ownConnection.disconnect();
+  }
+}
+
+/** The gate's K-6 resolver, owning its Redis connection: closed with the application. */
+class ApiFeatureResolver extends FeatureResolver implements OnApplicationShutdown {
+  constructor(
+    store: FeatureStore,
+    private readonly ownConnection: Redis | null,
+  ) {
+    super(store, ownConnection === null ? null : redisFeatureCache(ownConnection));
+  }
+
+  onApplicationShutdown(): void {
+    this.ownConnection?.disconnect();
   }
 }
 
@@ -136,8 +154,30 @@ export class RequestFrameModule {
             return new ApiOutboxQueues(connection);
           },
         },
+        {
+          // The feature gate's K-6 resolver (PLAT-13 plan 2.5): the tables on the platform pool,
+          // cached in Redis for 60 s when REDIS_URL is set. Without the pool there is none and a
+          // gated route answers 500 (production requires the pool).
+          provide: FEATURE_RESOLVER,
+          inject: [PLATFORM_POOL],
+          useFactory: (pool: Parameters<typeof featureStoreOnPool>[0]) => {
+            const store = featureStoreOnPool(pool);
+            if (store === null) return null;
+            const url = config.redis.url;
+            if (url === undefined) return new ApiFeatureResolver(store, null);
+            const connection = new Redis(url.reveal(), {
+              connectTimeout: 2000,
+              commandTimeout: 500,
+              maxRetriesPerRequest: 0,
+              enableOfflineQueue: false,
+            });
+            connection.on('error', () => undefined);
+            return new ApiFeatureResolver(store, connection);
+          },
+        },
       ],
       exports: [
+        FEATURE_RESOLVER,
         PRINCIPAL_RESOLVER,
         PERMISSION_RESOLVER,
         IDEMPOTENCY_HMAC_KEY,

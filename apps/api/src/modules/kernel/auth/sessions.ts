@@ -122,7 +122,17 @@ export function refreshVerdict(
   graceSeconds: number,
 ): RefreshVerdict {
   if (row.surface !== request.surface) return { kind: 'refuse', code: 'token_invalid' };
-  if (row.revoked) return { kind: 'refuse', code: 'token_invalid' };
+  if (row.revoked) {
+    // A suspension revokes the account's staff families (PLAT-13 plan 2.7) and the member is still
+    // told why (403 `account_suspended`, as before the revocation), so the web can say so; any
+    // other revoked row is invalid.
+    const membership = row.membership;
+    const suspended =
+      row.surface !== 'platform' &&
+      membership?.status === 'active' &&
+      membership.accountStatus === 'suspended';
+    return { kind: 'refuse', code: suspended ? 'account_suspended' : 'token_invalid' };
+  }
   if (row.usedAt !== null) {
     const age = row.now.getTime() - row.usedAt.getTime();
     const sameAgent =
