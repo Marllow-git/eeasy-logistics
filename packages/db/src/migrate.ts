@@ -1,12 +1,14 @@
 // The migration runner (PLAT-5 plan 2.2, data §11.5, platform §5): applies the reviewed SQL in
-// `apps/api/drizzle/` with Drizzle's migrator as `elx_owner`, under one advisory lock so two
-// deploys (or two CI steps) cannot race, then records the version `/ready` compares against.
-// Only the one-shot migration job (`api --role migrate`) and the test and seed tooling call it.
+// `apps/api/drizzle/` as `elx_owner`, under one advisory lock so two deploys (or two CI steps)
+// cannot race, then records the version `/ready` compares against. It applies every unapplied
+// journal entry in journal order itself (CHORE-3 plan 2.2), with Drizzle's bookkeeping in
+// `drizzle.__drizzle_migrations`: Drizzle's own migrate() skips an entry older than the last
+// applied one. Only the one-shot migration job (`api --role migrate`) and the test and seed
+// tooling call it.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Secret } from '@eeasy-logistics/config';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import type { MigrationMeta } from 'drizzle-orm/migrator';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import postgres from 'postgres';
 
@@ -41,7 +43,7 @@ export interface MigrateResult {
   readonly auditPartitionsCreated: number;
 }
 
-interface JournalEntry {
+export interface JournalEntry {
   readonly idx: number;
   readonly when: number;
   readonly tag: string;
@@ -67,8 +69,8 @@ export function expectedSchemaVersion(folder: string): string {
 /**
  * Applies every pending migration and records the version. Idempotent: a second run applies
  * nothing and exits cleanly. A concurrent run waits on the advisory lock, then finds nothing to do.
- * Refuses to run when an applied migration file was edited or removed, or when a migration older
- * than the last applied one appears (Drizzle would skip it silently).
+ * Refuses to run when an applied migration file was edited or removed; applies an unapplied one
+ * older than the last applied one in journal order, with one log line (CHORE-3 plan 2.2).
  */
 export async function runMigrations(options: MigrateOptions): Promise<MigrateResult> {
   if (options.url === undefined) throw new Error('DATABASE_URL_OWNER is not configured');
@@ -93,9 +95,15 @@ export async function runMigrations(options: MigrateOptions): Promise<MigrateRes
     }
 
     const before = await appliedMigrations(client);
-    checkHistory(before, files, journal);
-
-    await migrate(drizzle({ client }), { migrationsFolder: options.folder });
+    const pending = checkHistory(before, files, journal);
+    for (const migration of pending) {
+      if (migration.older) {
+        log(
+          `migration ${migration.tag} is older than the last applied one; applying in journal order`,
+        );
+      }
+    }
+    await applyMigrations(client, pending);
 
     const after = await appliedMigrations(client);
     // The RLS switch first, then the audit partitions, then the version, in one transaction
@@ -142,7 +150,7 @@ export async function runMigrations(options: MigrateOptions): Promise<MigrateRes
   }
 }
 
-interface AppliedMigration {
+export interface AppliedMigration {
   readonly hash: string;
   readonly createdAt: number;
 }
@@ -156,12 +164,33 @@ async function appliedMigrations(client: postgres.Sql): Promise<AppliedMigration
   return rows.map((row) => ({ hash: row.hash, createdAt: Number(row.created_at) }));
 }
 
-function checkHistory(
+/** An unapplied journal entry, in journal order (`checkHistory`). */
+export interface PendingMigration {
+  readonly tag: string;
+  /** Its journal `when` is at or before the last applied migration's (a parallel order's file). */
+  readonly older: boolean;
+  readonly file: MigrationMeta;
+}
+
+/**
+ * Checks the applied history against the folder and returns the unapplied entries in journal
+ * order. Refuses an applied migration that was edited or removed, and two journal entries with
+ * the same `when` (the bookkeeping keys applied rows by it). An unapplied entry older than the
+ * last applied one is returned with `older` (CHORE-3 plan 2.2); it is no longer refused.
+ */
+export function checkHistory(
   applied: readonly AppliedMigration[],
-  files: readonly { folderMillis: number; hash: string }[],
+  files: readonly MigrationMeta[],
   journal: readonly JournalEntry[],
-): void {
+): PendingMigration[] {
   const tagOf = (when: number) => journal.find((entry) => entry.when === when)?.tag ?? `${when}`;
+  const seen = new Set<number>();
+  for (const entry of journal) {
+    if (seen.has(entry.when)) {
+      throw new Error(`Migration ${entry.tag} has the same journal "when" as an earlier entry`);
+    }
+    seen.add(entry.when);
+  }
   for (const row of applied) {
     const file = files.find((candidate) => candidate.folderMillis === row.createdAt);
     if (file === undefined) {
@@ -173,16 +202,41 @@ function checkHistory(
       );
     }
   }
-  const last = applied.at(-1);
-  if (last === undefined) return;
-  for (const file of files) {
-    const known = applied.some((row) => row.createdAt === file.folderMillis);
-    if (!known && file.folderMillis <= last.createdAt) {
-      throw new Error(
-        `Migration ${tagOf(file.folderMillis)} is older than the last applied one; regenerate it`,
-      );
+  const last = applied.at(-1)?.createdAt;
+  return files
+    .filter((file) => !applied.some((row) => row.createdAt === file.folderMillis))
+    .map((file) => ({
+      tag: tagOf(file.folderMillis),
+      older: last !== undefined && file.folderMillis <= last,
+      file,
+    }));
+}
+
+/**
+ * Applies the pending migrations in one transaction, as Drizzle's migrator does: the file split at
+ * `--> statement-breakpoint`, each part sent as is, then one `drizzle.__drizzle_migrations` row
+ * per file with Drizzle's hash (SHA-256 of the file) and `created_at` = the journal `when`.
+ */
+async function applyMigrations(
+  client: postgres.Sql,
+  pending: readonly PendingMigration[],
+): Promise<void> {
+  await client`CREATE SCHEMA IF NOT EXISTS drizzle`;
+  await client`
+    CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
+      id SERIAL PRIMARY KEY,
+      hash text NOT NULL,
+      created_at bigint
+    )`;
+  if (pending.length === 0) return;
+  await client.begin(async (tx) => {
+    for (const { file } of pending) {
+      for (const statement of file.sql) await tx.unsafe(statement);
+      await tx`
+        INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+        VALUES (${file.hash}, ${file.folderMillis})`;
     }
-  }
+  });
 }
 
 /** Partition DDL waits at most this long for a lock (adversary L-4); the next run retries. */
