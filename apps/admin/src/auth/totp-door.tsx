@@ -170,11 +170,17 @@ function Enrol({ challenge, onEnrolled }: { challenge: string; onEnrolled: () =>
       })
       .catch((failure: unknown) => {
         const code = failure instanceof ApiError ? failure.code : undefined;
-        if (code === 'second_factor_already_enrolled') onEnrolled();
+        // After a super admin's reset only the mailed link may enrol (PLAT-13 M-2; WEB-4 2.10).
+        const linkRequired =
+          failure instanceof ApiError &&
+          code === 'reauthentication_required' &&
+          failure.details?.enrolment_link_required === true;
+        if (linkRequired) setProblem(t('totp.enrolment_link_required'));
+        else if (code === 'second_factor_already_enrolled') onEnrolled();
         else if (code === 'token_expired' || code === 'token_invalid') setEnded('expired');
         else setProblem(message(failure));
       });
-  }, [challenge, message, onEnrolled]);
+  }, [challenge, message, onEnrolled, t]);
 
   const secret = uri === undefined ? undefined : secretFromOtpauth(uri);
   let body: ReactNode;

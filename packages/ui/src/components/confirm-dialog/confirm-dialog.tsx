@@ -28,6 +28,8 @@ export interface ConfirmDialogProps {
   readonly onConfirm: (idempotencyKey: string) => Promise<void>;
   /** A page's own text for some refusals (the reasons of `site_in_use`); the catalogue otherwise. */
   readonly describeError?: (error: unknown) => ReactNode | undefined;
+  /** Holds the confirm (WEB-4: a reason not yet long enough, the account name not yet typed). */
+  readonly confirmDisabled?: boolean;
   readonly children?: ReactNode;
 }
 
@@ -41,6 +43,7 @@ export function ConfirmDialog({
   tone = 'danger',
   onConfirm,
   describeError,
+  confirmDisabled = false,
   children,
 }: ConfirmDialogProps) {
   const t = useTranslations('common');
@@ -105,7 +108,7 @@ export function ConfirmDialog({
             </AlertDialog.Cancel>
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || confirmDisabled}
               aria-busy={busy}
               className={cn(buttonVariants({ variant: tone }))}
               onClick={() => void confirm()}

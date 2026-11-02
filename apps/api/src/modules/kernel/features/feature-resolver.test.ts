@@ -164,6 +164,23 @@ describe('rollout inputs', () => {
     expect(rolloutReasonProblem('two\nlines')).toBe('invalid');
   });
 
+  it('refuses format characters in a body reason: bidirectional overrides and zero-width marks', () => {
+    // WEB-4 adversary fix round 1 (L): `\p{Cf}` would make the audit row read other than stored.
+    expect(rolloutReasonProblem('pilot \u202Eworg\u202C')).toBe('invalid');
+    expect(rolloutReasonProblem('pilot \u2066ticket\u2069')).toBe('invalid');
+    expect(rolloutReasonProblem('pilot\u200Bwave')).toBe('invalid');
+    expect(rolloutReasonProblem('تجربة الموجة الأولى')).toBeUndefined();
+  });
+
+  it('allows the Arabic letter mark, the directional marks and the zero-width joiners in a body reason', () => {
+    // Lead ruling, WEB-4 round 2: Arabic and Persian keyboards insert these in ordinary text.
+    expect(rolloutReasonProblem('تجربة‏ الموجة 42')).toBeUndefined();
+    for (const mark of ['؜', '‌', '‍', '‎', '‏']) {
+      expect(rolloutReasonProblem(`pilot${mark}wave`)).toBeUndefined();
+    }
+    expect(rolloutReasonProblem('تجربة‏ ‮الموجة')).toBe('invalid');
+  });
+
   it('names an aggregate with a stable version 5 UUID', () => {
     const id = nameAggregateId('rollout:wms');
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);

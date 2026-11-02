@@ -14,7 +14,434 @@
     "staff": "Platform staff",
     "audit": "Audit log"
   },
-  "placeholder": {
-    "console": "The platform console is under construction."
+  "no_access": {
+    "title": "You cannot open this page",
+    "description": "Your console role does not allow this page. Ask a super admin for access if you need it.",
+    "home": "Back to the overview"
+  },
+  "home": {
+    "description": "Where the platform team provisions accounts and watches the platform.",
+    "none": "Your role opens no area of the console yet.",
+    "areas": {
+      "accounts": "Provision merchant accounts, act on one with a support reason, suspend or close it.",
+      "rollout": "Choose who gets each module: no one, the allowlisted accounts, or every account.",
+      "outbox": "Read the queued and failed effects of every account and replay the failed ones.",
+      "staff": "Invite the platform team, change roles, revoke access and reset a second factor.",
+      "audit": "Who did what on the platform, with the reason of every support read and change."
+    },
+    "consumers": {
+      "title": "Outbox consumers",
+      "description": "Parked and dead events per consumer, and how far each one is behind.",
+      "failed": "The consumers could not be read. Reload the page to try again.",
+      "empty": "No consumer is registered.",
+      "columns": {
+        "consumer": "Consumer",
+        "parked": "Parked",
+        "dead": "Dead",
+        "lag": "Behind by"
+      },
+      "dead_link": "{value} dead",
+      "lag": "{value} s"
+    }
+  },
+  "authz": {
+    "not_permitted": "Your console role does not allow this."
+  },
+  "features": {
+    "delivery": "Delivery",
+    "wms": "Warehouse"
+  },
+  "locales": {
+    "ar": "Arabic",
+    "en": "English"
+  },
+  "account_status": {
+    "provisioned": "Provisioned",
+    "active": "Active",
+    "suspended": "Suspended",
+    "closed": "Closed"
+  },
+  "accounts": {
+    "description": "Every merchant account on the platform. Open one to act on it with a support reason.",
+    "provision": "Provision account",
+    "table_label": "Merchant accounts",
+    "columns": {
+      "name": "Account",
+      "status": "Status",
+      "locale": "Language",
+      "created": "Created"
+    },
+    "filters": {
+      "status": "Status",
+      "all": "All",
+      "search": "Search by name"
+    },
+    "empty": "No account yet",
+    "empty_hint": "Provision the first merchant account to start.",
+    "empty_filtered": "No account matches these filters",
+    "empty_filtered_hint": "Try again by editing the filters.",
+    "clear_filters": "Clear filters"
+  },
+  "provision": {
+    "title": "Provision an account",
+    "description": "The account starts as provisioned and turns active when its owner accepts the invitation.",
+    "sections": {
+      "account": "Account",
+      "limits": "Limits",
+      "limits_hint": "Every limit is required; 0 allows none. You can raise them later.",
+      "modules": "Modules",
+      "modules_hint": "The modules this account gets from the start. Each still follows its rollout mode.",
+      "modules_none": "No module is registered.",
+      "owner": "Owner",
+      "owner_hint": "We email the owner an invitation. The account becomes active when they accept it."
+    },
+    "fields": {
+      "name": "Account name",
+      "name_hint": "1 to 80 characters on one line, no web address.",
+      "default_locale": "Default language",
+      "owner_email": "Owner's email",
+      "owner_name": "Owner's name"
+    },
+    "limits": {
+      "orders_per_month": "Orders per month",
+      "orders_per_month_hint": "New orders the account may create in a calendar month.",
+      "drivers": "Drivers",
+      "drivers_hint": "Drivers the account may have at once.",
+      "sites": "Sites",
+      "sites_hint": "Branches and warehouses the account may have.",
+      "api_keys": "API keys",
+      "api_keys_hint": "Keys for the merchant's own integrations."
+    },
+    "submit": "Provision and invite the owner",
+    "invited_notice": "Account provisioned. The owner's invitation went to {email}."
+  },
+  "account": {
+    "loading": "Loading the account…",
+    "failed": "The account could not be loaded.",
+    "short_id": "No. {id}",
+    "banner": {
+      "label": "Acting on account",
+      "title": "Acting on {name}",
+      "reason": "Support reason:",
+      "exit": "Exit account"
+    },
+    "gate": {
+      "title": "Why are you opening {name}?",
+      "description": "Every read of this account's data is recorded with this reason in the audit log. It stays with this tab until you exit the account.",
+      "label": "Support reason",
+      "confirm": "Open the account"
+    },
+    "header": {
+      "locale": "Language: {locale}",
+      "created": "Created {date}"
+    },
+    "tabs": {
+      "label": "Account sections",
+      "details": "Details",
+      "flags": "Modules",
+      "members": "Members",
+      "audit": "Audit log"
+    },
+    "notice": {
+      "suspended": "This account is suspended",
+      "closed": "This account is closed",
+      "reason": "Reason:",
+      "suspended_hint": "Its staff cannot sign in and its outgoing messages are held until it is reactivated.",
+      "closed_hint": "Closing is permanent. Its data is kept and stays readable here."
+    },
+    "details": {
+      "title": "Details",
+      "description": "Name, language and limits. Lowering a limit below what is used only blocks new ones.",
+      "read_only": "Only a platform admin with the provisioning permission changes these.",
+      "usage": "{used} in use",
+      "save": "Save details"
+    },
+    "invite": {
+      "button": "Invite owner",
+      "title": "Invite an owner",
+      "description": "We email an invitation. An account may have more than one owner.",
+      "submit": "Send invitation",
+      "already_active": "This person is already an active owner of the account.",
+      "sent": "Invitation sent to {email}."
+    },
+    "lifecycle": {
+      "title": "Account status",
+      "description": "Suspend stops the account for now; close ends it for good.",
+      "suspend": {
+        "button": "Suspend…",
+        "title": "Suspend {name}?",
+        "consequences": {
+          "a": "Its staff are signed out and cannot sign in or refresh a session.",
+          "b": "Its outgoing messages and integrations are held.",
+          "c": "Its data is kept. You can reactivate it later."
+        },
+        "confirm": "Suspend account",
+        "done": "The account is suspended."
+      },
+      "reactivate": {
+        "button": "Reactivate…",
+        "title": "Reactivate {name}?",
+        "consequences": {
+          "a": "Its staff can sign in again.",
+          "b": "Held messages and integrations resume."
+        },
+        "confirm": "Reactivate account",
+        "done": "The account is active again."
+      },
+      "close": {
+        "button": "Close…",
+        "title": "Close {name} for good?",
+        "consequences": {
+          "a": "Closing is permanent: the account cannot be reopened from the console.",
+          "b": "Every session ends and open invitations stop working.",
+          "c": "Its data is kept as the retention rules require."
+        },
+        "type_name": "Type the account name to confirm",
+        "confirm": "Close account",
+        "done": "The account is closed."
+      },
+      "not_allowed": {
+        "suspend": "Only an active account can be suspended.",
+        "reactivate": "Only a suspended account can be reactivated.",
+        "close": "Only a suspended or provisioned account can be closed."
+      },
+      "conflict": "The account changed in the meantime. The page now shows its current status."
+    }
+  },
+  "flags": {
+    "title": "Modules",
+    "description": "Turn a module on or off for this account. Each change needs a reason and is recorded.",
+    "delay_notice": "A change can take up to a minute to reach the account.",
+    "enabled_at": "On since {date}",
+    "provisioned_by": "Set by {who}",
+    "never": "Never turned on",
+    "switch_label": "{feature} for this account",
+    "effect": {
+      "all": "On for every account: the rollout mode is all.",
+      "off": "Off for every account: the rollout mode is off.",
+      "on_here": "On for this account: it is on the allowlist.",
+      "off_here": "Off for this account: it is not on the allowlist."
+    },
+    "dialog": {
+      "on_title": "Turn on {feature} for {name}?",
+      "off_title": "Turn off {feature} for {name}?",
+      "description": "The reason is recorded with the change in the audit log.",
+      "on_confirm": "Turn on",
+      "off_confirm": "Turn off"
+    },
+    "done": "Saved. A change can take up to a minute to reach the account."
+  },
+  "rollout": {
+    "description": "Who gets each module. Only a super admin changes a mode; each change needs a reason.",
+    "modes": {
+      "off": "Off",
+      "allowlist": "Allowlist",
+      "all": "All"
+    },
+    "meaning": {
+      "off": "No account gets this module, whatever its own setting.",
+      "allowlist": "Only the accounts where it is turned on get this module.",
+      "all": "Every account gets this module."
+    },
+    "updated": "Changed {date} by {who}",
+    "never_changed": "Never changed: the default is allowlist.",
+    "dialog": {
+      "title": "Set {feature} to {mode}?",
+      "confirm": "Change mode"
+    },
+    "done": "Saved. A change can take up to a minute to apply.",
+    "updated_on": "Changed {date}"
+  },
+  "filter_gate": {
+    "title": "Why are you reading the data of {name}?",
+    "description": "Every read of this account's data is recorded with this reason in the audit log. It stays with this tab until you reload the page or sign out.",
+    "description_platform": "The platform console requires a reason to list every account. This reason is not recorded in the audit log; it is kept for this tab only, until you reload the page or sign out.",
+    "label": "Support reason",
+    "confirm": "Read the account's data",
+    "all_accounts": "every account"
+  },
+  "account_filter": {
+    "search": "Find an account",
+    "label": "Account",
+    "all": "All accounts"
+  },
+  "members": {
+    "title": "Members",
+    "description": "The people who work on this account. Support reads only: the account owner changes them.",
+    "table_label": "Members of this account",
+    "empty": "This account has no member yet."
+  },
+  "outbox": {
+    "description": "Effects waiting to leave the platform, sent, and failed. Choose an account to see the payloads.",
+    "table_label": "Outbox rows",
+    "columns": {
+      "created": "Created",
+      "kind": "Kind",
+      "type": "Event",
+      "status": "Status",
+      "attempts": "Attempts",
+      "next_attempt": "Next attempt",
+      "account": "Account"
+    },
+    "last_error": "Last error:",
+    "none": "—",
+    "platform_only": "Platform",
+    "needs_reason": "Give a support reason to read this account's rows.",
+    "empty": "No outbox row yet.",
+    "empty_filtered": "No outbox row matches these filters.",
+    "clear_filters": "Clear filters",
+    "filters": {
+      "status": "Status",
+      "all": "All",
+      "kind": "Kind",
+      "all_kinds": "All kinds",
+      "type": "Event type",
+      "aggregate_id": "Aggregate ID",
+      "invalid_id": "Enter a full ID.",
+      "from": "From",
+      "to": "To"
+    },
+    "statuses": {
+      "pending": "Waiting",
+      "enqueued": "Queued",
+      "done": "Sent",
+      "dead": "Failed",
+      "superseded": "Replaced"
+    },
+    "kinds": {
+      "internal_event": "Internal event",
+      "webhook": "Webhook",
+      "message": "Message",
+      "push": "Push notification",
+      "channel_publish": "Channel publish",
+      "carrier_call": "Carrier call",
+      "storage_lifecycle": "Storage clean-up"
+    },
+    "drawer": {
+      "enqueued": "Queued at",
+      "done": "Sent at",
+      "aggregate": "Aggregate",
+      "sequence": "Sequence",
+      "last_error": "Last error",
+      "envelope": "Envelope and payload",
+      "metadata_only": "A platform row: no payload is shown.",
+      "of_account": "Account {name} ·"
+    },
+    "replay": {
+      "button": "Replay…",
+      "hint": "The row goes back to waiting and is sent again.",
+      "title": "Replay {type}?",
+      "description": "The failed row is sent again from the start. The replay and its reason are recorded.",
+      "consequence": "The receiver gets the event again; it drops one it has already applied.",
+      "confirm": "Replay the row",
+      "done": "Replayed: the row is waiting to be sent again.",
+      "refusals": {
+        "not_dead": "This row is no longer failed: reload to see its status.",
+        "outside_receipt_window": "This row is older than 35 days and can no longer be replayed.",
+        "supersede_pending": "A newer row for the same effect is waiting: it replaces this one.",
+        "job_active": "A job is sending this row right now. Try again in a minute."
+      }
+    },
+    "bulk": {
+      "button": "Replay failed rows…",
+      "needs_filter": "Choose an account and a kind first: a bulk replay covers one account and one kind.",
+      "title": "Replay the failed {kind} rows of {name}?",
+      "description": "Every failed row of these filters is sent again. The replay, its counts and its reason are recorded.",
+      "limit": "At most 500 rows are replayed per run; run it again for more.",
+      "rules": "Rows older than 35 days, replaced or running stay failed.",
+      "confirm": "Replay the failed rows",
+      "done": "{replayed} of {matched} failed rows were replayed."
+    }
+  },
+  "audit": {
+    "description": "Every change and every support read on the platform, newest first. Entries cannot be changed or deleted.",
+    "table_label": "Platform audit log",
+    "account_table_label": "Audit log of this account",
+    "account_title": "Audit log",
+    "account_description": "What changed on this account and who read it, with the reason.",
+    "columns": {
+      "account": "Account",
+      "reason": "Reason"
+    },
+    "no_account": "Platform",
+    "needs_reason": "Give a support reason to read this account's entries.",
+    "filters": {
+      "action": "Action",
+      "all_actions": "All actions"
+    }
+  },
+  "staff": {
+    "description": "The platform team: who can use this console and with which role. Every change ends the person's sessions.",
+    "table_label": "Platform staff",
+    "columns": {
+      "name": "Name",
+      "role": "Role",
+      "totp": "Authenticator",
+      "created": "Joined"
+    },
+    "you": "(you)",
+    "revoked": "Revoked",
+    "totp_on": "Set up",
+    "totp_off": "Not set up",
+    "empty": "No staff member yet.",
+    "actions": "Actions",
+    "actions_for": "Actions for {name}",
+    "roles": {
+      "platform_super_admin": {
+        "label": "Super admin",
+        "sentence": "Everything, including rollout modes, staff and their roles, and authenticator resets."
+      },
+      "platform_admin": {
+        "label": "Admin",
+        "sentence": "Provisions and manages accounts, sets modules, replays the outbox; no rollout modes, no staff."
+      },
+      "platform_support": {
+        "label": "Support",
+        "sentence": "Reads accounts, their members, the outbox and the audit log with a reason; changes nothing."
+      }
+    },
+    "locks": {
+      "self": "Not on yourself",
+      "last_super_admin": "The last super admin keeps the role",
+      "super_admin_only": "A super admin only",
+      "revoked": "Access is revoked: invite them again"
+    },
+    "invite": {
+      "button": "Invite staff",
+      "title": "Invite a platform staff member",
+      "description": "We email an invitation. They choose a password and set up an authenticator app.",
+      "email": "Work email",
+      "name": "Name",
+      "role": "Role",
+      "submit": "Send invitation",
+      "already": "This person is already on the platform team. Change their role instead.",
+      "done": "Invitation sent to {email}."
+    },
+    "role": {
+      "button": "Change role…",
+      "title": "Change the role of {name}?",
+      "label": "New role",
+      "pick": "Choose the new role.",
+      "sessions": "They are signed out everywhere and get the new role at their next sign-in.",
+      "confirm": "Change role",
+      "done": "{name} is now {role}."
+    },
+    "revoke": {
+      "button": "Revoke access…",
+      "title": "Revoke the console access of {name}?",
+      "sessions": "They are signed out everywhere and can no longer sign in to the console.",
+      "again": "To give access back, invite them again.",
+      "confirm": "Revoke access",
+      "done": "The access of {name} is revoked."
+    },
+    "reset": {
+      "button": "Reset authenticator…",
+      "title": "Reset the authenticator of {name}?",
+      "description": "Use this when they lost their phone or their authenticator app. The reset and its reason are recorded.",
+      "link": "We email them a one-time link, valid for 24 hours, to set up a new authenticator.",
+      "sessions": "They are signed out everywhere until they do.",
+      "confirm": "Reset authenticator",
+      "done": "The authenticator of {name} is reset; the link is on its way."
+    }
   }
 }

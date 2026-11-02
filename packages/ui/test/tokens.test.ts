@@ -38,6 +38,8 @@ const textPairs: [string, string][] = [
   ['color-danger-foreground', 'color-danger'],
   ['color-warning-foreground', 'color-warning'],
   ['color-success-foreground', 'color-success'],
+  ['color-support-foreground', 'color-support'],
+  ['color-support', 'color-background'],
 ];
 
 const boundaryPairs: [string, string][] = surfaces.flatMap((bg) => [

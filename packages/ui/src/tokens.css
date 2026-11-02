@@ -29,6 +29,10 @@
   --color-warning-foreground: #ffffff;
   --color-success: #067647;
   --color-success-foreground: #ffffff;
+  /* The platform console's "Acting on account" banner (web §3.5, WEB-4 plan 2.4): a warm neutral no
+   * merchant screen uses, apart from danger and warning. One theme in wave 0 (this file's header). */
+  --color-support: #5b4636;
+  --color-support-foreground: #ffffff;
 
   /*
    * Typography. The family is one token, so the brand font (web §12.1, Q-21) is a one-file
