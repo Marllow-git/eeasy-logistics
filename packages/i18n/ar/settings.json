@@ -1,0 +1,19 @@
+{
+  "title": "الإعدادات",
+  "sections": {
+    "account": "إعدادات الحساب",
+    "members": "الأعضاء",
+    "sites": "المواقع",
+    "audit": "سجل التدقيق"
+  },
+  "roles": {
+    "owner": "المالك",
+    "admin": "مدير",
+    "dispatcher": "منسّق التوزيع",
+    "site_staff": "موظف فرع",
+    "warehouse_staff": "موظف مستودع",
+    "cashier": "أمين الصندوق",
+    "viewer": "مُطّلع",
+    "driver": "سائق"
+  }
+}

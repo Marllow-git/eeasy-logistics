@@ -27,7 +27,12 @@
     "./session": "./src/session/session-provider.tsx",
     "./session/user-menu": "./src/session/user-menu.tsx",
     "./query": "./src/query/query-provider.tsx",
-    "./authz": "./src/authz/can.tsx"
+    "./authz": "./src/authz/can.tsx",
+    "./form": "./src/form/form.tsx",
+    "./form/fields": "./src/form/fields.tsx",
+    "./table": "./src/table/data-table.tsx",
+    "./table/list-params": "./src/table/list-params.ts",
+    "./table/cursor-list": "./src/table/cursor-list.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

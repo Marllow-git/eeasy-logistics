@@ -1,5 +1,6 @@
 'use client';
 
+import { Check } from 'lucide-react';
 import { DropdownMenu as MenuPrimitive } from 'radix-ui';
 import type { ComponentProps } from 'react';
 import { cn } from '../../cn';
@@ -61,4 +62,28 @@ export function DropdownMenuSeparator({
   ...props
 }: ComponentProps<typeof MenuPrimitive.Separator>) {
   return <MenuPrimitive.Separator className={cn('my-1 h-px bg-border', className)} {...props} />;
+}
+
+/** A menu item with a check (the table's column visibility, WEB-3); the check never mirrors. */
+export function DropdownMenuCheckboxItem({
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof MenuPrimitive.CheckboxItem>) {
+  return (
+    <MenuPrimitive.CheckboxItem
+      className={cn(
+        'relative flex cursor-default items-center rounded-sm py-1.5 ps-8 pe-2 text-sm outline-none select-none data-disabled:opacity-50 data-highlighted:bg-muted',
+        className,
+      )}
+      {...props}
+    >
+      <span className="absolute start-2 flex size-4 items-center justify-center">
+        <MenuPrimitive.ItemIndicator>
+          <Check aria-hidden className="size-4" />
+        </MenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </MenuPrimitive.CheckboxItem>
+  );
 }

@@ -83,5 +83,18 @@
     "title": "You cannot open this page",
     "description": "Your role on this account does not allow this page. Ask the account owner or an admin for access if you need it.",
     "home": "Back to home"
+  },
+  "form": {
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved."
+  },
+  "table": {
+    "columns": "Columns",
+    "actions": "Actions",
+    "empty": "Nothing here yet.",
+    "load_more": "Load more",
+    "loading_more": "Loading…",
+    "shown": "{count, plural, one {{value} shown} other {{value} shown}}"
   }
 }
