@@ -27,6 +27,8 @@ export {
 } from '../authz/permission-resolver.js';
 export { OutboxWriter, type OutboxEntry } from '../outbox/outbox-writer.js';
 export type { DomainEvent, DomainEventType, EventPayload } from '../outbox/domain-event.js';
+// DEL-5: a context's internal consumers (the suspension consumer ends the account's shifts).
+export { OnDomainEvent, type DomainEventConsumer } from '../outbox/domain-event-consumers.js';
 export type { OutboxKind } from '../schema/outbox.js';
 // Telemetry (PLAT-14): one span per provider call for every adapter, and the metric catalogue.
 export { withPortSpan, type PortCall, type PortSpan } from '../telemetry/port-span.js';

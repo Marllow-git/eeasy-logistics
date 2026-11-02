@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StartFacts } from './shift-input.js';
-import { ineligibleReason, planWindowProblems } from './shift-input.js';
+import { ineligibleReason, isStale, planWindowProblems } from './shift-input.js';
 
 // DEL-5 plan 2.3, 2.4: the planning window and the typed eligibility reasons.
 
@@ -99,5 +99,22 @@ describe('ineligibleReason', () => {
         planned: planned('2026-11-02T00:00:00Z', '2026-11-02T07:59:59Z'),
       }),
     ).toBe('outside_window');
+  });
+});
+
+describe('isStale (plan 2.8)', () => {
+  const started = at('2026-11-02T07:00:00Z');
+
+  it('is stale 5 minutes after the newest point, not before', () => {
+    const last = at('2026-11-02T07:50:00Z');
+    expect(isStale(started, last, at('2026-11-02T07:54:59Z'))).toBe(false);
+    expect(isStale(started, last, at('2026-11-02T07:55:00Z'))).toBe(true);
+  });
+
+  it('counts from started_at when no point arrived since the start', () => {
+    expect(isStale(started, null, at('2026-11-02T07:04:00Z'))).toBe(false);
+    expect(isStale(started, null, at('2026-11-02T07:05:00Z'))).toBe(true);
+    // A point of an earlier shift does not count for this one.
+    expect(isStale(started, at('2026-11-02T06:59:00Z'), at('2026-11-02T07:04:00Z'))).toBe(false);
   });
 });

@@ -12,6 +12,8 @@ describe('push namespace', () => {
       'offer_received',
       'order_assigned',
       'order_cancelled',
+      // DEL-5 plan 2.8.
+      'stale_tracking',
       'sync_needed',
     ]);
   });

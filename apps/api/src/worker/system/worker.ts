@@ -22,6 +22,12 @@ import { otpPurgeIntervalMs, runOtpPurge } from './otp-purge.js';
 import { PushKindHandler } from '../../modules/kernel/push/push.handler.js';
 import type { PushReceiptsRun } from './push-receipts.js';
 import { pushReceiptsIntervalMs, runPushReceipts } from './push-receipts.js';
+import type { ShiftSweeperRun } from './shift-sweeper.js';
+import { runShiftSweeper, shiftSweeperIntervalMs } from './shift-sweeper.js';
+import type { RetentionRun } from './telemetry-retention.js';
+import { retentionTickMs, runTelemetryRetention } from './telemetry-retention.js';
+import type { TrailAppenderRun } from './trail-appender.js';
+import { runTrailAppender, trailAppenderIntervalMs } from './trail-appender.js';
 
 // `--role worker` (platform §2). The system jobs run on timers: the hourly idempotency purge
 // (PLAT-6 plan 2.9) and the single-leader outbox relay (PLAT-8 plan 2.3); the outbox queue
@@ -34,7 +40,10 @@ export type WorkerJob =
   | 'outbox-relay'
   | 'outbox-queues'
   | 'outbox-gauges'
-  | 'push-receipts';
+  | 'push-receipts'
+  | 'trail-appender'
+  | 'telemetry-retention'
+  | 'shift-sweeper';
 
 /** A started background job: stopped on shutdown. */
 export interface StartedJob {
@@ -88,6 +97,24 @@ export interface WorkerDependencies {
     redis: PurgeRedis,
     push: PushKindHandler,
   ) => Promise<PushReceiptsRun>;
+  /** DEL-5 plan 2.8: one trail appender run under its lock (scan on platform, writes on elx_app). */
+  readonly trailAppender: (
+    pool: Pool<PlatformDatabase>,
+    app: Pool<AppDatabase>,
+    redis: PurgeRedis,
+  ) => Promise<TrailAppenderRun>;
+  /** DEL-5 plan 2.8: one retention tick (runs only in the 03:00 hour in Riyadh, under its lock). */
+  readonly telemetryRetention: (
+    pool: Pool<PlatformDatabase>,
+    app: Pool<AppDatabase>,
+    redis: PurgeRedis,
+  ) => Promise<RetentionRun>;
+  /** DEL-5 plan 2.5, 2.8: one shift sweep (no-shows, stale alerts) under its lock. */
+  readonly shiftSweeper: (
+    pool: Pool<PlatformDatabase>,
+    app: Pool<AppDatabase>,
+    redis: PurgeRedis,
+  ) => Promise<ShiftSweeperRun>;
 }
 
 /** The real relay: its own BullMQ connection, the handler registry of this build, LISTEN. */
@@ -177,8 +204,36 @@ const defaults: WorkerDependencies = {
       audit: new AuditWriter(pool),
       logger: new Logger('PushReceipts'),
     }),
+  trailAppender: (pool, app, redis) =>
+    runTrailAppender({ db: pool.db, app: app.db, redis, logger: new Logger('TrailAppender') }),
+  telemetryRetention: (pool, app, redis) =>
+    runTelemetryRetention({
+      db: pool.db,
+      app: app.db,
+      redis,
+      logger: new Logger('TelemetryRetention'),
+    }),
+  shiftSweeper: (pool, app, redis) =>
+    runShiftSweeper({ db: pool.db, app: app.db, redis, logger: new Logger('ShiftSweeper') }),
   logger: new Logger('Worker'),
 };
+
+/** A job run at once and then every `intervalMs`; a failure is one warning and one skipped run. */
+function every(
+  intervalMs: number,
+  name: string,
+  logger: Pick<Logger, 'warn'>,
+  run: () => Promise<void>,
+): { first: Promise<void>; timer: NodeJS.Timeout } {
+  const tick = async () => {
+    try {
+      await run();
+    } catch (error) {
+      logger.warn(`${name} skipped: ${error instanceof Error ? error.name : 'unknown error'}`);
+    }
+  };
+  return { first: tick(), timer: setInterval(() => void tick(), intervalMs) };
+}
 
 /**
  * Starts the worker with whatever the configuration enables (review round 1, finding 5). The
@@ -337,9 +392,59 @@ export async function startWorker(
   } else {
     deps.logger.log('Push receipts off: no push handler');
   }
+  // DEL-5 plan 2.5, 2.8: the telemetry and shift jobs scan on the platform pool and write per
+  // account on elx_app (elx_platform only reads those tables), so they need DATABASE_URL_APP.
+  const deliveryTimers: NodeJS.Timeout[] = [];
+  if (app === undefined) {
+    deps.logger.log(
+      'Trail appender, telemetry retention and shift sweeper off: DATABASE_URL_APP not configured',
+    );
+  } else {
+    const connected = async () => {
+      if (redis.status === 'wait') await redis.connect();
+    };
+    const appender = every(trailAppenderIntervalMs, 'Trail appender', deps.logger, async () => {
+      await connected();
+      const run = await deps.trailAppender(pool, app, redis);
+      if (run.ran && (run.counts.points > 0 || run.counts.failed > 0)) {
+        const c = run.counts;
+        deps.logger.log(
+          `Trail appender: ${c.points} points of ${c.drivers} drivers appended, ${c.failed} failed`,
+        );
+      }
+    });
+    const retention = every(retentionTickMs, 'Telemetry retention', deps.logger, async () => {
+      await connected();
+      const run = await deps.telemetryRetention(pool, app, redis);
+      if (run.ran) {
+        const c = run.counts;
+        deps.logger.log(
+          `Telemetry retention: ${c.trails} trails, ${c.ringRows} ring rows and ${c.heads} heads ` +
+            `deleted in ${c.accounts} accounts, ${c.failed} failed`,
+        );
+      }
+    });
+    const sweeper = every(shiftSweeperIntervalMs, 'Shift sweeper', deps.logger, async () => {
+      await connected();
+      const run = await deps.shiftSweeper(pool, app, redis);
+      if (run.ran && (run.counts.noShows > 0 || run.counts.stale > 0 || run.counts.failed > 0)) {
+        const c = run.counts;
+        deps.logger.log(
+          `Shift sweeper: ${c.noShows} no-shows, ${c.stale} stale alerts, ${c.failed} failed`,
+        );
+      }
+    });
+    await Promise.all([appender.first, retention.first, sweeper.first]);
+    deliveryTimers.push(appender.timer, retention.timer, sweeper.timer);
+    jobs.push('trail-appender', 'telemetry-retention', 'shift-sweeper');
+    deps.logger.log(
+      'Trail appender and shift sweeper scheduled every 5 minutes, telemetry retention daily at 03:00 Asia/Riyadh',
+    );
+  }
   return {
     jobs,
     stop: async () => {
+      for (const deliveryTimer of deliveryTimers) clearInterval(deliveryTimer);
       clearInterval(timer);
       clearInterval(otpTimer);
       clearInterval(pruneTimer);

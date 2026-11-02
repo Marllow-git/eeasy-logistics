@@ -14,6 +14,21 @@ export const maxPlanAheadMs = 14 * 24 * hour;
 export const earlyStartMs = 60 * minute;
 /** An ad hoc shift is planned for 12 hours from its start (§7 #2). */
 export const adHocShiftMs = 12 * hour;
+/** A planned shift not started 30 minutes after `planned_start` is a no-show (§7 #1). */
+export const noShowGraceMs = 30 * minute;
+/** An active shift without a point for 5 minutes is stale; one alert per 15 minutes (§7 #3). */
+export const staleAfterMs = 5 * minute;
+export const staleRepeatMs = 15 * minute;
+
+/**
+ * Whether an `active` shift is stale at `now` (plan 2.8): its newest point arrived (server time)
+ * 5 minutes ago or more, or no point arrived since `started_at` and that was 5 minutes ago or more.
+ */
+export function isStale(startedAt: Date, lastPointAt: Date | null, now: Date): boolean {
+  const since =
+    lastPointAt !== null && lastPointAt.getTime() >= startedAt.getTime() ? lastPointAt : startedAt;
+  return now.getTime() - since.getTime() >= staleAfterMs;
+}
 
 /** The planning window's problems (`400 validation_failed`), empty when the window is fine. */
 export function planWindowProblems(start: Date, end: Date, now: Date): FieldProblem[] {

@@ -1,7 +1,7 @@
 import type { RequestContext, TenantUpdate, UnitOfWork } from '@eeasy-logistics/db';
 import { ScopedRepository } from '@eeasy-logistics/db';
 import type { SQL } from 'drizzle-orm';
-import { and, eq, gt, inArray, lt, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, lt, lte, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { ListPagePlan, PageKey, ShiftStatus } from '../../kernel/public/index.js';
 import {
@@ -19,6 +19,7 @@ export type ShiftRow = typeof delDriverShifts.$inferSelect;
 export type ShiftSortField = 'planned_start' | 'created_at';
 
 const live = inArray(delDriverShifts.status, [...liveShiftStatuses]);
+const byDriver = [sql`${delDriverShifts.driverId}`, sql`${delDriverShifts.id}`];
 
 /** The statuses a new plan may not overlap (plan 2.3). */
 const occupying: readonly ShiftStatus[] = ['planned', 'active', 'paused'];
@@ -74,6 +75,46 @@ export class ShiftsRepository extends ScopedRepository<typeof delDriverShifts> {
       ),
       { orderBy: [sql`${delDriverShifts.plannedStart}`, sql`${delDriverShifts.id}`] },
     );
+  }
+
+  /**
+   * The account's live shifts in driver order (the suspension consumer, plan 2.5): the system
+   * writers take driver locks in this order, so two of them never wait on each other in a cycle.
+   */
+  liveByDriver(): Promise<ShiftRow[]> {
+    return this.findMany(live, { orderBy: byDriver });
+  }
+
+  /** `planned` shifts whose `planned_start` is at or before `cutoff`, in driver order (no-shows). */
+  plannedStartedBy(cutoff: Date): Promise<ShiftRow[]> {
+    return this.findMany(
+      and(eq(delDriverShifts.status, 'planned'), lte(delDriverShifts.plannedStart, cutoff)),
+      { orderBy: byDriver },
+    );
+  }
+
+  /** `active` shifts not alerted after `alertedBefore` (the stale check, plan 2.8), driver order. */
+  activeNotAlertedSince(alertedBefore: Date): Promise<ShiftRow[]> {
+    return this.findMany(
+      and(
+        eq(delDriverShifts.status, 'active'),
+        sql`(${delDriverShifts.staleAlertedAt} IS NULL OR ${delDriverShifts.staleAlertedAt} <= ${alertedBefore.toISOString()}::timestamptz)`,
+      ),
+      { orderBy: byDriver },
+    );
+  }
+
+  /** A stale alert on an `active` shift (`version + 1`); undefined once it is no longer active. */
+  async markStaleAlerted(id: string, at: Date): Promise<ShiftRow | undefined> {
+    const [row] = await this.updateWhere(
+      {
+        staleAlertedAt: at,
+        version: sql`${delDriverShifts.version} + 1` as unknown as number,
+        updatedAt: sql`now()` as unknown as Date,
+      },
+      and(eq(delDriverShifts.id, id), eq(delDriverShifts.status, 'active')),
+    );
+    return row;
   }
 
   /** A `planned`, `active` or `paused` shift of the driver overlapping `[start, end)`, if any. */

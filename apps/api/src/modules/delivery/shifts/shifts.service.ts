@@ -1,4 +1,5 @@
 import { getContext, getUnitOfWork, uuidv7 } from '@eeasy-logistics/db';
+import type { Locale } from '@eeasy-logistics/i18n/push';
 import type {
   AuditSink,
   ListPage,
@@ -9,11 +10,19 @@ import type {
 } from '../../kernel/public/index.js';
 import { ApiException, siteSummaries } from '../../kernel/public/index.js';
 import type { DriverRow } from '../drivers/drivers.repository.js';
-import { DriversRepository } from '../drivers/drivers.repository.js';
+import { DriverDevicesRepository, DriversRepository } from '../drivers/drivers.repository.js';
 import { tokenDriver } from '../drivers/token-driver.js';
 import type { LocationFanout } from '../locations/location-fanout.js';
+import { LocationHeadsRepository } from '../locations/locations.repository.js';
 import { VehiclesRepository } from '../vehicles/vehicles.repository.js';
-import { adHocShiftMs, ineligibleReason, planWindowProblems } from './shift-input.js';
+import {
+  adHocShiftMs,
+  ineligibleReason,
+  isStale,
+  noShowGraceMs,
+  planWindowProblems,
+  staleRepeatMs,
+} from './shift-input.js';
 import type { ShiftActor } from './shift-machine.js';
 import { transition } from './shift-machine.js';
 import type { ShiftFilters, ShiftRow, ShiftSortField } from './shifts.repository.js';
@@ -254,6 +263,120 @@ export class ShiftsService {
     return after;
   }
 
+  /**
+   * The sweeper's no-shows (plan 2.5, §7 #1): every `planned` shift of the unit of work's account
+   * whose `planned_start + 30 min` has passed becomes `no_show` by the system, under its driver's
+   * row lock, with an audit row each (no event: nothing consumes one yet). Returns how many.
+   */
+  async markNoShows(runId: string): Promise<number> {
+    const uow = getUnitOfWork();
+    const shifts = new ShiftsRepository(uow);
+    const due = await shifts.plannedStartedBy(new Date(this.now().getTime() - noShowGraceMs));
+    let marked = 0;
+    for (const seen of due) {
+      await new DriversRepository(uow).lockDriver(seen.driverId);
+      const before = await shifts.find(seen.id);
+      if (before?.status !== 'planned') continue; // started or cancelled meanwhile
+      transition(before, 'no_show', 'system');
+      const after = await shifts.move(before.id, 'planned', 'no_show');
+      if (after === undefined) continue;
+      await this.recordSystem(after, 'delivery.shift.no_show', before, runId);
+      marked += 1;
+    }
+    return marked;
+  }
+
+  /**
+   * The sweeper's stale check (plan 2.8, §7 #3): every `active` shift of the account without a point
+   * for 5 minutes and not alerted in the last 15 gets one `push` row to the driver's devices
+   * (`stale_tracking`, in `locales`' language for the driver, Arabic otherwise), one
+   * `delivery.shift.tracking_stale` event and `stale_alerted_at`. A `paused` shift is never checked.
+   * Returns how many shifts were alerted.
+   */
+  async alertStale(locales: ReadonlyMap<string, Locale>): Promise<number> {
+    const uow = getUnitOfWork();
+    const now = this.now();
+    const shifts = new ShiftsRepository(uow);
+    const candidates = await shifts.activeNotAlertedSince(new Date(now.getTime() - staleRepeatMs));
+    if (candidates.length === 0) return 0;
+    const heads = new Map(
+      (await new LocationHeadsRepository(uow).latestOf(candidates.map((s) => s.driverId))).map(
+        (head) => [head.driverId, head.lastServerTs] as const,
+      ),
+    );
+    let alerted = 0;
+    for (const shift of candidates) {
+      const lastPointAt = heads.get(shift.driverId) ?? null;
+      if (shift.startedAt === null || !isStale(shift.startedAt, lastPointAt, now)) continue;
+      const row = await shifts.markStaleAlerted(shift.id, now);
+      if (row === undefined) continue;
+      const devices = (await new DriverDevicesRepository(uow).ofDriver(row.driverId)).filter(
+        (device) => device.revokedAt === null && device.pushToken !== null,
+      );
+      const aggregate = { type: 'driver_shift', id: row.id, version: row.version };
+      await this.deps.outbox.enqueue(uow, {
+        type: 'delivery.shift.tracking_stale',
+        version: 1,
+        aggregate,
+        kind: 'push',
+        payload: {
+          driver_id: row.driverId,
+          template: 'stale_tracking',
+          params: {},
+          locale: locales.get(row.driverId) ?? 'ar',
+          data: { kind: 'sync', route: 'eeasydriver://sync' },
+          ttl_s: staleRepeatMs / 1000,
+          collapse_id: `stale:${row.id}`,
+          devices: devices.map((device) => ({
+            device_id: device.id,
+            push_token: device.pushToken ?? '',
+          })),
+        },
+      });
+      await this.deps.outbox.enqueue(uow, {
+        type: 'delivery.shift.tracking_stale',
+        version: 1,
+        aggregate,
+        kind: 'internal_event',
+        payload: {
+          shift_id: row.id,
+          driver_id: row.driverId,
+          site_id: row.siteId,
+          last_point_at: lastPointAt?.toISOString() ?? null,
+          alerted_at: now.toISOString(),
+        },
+      });
+      alerted += 1;
+    }
+    return alerted;
+  }
+
+  /**
+   * The suspension consumer's effect (plan 2.5; PLAT-13 8.2 #35): every `active` or `paused` shift
+   * of the unit of work's account ends by the system, in driver order under each driver's row lock,
+   * with `delivery.shift.ended` (`ended_by: system`, the reason) and an audit row. Returns how many.
+   */
+  async endAllBySystem(reason: 'account_suspended', causeId: string): Promise<number> {
+    const uow = getUnitOfWork();
+    const shifts = new ShiftsRepository(uow);
+    let ended = 0;
+    for (const seen of await shifts.liveByDriver()) {
+      await new DriversRepository(uow).lockDriver(seen.driverId);
+      const before = await shifts.find(seen.id);
+      if (before === undefined || (before.status !== 'active' && before.status !== 'paused')) {
+        continue;
+      }
+      transition(before, 'ended', 'system');
+      const after = await shifts.move(before.id, before.status, 'ended');
+      if (after === undefined) continue;
+      await this.ended(after, 'system', reason);
+      await this.deps.fanout?.forget(getContext().accountId, after.driverId);
+      await this.recordSystem(after, 'delivery.shift.ended', before, causeId, reason);
+      ended += 1;
+    }
+    return ended;
+  }
+
   /** The token's driver, its row lock taken and the row read again under it. */
   private async lockedDriver(): Promise<{ driver: DriverRow }> {
     const uow = getUnitOfWork();
@@ -322,6 +445,28 @@ export class ShiftsService {
       clientRequestId: facts.clientRequestId,
       ip: facts.ip,
       userAgent: facts.userAgent,
+    });
+  }
+
+  /** A system write (the sweeper, the suspension consumer): no actor id, the run or event as id. */
+  private recordSystem(
+    row: ShiftRow,
+    action: string,
+    before: ShiftRow,
+    requestId: string,
+    reason?: string,
+  ): Promise<void> {
+    return this.deps.audit.record({
+      actorType: 'system',
+      actorId: null,
+      accountId: getContext().accountId,
+      targetType: 'driver_shift',
+      targetId: row.id,
+      action,
+      before: auditView(before),
+      after: auditView(row),
+      ...(reason === undefined ? {} : { reason }),
+      requestId,
     });
   }
 
