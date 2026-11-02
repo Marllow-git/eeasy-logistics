@@ -106,6 +106,14 @@ export const metricCatalogue = {
     description: 'Push receipts checked, by status: ok, error, no_receipt (INT-4)',
     labels: ['status'],
   },
+  // INT-2 plan 2.8: one count per source asked by the chain (miss, not_found, a failure reason,
+  // breaker_open) and per service call answered from the cache (hit) or degraded (unavailable).
+  geocoder_calls_total: {
+    kind: 'counter',
+    description:
+      'Geocoder calls by method, source and outcome: hit, miss, not_found, rate_limited, unauthorised, permanent, transient, breaker_open, unavailable (INT-2)',
+    labels: ['method', 'source', 'outcome'],
+  },
   channel_publication_drift: {
     kind: 'gauge',
     description: 'Stock publications behind per channel connection (INT orders)',

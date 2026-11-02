@@ -37,8 +37,11 @@ export interface GeocodeResult {
 export interface ShortCodeResult {
   readonly kind: 'found';
   readonly point: GeoPoint;
-  /** A short code names one building (integrations §6.2: confidence 1.0 by design). */
-  readonly confidence: 1;
+  /**
+   * A short code names one building (integrations §6.2: 1.0 by design): 1 from the register and
+   * Hudhud, 0.95 from the Sayyar mirror (plan 2.11).
+   */
+  readonly confidence: number;
   readonly addressAr: string;
   readonly addressEn: string;
   /** The normalised code (`^[A-Z]{4}[0-9]{4}$`). */
