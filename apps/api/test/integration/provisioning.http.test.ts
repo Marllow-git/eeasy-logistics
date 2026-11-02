@@ -210,7 +210,6 @@ describe('provisioning doors over HTTP (PLAT-13 item B)', () => {
   });
 
   it('refuses a bad name, a missing limit, an unknown module and a bad owner name; creates nothing', async () => {
-    const before = await owner<{ count: string }[]>`SELECT count(*) FROM core_accounts`;
     const cases: [Record<string, unknown>, string][] = [
       [{ name: 'Visit https://evil.test' }, '/body/name'],
       [{ name: 'Line\nbreak' }, '/body/name'],
@@ -219,21 +218,26 @@ describe('provisioning doors over HTTP (PLAT-13 item B)', () => {
       [{ modules: ['delivery', 'channels'] }, '/body/modules/1'],
       [{ owner: { email: freshEmail('owner'), name: '' } }, '/body/owner/name'],
     ];
+    const owners: string[] = [];
     for (const [overrides, pointer] of cases) {
-      const response = await provision(provisionBody(overrides)).expect(400);
+      const body = provisionBody(overrides);
+      owners.push(body.owner.email);
+      const response = await provision(body).expect(400);
       const error = errorOf(response.body);
       expect(error.code).toBe('validation_failed');
       expect(JSON.stringify(error.details?.fields)).toContain(pointer);
     }
-    const negative = await provision(provisionBody({ limits: { ...limits, drivers: -1 } })).expect(
-      400,
-    );
+    const negativeBody = provisionBody({ limits: { ...limits, drivers: -1 } });
+    owners.push(negativeBody.owner.email);
+    const negative = await provision(negativeBody).expect(400);
     expect(errorOf(negative.body).code).toBe('validation_failed');
-    const after = await owner<{ count: string }[]>`SELECT count(*) FROM core_accounts`;
-    // Other suites create accounts in parallel; none of these bodies' names exist.
-    expect(Number(after[0]?.count)).toBeGreaterThanOrEqual(Number(before[0]?.count));
+    // Nothing of any refused body was written: no account, no owner user, no invitation.
     const leaked = await owner`SELECT 1 FROM core_accounts WHERE name = 'Visit https://evil.test'`;
     expect(leaked).toHaveLength(0);
+    const users = await owner`SELECT 1 FROM core_users WHERE email IN ${owner(owners)}`;
+    expect(users).toHaveLength(0);
+    const invitations = await owner`SELECT 1 FROM core_invitations WHERE email IN ${owner(owners)}`;
+    expect(invitations).toHaveLength(0);
   });
 
   it('answers a replay with the first response and creates one account', async () => {
