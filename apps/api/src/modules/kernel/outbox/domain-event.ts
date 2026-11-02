@@ -8,6 +8,9 @@
 export const domainEventTypes = [
   'core.account.provisioned',
   'core.account.suspended',
+  // PLAT-13 plan 2.7: the rest of the platform's account lifecycle (domain model §6.3, A-26 rows).
+  'core.account.reactivated',
+  'core.account.closed',
   'core.feature_flag.changed',
   'core.site.updated',
   'core.channel_order.received',

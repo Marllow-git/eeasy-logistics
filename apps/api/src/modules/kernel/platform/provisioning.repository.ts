@@ -113,6 +113,25 @@ export class ProvisionedAccounts extends PlatformRepository<typeof coreAccounts>
   }
 
   /**
+   * A platform lifecycle transition (plan 2.7): the new status, `version + 1`, and `closed_at` when
+   * the account closes. The caller holds the row's lock and checked the arrow.
+   */
+  async setStatus(accountId: string, status: AccountStatus): Promise<AccountRecord> {
+    const [row] = await this.unscoped()
+      .update(coreAccounts)
+      .set({
+        status,
+        ...(status === 'closed' ? { closedAt: sql`now()` } : {}),
+        version: sql`${coreAccounts.version} + 1`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(coreAccounts.id, accountId))
+      .returning(recordColumns);
+    if (row === undefined) throw new Error('The account row vanished under its lock');
+    return row;
+  }
+
+  /**
    * `provisioned → active` (plan 2.3), in one statement: the row when this call made the change,
    * undefined when the account was in any other state (already active, suspended or closed:
    * nothing moves).

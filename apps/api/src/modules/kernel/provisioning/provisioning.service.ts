@@ -1,4 +1,10 @@
-import { findContext, findPlatformContext, getContext, uuidv7 } from '@eeasy-logistics/db';
+import {
+  findContext,
+  findPlatformContext,
+  getContext,
+  getUnitOfWork,
+  uuidv7,
+} from '@eeasy-logistics/db';
 import { Logger } from '@nestjs/common';
 import type { AccountView, AuditFacts } from '../accounts/account.service.js';
 import type { AccountLimitValues, LimitKey } from '../accounts/limits.js';
@@ -16,6 +22,9 @@ import type { AccountSortField } from '../platform/provisioning.repository.js';
 import { ProvisionedAccounts, currentProvisioning } from '../platform/provisioning.repository.js';
 import type { AccountLocale, AccountStatus } from '../schema/accounts.js';
 import { accountNameProblem, moduleKeys, ownerNameMaxLength } from './account-input.js';
+import type { LifecycleAction } from './account-lifecycle.js';
+import { lifecycleTransition } from './account-lifecycle.js';
+import { countRevocations } from '../auth/auth-metrics.js';
 
 // The provisioning doors of the platform surface (PLAT-13 plan 2.2 to 2.4; ADR-0006; identity and
 // tenancy §6; K-1, K-2, K-6, K-7). An account comes to exist only through `provision`, in one
@@ -297,6 +306,67 @@ export class ProvisioningService {
       });
       return membershipId;
     });
+  }
+
+  /**
+   * `platformSuspendAccount`, `platformReactivateAccount`, `platformCloseAccount` (plan 2.7; K-2),
+   * inside the account's door and on its transaction: the row locked, the arrow checked (any other
+   * state is `409 invalid_transition` with `current_status` and `version`), the new status
+   * (`closed_at` on closure), then the cascade this order owns: a suspension revokes every staff
+   * refresh family of the account's memberships (the refresh door already answers
+   * `account_suspended`; this ends the sessions, so a reactivation needs a new sign-in); a closure
+   * revokes every family of every surface and expires the open invitations. The account's
+   * `internal_event` (payload: the reason) and the audit row with the reason commit with it. The
+   * relay's hold of the account's external effects (PLAT-8) follows from the status alone.
+   */
+  async transition(action: LifecycleAction, reason: string, facts: AuditFacts): Promise<void> {
+    const caller = platformCaller();
+    const accountId = getContext().accountId;
+    await this.store().run(async (accounts, uow) => {
+      const account = await accounts.find(accountId, { lock: true });
+      if (account === undefined) throw new ApiException('not_found');
+      const transition = lifecycleTransition(action, account.status);
+      if (transition === undefined) {
+        throw new ApiException('invalid_transition', {
+          details: { current_status: account.status, version: account.version },
+        });
+      }
+      const changed = await new ProvisionedAccounts(uow).setStatus(accountId, transition.to);
+      const identity = identityTransactionOf(uow);
+      const outcome: Record<string, number> = {};
+      if (action !== 'reactivate') {
+        const surfaces = action === 'close' ? (['staff', 'driver'] as const) : (['staff'] as const);
+        const families = await identity.refreshTokens.revokeAccount(accountId, 'revoked', surfaces);
+        countRevocations('revoked', families.length);
+        outcome.sessions_ended = families.length;
+      }
+      if (action === 'close') {
+        outcome.invitations_expired = await identity.invitations.expireOpenOfAccount(accountId);
+      }
+      await this.deps.outbox.enqueue(getUnitOfWork(), {
+        type: transition.event,
+        version: 1,
+        aggregate: { type: 'account', id: accountId, version: changed.version },
+        payload: { reason },
+        kind: 'internal_event',
+      });
+      await this.deps.audit.recordIn(uow, {
+        actorType: 'platform_user',
+        actorId: caller,
+        accountId,
+        targetType: 'account',
+        targetId: accountId,
+        action: transition.event,
+        before: { status: account.status },
+        after: { status: transition.to, ...outcome },
+        reason,
+        requestId: facts.requestId,
+        clientRequestId: facts.clientRequestId,
+        ip: facts.ip,
+        userAgent: facts.userAgent,
+      });
+    });
+    this.#logger.log(`account ${action} account_id=${accountId}`);
   }
 
   /** `platformListAccounts` (plan 2.4): one page of accounts on the platform pool, no usage. */
