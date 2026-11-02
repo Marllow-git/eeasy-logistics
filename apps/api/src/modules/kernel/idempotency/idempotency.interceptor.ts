@@ -21,7 +21,7 @@ import { from, lastValueFrom } from 'rxjs';
 import { z } from 'zod';
 import { ApiException } from '../errors/api-exception.js';
 import { currentPlatformIdempotencyStore } from '../platform/idempotency.repository.js';
-import { principalOf } from '../tenancy/frame.js';
+import { CommittedRefusal, NO_UNIT_OF_WORK, principalOf } from '../tenancy/frame.js';
 import type {
   IdempotencyStore,
   IdempotentOptions,
@@ -138,7 +138,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
           return outcome.body;
         }
         case 'reserved': {
-          const value: unknown = await lastValueFrom(next.handle(), { defaultValue: undefined });
+          let value: unknown;
+          try {
+            value = await lastValueFrom(next.handle(), { defaultValue: undefined });
+          } catch (error) {
+            // A refusal that commits (DEL-4 H-1) must not leave the key reserved.
+            if (error instanceof CommittedRefusal) await store.release(outcome.id);
+            throw error;
+          }
           // A secret-bearing answer keeps only its id: the replay needs `resource_id` alone, and a
           // secret under any field name (`link`, `token`) is never stored (adversary M-3). Other
           // answers drop the secret fields at any depth.
@@ -186,8 +193,10 @@ function methodNames(prototype: object): Set<string> {
 
 /**
  * Boot check (review round 2): every `@Idempotent()` handler declares `@HttpCode()`, so the status
- * stored for a replay is the one the first answer had. Registered in `KernelModule`; a missing one
- * fails application start naming the handler.
+ * stored for a replay is the one the first answer had, and none carries `@NoUnitOfWork()` (DEL-4
+ * adversary round 1, L: the reservation is written in the request's transaction, which that
+ * decorator takes away). Registered in `KernelModule`; a violation fails application start naming
+ * the handler.
  */
 @Injectable()
 export class IdempotentRoutesCheck implements OnApplicationBootstrap {
@@ -198,6 +207,7 @@ export class IdempotentRoutesCheck implements OnApplicationBootstrap {
 
   onApplicationBootstrap(): void {
     const missing: string[] = [];
+    const withoutUnitOfWork: string[] = [];
     for (const wrapper of this.discovery.getControllers()) {
       const type = wrapper.metatype as (new (...args: never[]) => unknown) | null | undefined;
       if (typeof type !== 'function') continue;
@@ -206,6 +216,9 @@ export class IdempotentRoutesCheck implements OnApplicationBootstrap {
         const handler = prototype[name];
         if (typeof handler !== 'function') continue;
         if (this.reflector.get(IDEMPOTENT, handler) === undefined) continue;
+        if (this.reflector.get(NO_UNIT_OF_WORK, handler) === true) {
+          withoutUnitOfWork.push(`${type.name}.${name}`);
+        }
         if (this.reflector.get(HTTP_CODE_METADATA, handler) === undefined) {
           missing.push(`${type.name}.${name}`);
         }
@@ -213,6 +226,11 @@ export class IdempotentRoutesCheck implements OnApplicationBootstrap {
     }
     if (missing.length > 0) {
       throw new Error(`@Idempotent() handlers need @HttpCode(): ${missing.join(', ')}`);
+    }
+    if (withoutUnitOfWork.length > 0) {
+      throw new Error(
+        `@Idempotent() handlers need the request unit of work, not @NoUnitOfWork(): ${withoutUnitOfWork.join(', ')}`,
+      );
     }
   }
 }

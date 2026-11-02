@@ -22,6 +22,9 @@ export const domainEventTypes = [
   'core.invitation.created',
   'core.password_reset.requested',
   'core.second_factor.reset',
+  // DEL-4 plan 2.3: the `message` row of a driver's WhatsApp app invitation (an effect, not an
+  // internal event; catalogue §6.3 gains no row).
+  'delivery.driver.created',
   // PLAT-13: the notice mail of a platform user's TOTP reset (a kernel effect, no link).
   'core.platform_staff.totp_reset',
 ] as const;

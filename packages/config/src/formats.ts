@@ -22,6 +22,8 @@ export const seconds = () => integer(1, 31_536_000);
 export const graceSeconds = () => integer(0, 3600);
 /** The issuer an authenticator app shows: no `:` (the otpauth label separator), at most 64. */
 export const totpIssuer = () => z.string().regex(/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/);
+/** A driver app version `major.minor.patch` (DEL-4 plan 2.10, 2.14): digits only, 9 per part. */
+export const appVersion = () => z.string().regex(/^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}$/);
 /** Reverse-proxy hops in front of the API (`trust proxy`); 0 trusts no forwarded header. */
 export const hops = () => integer(0, 10);
 /** Months the audit log is kept (identity and tenancy §7: two years at least; PLAT-7). */

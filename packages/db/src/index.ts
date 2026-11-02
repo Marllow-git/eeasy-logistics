@@ -7,6 +7,7 @@ export {
   findContext,
   findPlatformContext,
   getContext,
+  runWithContext,
   type PlatformContext,
   type RequestContext,
 } from './context.ts';
