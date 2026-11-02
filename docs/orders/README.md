@@ -19,6 +19,7 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | 2026-11-01 | While GitHub Actions is blocked by the organisation's billing, the owner allows a merge on a full local gate (typecheck, lint, unit, format, audit, integration in both RLS lanes) recorded in the plan §9; applied to PLAT-8 (PR #63). |
 | 2026-11-01 | The repository is public from 2026-11-01 so GitHub Actions minutes are unlimited after the Free plan's 2,000 private minutes ran out in one day; the owner returns it to private in a few days. Consequences: GHCR packages stay private; nothing in the history holds a secret (gitleaks full-history scan on every PR); pull requests from forks get read-only tokens. The local-gate waiver above applies only while Actions is blocked. |
 | 2026-11-01 | Two web applications: `apps/web` (merchant, recipient) and `apps/admin` (platform console) on separate hostnames (ADR-0038, order WEB-19). |
+| 2026-11-02 | Owner, on "if it doesn't depend on PLAT-12 we can execute PLAT-13 or any other next PLAT": a third executor may run beside the two of handbook 01 when its order depends on nothing in flight and its build list shares no file with the in-flight orders (file-level disjointness inside `apps/api` is accepted for it; `packages/contracts` and `packages/db` stay one-at-a-time seams). Applied to INT-4 beside PLAT-12 and WEB-2. PLAT-13 waits for PLAT-12 (it writes PLAT-12's tables). |
 
 ## In flight
 
@@ -26,6 +27,7 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 |---|---|---|---|---|---|---|---|
 | PLAT-12 | #86 | `feat/PLAT-12-accounts-members-sites` | executor worktree | executor-api (Opus) | build, leg 1 (A–D) | native, scratch databases, Redis, Mailpit | one-way door (migration 0014); adversary required; two legs; plan pushed 2026-11-02 |
 | WEB-2 | #87 | `feat/WEB-2-browser-sessions` | executor worktree | executor-web (Opus) | build, leg 1 (A–D) | native stack with the API on 3000, Mailpit, WhatsApp stub | two-way door; adversary required; two legs; design references `docs/references/design/WEB-2.md` (PR #85); Next 16 `proxy.ts` |
+| INT-4 | #90 | `feat/INT-4-push-sender` | executor worktree | executor-api (Opus) | build (A–D) | native, scratch databases, Redis, the recorder stub | one-way door (one migration, `core_push_tickets`); adversary no; third executor under the ruling above; files disjoint from PLAT-12 and WEB-2 |
 
 ## Next unblocked (roadmap §1.1)
 
