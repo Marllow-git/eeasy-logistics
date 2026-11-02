@@ -44,6 +44,10 @@ export type AnalyticsCatalogue = IdsAndEnumsOnly<{
     boundary: 'segment' | 'global';
     group: 'merchant' | 'auth' | 'recipient' | 'root';
   };
+  /** The page's session ended (WEB-2 plan 2.12): why, nothing about who. */
+  'auth.session.ended': {
+    reason: 'token_invalid' | 'refresh_refused' | 'account_suspended';
+  };
 }>;
 
 export type AnalyticsEvent = keyof AnalyticsCatalogue;
@@ -51,6 +55,7 @@ export type AnalyticsEvent = keyof AnalyticsCatalogue;
 /** The event names at run time, for the census (`expectAnalyticsEvents`). */
 export const analyticsEvents = [
   'shell.error_page.shown',
+  'auth.session.ended',
 ] as const satisfies readonly AnalyticsEvent[];
 
 // Every catalogue event is listed above, and nothing else.

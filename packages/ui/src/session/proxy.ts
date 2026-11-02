@@ -35,6 +35,13 @@ export interface SessionProxyOptions {
 
 const refreshTimeoutMs = 5000;
 
+/**
+ * The request header that carries the path and query to the server components, so a layout whose
+ * session read fails can send the user to sign-in with `next` (WEB-2 plan 2.3). Set by the proxy on
+ * every request, whatever the client sent.
+ */
+export const pathHeader = 'x-el-path';
+
 type Refresh =
   | { readonly kind: 'rotated'; readonly cookies: readonly string[] }
   | { readonly kind: 'ended'; readonly cookies: readonly string[] }
@@ -151,6 +158,7 @@ export function createSessionProxy(options: SessionProxyOptions) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-nonce', nonce);
     requestHeaders.set('content-security-policy', policy);
+    requestHeaders.set(pathHeader, `${pathname}${search}`);
     const finish = (response: NextResponse) => {
       const headers = securityHeaders({
         policy,
