@@ -8,6 +8,30 @@ Documents cited by number: 2 domain model (`docs/architecture/domain-model.md`),
 
 Columns: **Role** is the executor role (`backend`, `ux`, `driver`, `research`). **Adv.** is the adversary trigger of handbook 01: `yes` when the order touches auth, tokens, authorization, visibility, cash or stock ledgers, or private data.
 
+## 0. Progress
+
+Updated by the lead at every order close (handbook 01 stage 9) and read with the ledger `docs/orders/README.md`, which holds the in-flight rows. A wave's exit criteria are in section 2.
+
+| Order | State | PR | Date |
+|---|---|---|---|
+| ARCH-1, CHORE-1, CHORE-2 | merged | #4 to #14 (foundation) | 2026-10-31 |
+| PLAT-1 CI skeleton, PLAT-2 local stack, PLAT-3 CI lanes, PLAT-4 config, PLAT-5 schema and harness, PLAT-6 request frame, PLAT-7 audit log, PLAT-8 outbox, PLAT-10 roles, PLAT-14 telemetry, PLAT-15 contracts seam | merged | #18 to #76 | 2026-10-31 to 2026-11-01 |
+| WEB-19 admin scaffold, WEB-1 shell and design system | merged | #42, #61 | 2026-11-01 |
+| PLAT-9 messaging port and OTP | merged | #75, fix #84 | 2026-11-01 |
+| PLAT-11 staff and platform authentication | merged | #83 | 2026-11-02 |
+| PLAT-12 accounts, members and sites | merged | #89 | 2026-11-02 |
+| WEB-2 browser sessions and sign-in doors | merged | #91 | 2026-11-02 |
+| INT-4 push sender | merged | #93 | 2026-11-02 |
+| OPS-3 EAS and store accounts (research) | merged | #82 | 2026-11-01 |
+| INT-2 geocoder and short codes | built, lead review passed; renumbers its migration after PLAT-13 merges | #105 | 2026-11-02 |
+| PLAT-13 provisioning, rollout and suspension | leg 2 building | #104 | 2026-11-02 |
+| WEB-3 merchant settings screens | leg 2 building | #109 | 2026-11-02 |
+| DEL-4 drivers, devices and driver auth | leg 1 building (the first wave 1 order) | #106 (issue) | 2026-11-02 |
+| OPS-1 host, registry and staging | waits on the owner's go (Q-10, Q-12); the wave 0 exit criteria need it | – | – |
+| WEB-4 platform console screens | next, after PLAT-13 | – | – |
+
+Wave 0 remaining for its exit (section 2): PLAT-13, WEB-3, WEB-4, OPS-1 and the staging checks that need it (deploy on merge, the restore drill, the `auth_otp` template approval, the ADR acceptances 0026, 0027, 0029, 0031, 0032, 0033, 0036, 0037).
+
 ## 1. Waves and orders
 
 ### 1.1 Wave 0 · Foundation
