@@ -26,7 +26,7 @@ export default async function MerchantLayout({ children }: { children: ReactNode
     getStaffSession(),
   ]);
   return (
-    <RootHtml namespaces={['common', 'nav', 'auth', 'errors']}>
+    <RootHtml namespaces={['common', 'nav', 'auth', 'errors', 'settings']}>
       <StaffSession me={me}>
         <QueryProvider>
           <AppShell

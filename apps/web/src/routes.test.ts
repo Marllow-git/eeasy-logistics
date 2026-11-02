@@ -4,6 +4,7 @@ import {
   featureVisible,
   merchantRoutes,
   navigationFor,
+  openModules,
   routeOf,
   routeOpen,
   type MerchantRoute,
@@ -49,6 +50,10 @@ void describe('the merchant route manifest', () => {
     assert.equal(featureVisible(orders, grants), false);
     assert.equal(routeOpen(orders, grants), false);
     assert.equal(routeOpen(orders, { ...grants, features: ['delivery'] }), true);
+  });
+
+  void it('lists no module on the home page until a module route exists', () => {
+    assert.deepEqual(openModules({ ...owner, features: ['delivery'] }), []);
   });
 
   void it('refuses a path missing from the manifest', () => {

@@ -59,6 +59,10 @@ export const censusAccounts = {
   one: { id: censusId('account-one'), name: 'متجر الرياض', factor: false },
   two: { id: censusId('account-two'), name: 'سوق جدة', factor: false },
   factor: { id: censusId('account-factor'), name: 'بضائع الدمام', factor: true },
+  // WEB-3: one account per project for the settings screens, so the projects' writes never meet.
+  settingsar: { id: censusId('account-settings-ar'), name: 'متجر الخبر', factor: false },
+  settingsar390: { id: censusId('account-settings-ar390'), name: 'متجر الطائف', factor: false },
+  settingsen: { id: censusId('account-settings-en'), name: 'متجر أبها', factor: false },
 } as const;
 
 export type CensusAccountKey = keyof typeof censusAccounts;
@@ -76,6 +80,7 @@ export interface CensusUser {
 /** The users of one project (plan 2.14). */
 export function censusUsers(project: CensusProject): CensusUser[] {
   const locale = project === 'en' ? 'en' : 'ar';
+  const settings = `settings${slug(project)}` as `settings${'ar' | 'ar390' | 'en'}`;
   const user = (
     role: string,
     name: string,
@@ -111,6 +116,11 @@ export function censusUsers(project: CensusProject): CensusUser[] {
     user('relink', 'خالد الزهراني', censusPhone(2, project), [
       { account: 'factor', roles: ['cashier'] },
     ]),
+    // WEB-3: the settings screens on the project's own account: its owner, a viewer (reads the
+    // settings, changes nothing) and a site-scoped member (no settings at all: the 403 page).
+    user('settings', 'عبدالله الشمري', null, [{ account: settings, roles: ['owner'] }]),
+    user('viewer', 'سارة الغامدي', null, [{ account: settings, roles: ['viewer'] }]),
+    user('sitestaff', 'ماجد العنزي', null, [{ account: settings, roles: ['site_staff'] }]),
   ];
 }
 

@@ -23,6 +23,9 @@ import { cn } from '../cn';
 import { useTranslations } from '../intl';
 import { useUnsavedState } from '../session/session-provider';
 
+/** The react-hook-form types a page's sections name, so apps need no direct dependency. */
+export type { FieldValues, UseFormReturn } from 'react-hook-form';
+
 // Forms of the signed-in groups (web §6.3, §7.4; WEB-3 plan 2.3): react-hook-form with the
 // generated Zod body of the operation as resolver, the field messages of the `errors` catalogue,
 // `validation_failed` pointers mapped onto the fields, one `Idempotency-Key` per intent, the
@@ -70,15 +73,20 @@ export function fieldCodeResolver<Schema extends z.ZodType<FieldValues, FieldVal
   });
 }
 
-/** react-hook-form over a generated body schema (or a `.pick()` of it for one section). */
+/**
+ * react-hook-form over a generated body schema (or a `.pick()` of it for one section); `disabled`
+ * renders every field read-only, for a member who may read but not change (web §4).
+ */
 export function useContractForm<Schema extends z.ZodType<FieldValues, FieldValues>>(
   schema: Schema,
   defaultValues: DefaultValues<z.input<Schema>>,
+  options: { disabled?: boolean } = {},
 ): UseFormReturn<z.input<Schema>, unknown, z.output<Schema>> {
   return useForm<z.input<Schema>, unknown, z.output<Schema>>({
     resolver: fieldCodeResolver(schema),
     defaultValues,
     mode: 'onTouched',
+    disabled: options.disabled,
   });
 }
 

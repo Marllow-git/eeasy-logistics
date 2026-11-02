@@ -3,10 +3,12 @@ import type * as ConfigNode from '@eeasy-logistics/config/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as CensusSeed from '../src/seed/census.js';
 import {
+  censusAccounts,
   censusPlatformInvitee,
   censusPlatformStaff,
   censusProjects,
   censusSeedRefusal,
+  censusUsers,
   seedCensus,
 } from '../src/seed/census.js';
 
@@ -107,5 +109,27 @@ describe('the console census staff', () => {
       ]);
       expect(staff.map((member) => member.email)).not.toContain(censusPlatformInvitee(project));
     }
+  });
+});
+
+describe('the settings census staff (WEB-3)', () => {
+  it("puts each project's owner, viewer and site staff on that project's own account", () => {
+    const accounts = censusProjects.map((project) => {
+      const users = censusUsers(project).filter((user) =>
+        ['settings', 'viewer', 'sitestaff'].some((role) =>
+          user.email.startsWith(`census-${role}-`),
+        ),
+      );
+      expect(users.map((user) => user.memberships[0]?.roles[0])).toEqual([
+        'owner',
+        'viewer',
+        'site_staff',
+      ]);
+      const keys = new Set(users.flatMap((user) => user.memberships.map((m) => m.account)));
+      expect(keys.size).toBe(1);
+      return [...keys][0]!;
+    });
+    expect(new Set(accounts).size).toBe(censusProjects.length);
+    for (const key of accounts) expect(censusAccounts[key].factor).toBe(false);
   });
 });

@@ -59,7 +59,7 @@ export async function expectNoArabicIndicDigits(page: Page) {
 /** No `namespace.key` text on screen: a missing message never shows as its key (web §5). */
 export async function expectNoRawKeys(page: Page) {
   const text = await page.locator('body').innerText();
-  const keys = text.match(/\b(?:common|nav|auth|errors|recipient|platform)\.[a-z0-9_.]+/g);
+  const keys = text.match(/\b(?:common|nav|auth|errors|recipient|platform|settings)\.[a-z0-9_.]+/g);
   expect(keys, 'raw i18n keys on screen').toBeNull();
 }
 
