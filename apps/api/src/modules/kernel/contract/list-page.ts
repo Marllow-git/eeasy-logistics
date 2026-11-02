@@ -288,3 +288,41 @@ export function enumListFilter<T extends string>(
   }
   return [...new Set(values)] as T[];
 }
+
+/** The contracts' `Q` filter: trimmed; empty or blank is no filter (plan 2.4). */
+export function textQuery(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed;
+}
+
+/**
+ * An `ILIKE` pattern matching `text` anywhere and literally: `\`, `%` and `_` are escaped with a
+ * backslash, PostgreSQL's default `LIKE` escape (plan 2.4: "escaped").
+ */
+export function containsPattern(text: string): string {
+  return `%${text.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+}
+
+const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * The page of rows a door holds in memory (`listMembers`: the sort value may be a user's name,
+ * which the tenant transaction cannot read, plan 2.9): ordered by (sort value, `id`) in the sort's
+ * direction, compared by UTF-16 code units so every instance orders alike, after `plan.after`, at
+ * most `plan.limit` rows (the page plus one, for `plan.page`). A time value must be an ISO instant
+ * (`Date.toISOString()`), whose text order is its time order.
+ */
+export function keysetSlice<R>(
+  plan: Pick<ListPagePlan<string>, 'sort' | 'after' | 'limit'>,
+  rows: readonly R[],
+  keyOf: (row: R) => PageKey,
+): R[] {
+  const sign = plan.sort.descending ? -1 : 1;
+  const compare = (a: PageKey, b: PageKey) =>
+    sign * (compareText(a.value, b.value) || compareText(a.id, b.id));
+  const keyed = rows.map((row) => ({ row, key: keyOf(row) }));
+  keyed.sort((a, b) => compare(a.key, b.key));
+  const { after } = plan;
+  const kept = after === undefined ? keyed : keyed.filter(({ key }) => compare(key, after) > 0);
+  return kept.slice(0, plan.limit).map(({ row }) => row);
+}
