@@ -28,12 +28,22 @@ import { isOpaqueToken, opaqueToken, tokenHash } from './tokens.js';
 // whole family. A moved `token_version` (a password reset), a disabled user, a membership that is no
 // longer active or a revoked platform staff row refuse the refresh; a suspended account answers
 // `403 account_suspended` (identity and tenancy §6).
+//
+// Drivers (DEL-4 plan 2.7, 2.8; identity and tenancy §3.2, §4): the same families with a bearer pair
+// instead of cookies, a 90-day absolute refresh bound to one device row (`device_id` on the row,
+// `dev` in the access token). A driver refresh also needs the device the app names to be the row's,
+// the device not revoked (`401 device_revoked`, which revokes the family) and the driver `active`.
 
 export interface SessionSettings {
   readonly staffRefreshTtlSeconds: number;
   readonly platformIdleTtlSeconds: number;
   readonly refreshReuseGraceSeconds: number;
+  /** `AUTH_DRIVER_REFRESH_TTL_SECONDS` (90 days unless set; DEL-4 plan 2.8). */
+  readonly driverRefreshTtlSeconds?: number;
 }
+
+/** The driver refresh lifetime when the settings name none (identity and tenancy §4). */
+const defaultDriverRefreshTtlSeconds = 7_776_000;
 
 /** Who a session is for: a staff membership, or a platform staff member. */
 export type SessionSubject =
@@ -54,6 +64,21 @@ export type SessionSubject =
       readonly userId: string;
       readonly tokenVersion: number;
       readonly role: PlatformStaffRole;
+      readonly amr: readonly AuthenticationMethod[];
+    }
+  | {
+      /** A driver membership on one device row (DEL-4 plan 2.7). */
+      readonly surface: 'driver';
+      readonly userId: string;
+      readonly tokenVersion: number;
+      readonly membership: {
+        readonly id: string;
+        readonly accountId: string;
+        readonly roles: readonly string[];
+        readonly siteIds: readonly string[];
+      };
+      /** The `del_driver_devices` row id (DEL-4 8.2 #17). */
+      readonly deviceId: string;
       readonly amr: readonly AuthenticationMethod[];
     };
 
@@ -179,13 +204,15 @@ export class SessionService {
     const ttl =
       subject.surface === 'staff'
         ? this.#deps.settings.staffRefreshTtlSeconds
-        : this.#deps.settings.platformIdleTtlSeconds;
+        : subject.surface === 'driver'
+          ? (this.#deps.settings.driverRefreshTtlSeconds ?? defaultDriverRefreshTtlSeconds)
+          : this.#deps.settings.platformIdleTtlSeconds;
     const row = await tx.refreshTokens.insert({
       id: uuidv7(),
       surface: subject.surface,
       userId: subject.userId,
-      membershipId: subject.surface === 'staff' ? subject.membership.id : null,
-      deviceId: null,
+      membershipId: subject.surface === 'platform' ? null : subject.membership.id,
+      deviceId: subject.surface === 'driver' ? subject.deviceId : null,
       familyId,
       tokenHash: tokenHash(refreshToken),
       tokenVersion: subject.tokenVersion,
@@ -198,7 +225,8 @@ export class SessionService {
       sessionEvent(subject, facts, 'core.session.started', familyId, {
         surface: subject.surface,
         amr: [...subject.amr],
-        ...(subject.surface === 'staff' ? { membership_id: subject.membership.id } : {}),
+        ...(subject.surface === 'platform' ? {} : { membership_id: subject.membership.id }),
+        ...(subject.surface === 'driver' ? { device: subject.deviceId } : {}),
       }),
     );
     this.#logger.log(`session started surface=${subject.surface} user_id=${subject.userId}`);
@@ -424,6 +452,19 @@ export class SessionService {
 }
 
 function claimsOf(subject: SessionSubject): SessionClaims {
+  if (subject.surface === 'driver') {
+    return {
+      surface: 'driver',
+      userId: subject.userId,
+      accountId: subject.membership.accountId,
+      membershipId: subject.membership.id,
+      deviceId: subject.deviceId,
+      roles: subject.membership.roles,
+      sites: subject.membership.siteIds,
+      tokenVersion: subject.tokenVersion,
+      amr: subject.amr,
+    };
+  }
   return subject.surface === 'staff'
     ? {
         surface: 'staff',
@@ -482,7 +523,7 @@ function sessionEvent(
   return {
     actorType: subject.surface === 'platform' ? 'platform_user' : 'user',
     actorId: subject.userId,
-    accountId: subject.surface === 'staff' ? subject.membership.accountId : null,
+    accountId: subject.surface === 'platform' ? null : subject.membership.accountId,
     targetType: 'session_family',
     targetId: familyId,
     action,

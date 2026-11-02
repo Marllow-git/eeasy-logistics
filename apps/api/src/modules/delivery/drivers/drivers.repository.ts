@@ -1,7 +1,7 @@
 import type { TenantUpdate, UnitOfWork } from '@eeasy-logistics/db';
 import { ScopedRepository } from '@eeasy-logistics/db';
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
-import type { DriverStatus } from '../../kernel/public/index.js';
+import type { DevicePlatform, DriverStatus } from '../../kernel/public/index.js';
 import { delDriverDevices, delDrivers } from '../../kernel/public/index.js';
 
 /** A `del_drivers` row of the context's account. */
@@ -39,6 +39,15 @@ export class DriversRepository extends ScopedRepository<typeof delDrivers> {
    */
   lockWrites(): Promise<void> {
     return this.transactionLock('del_drivers');
+  }
+
+  /**
+   * The driver row lock (plan 2.7, 2.9; data §2.2): a driver's own doors (sign-in's device binding,
+   * the cash PIN) take it alone; a staff write of that driver takes it after `lockWrites()`, so the
+   * two orders never cross.
+   */
+  lockDriver(id: string): Promise<void> {
+    return this.transactionLock(`del_drivers:${id}`);
   }
 
   /** The drivers counted against `limits.drivers`: `active` and `suspended`. */
@@ -150,6 +159,49 @@ export class DriverDevicesRepository extends ScopedRepository<typeof delDriverDe
     return row;
   }
 
+  /** The driver's device the app names `appDeviceId`, revoked or not, or undefined. */
+  async findByAppId(driverId: string, appDeviceId: string): Promise<DriverDeviceRow | undefined> {
+    const [row] = await this.findMany(
+      and(eq(delDriverDevices.driverId, driverId), eq(delDriverDevices.deviceId, appDeviceId)),
+    );
+    return row;
+  }
+
+  /** A device row seen at a sign-in for the first time (plan 2.7). */
+  async insert(values: {
+    readonly id: string;
+    readonly driverId: string;
+    readonly deviceId: string;
+    readonly platform: DevicePlatform;
+    readonly appVersion: string;
+    readonly pushToken: string | null;
+  }): Promise<DriverDeviceRow> {
+    const [row] = await this.insertMany([{ ...values, lastSeenAt: sql`now()` as unknown as Date }]);
+    if (row === undefined) throw new Error('The device insert returned no row');
+    return row;
+  }
+
+  /**
+   * A known device signing in again (plan 2.7): its platform and app version, the push token when
+   * the app sent one, `last_seen_at`, a revoked row active again; `version + 1`.
+   */
+  async rebind(
+    id: string,
+    values: {
+      readonly platform: DevicePlatform;
+      readonly appVersion: string;
+      readonly pushToken?: string | undefined;
+    },
+  ): Promise<DriverDeviceRow> {
+    return this.write(id, {
+      platform: values.platform,
+      appVersion: values.appVersion,
+      ...(values.pushToken === undefined ? {} : { pushToken: values.pushToken }),
+      revokedAt: null,
+      lastSeenAt: sql`now()` as unknown as Date,
+    });
+  }
+
   /** The driver's devices not yet revoked. */
   active(driverId: string): Promise<DriverDeviceRow[]> {
     return this.findMany(
@@ -158,11 +210,17 @@ export class DriverDevicesRepository extends ScopedRepository<typeof delDriverDe
   }
 
   /** One device revoked (plan 2.5): `revoked_at`, its push token cleared, `version + 1`. */
-  async revoke(id: string): Promise<DriverDeviceRow> {
+  revoke(id: string): Promise<DriverDeviceRow> {
+    return this.write(id, { revokedAt: sql`now()` as unknown as Date, pushToken: null });
+  }
+
+  private async write(
+    id: string,
+    values: TenantUpdate<typeof delDriverDevices>,
+  ): Promise<DriverDeviceRow> {
     const [row] = await this.updateWhere(
       {
-        revokedAt: sql`now()` as unknown as Date,
-        pushToken: null,
+        ...values,
         version: sql`${delDriverDevices.version} + 1` as unknown as number,
         updatedAt: sql`now()` as unknown as Date,
       },

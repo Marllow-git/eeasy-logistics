@@ -91,6 +91,10 @@ export {
   type DriverSite,
 } from '../auth/driver-identities.js';
 export { AuthRequest, type RequestFacts } from '../auth/request-facts.js';
+// The driver's sign-in (DEL-4 plan 2.7, 2.8): the kernel checks the code and issues the tokens on the
+// device row Delivery binds.
+export { DriverSignIn, driverSignInProvider, type SignedInDriver } from '../auth/driver-sign-in.js';
+export type { IssuedSession } from '../auth/cookies.js';
 export {
   CURSOR_CODEC,
   CursorCodec,

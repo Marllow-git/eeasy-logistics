@@ -1,8 +1,9 @@
 import type { Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase, PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { PlatformRepository, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { coreAccounts } from '../schema/accounts.js';
+import { delDrivers } from '../schema/drivers.js';
 import type {
   InvitationKind,
   MembershipStatus,
@@ -391,6 +392,57 @@ export class MembershipsRepository extends PlatformRepository<typeof coreMembers
       .set({ status: 'active', updatedAt: sql`now()` })
       .where(eq(coreMemberships.id, id));
   }
+
+  /**
+   * The drivers this E.164 phone may sign in as (DEL-4 plan 2.7): a user not disabled, an `active`
+   * membership holding `driver` on an `active` account, and its `active` driver row; the most
+   * recently changed driver first. One query whatever the phone, so a stranger costs what a
+   * driver does.
+   */
+  async driversOfPhone(phone: string): Promise<DriverSignInRow[]> {
+    return this.unscoped()
+      .select({
+        userId: coreUsers.id,
+        tokenVersion: coreUsers.tokenVersion,
+        membershipId: coreMemberships.id,
+        accountId: coreMemberships.accountId,
+        roles: coreMemberships.roles,
+        siteIds: coreMemberships.siteIds,
+        driverId: delDrivers.id,
+      })
+      .from(coreUsers)
+      .innerJoin(coreMemberships, eq(coreMemberships.userId, coreUsers.id))
+      .innerJoin(coreAccounts, eq(coreAccounts.id, coreMemberships.accountId))
+      .innerJoin(
+        delDrivers,
+        and(
+          eq(delDrivers.membershipId, coreMemberships.id),
+          eq(delDrivers.accountId, coreMemberships.accountId),
+        ),
+      )
+      .where(
+        and(
+          eq(coreUsers.phone, phone),
+          isNull(coreUsers.disabledAt),
+          eq(coreMemberships.status, 'active'),
+          sql`'driver' = ANY(${coreMemberships.roles})`,
+          eq(coreAccounts.status, 'active'),
+          eq(delDrivers.status, 'active'),
+        ),
+      )
+      .orderBy(desc(delDrivers.updatedAt), desc(delDrivers.id));
+  }
+}
+
+/** A driver a phone may sign in as (DEL-4 plan 2.7). */
+export interface DriverSignInRow {
+  readonly userId: string;
+  readonly tokenVersion: number;
+  readonly membershipId: string;
+  readonly accountId: string;
+  readonly roles: string[];
+  readonly siteIds: string[];
+  readonly driverId: string;
 }
 
 /** A refresh row as the rotation reads it, with the subject's state, on the database clock. */
