@@ -22,12 +22,15 @@ export { Secret } from './secret.ts';
 export {
   appRoles,
   defineConfig,
+  expoPushServiceUrl,
   messagingProviders,
+  pushProviders,
   serverVariables,
   type AppRole,
   type Config,
   type DefineConfigOptions,
   type EngineSettings,
   type MessagingProvider,
+  type PushProvider,
   type ServerVariable,
 } from './server.ts';

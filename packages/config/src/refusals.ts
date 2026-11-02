@@ -1,6 +1,9 @@
 import type { ConfigIssue } from './errors.ts';
 import type { AppRole, ServerVariable } from './server.ts';
 
+/** The Expo push service (INT-4 plan 2.6); `server.ts` re-exports it as the default. */
+export const expoPushServiceUrl = 'https://exp.host';
+
 /**
  * What production refuses to start without (plan 2.3, platform §3), per process role. Each role gets
  * only the database credential of its duty (data §4.4, ADR-0031; PLAT-5 review H-2, amending PLAT-4):
@@ -61,7 +64,7 @@ export const secureSchemeInProduction: readonly (readonly [ServerVariable, strin
   ['OTEL_EXPORTER_OTLP_ENDPOINT', 'https://'],
 ];
 
-export const adapterSelectors: readonly ServerVariable[] = ['MESSAGING_PROVIDER'];
+export const adapterSelectors: readonly ServerVariable[] = ['MESSAGING_PROVIDER', 'PUSH_PROVIDER'];
 
 export interface RefusalInput {
   /** The parsed `APP_ENV`, or undefined when it was itself invalid (then no rule applies). */
@@ -71,6 +74,8 @@ export interface RefusalInput {
   /** The raw value of a variable, for selector checks (selectors are not secrets). */
   readonly raw: (variable: ServerVariable) => string | undefined;
   readonly messagingDisabled: boolean | undefined;
+  /** `PUSH_DISABLED=true`: the explicit decision to send no push (INT-4 plan 2.6). */
+  readonly pushDisabled: boolean | undefined;
   /** The process role (`--role`); the requirements depend on it. */
   readonly role: AppRole;
 }
@@ -121,6 +126,7 @@ export function productionRefusals(input: RefusalInput): ConfigIssue[] {
         issues.push({ variable, problem });
       }
     }
+    issues.push(...pushRefusals(input, input.appEnv));
   }
   if (input.appEnv !== 'production') return issues;
   for (const variable of requiredInProduction(input.role)) {
@@ -175,6 +181,45 @@ export function productionRefusals(input: RefusalInput): ConfigIssue[] {
       variable: 'MESSAGING_PROVIDER',
       problem:
         'is required when APP_ENV=production (a real provider), unless MESSAGING_DISABLED=true',
+    });
+  }
+  return issues;
+}
+
+/**
+ * The push decision of a deployed worker (INT-4 plan 2.6; integrations §2.5, §9): staging and
+ * production send through Expo with an access token (enhanced push security, plan §7 question 1),
+ * or say `PUSH_DISABLED=true`; production talks to the Expo push service only. Only the worker
+ * sends a push, so only the worker is refused; the api never builds a push sender.
+ */
+function pushRefusals(input: RefusalInput, appEnv: 'staging' | 'production'): ConfigIssue[] {
+  if (input.role !== 'worker') return [];
+  const issues: ConfigIssue[] = [];
+  if (input.pushDisabled !== true) {
+    const provider = input.raw('PUSH_PROVIDER');
+    if (provider !== 'expo') {
+      // Production's selector rule already reports `stub`; staging refuses it here.
+      if (provider !== 'stub' || appEnv === 'staging') {
+        issues.push({
+          variable: 'PUSH_PROVIDER',
+          problem: `must be expo when APP_ENV=${appEnv}, unless PUSH_DISABLED=true`,
+        });
+      }
+    } else if (!input.present('EXPO_ACCESS_TOKEN')) {
+      issues.push({
+        variable: 'EXPO_ACCESS_TOKEN',
+        problem: `is required with PUSH_PROVIDER=expo when APP_ENV=${appEnv} (enhanced push security)`,
+      });
+    }
+  }
+  if (
+    appEnv === 'production' &&
+    input.present('EXPO_PUSH_URL') &&
+    input.raw('EXPO_PUSH_URL') !== expoPushServiceUrl
+  ) {
+    issues.push({
+      variable: 'EXPO_PUSH_URL',
+      problem: `must be ${expoPushServiceUrl} in production`,
     });
   }
   return issues;

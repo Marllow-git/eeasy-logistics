@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./errors": "./src/errors.ts",
-    "./templates": "./src/templates.ts"
+    "./templates": "./src/templates.ts",
+    "./push": "./src/push.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

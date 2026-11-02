@@ -31,7 +31,7 @@ import {
   engineUrl,
   serviceIdentityPattern,
 } from './formats.ts';
-import { productionRefusals } from './refusals.ts';
+import { expoPushServiceUrl, productionRefusals } from './refusals.ts';
 import { Secret } from './secret.ts';
 
 // `bootstrap` (PLAT-11 plan 2.12): the one-shot command that invites the first super admin.
@@ -44,6 +44,16 @@ export type AppRole = (typeof appRoles)[number];
  */
 export const messagingProviders = ['stub', 'engine'] as const;
 export type MessagingProvider = (typeof messagingProviders)[number];
+
+/**
+ * `stub` (the in-memory recorder, local and ci) or `expo` (the Expo push service; INT-4 plan 2.6,
+ * integrations §2.5, §9).
+ */
+export const pushProviders = ['stub', 'expo'] as const;
+export type PushProvider = (typeof pushProviders)[number];
+
+/** The Expo push service; production refuses any other `EXPO_PUSH_URL` (INT-4 plan 2.6). */
+export { expoPushServiceUrl };
 
 /** `CREDENTIALS_KEYS`: comma-separated `<key id>:<base64 of exactly 32 bytes>` entries. */
 const credentialsKeys = () =>
@@ -156,8 +166,12 @@ export const serverVariables = {
   // mail (PLAT-9 plan 2.2): SMTP for invitations and resets; Mailpit locally and in ci.
   MAIL_SMTP_URL: secret(smtpUrl()).optional(),
   MAIL_FROM: mailFrom().optional(),
-  // push
+  // push (INT-4 plan 2.6): the adapter, the explicit pause, Expo's access token (enhanced push
+  // security) and base URL (a local server in tests).
+  PUSH_PROVIDER: z.enum(pushProviders).optional(),
+  PUSH_DISABLED: boolean().default(false),
   EXPO_ACCESS_TOKEN: secret().optional(),
+  EXPO_PUSH_URL: httpUrl().default(expoPushServiceUrl),
   // geo
   HUDHUD_API_KEY: secret().optional(),
   VROOM_URL: httpUrl().optional(),
@@ -231,7 +245,10 @@ export const serverExpectations = {
   WHATSAPP_ENGINE_PLATFORM_INSTANCE_ID: 'a UUID (the engine sender instance of the platform)',
   MAIL_SMTP_URL: 'an smtp:// or smtps:// URL',
   MAIL_FROM: 'a sender address, optionally with a display name: Name <user@example.com>',
+  PUSH_PROVIDER: `one of ${pushProviders.join(', ')}`,
+  PUSH_DISABLED: 'true or false',
   EXPO_ACCESS_TOKEN: 'an Expo access token',
+  EXPO_PUSH_URL: 'an http(s) URL',
   HUDHUD_API_KEY: 'a Hudhud API key',
   VROOM_URL: 'an http(s) URL',
   OSRM_URL: 'an http(s) URL',
@@ -320,7 +337,16 @@ export interface Config {
     readonly smtpUrl: Secret | undefined;
     readonly from: string | undefined;
   };
-  readonly push: { readonly expoAccessToken: Secret | undefined };
+  readonly push: {
+    /** `null` when no provider is set in staging or production; see `resolvePushProvider`. */
+    readonly provider: PushProvider | null;
+    /** `PUSH_DISABLED=true`: the worker registers no `push` handler and rows wait `pending`. */
+    readonly disabled: boolean;
+    /** Sent as a bearer token on every Expo call when set (enhanced push security). */
+    readonly expoAccessToken: Secret | undefined;
+    /** The Expo push service's base URL (`https://exp.host`). */
+    readonly expoPushUrl: string;
+  };
   readonly geo: {
     readonly hudhudApiKey: Secret | undefined;
     readonly vroomUrl: string | undefined;
@@ -430,6 +456,7 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
     present,
     raw: (variable) => (Object.hasOwn(env, variable) ? env[variable] : undefined),
     messagingDisabled: v.MESSAGING_DISABLED,
+    pushDisabled: v.PUSH_DISABLED,
     role,
   });
   issues.push(...refusals.filter((issue) => !reported.has(issue.variable)));
@@ -498,7 +525,12 @@ export function defineConfig(env: EnvRecord, options: DefineConfigOptions = {}):
       },
     },
     mail: { smtpUrl: v.MAIL_SMTP_URL, from: v.MAIL_FROM },
-    push: { expoAccessToken: v.EXPO_ACCESS_TOKEN },
+    push: {
+      provider: resolvePushProvider(v.PUSH_PROVIDER, appEnv),
+      disabled: v.PUSH_DISABLED,
+      expoAccessToken: v.EXPO_ACCESS_TOKEN,
+      expoPushUrl: v.EXPO_PUSH_URL,
+    },
     geo: { hudhudApiKey: v.HUDHUD_API_KEY, vroomUrl: v.VROOM_URL, osrmUrl: v.OSRM_URL },
     observability: {
       otlpEndpoint: v.OTEL_EXPORTER_OTLP_ENDPOINT,
@@ -522,6 +554,15 @@ function resolveProvider(
   provider: MessagingProvider | undefined,
   appEnv: AppEnv,
 ): MessagingProvider | null {
+  if (provider !== undefined) return provider;
+  return appEnv === 'local' || appEnv === 'ci' ? 'stub' : null;
+}
+
+/** Unset means the recorder in `local` and `ci` (integrations §9) and no provider elsewhere. */
+function resolvePushProvider(
+  provider: PushProvider | undefined,
+  appEnv: AppEnv,
+): PushProvider | null {
   if (provider !== undefined) return provider;
   return appEnv === 'local' || appEnv === 'ci' ? 'stub' : null;
 }
