@@ -26,7 +26,8 @@ export const Public = (): MethodDecorator & ClassDecorator => SetMetadata(IS_PUB
  * `driverVerifyCashPin`, whose PIN check must commit its failure count before the `403`). The
  * unit-of-work interceptor gives it the token's context and no transaction, so the request never
  * holds an app connection while the handler waits for another. Not for platform handlers, and not
- * with `@Idempotent()` (whose reservation needs the request's transaction).
+ * with `@Idempotent()` (whose reservation needs the request's transaction; `IdempotentRoutesCheck`
+ * refuses the pair at start).
  */
 export const NoUnitOfWork = (): MethodDecorator => SetMetadata(NO_UNIT_OF_WORK, true);
 
