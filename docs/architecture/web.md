@@ -26,13 +26,20 @@ apps/web/
     app/
       (auth)/          layout.tsx  sign-in/  invitations/[token]/  password-reset/
                        second-factor/enrol/[token]/  signed-out/  account-suspended/
-      (merchant)/      layout.tsx  page.tsx  orders/  dispatch/  zones/  drivers/  vehicles/  shifts/
-                       slots/  cash/  wms/  channels/  settings/
+      (merchant)/      layout.tsx  page.tsx  forbidden.tsx  orders/  dispatch/  zones/  drivers/
+                       vehicles/  shifts/  slots/  cash/  wms/  channels/  settings/
+                       settings/        each folder's layout.tsx calls requirePermission (WEB-3)
+                         account/       one form per section
+                         members/       list; [membershipId]/ detail, roles and sites, revoke, reset
+                         sites/         list; new/ (core.sites.manage); [siteId]/ form, deactivate
+                         audit/         read-only list from the server's first page
       (recipient)/     layout.tsx  track/[token]/  reschedule/[token]/  pin/[token]/  embed/track/[token]/
       healthz/route.ts  csp-report/route.ts  monitoring/route.ts  ingest/[...path]/route.ts
     api/               server.ts (server client factory)  browser.ts (client fetch wrapper, refresh)
     auth/              session.ts  requirePermission.ts  Can.tsx
     live/              useEventStream.ts  merge.ts  positions.ts
+    server/            api.ts (server fetcher)  session.ts (getMe)  authorization.ts (requirePermission)
+    settings/          the settings screens' client components, query keys and pure rules (WEB-3)
     routes.ts          route manifest: path, permission, feature key, navigation entry
     analytics.ts       typed PostHog event catalogue
   middleware.ts        session refresh, host and group routing, CSP nonce, locale (proxy.ts on Next.js 16+)
@@ -237,7 +244,7 @@ Design tokens (colour, spacing, radius, typography scale, elevation, motion) are
 | `DataTable` | TanStack Table (headless) on our markup; cursor pagination with "load more" (no page numbers, ADR-0029); column visibility saved per user in `localStorage`; row virtualisation (TanStack Virtual) above 200 rows; sticky header; column order follows `dir` |
 | `Board` | lanes by status for dispatch; cards keyed by order id; drag and drop with dnd-kit plus a keyboard path (select a card, choose a driver in a combobox), because drag alone fails accessibility |
 | `Map` | behind `MapProvider` (section 6.4) |
-| `Form` | react-hook-form with the generated Zod schema as resolver (section 2.2); server `validation_failed` `details.fields[]` JSON pointers map onto fields; submit holds the intent's `Idempotency-Key` (section 7.4) |
+| `Form` | react-hook-form with the generated Zod schema as resolver (section 2.2); server `validation_failed` `details.fields[]` JSON pointers map onto fields; submit holds the intent's `Idempotency-Key` (section 7.4). Adopted for every form by WEB-3 (plan §7 #2): `packages/ui/src/form/` (`useContractForm`, `Form`, `SubmitButton`, `FormField` and the field components), Zod's messages replaced by the `errors.fields` codes, PATCH bodies of the changed top-level fields, `describeError` for a page's own text of a refusal. A rule the contract cannot say extends the generated schema in `packages/ui/src/settings/` (the apps carry no `zod`). react-hook-form and Zod weigh about 75 KB gzip: a route loads its form with `next/dynamic` |
 | `BilingualInput` | the `name_ar` and `name_en` pair (section 5) |
 | `Money`, `DateTime`, `Phone`, `OrderNumber` | the formatting rules of section 5, in one place |
 | `StatusChip` | one chip per state of each state machine, with icon, colour and text (never colour alone) |

@@ -523,3 +523,82 @@ test('sites: create one with bilingual names and hours, deactivate, then activat
   await expect(row).toContainText(names[locale === 'ar' ? 'en' : 'ar']);
   await expect(row).toContainText('RNSA7788');
 });
+
+// Audit log (WEB-3 leg 2, item F; plan 2.9, 2.11): the entries of what this file did above, read
+// back with their before and after. Runs last in the file.
+
+/** Opens every "show changes" disclosure of the page's entries. */
+async function openChanges(page: Page, locale: Locale) {
+  const summaries = page.getByText(t(locale, 'audit.show_changes'), { exact: true });
+  for (const summary of await summaries.all()) await summary.click();
+}
+
+/** A changed field's row of an opened disclosure: its label, then before and after. */
+const changeRow = (page: Page, locale: Locale, field: string) =>
+  page
+    .locator('details')
+    .getByRole('row')
+    .filter({
+      has: page.getByRole('rowheader', { name: t(locale, `audit.fields.${field}`), exact: true }),
+    });
+
+test('audit: the actions just taken appear by object, with their before and after', async ({
+  page,
+  locale,
+}) => {
+  await signIn(page, 'settings', project());
+  const response = await page.goto('/settings/audit?target_type=site');
+  expect(response?.status()).toBe(200);
+  expectSecurityHeaders(response, 'merchant');
+  await expect(page.getByRole('note')).toHaveText(t(locale, 'audit.notice'));
+  const table = page.getByRole('table', { name: t(locale, 'audit.table_label') });
+  for (const action of ['core_site_created', 'core_site_deactivated', 'core_site_activated']) {
+    await expect(
+      table.getByText(t(locale, `audit.actions.${action}`), { exact: true }),
+    ).toBeVisible();
+  }
+  await expect(table.getByText(ownerName).first()).toBeVisible();
+  await expectScreen(page, locale, 'audit', message(locale, 'nav', 'settings_audit'), [
+    table.locator('time'),
+    table.locator('.font-mono'),
+  ]);
+  // The new site's entry: its names and short code as they were set, nothing before.
+  await openChanges(page, locale);
+  await expect(changeRow(page, locale, 'national_address_short_code').first()).toContainText(
+    'RNSA7788',
+  );
+
+  // The account settings the owner changed above: maximum attempts 3, then 5.
+  await page.goto('/settings/audit?target_type=account');
+  await openChanges(page, locale);
+  const attempts = changeRow(page, locale, 'max_attempts');
+  await expect(attempts).toHaveCount(1);
+  await expect(attempts.getByRole('cell')).toHaveText(['3', '5']);
+
+  // The invited member's roles changed: viewer, then viewer and dispatcher.
+  await page.goto('/settings/audit?target_type=membership');
+  await expect(
+    page.getByText(t(locale, 'audit.actions.core_member_updated'), { exact: true }),
+  ).toBeVisible();
+  await openChanges(page, locale);
+  const viewer = message(locale, 'settings', 'roles.viewer');
+  const dispatcher = message(locale, 'settings', 'roles.dispatcher');
+  const roles = changeRow(page, locale, 'roles').filter({ hasText: dispatcher });
+  await expect(roles).toHaveCount(1);
+  await expect(roles.getByRole('cell')).toHaveText([
+    viewer,
+    // The form keeps the roles in the contract's order (StaffRole): dispatcher before viewer.
+    `${dispatcher}${locale === 'ar' ? '، ' : ', '}${viewer}`,
+  ]);
+});
+
+test('audit: a filter that matches nothing says so and clears', async ({ page, locale }) => {
+  await signIn(page, 'viewer', project());
+  await page.goto('/settings/audit?created_from=2099-01-01');
+  await expect(page.getByText(t(locale, 'audit.empty_filtered'))).toBeVisible();
+  await page.getByRole('button', { name: t(locale, 'audit.clear_filters') }).click();
+  await expect(page).toHaveURL(`${origin}/settings/audit`);
+  await expect(
+    page.getByRole('table', { name: t(locale, 'audit.table_label') }).getByRole('row'),
+  ).not.toHaveCount(1);
+});

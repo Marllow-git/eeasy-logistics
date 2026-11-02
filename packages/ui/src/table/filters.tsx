@@ -108,6 +108,43 @@ export function SelectFilter({
 }
 
 /**
+ * A calendar day (`YYYY-MM-DD`, Gregorian) from the browser's date picker; an empty input is no
+ * filter. Left to right with Western digits whatever the page's language (web §5).
+ */
+export function DateFilter({
+  label,
+  value,
+  onChange,
+  min,
+  className,
+}: {
+  label: string;
+  value: string | undefined;
+  onChange: (value: string | undefined) => void;
+  min?: string;
+  className?: string;
+}) {
+  const id = useId();
+  return (
+    <div className={cn('flex flex-col gap-1', className)}>
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        {label}
+      </Label>
+      <Input
+        id={id}
+        type="date"
+        dir="ltr"
+        lang="en"
+        min={min}
+        value={value ?? ''}
+        className="h-9 w-40 text-start"
+        onChange={(event) => onChange(event.target.value === '' ? undefined : event.target.value)}
+      />
+    </div>
+  );
+}
+
+/**
  * A text filter that reports its value after the typing pauses (`delay` ms), trimmed, and at once
  * on Enter; `valid` keeps a value the API would refuse (a malformed id) from leaving the input.
  */
