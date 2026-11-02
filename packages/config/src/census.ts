@@ -1,7 +1,8 @@
 // Entry point for the Playwright census of apps/web and apps/admin (WEB-2 plan 2.14): the stack
 // services a census reads besides the app under test. A test tool, like `contract-test.ts`; the
 // apps never import it. The defaults are the dev ports of `.env.example` (native stack, Compose
-// `dev`); the CI lanes pass the ci profile's random ports.
+// `dev`), except the API: 3000 is the census stack's own, dev runs on 4000. The CI lanes pass the ci
+// profile's random ports.
 import { z } from 'zod';
 import { ConfigError } from './errors.ts';
 import type { EnvRecord } from './fields.ts';

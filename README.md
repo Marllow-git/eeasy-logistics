@@ -36,7 +36,7 @@ pnpm turbo run typecheck lint test build   # the local gate; CI runs more (secti
 | `packages/db`, `packages/ui` | placeholders for PLAT-5 and WEB-1 |
 | `packages/config-ts`, `packages/config-eslint` | shared TypeScript and ESLint configuration |
 
-Useful commands: `pnpm --filter api dev` (API on port 3000, `GET /health`), `pnpm --filter web dev`, `pnpm --filter admin dev` (port 3002), `pnpm --filter driver start`, `pnpm --filter api test:architecture` (module boundary check), `pnpm --filter contracts lint`.
+Useful commands: `pnpm --filter api dev` (API on port 4000, `GET /health`), `pnpm --filter web dev` (port 3000), `pnpm --filter admin dev` (port 3001), `pnpm --filter driver start`, `pnpm --filter api test:architecture` (module boundary check), `pnpm --filter contracts lint`.
 
 ### Configuration
 

@@ -5,10 +5,10 @@
   "description": "Next.js App Router platform console: platform and auth route groups on the admin hostname (ADR-0038; web §1).",
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 3002",
+    "dev": "next dev -p 3001",
     "build": "next build",
     "check:budget": "node ../web/scripts/check-budget.ts .",
-    "start": "next start -p 3002",
+    "start": "next start -p 3001",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "test": "pnpm run test:architecture && pnpm run test:unit",
