@@ -22,7 +22,7 @@ node dist/main.js --role bootstrap --email owner@example.com --name "Owner Name"
 ```
 
 - It needs `DATABASE_URL_PLATFORM` and `PUBLIC_ADMIN_URL` (production refuses to start without them) and nothing else: no SMTP, no Redis, no owner URL (refused in staging and production, ADR-0031).
-- It refuses (exit 1) when any `core_platform_staff` row exists, or a `super_admin` invitation is still open; runs are serialised by an advisory lock.
+- It refuses (exit 1) when any `core_platform_staff` row exists, a `super_admin` invitation is still open, or the email belongs to a disabled user (such a link could never be accepted); runs are serialised by an advisory lock.
 - Otherwise it creates a platform invitation for role `super_admin`, valid 72 hours, prints the console link (`PUBLIC_ADMIN_URL/invitations/<token>`) once on stdout, sends no mail, and writes the audit row `core.platform_staff.bootstrapped` (actor `system`). Exit 0.
 - Bad or missing arguments exit 64 with the usage line.
 - The link is a credential: run the command in a session whose output is not collected by the log pipeline, open the link, set the password, then enrol TOTP in the console (`platformAcceptInvitation`, `platformEnrolTotp`, `platformConfirmTotp`). If the link expires unused, run the command again.

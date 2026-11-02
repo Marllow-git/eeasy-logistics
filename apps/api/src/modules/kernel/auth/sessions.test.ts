@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import type { RefreshState } from '../platform/identity.repository.js';
-import { refreshVerdict, userAgentHash } from './sessions.js';
+import type { CredentialsCipher } from '@eeasy-logistics/config';
+import { describe, expect, it, vi } from 'vitest';
+import type {
+  IdentityStore,
+  IdentityTransaction,
+  RefreshState,
+} from '../platform/identity.repository.js';
+import type { RequestFacts } from './request-facts.js';
+import { refreshVerdict, SessionService, userAgentHash } from './sessions.js';
+import { opaqueToken, tokenHash } from './tokens.js';
 
 // PLAT-11 plan 2.6, 2.16: the refresh state machine with a fake clock (the database's `now`).
 
@@ -153,5 +160,64 @@ describe('refreshVerdict', () => {
       kind: 'refuse',
       code: 'token_expired',
     });
+  });
+});
+
+describe('SessionService.refresh inside the grace (adversary L-1)', () => {
+  // The presented row was used 1 s ago (inside the grace, same agent); its kept successor is
+  // answered again only while that successor is itself unused.
+  const presented = opaqueToken();
+  const successor = opaqueToken();
+  const quiet = { log: () => undefined, warn: () => undefined };
+
+  function service(successorRow: RefreshState) {
+    const rows = new Map<string, RefreshState>([
+      [tokenHash(presented).toString('hex'), row({ usedAt: seconds(-1) })],
+      [tokenHash(successor).toString('hex'), successorRow],
+    ]);
+    const revokeFamily = vi.fn(() => Promise.resolve());
+    const tx = {
+      refreshTokens: {
+        lockByHash: (hash: Buffer) => Promise.resolve(rows.get(hash.toString('hex'))),
+        revokeFamily,
+      },
+    } as unknown as IdentityTransaction;
+    const store: IdentityStore = { run: (fn) => fn(tx) };
+    const cipher = { decrypt: () => successor } as unknown as CredentialsCipher;
+    const sessions = new SessionService({
+      issuer: { sign: () => Promise.resolve('access'), ttlSeconds: 900 },
+      cipher,
+      store,
+      audit: { record: () => Promise.resolve() },
+      settings: {
+        staffRefreshTtlSeconds: 2_592_000,
+        platformIdleTtlSeconds: 43_200,
+        refreshReuseGraceSeconds: 30,
+      },
+      logger: quiet,
+    });
+    return { sessions, revokeFamily };
+  }
+
+  const facts: RequestFacts = {
+    ip: null,
+    userAgent: 'Mozilla/5.0 test',
+    cookieHeader: `el_staff_rt=${presented}`,
+    requestId: 'req',
+    clientRequestId: null,
+    principal: undefined,
+  };
+
+  it('answers the unused successor again', async () => {
+    const { sessions } = service(row({ id: '019a0000-0000-7000-8000-000000000009' }));
+    const outcome = await sessions.refresh('staff', facts);
+    expect(outcome).toMatchObject({ ok: true, session: { refreshToken: successor } });
+  });
+
+  it('refuses a successor that has rotated already, without revoking the family', async () => {
+    const used = row({ id: '019a0000-0000-7000-8000-000000000009', usedAt: seconds(-0.5) });
+    const { sessions, revokeFamily } = service(used);
+    expect(await sessions.refresh('staff', facts)).toEqual({ ok: false, code: 'token_invalid' });
+    expect(revokeFamily).not.toHaveBeenCalled();
   });
 });

@@ -380,7 +380,7 @@ Small changes other documents need; none is made by this roadmap. The ones that 
 |---|---|---|---|---|
 | A-1 | doc 6 §2 | Add an `osrm` container from wave 2 (doc 9 §6.5). | INT-5 PR | done 2026-10-31 |
 | A-2 | doc 6 §7 | Replace "any dead-lettered job" with the per-kind thresholds and rate alerts of ADR-0036 (doc 9 §4.5). | PLAT-14 PR, after ADR-0036 is accepted | waits on ADR-0036 |
-| A-3 | doc 4 §4 | One sentence on the refresh reuse grace, once Q-23 is ruled. | PLAT-11 PR | waits on Q-23 |
+| A-3 | doc 4 §4 | One sentence on the refresh reuse grace, once Q-23 is ruled. | PLAT-11 PR | done 2026-11-02 |
 | A-4 | doc 4 §3.2 | The PIN is required for a COD collection only when the delivery has a cash line (doc 3, doc 8 §12.1), and for a handover request. | DEL-4 PR | done 2026-10-31 |
 | A-5 | doc 9 §4 and §5 | Adopt doc 5 §10 and §5.2: an OTP `message` outbox row carries the code encrypted with the credentials key and is deleted 1 hour after sending, not after 7 days. | PLAT-9 PR | done 2026-10-31 |
 | A-6 | doc 6 §4 | Add the RLS-enabled integration lane (doc 5 §4.5) to the required checks. | PLAT-3 PR | done 2026-10-31 |

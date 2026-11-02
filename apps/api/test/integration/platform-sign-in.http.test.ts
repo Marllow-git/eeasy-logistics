@@ -1,4 +1,5 @@
 import { randomBytes, randomInt } from 'node:crypto';
+import { createCredentialsCipher } from '@eeasy-logistics/config';
 import { schemas } from '@eeasy-logistics/contracts/platform/schemas';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
@@ -73,6 +74,23 @@ describe('platform sign-in over HTTP (PLAT-11 item G)', () => {
     write('/v1/platform/auth/login').send({ email, password: secret });
   const codeOf = (error: { body: unknown }) => (error.body as ErrorBody).code;
 
+  /** The console link of the newest invitation mail to `email`, decrypted with the test's key. */
+  async function invitationLink(email: string, invitationId: string): Promise<string> {
+    const [mail] = await owner<
+      { aggregate_id: string; payload: { params: { link: { encrypted: string } } } }[]
+    >`
+      SELECT aggregate_id, payload FROM core_outbox
+      WHERE kind = 'message' AND payload->>'to' = ${email}
+        AND payload->>'template_key' = 'platform_invitation'
+      ORDER BY id DESC LIMIT 1`;
+    if (mail === undefined || config.credentials === null) throw new Error('no invitation mail');
+    expect(mail.aggregate_id).toBe(invitationId);
+    return createCredentialsCipher(config.credentials).decrypt(
+      Buffer.from(mail.payload.params.link.encrypted, 'base64'),
+      `core_invitations:${mail.aggregate_id}`,
+    );
+  }
+
   /** Invited, accepted and enrolled: the user, the secret and the session cookies. */
   async function enrolledStaff(role: 'super_admin' | 'admin' | 'support' = 'admin') {
     const email = freshEmail('platform');
@@ -83,7 +101,9 @@ describe('platform sign-in over HTTP (PLAT-11 item G)', () => {
       invitedBy: null,
       locale: 'en',
     });
-    const token = created.link.split('/').at(-1) ?? '';
+    // Adversary M-3: ids only from the service; the link is read from its sealed mail row.
+    expect(created).not.toHaveProperty('link');
+    const token = (await invitationLink(email, created.invitationId)).split('/').at(-1) ?? '';
     const accepted = await write('/v1/platform/auth/invitations/accept')
       .send({ token, name: 'Huda', password })
       .expect(200);

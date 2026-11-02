@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { configureHttp, createHttpAdapter, httpAppOptions } from '../../src/http-app.js';
 import { PasswordHasher } from '../../src/modules/kernel/auth/passwords.js';
-import { SecondFactorResets } from '../../src/modules/kernel/public/index.js';
+import { Invitations, SecondFactorResets } from '../../src/modules/kernel/public/index.js';
 import { EngineMessageSender } from '../../src/modules/kernel/messaging/engine/engine-message-sender.js';
 import { MessageSenders } from '../../src/modules/kernel/messaging/message-sender.js';
 import {
@@ -150,6 +150,22 @@ describe('staff second factor over HTTP (PLAT-11 item F)', () => {
   }
 
   const wrong = (code: string) => String((Number(code) + 1) % 1_000_000).padStart(6, '0');
+
+  /** The newest `template` mail to `email`, its link decrypted under `<table>:<aggregate id>`. */
+  async function sealedLink(email: string, template: string, table: string): Promise<string> {
+    const [mail] = await owner<
+      { aggregate_id: string; payload: { params: { link: { encrypted: string } } } }[]
+    >`
+      SELECT aggregate_id, payload FROM core_outbox
+      WHERE kind = 'message' AND payload->>'to' = ${email}
+        AND payload->>'template_key' = ${template}
+      ORDER BY id DESC LIMIT 1`;
+    if (mail === undefined) throw new Error(`no ${template} mail to ${email}`);
+    return cipher.decrypt(
+      Buffer.from(mail.payload.params.link.encrypted, 'base64'),
+      `${table}:${mail.aggregate_id}`,
+    );
+  }
 
   /** A user with this password, an enrolled phone (or none) and one membership per account. */
   async function member(options: { accounts?: string[]; phone?: string | null } = {}) {
@@ -467,6 +483,112 @@ describe('staff second factor over HTTP (PLAT-11 item F)', () => {
     const [stored] = await owner<{ phone: string }[]>`
       SELECT second_factor_phone AS phone FROM core_users WHERE id = ${user.id}`;
     expect(stored?.phone).toBe(phone);
+  });
+
+  it("keeps an enrolment naming another user's phone off that user's sign-in code (adversary M-1)", async () => {
+    const victim = await member();
+    const challengeId = ((await login(victim.email)).body as LoginResponse).challenge_id ?? '';
+    const attacker = await member({ phone: null });
+    const enrolment = ((await login(attacker.email)).body as LoginResponse).enrolment_token ?? '';
+    // The attacker's enrolment names the victim's phone: its code has the enrolment purpose.
+    const pending = (
+      await write('/v1/staff/auth/second-factor/enrol')
+        .send({ enrolment_token: enrolment, phone: victim.phone })
+        .expect(202)
+    ).body as { challenge_id: string };
+    // The victim's request is not on the enrolment's cooldown, and its code is not superseded.
+    await write('/v1/staff/auth/second-factor/request')
+      .send({ challenge_id: challengeId })
+      .expect(202);
+    const code = await codeSentTo(victim.phone ?? '');
+    const purposes = await owner<{ purpose: string }[]>`
+      SELECT purpose FROM core_otp_challenges WHERE phone = ${victim.phone ?? ''} ORDER BY id`;
+    expect(purposes.map((row) => row.purpose)).toEqual(['second_factor_enrol', 'second_factor']);
+    // Five wrong confirmations of the enrolment spend nothing of the victim's code.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await write('/v1/staff/auth/second-factor/confirm')
+        .send({ enrolment_token: enrolment, challenge_id: pending.challenge_id, code: wrong(code) })
+        .expect(401)
+        .expect((response) => expect((response.body as ErrorBody).code).toBe('otp_invalid'));
+    }
+    const [signInCode] = await owner<{ attempts: number }[]>`
+      SELECT attempts FROM core_otp_challenges
+      WHERE phone = ${victim.phone ?? ''} AND purpose = 'second_factor'`;
+    expect(signInCode?.attempts).toBe(0);
+    await write('/v1/staff/auth/second-factor/verify')
+      .send({ challenge_id: challengeId, code })
+      .expect(200);
+  });
+
+  it('asks for enrolment on every account after a reset, not only the requiring ones (adversary M-2)', async () => {
+    const user = await member({ accounts: [await insertAccount(owner)] });
+    await app.get(SecondFactorResets, { strict: false }).issueLink({
+      userId: user.id,
+      issuedBy: null,
+      accountId: user.accounts[0] ?? null,
+      requestId: `reset-${runId}-${user.id}`,
+    });
+    const linkToken =
+      (await sealedLink(user.email, 'second_factor_reset', 'core_auth_challenges'))
+        .split('/')
+        .at(-1) ?? '';
+
+    // The password alone on an account that requires no factor: enrolment, and enrol is 409.
+    const response = await login(user.email);
+    const signIn = response.body as LoginResponse;
+    expect(signIn).toMatchObject({ enrolment_required: true, me: null });
+    expect(setCookies(response.headers).size).toBe(0);
+    await write('/v1/staff/auth/second-factor/enrol')
+      .send({ enrolment_token: signIn.enrolment_token, phone: fresh() })
+      .expect(409)
+      .expect((answer) =>
+        expect((answer.body as ErrorBody).code).toBe('second_factor_already_enrolled'),
+      );
+
+    // Accepting an invitation to another plain account: 401 second_factor_required with an
+    // enrolment token, no session.
+    const plain = await insertAccount(owner);
+    await app.get(Invitations, { strict: false }).createStaff({
+      accountId: plain,
+      email: user.email,
+      name: 'Again',
+      roles: ['viewer'],
+      siteIds: [],
+      invitedBy: null,
+      locale: 'en',
+    });
+    const invitation = await sealedLink(user.email, 'invitation', 'core_invitations');
+    const accepted = await write('/v1/staff/auth/invitations/accept')
+      .send({ token: invitation.split('/').at(-1), name: 'Again', password })
+      .expect(401);
+    expect(accepted.body).toMatchObject({
+      code: 'second_factor_required',
+      details: { enrolment_token: expect.stringMatching(/^[\da-f-]{36}\./) as unknown },
+    });
+    expect(setCookies(accepted.headers).has('el_staff_at')).toBe(false);
+
+    // The emailed link re-enrols; then the factor is asked again.
+    const token = schemas.RedeemEnrolmentLink200Response.parse(
+      (
+        await write('/v1/staff/auth/second-factor/enrolment-link')
+          .send({ link_token: linkToken, password })
+          .expect(200)
+      ).body,
+    );
+    const phone = fresh();
+    const pending = (
+      await write('/v1/staff/auth/second-factor/enrol')
+        .send({ enrolment_token: token.enrolment_token, phone })
+        .expect(202)
+    ).body as { challenge_id: string };
+    const code = await codeSentTo(phone);
+    await write('/v1/staff/auth/second-factor/confirm')
+      .send({ enrolment_token: token.enrolment_token, challenge_id: pending.challenge_id, code })
+      .expect(204);
+    expect((await login(user.email)).body).toMatchObject({
+      second_factor_required: true,
+      enrolment_required: false,
+    });
   });
 
   it('refuses every second-factor write without the web client marker (403)', async () => {

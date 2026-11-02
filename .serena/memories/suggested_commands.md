@@ -19,7 +19,7 @@
 - Quiet test output for agents: `vitest run --reporter=dot`; re-run a failing file verbosely only.
 
 - Breached-password list (PLAT-11): download SecLists' `100k-most-used-passwords-NCSC.txt` into a directory of its own, then `node apps/api/resources/build-breached-list.mjs <path>` (prints count, bytes, sha256; README there records the source commit and hashes).
-- First super admin (PLAT-11): `node dist/main.js --role bootstrap --email <e> --name <n> [--locale ar|en]` with `DATABASE_URL_PLATFORM` and `PUBLIC_ADMIN_URL`; prints the console link once; refuses while staff or an open super admin invitation exist (`apps/api/README.md`).
+- First super admin (PLAT-11): `node dist/main.js --role bootstrap --email <e> --name <n> [--locale ar|en]` with `DATABASE_URL_PLATFORM` and `PUBLIC_ADMIN_URL`; prints the console link once; refuses while staff or an open super admin invitation exist, or when the email is a disabled user's (`apps/api/README.md`).
 - Booting the built API for a manual check (PLAT-11): put the variables in a file outside the repo (`APP_ENV=local`, `PORT`, scratch `DATABASE_URL_APP`/`_PLATFORM`, `REDIS_URL=redis://127.0.0.1:6379/13`, signing and credentials keys, `PUBLIC_WEB_URL`/`PUBLIC_ADMIN_URL`) and run `node --env-file=<file> dist/main.js --role api` from `apps/api`; delete db 13's `elx:*` keys and the scratch db after.
 
 ## Local stack (no Docker on the owner's machine)

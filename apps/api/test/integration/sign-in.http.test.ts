@@ -225,15 +225,18 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
         invitedBy: null,
         locale: 'en',
       });
+      // Adversary M-3: the service answers ids only; the link goes by mail and nowhere else.
+      expect(created).not.toHaveProperty('link');
       const mail = await mailTo(email, 'invitation');
       expect(mail.account_id).toBeNull();
       expect(mail.payload.params.account_name).toBe('Acme Riyadh');
-      expect(linkOf(mail)).toBe(created.link);
-      expect(JSON.stringify(mail.payload)).not.toContain(tokenOf(created.link));
-      expect(created.link).toMatch(/^http:\/\/localhost:3001\/invitations\/[\w-]{43}$/);
+      expect(mail.aggregate_id).toBe(created.invitationId);
+      const link = linkOf(mail);
+      expect(JSON.stringify(mail.payload)).not.toContain(tokenOf(link));
+      expect(link).toMatch(/^http:\/\/localhost:3001\/invitations\/[\w-]{43}$/);
 
       const accepted = await write('/v1/staff/auth/invitations/accept')
-        .send({ token: tokenOf(created.link), name: 'Nora', password, locale: 'ar' })
+        .send({ token: tokenOf(link), name: 'Nora', password, locale: 'ar' })
         .expect(200);
       const me = schemas.AcceptInvitation200Response.parse(accepted.body);
       expect(me.user).toMatchObject({ name: 'Nora', email, locale: 'ar' });
@@ -246,7 +249,7 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
       ]);
 
       await write('/v1/staff/auth/invitations/accept')
-        .send({ token: tokenOf(created.link), name: 'Nora', password })
+        .send({ token: tokenOf(link), name: 'Nora', password })
         .expect(401)
         .expect((response) => expect((response.body as ErrorBody).code).toBe('token_invalid'));
       const signedIn = await login(email).expect(200);
@@ -255,17 +258,19 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
 
     it('refuses an expired invitation with token_expired and a breached password with 400', async () => {
       const accountId = await insertAccount(owner);
+      const email = freshEmail('expired');
       const created = await app.get(Invitations, { strict: false }).createStaff({
         accountId,
-        email: freshEmail('expired'),
+        email,
         name: 'Late',
         roles: ['viewer'],
         siteIds: [],
         invitedBy: null,
         locale: 'ar',
       });
+      const link = linkOf(await mailTo(email, 'invitation'));
       const breached = await write('/v1/staff/auth/invitations/accept')
-        .send({ token: tokenOf(created.link), name: 'Late', password: onTheBreachedList })
+        .send({ token: tokenOf(link), name: 'Late', password: onTheBreachedList })
         .expect(400);
       expect(breached.body).toMatchObject({
         code: 'validation_failed',
@@ -273,7 +278,7 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
       });
       await owner`UPDATE core_invitations SET expires_at = now() - interval '1 second' WHERE id = ${created.invitationId}`;
       await write('/v1/staff/auth/invitations/accept')
-        .send({ token: tokenOf(created.link), name: 'Late', password })
+        .send({ token: tokenOf(link), name: 'Late', password })
         .expect(401)
         .expect((response) => expect((response.body as ErrorBody).code).toBe('token_expired'));
     });
@@ -474,14 +479,16 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
     it('answers 401 second_factor_required with a challenge_id when the target account requires a factor the session lacks', async () => {
       const plain = await insertAccount(owner);
       const strict = await insertAccount(owner);
-      const user = await member({ accounts: [plain, strict], secondFactorPhone: '+966551234568' });
-      // Sign in on the plain account (no factor yet), then the strict one starts requiring it.
-      await owner`UPDATE core_users SET second_factor_enabled = false WHERE id = ${user.id}`;
+      const user = await member({ accounts: [plain, strict] });
+      // Sign in on the plain account (no factor yet), then the user enrols and the strict account
+      // starts requiring it. (A phone kept with the factor off is the reset marker, which asks for
+      // enrolment on every account since adversary M-2, so the phone arrives after the sign-in.)
       const selection = (await login(user.email).expect(200)).body as LoginResponse;
       const started = await write('/v1/staff/auth/select-account')
         .send({ selection_token: selection.selection_token, membership_id: user.memberships[0] })
         .expect(200);
-      await owner`UPDATE core_users SET second_factor_enabled = true WHERE id = ${user.id}`;
+      await owner`UPDATE core_users SET second_factor_enabled = true,
+                  second_factor_phone = '+966551234568' WHERE id = ${user.id}`;
       await owner`UPDATE core_accounts SET settings = '{"second_factor_required": true}' WHERE id = ${strict}`;
       const refused = await write('/v1/staff/auth/switch-account')
         .set(
@@ -492,6 +499,39 @@ describe('staff sign-in over HTTP (PLAT-11 item D)', () => {
         .expect(401);
       expect((refused.body as ErrorBody).code).toBe('second_factor_required');
       expect((refused.body as ErrorBody).details?.challenge_id).toMatch(/^[\da-f-]{36}\./);
+    });
+
+    it('ends the old family when the switch asks for a factor (adversary L-3)', async () => {
+      const plain = await insertAccount(owner);
+      const strict = await insertAccount(owner);
+      const user = await member({ accounts: [plain, strict] });
+      const selection = (await login(user.email).expect(200)).body as LoginResponse;
+      const started = await write('/v1/staff/auth/select-account')
+        .send({ selection_token: selection.selection_token, membership_id: user.memberships[0] })
+        .expect(200);
+      const cookies = setCookies(started.headers);
+      await owner`UPDATE core_accounts SET settings = '{"second_factor_required": true}' WHERE id = ${strict}`;
+      const refused = await write('/v1/staff/auth/switch-account')
+        .set(
+          'Cookie',
+          cookieHeader({
+            el_staff_at: cookies.get('el_staff_at')?.value,
+            el_staff_rt: cookies.get('el_staff_rt')?.value,
+          }),
+        )
+        .send({ membership_id: user.memberships[1] })
+        .expect(401);
+      expect(refused.body).toMatchObject({
+        code: 'second_factor_required',
+        details: { enrolment_token: expect.stringMatching(/^[\da-f-]{36}\./) as unknown },
+      });
+      await write('/v1/staff/auth/refresh')
+        .set('Cookie', cookieHeader({ el_staff_rt: cookies.get('el_staff_rt')?.value }))
+        .expect(401);
+      const [family] = await owner<{ reason: string }[]>`
+        SELECT revoked_reason AS reason FROM core_refresh_tokens
+        WHERE user_id = ${user.id} AND revoked_at IS NOT NULL LIMIT 1`;
+      expect(family?.reason).toBe('switch_account');
     });
   });
 

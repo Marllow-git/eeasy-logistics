@@ -40,11 +40,18 @@ export interface PlatformInvitation {
   readonly locale: Locale;
 }
 
+/**
+ * A created invitation: ids only. The accept link goes by mail and nowhere else (adversary M-3): a
+ * door that echoed it would let the inviter accept on the invitee's behalf.
+ */
 export interface CreatedInvitation {
   readonly invitationId: string;
   readonly userId: string;
   readonly membershipId: string | null;
-  /** The accept link; the bootstrap command prints it, everyone else gets it by mail only. */
+}
+
+/** The bootstrap's invitation: no mail is sent, so the command prints the link once. */
+export interface BootstrappedInvitation extends CreatedInvitation {
   readonly link: string;
 }
 
@@ -134,7 +141,7 @@ export class Invitations {
         },
         this.#deps.cipher,
       );
-      return { invitationId, userId, membershipId, link };
+      return { invitationId, userId, membershipId };
     });
     this.#logger.log(`staff invitation created membership_id=${created.membershipId ?? ''}`);
     return created;
@@ -153,20 +160,24 @@ export class Invitations {
   /**
    * The first super admin (plan 2.12, the `--role bootstrap` command): under a transaction-scoped
    * advisory lock, refuses (undefined) when any platform staff row or a live super admin invitation
-   * exists; else creates the invitation without a mail (SMTP may not exist yet; the command prints
-   * the link once) and audits `core.platform_staff.bootstrapped` as the system.
+   * exists, or when the email belongs to a disabled user (adversary L-8: that link could never be
+   * accepted and would block reruns for 72 hours); else creates the invitation without a mail (SMTP
+   * may not exist yet; the command prints the link once) and audits
+   * `core.platform_staff.bootstrapped` as the system.
    */
   async bootstrap(
     input: { readonly email: string; readonly name: string; readonly locale: Locale },
     audit: Pick<AuditSink, 'record'>,
     runId: string,
-  ): Promise<CreatedInvitation | undefined> {
+  ): Promise<BootstrappedInvitation | undefined> {
     const store = this.#store();
     const token = opaqueToken();
     const link = mailLink(this.#deps.publicAdminUrl, 'invitations', token);
     return store.run(async (tx) => {
       await tx.platformStaff.lockBootstrap();
       if (await tx.platformStaff.bootstrapped()) return undefined;
+      const existing = await tx.users.findByEmail(input.email.toLowerCase());
+      if (existing?.disabled === true) return undefined;
       const created = await this.#platform(
         tx,
         { ...input, role: 'super_admin', invitedBy: null },
@@ -184,7 +195,7 @@ export class Invitations {
         after: { role: 'super_admin', user_id: created.userId },
         requestId: runId,
       });
-      return created;
+      return { ...created, link };
     });
   }
 
@@ -231,7 +242,7 @@ export class Invitations {
         this.#deps.cipher,
       );
     }
-    return { invitationId, userId, membershipId: null, link };
+    return { invitationId, userId, membershipId: null };
   }
 
   #store(): IdentityStore {
