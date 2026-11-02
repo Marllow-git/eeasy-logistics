@@ -1,6 +1,6 @@
 # Feature book, chapter 01: Orders and intake
 
-Dated 2026-11-02. Branch `docs/feature-book-01-orders` from `origin/main` at `1e0c184`. Research for the lead: it changes no roadmap row, ADR, contract or plan. Proposals are marked **proposed** and are not orders.
+Dated 2026-11-02. Branch `docs/feature-book-01-orders` from `origin/main` (`6ca087e`). Repo facts were read at `1e0c184`; every repo path cited here is unchanged at `6ca087e`. Research for the lead: it changes no roadmap row, ADR, contract or plan. Proposals are marked **proposed** and are not orders.
 
 ## Summary for the lead
 
@@ -17,7 +17,7 @@ Dated 2026-11-02. Branch `docs/feature-book-01-orders` from `origin/main` at `1e
 
 ## Method and conventions
 
-- Repo facts come from `main` at `1e0c184`, read 2026-11-02. Branch notes come from `origin/docs/feature-coverage`, `origin/docs/platform-teardowns` and `origin/feat/DEL-2-orders-intake`. Each bracketed tag resolves in the source list at the end.
+- Repo facts come from `main`, read 2026-11-02 at `1e0c184` (cited paths unchanged at `6ca087e`). Branch notes come from `origin/docs/feature-coverage`, `origin/docs/platform-teardowns` and `origin/feat/DEL-2-orders-intake`. Each bracketed tag resolves in the source list at the end.
 - Teardown facts keep the grade their note gave: F fetched, S search summary, T third party, I inference. Facts from the repo are stated as the repo states them.
 - Status is against the roadmap on `main`: Covered, Partial, Missing, Excluded. "In flight" means on the DEL-2 branch only.
 - Aspect 9 gives the shape already decided in an ADR or domain section, or **proposed** where none exists.
