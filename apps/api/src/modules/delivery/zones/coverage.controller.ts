@@ -1,10 +1,15 @@
-import type { ListCoverage200, SiteCoverage } from '@eeasy-logistics/contracts/staff/schemas';
+import type {
+  CoverageCheck as CoverageCheckAnswer,
+  ListCoverage200,
+  SiteCoverage,
+} from '@eeasy-logistics/contracts/staff/schemas';
 import { operationSchemas } from '@eeasy-logistics/contracts/staff/schemas';
 import { getContext } from '@eeasy-logistics/db';
-import { Controller, Get, HttpCode, Inject, Optional, Put } from '@nestjs/common';
+import { Controller, Get, HttpCode, Inject, Optional, Post, Put } from '@nestjs/common';
 import type {
   AuditSink,
   ContractInput,
+  GeocoderService,
   ListSorts,
   RequestFacts,
 } from '../../kernel/public/index.js';
@@ -14,6 +19,7 @@ import {
   AuthRequest,
   CURSOR_CODEC,
   CursorCodec,
+  GEOCODER,
   Idempotent,
   Input,
   Operation,
@@ -23,6 +29,7 @@ import {
   siteFilter,
 } from '../../kernel/public/index.js';
 import { delCoverage } from '../../kernel/public/index.js';
+import { CoverageCheck } from './coverage-check.js';
 import type { CoverageSortField } from './coverage.repository.js';
 import { CoverageService } from './coverage.service.js';
 import { maxZonesPerAccount } from './zone-input.js';
@@ -30,10 +37,12 @@ import { presentCoverage } from './zones.presenter.js';
 
 // The staff surface's `coverage` tag (DEL-1 plan 2.4): `listCoverage` (`delivery.zones.read`, the
 // principal's site scope) and `replaceSiteCoverage` (`delivery.coverage.manage`, `@SiteScoped()`),
-// enforced by PLAT-10's guard. The account is the token's.
+// and `checkCoverage` (`delivery.orders.read`, plan 2.5: a read-only computation, no
+// `Idempotency-Key`), enforced by PLAT-10's guard. The account is the token's.
 
 const listOp = operationSchemas.listCoverage;
 const replaceOp = operationSchemas.replaceSiteCoverage;
+const checkOp = operationSchemas.checkCoverage;
 
 const coverageSorts: ListSorts<CoverageSortField> = {
   fields: { created_at: 'timestamp' },
@@ -44,13 +53,16 @@ const coverageSorts: ListSorts<CoverageSortField> = {
 export class CoverageController {
   private readonly cursors: CursorCodec;
   private readonly coverage: CoverageService;
+  private readonly checks: CoverageCheck;
 
   constructor(
     @Inject(AUDIT_SINK) audit: AuditSink,
+    @Inject(GEOCODER) geocoder: GeocoderService,
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
   ) {
     this.cursors = cursors ?? new CursorCodec(undefined);
     this.coverage = new CoverageService({ audit });
+    this.checks = new CoverageCheck(geocoder);
   }
 
   @Get('coverage')
@@ -99,5 +111,22 @@ export class CoverageController {
     );
     if (stored === undefined) throw new Error('The coverage replacement answered no set');
     return { site_id: stored.siteId, zone_ids: stored.zoneIds };
+  }
+
+  /**
+   * Which zone covers a point or an address, and from which sites (plan 2.5); `point` wins when
+   * both are sent, `site_id` limits the answer to that site's coverage.
+   */
+  @Post('coverage/check')
+  @HttpCode(200)
+  @Operation(checkOp)
+  async check(@Input() input: ContractInput<typeof checkOp>): Promise<CoverageCheckAnswer> {
+    const result = await this.checks.check(input.body);
+    return {
+      covered: result.siteIds.length > 0,
+      zone_id: result.zoneId,
+      site_ids: [...result.siteIds],
+      ...(result.point === null ? {} : { point: result.point }),
+    };
   }
 }
