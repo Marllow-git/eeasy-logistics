@@ -17,6 +17,8 @@ export interface DriverFilters {
 
 /** The driver fields a create or a reactivation writes. */
 export interface DriverFields {
+  /** The name this account gives the driver (adversary H-3), never the person's. */
+  readonly name: string;
   readonly userId: string;
   readonly membershipId: string;
   readonly homeSiteId: string;
@@ -116,7 +118,10 @@ export class DriversRepository extends ScopedRepository<typeof delDrivers> {
   /** The changed fields, `version + 1`; the caller holds `lockWrites()`. */
   update(
     id: string,
-    values: Pick<TenantUpdate<typeof delDrivers>, 'homeSiteId' | 'status' | 'capacityLimit'>,
+    values: Pick<
+      TenantUpdate<typeof delDrivers>,
+      'name' | 'homeSiteId' | 'status' | 'capacityLimit'
+    >,
   ): Promise<DriverRow> {
     return this.write(id, values);
   }

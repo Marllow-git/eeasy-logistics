@@ -61,12 +61,15 @@ export function capacityRefusal(
     : undefined;
 }
 
-/** Whether a driver matches the list's `q` (plan 2.4): the name, or the phone's last digits. */
+/**
+ * Whether a driver matches the list's `q` (plan 2.4): the account's name for the driver, or the
+ * phone's last digits.
+ */
 export function driverMatches(
-  person: { readonly name: string; readonly phone: string | null },
+  driver: { readonly name: string; readonly phone: string | null },
   q: string,
 ): boolean {
-  if (person.name.toLowerCase().includes(q.toLowerCase())) return true;
+  if (driver.name.toLowerCase().includes(q.toLowerCase())) return true;
   const digits = q.replace(/[\s-]/g, '');
-  return /^[0-9]{2,}$/.test(digits) && (person.phone?.endsWith(digits) ?? false);
+  return /^[0-9]{2,}$/.test(digits) && (driver.phone?.endsWith(digits) ?? false);
 }

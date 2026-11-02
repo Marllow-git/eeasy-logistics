@@ -168,7 +168,7 @@ describe('driver sign-in over HTTP (DEL-4 item D)', () => {
     );
   });
 
-  it('answers otp_invalid for an account_id that names none of the phone\'s active drivers', async () => {
+  it("answers otp_invalid for an account_id that names none of the phone's active drivers", async () => {
     const driver = await plantDriver(owner);
     const suspended = await plantDriver(owner, {
       userId: driver.userId,

@@ -50,7 +50,7 @@ export async function plantDriver(
     userId = uuidv7();
     await owner`
       INSERT INTO core_users (id, name, phone, locale, disabled_at)
-      VALUES (${userId}, 'Planted Driver', ${phone}, 'en',
+      VALUES (${userId}, 'Planted Person', ${phone}, 'en',
               ${options.disabled === true ? new Date().toISOString() : null}::timestamptz)`;
   }
   const membershipId = uuidv7();
@@ -60,8 +60,8 @@ export async function plantDriver(
             ${options.membershipStatus ?? 'active'})`;
   const driverId = uuidv7();
   await owner`
-    INSERT INTO del_drivers (id, account_id, user_id, membership_id, home_site_id, status)
-    VALUES (${driverId}, ${accountId}, ${userId}, ${membershipId}, ${siteId},
+    INSERT INTO del_drivers (id, account_id, user_id, membership_id, home_site_id, name, status)
+    VALUES (${driverId}, ${accountId}, ${userId}, ${membershipId}, ${siteId}, 'Planted Driver',
             ${options.driverStatus ?? 'active'})`;
   return { accountId, siteId, userId, membershipId, driverId, phone };
 }

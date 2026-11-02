@@ -48,6 +48,11 @@ export const delDrivers = pgTable(
     homeSiteId: uuid('home_site_id')
       .notNull()
       .references(() => coreSites.id),
+    /**
+     * The name this account knows the driver by (adversary H-3): a person may drive for several
+     * accounts, and no account reads or writes the name another gave them (`core_users.name`).
+     */
+    name: text('name').notNull(),
     status: text('status', { enum: driverStatuses }).notNull().default('active'),
     cashBlockedAt: timestamp('cash_blocked_at', { withTimezone: true }),
     cashBlockedReason: text('cash_blocked_reason'),
@@ -65,6 +70,7 @@ export const delDrivers = pgTable(
     index('del_drivers_cash_blocked_idx')
       .on(table.accountId)
       .where(sql`${table.cashBlockedAt} IS NOT NULL`),
+    check('del_drivers_name_check', sql`length(${table.name}) BETWEEN 1 AND 120`),
     check('del_drivers_status_check', sql`${table.status} IN ('active', 'suspended', 'archived')`),
     check('del_drivers_capacity_limit_check', sql`${table.capacityLimit} >= 0`),
     check('del_drivers_cash_pin_failures_check', sql`${table.cashPinFailures} BETWEEN 0 AND 5`),

@@ -205,7 +205,12 @@ describe('driver sessions over HTTP (DEL-4 item E)', () => {
       (await http().get('/v1/driver/me').set('Authorization', bearer(session)).expect(200)).body,
     );
     expect(me).toMatchObject({
-      driver: { id: driver.driverId, status: 'active', phone: driver.phone },
+      driver: {
+        id: driver.driverId,
+        name: 'Planted Driver',
+        status: 'active',
+        phone: driver.phone,
+      },
       device: { id: session.device?.id, platform: 'ios' },
       current_shift: null,
       cash: {

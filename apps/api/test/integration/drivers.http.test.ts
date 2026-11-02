@@ -126,11 +126,13 @@ describe('the staff driver doors over HTTP (DEL-4 item B)', () => {
           user_id: string;
           membership_id: string;
           home_site_id: string;
+          name: string;
           status: string;
           capacity_limit: number;
           version: number;
         }[]
-      >`SELECT account_id, user_id, membership_id, home_site_id, status, capacity_limit, version
+      >`SELECT account_id, user_id, membership_id, home_site_id, name, status, capacity_limit,
+               version
         FROM del_drivers WHERE id = ${id}`
     )[0];
   const membershipOf = async (id: string) =>
@@ -395,20 +397,62 @@ describe('the staff driver doors over HTTP (DEL-4 item B)', () => {
       const driver = driverOf(
         (
           await create(dispatcher, {
-            name: 'Ignored Name',
+            name: 'Driving Colleague',
             phone: staffPhone,
             home_site_id: siteId,
           }).expect(201)
         ).body,
       );
-      // An existing person keeps their name; one membership per user and account, roles merged.
-      expect(driver.name).toBe('Dispatcher Two');
+      // The driver carries the body's name and the person keeps theirs (adversary H-3); one
+      // membership per user and account, roles merged.
+      expect(driver.name).toBe('Driving Colleague');
+      const [person] = await owner<{ name: string }[]>`
+        SELECT name FROM core_users WHERE id = ${colleague.id}`;
+      expect(person?.name).toBe('Dispatcher Two');
       expect(await membershipOf(colleagueMembership)).toEqual({
         roles: ['dispatcher', 'driver'],
         site_ids: [],
         status: 'active',
       });
       expect((await driverRow(driver.id))?.membership_id).toBe(colleagueMembership);
+    });
+
+    it("never reads or writes another account's name for a shared person (adversary H-3)", async () => {
+      const a = await world();
+      const b = await world();
+      const phone = saudiMobile();
+      const inA = driverOf(
+        (await create(a.dispatcher, { name: 'Ahmad', phone, home_site_id: a.siteId }).expect(201))
+          .body,
+      );
+      const inB = driverOf(
+        (
+          await create(b.dispatcher, {
+            name: 'Abu Khalid',
+            phone,
+            home_site_id: b.siteId,
+          }).expect(201)
+        ).body,
+      );
+      expect(inB.user_id).toBe(inA.user_id);
+      expect(inB.name).toBe('Abu Khalid');
+      const personName = async () =>
+        (
+          await owner<
+            { name: string }[]
+          >`SELECT name FROM core_users WHERE id = ${inA.user_id ?? ''}`
+        )[0]?.name;
+      expect(await personName()).toBe('Ahmad');
+      await update(b.dispatcher, inB.id, { name: 'Khalid' }).expect(200);
+      expect(await personName()).toBe('Ahmad');
+      const seenByA = driverOf(
+        (await get(a.dispatcher, `/v1/staff/drivers/${inA.id}`).expect(200)).body,
+      );
+      expect(seenByA.name).toBe('Ahmad');
+      const seenByB = driverOf(
+        (await get(b.dispatcher, `/v1/staff/drivers/${inB.id}`).expect(200)).body,
+      );
+      expect(seenByB.name).toBe('Khalid');
     });
 
     it('refuses the next driver at limits.drivers, counting suspended ones and not archived ones', async () => {
@@ -563,7 +607,7 @@ describe('the staff driver doors over HTTP (DEL-4 item B)', () => {
         await owner<{ v: number }[]>`SELECT token_version AS v FROM core_users WHERE id = ${userId}`
       )[0]?.v;
 
-    it('reads a driver, renames the person, moves the home site and the capacity, audited with the changes', async () => {
+    it('reads a driver, renames the driver (not the person), moves the home site and the capacity, audited with the changes', async () => {
       const { accountId, dispatcher, driver, row } = await withDriver();
       expect(
         driverOf((await get(dispatcher, `/v1/staff/drivers/${driver.id}`).expect(200)).body),
@@ -581,14 +625,16 @@ describe('the staff driver doors over HTTP (DEL-4 item B)', () => {
         capacity_limit: 0,
       });
       expect(await driverRow(driver.id)).toMatchObject({
+        name: 'Majed Al-Otaibi',
         home_site_id: both,
         capacity_limit: 0,
         version: 2,
       });
+      // The person's own name is never written by an account (adversary H-3).
       const [user] = await owner<
         { name: string }[]
       >`SELECT name FROM core_users WHERE id = ${row.user_id}`;
-      expect(user?.name).toBe('Majed Al-Otaibi');
+      expect(user?.name).toBe('Majed');
       expect(await membershipOf(row.membership_id)).toMatchObject({ site_ids: [both] });
       const audit = await auditRowsOf(owner, response.headers['x-request-id'] as string);
       expect(audit.map((entry) => entry.action)).toEqual(['delivery.driver.updated']);

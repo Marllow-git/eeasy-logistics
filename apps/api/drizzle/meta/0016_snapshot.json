@@ -603,6 +603,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -788,6 +794,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "del_drivers_name_check": {
+          "name": "del_drivers_name_check",
+          "value": "length(\"del_drivers\".\"name\") BETWEEN 1 AND 120"
+        },
         "del_drivers_status_check": {
           "name": "del_drivers_status_check",
           "value": "\"del_drivers\".\"status\" IN ('active', 'suspended', 'archived')"
