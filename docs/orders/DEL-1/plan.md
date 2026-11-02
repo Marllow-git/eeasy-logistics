@@ -108,6 +108,7 @@ Official city boundary imports (§7 #1); the zones screens (WEB-6) and the map p
 8. **2.7, audit catalogue.** Domain model §6.3 lists events only, and no audit-action catalogue exists in the docs, so the three actions are recorded here and in the code only. No outbox event.
 9. **2.8, fixtures.** The fixtures had no sites yet. Each fixture account gets a Riyadh and a Jeddah branch, a drawn rectangle zone around each, and the matching coverage. All have fixed ids and are written on the seed's platform pool.
 10. **Tables.** `del_coverage` has an `id` primary key (data §1.3) besides the unique `(account_id, site_id, zone_id)`. Names are CHECKed with `char_length` 1 to 120.
+11. **CI expectations (after 7 and #1).** Three suites missed locally failed in both `ELX_RLS` lanes and now expect the change: `sessions.http` `Me.features` is `['delivery']`; `rollout-table` keeps one system row per key (`updated_by` null), `wms` `allowlist`, with `delivery` `all` from the harness row (which leaves `updated_by` null). `accounts-sites-table` lets `elx_platform` INSERT `core_sites` but still refuses it UPDATE and DELETE there and every write to `core_usage_counters`.
 
 ### 8.3 Not done here
 
