@@ -46,17 +46,23 @@ describe('del_drivers, del_vehicles, del_driver_devices (migration 0016)', () =>
 
   const insertDriver = (
     w: Awaited<ReturnType<typeof world>>,
-    values: { id?: string; status?: string; capacity?: number; failures?: number } = {},
+    values: {
+      id?: string;
+      name?: string;
+      status?: string;
+      capacity?: number;
+      failures?: number;
+    } = {},
   ) =>
     sqlState(
       asTenant(
         w.accountId,
         (tx) => tx`
-          INSERT INTO del_drivers (id, account_id, user_id, membership_id, home_site_id, status,
-                                   capacity_limit, cash_pin_failures)
+          INSERT INTO del_drivers (id, account_id, user_id, membership_id, home_site_id, name,
+                                   status, capacity_limit, cash_pin_failures)
           VALUES (${values.id ?? uuidv7()}, ${w.accountId}, ${w.userId}, ${w.membershipId},
-                  ${w.siteId}, ${values.status ?? 'active'}, ${values.capacity ?? 30},
-                  ${values.failures ?? 0})`,
+                  ${w.siteId}, ${values.name ?? 'Driver'}, ${values.status ?? 'active'},
+                  ${values.capacity ?? 30}, ${values.failures ?? 0})`,
       ),
     );
 

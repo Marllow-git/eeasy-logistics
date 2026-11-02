@@ -110,14 +110,6 @@ export class UsersRepository extends PlatformRepository<typeof coreUsers> {
       .onConflictDoNothing({ target: coreUsers.phone, where: sql`${coreUsers.phone} IS NOT NULL` });
   }
 
-  /** A new display name (DEL-4 plan 2.4, `updateDriver`). */
-  async rename(id: string, name: string): Promise<void> {
-    await this.unscoped()
-      .update(coreUsers)
-      .set({ name, updatedAt: sql`now()` })
-      .where(eq(coreUsers.id, id));
-  }
-
   /**
    * `token_version + 1` (DEL-4 plan 2.4: a driver suspended or archived): every refresh family of
    * the user is refused at its next rotation and every sensitive action re-reads it (identity §4).

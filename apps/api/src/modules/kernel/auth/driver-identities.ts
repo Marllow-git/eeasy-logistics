@@ -27,10 +27,12 @@ import { countRevocations } from './auth-metrics.js';
 // on nothing the request's app transaction holds (it touches no key column of a row the app side
 // references), and the request holds its app connection while it waits for a platform one.
 
-/** The person behind a driver, as the staff doors show it. */
+/**
+ * The person behind a driver, as the staff doors show it: never their name, which is the person's
+ * own or another account's choice (adversary H-3); each account keeps its own in `del_drivers`.
+ */
 export interface DriverPerson {
   readonly id: string;
-  readonly name: string;
   readonly phone: string | null;
   readonly locale: UserLocale;
   readonly disabled: boolean;
@@ -94,7 +96,8 @@ export class DriverIdentities {
   /**
    * The person with this E.164 phone, created when there is none (a name, the language, the phone;
    * no email, no password) in a platform transaction of its own. An existing person keeps the name
-   * and language they have: a person may be a driver of several accounts (identity §1).
+   * and language they have, and the name is not returned: a person may be a driver of several
+   * accounts (identity §1), and each account names them in `del_drivers` (adversary H-3).
    */
   async personByPhone(
     phone: string,
@@ -120,11 +123,6 @@ export class DriverIdentities {
     if (ids.length === 0) return new Map();
     const users = await this.#identity().run((tx) => tx.users.findByIds(ids));
     return new Map(users.map((user) => [user.id, toPerson(user)]));
-  }
-
-  /** A new display name for the person (`updateDriver`, plan 2.4). */
-  async rename(userId: string, name: string): Promise<void> {
-    await this.#identity().run((tx) => tx.users.rename(userId, name));
   }
 
   /**
@@ -248,7 +246,6 @@ function toPerson(user: {
 }): DriverPerson {
   return {
     id: user.id,
-    name: user.name,
     phone: user.phone,
     locale: user.locale,
     disabled: user.disabled,

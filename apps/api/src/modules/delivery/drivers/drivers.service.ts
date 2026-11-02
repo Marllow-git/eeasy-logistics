@@ -32,14 +32,15 @@ import { DriverDevicesRepository, DriversRepository } from './drivers.repository
 // The staff driver doors (DEL-4 plan 2.2 to 2.4; domain model §3.5; identity and tenancy §2,
 // §3.2, §4; ADR-0023, ADR-0025, ADR-0031). The account is always the token's (`getContext()`).
 // Drivers, devices and the audit rows are written in the request's tenant unit of work under the
-// account's driver write lock; the person (name, phone, sessions, `token_version`) lives on the
-// platform pool and is reached through the kernel's `DriverIdentities`, one platform transaction
-// per step, taken before the tenant writes so no platform step waits on the request (PLAT-12 8.2
-// #3, #29). The WhatsApp app invitation is a `message` outbox row in the same tenant transaction.
+// account's driver write lock; the person (phone, sessions, `token_version`) lives on the platform
+// pool and is reached through the kernel's `DriverIdentities`, one platform transaction per step,
+// taken before the tenant writes so no platform step waits on the request (PLAT-12 8.2 #3, #29).
+// The driver's name is the row's (`del_drivers.name`, adversary H-3): a person shared with another
+// account is never read or renamed through this one. The WhatsApp app invitation is a `message` outbox row in the same tenant transaction.
 
 export type AuditFacts = Pick<RequestFacts, 'requestId' | 'clientRequestId' | 'ip' | 'userAgent'>;
 
-/** The documented sort fields of `listDrivers` (plan 2.4; `name` is the person's). */
+/** The documented sort fields of `listDrivers` (plan 2.4; `name` is the row's). */
 export type DriverSortField = 'created_at' | 'name' | 'status';
 
 /** A driver row with the person it belongs to. */
@@ -86,7 +87,7 @@ export function driverKeyOf(field: DriverSortField, driver: Driver): PageKey {
     field === 'created_at'
       ? driver.row.createdAt.toISOString()
       : field === 'name'
-        ? driver.person.name
+        ? driver.row.name
         : driver.row.status;
   return { value, id: driver.row.id };
 }
@@ -94,7 +95,7 @@ export function driverKeyOf(field: DriverSortField, driver: Driver): PageKey {
 /** The audited fields of a driver (the phone as its tail only, plan 2.2, 2.12). */
 function auditFields(driver: Driver): Record<string, unknown> {
   return {
-    name: driver.person.name,
+    name: driver.row.name,
     phone_tail: driver.person.phone === null ? null : phoneTail(driver.person.phone),
     home_site_id: driver.row.homeSiteId,
     status: driver.row.status,
@@ -117,9 +118,9 @@ export class DriversService {
 
   /**
    * `listDrivers` (plan 2.4): the account's drivers the status, home site and cash-block filters
-   * keep (SQL, RLS), their people on the platform pool, `q` matched in memory over the name and the
-   * phone's last digits, then ordered and cut by the keyset in memory (the `name` sort is the
-   * person's, which elx_app cannot read; PLAT-12 8.2 #21).
+   * keep (SQL, RLS), their people's phones on the platform pool, `q` matched in memory over the
+   * row's name and the phone's last digits, then ordered and cut by the keyset in memory (the phone
+   * is the person's, which elx_app cannot read; PLAT-12 8.2 #21; accepted debt, 8.2 #44).
    */
   async list(request: DriverListRequest): Promise<ListPage<Driver>> {
     const rows = await new DriversRepository(getUnitOfWork()).matching({
@@ -129,7 +130,8 @@ export class DriversService {
     });
     const { q } = request;
     const drivers = (await this.driversOf(rows)).filter(
-      ({ person }) => q === undefined || driverMatches(person, q),
+      ({ row, person }) =>
+        q === undefined || driverMatches({ name: row.name, phone: person.phone }, q),
     );
     const { plan } = request;
     const keyOf = (driver: Driver) => driverKeyOf(plan.sort.field, driver);
@@ -146,7 +148,8 @@ export class DriversService {
   /**
    * `createDriver` (plan 2.2, 2.3): the name, the phone and the home site checked; under the
    * account's driver write lock the `active` and `suspended` drivers counted against
-   * `limits.drivers`; the person found or created by phone (platform pool); a phone that already
+   * `limits.drivers`; the person found or created by phone (platform pool; a new person takes the
+   * body's name, an existing person's own name is neither read nor changed); a phone that already
    * has a driver here is `400` at `/body/phone` (`duplicate`) unless that driver is archived, which
    * comes back; the `driver` role granted on the person's membership (role combination, PLAT-10);
    * the driver row, its audit row and the WhatsApp invitation in the tenant transaction.
@@ -182,6 +185,7 @@ export class DriversService {
     }
     const membershipId = await this.deps.identities.grantDriverRole(person.id, body.home_site_id);
     const fields = {
+      name: body.name,
       userId: person.id,
       membershipId,
       homeSiteId: body.home_site_id,
@@ -199,7 +203,8 @@ export class DriversService {
   }
 
   /**
-   * `updateDriver` (plan 2.4): an absent field keeps its value; the name lives on the person; a new
+   * `updateDriver` (plan 2.4): an absent field keeps its value; the name is the row's (never the
+   * person's, adversary H-3); a new
    * home site passes the create's checks and moves a driver-only membership's `site_ids`; the
    * status follows active ⇄ suspended → archived (`409 invalid_transition` out of archived); the
    * capacity limit may not fall below the orders held (`422 capacity_exceeded`). A suspension ends
@@ -237,7 +242,7 @@ export class DriversService {
       const refusal = capacityRefusal(capacityLimit, activeOrdersOf(current));
       if (refusal !== undefined) throw refusal;
     }
-    const name = patch.name ?? before.person.name;
+    const name = patch.name ?? current.name;
 
     const was = auditFields(before);
     const will: Record<string, unknown> = {
@@ -251,7 +256,6 @@ export class DriversService {
     if (changed.length === 0) return before;
 
     // The platform side first (PLAT-12 8.2 #29): the request holds no lock it waits on.
-    if (name !== before.person.name) await this.deps.identities.rename(current.userId, name);
     // Lead ruling 2026-11-02 (8.2 #12, #23): suspension and archive end this membership's driver
     // families only; the person's `token_version` stays, so their sessions elsewhere (another
     // account they drive for, a staff membership) live on. The refresh verdict refuses this
@@ -269,8 +273,8 @@ export class DriversService {
     } else if (homeSiteId !== current.homeSiteId) {
       await this.deps.identities.moveHome(current.membershipId, homeSiteId);
     }
-    const row = await drivers.update(id, { homeSiteId, status, capacityLimit });
-    const after: Driver = { row, person: { ...before.person, name } };
+    const row = await drivers.update(id, { name, homeSiteId, status, capacityLimit });
+    const after: Driver = { row, person: before.person };
     const now = auditFields(after);
     await this.record(
       row,

@@ -113,7 +113,7 @@ export const piiColumns: Readonly<Record<string, readonly string[]>> = {
   core_invitations: ['email', 'name'],
   core_auth_challenges: ['pending_phone', 'ip'],
   // DEL-4 plan 2.1 (data §10, driver row): the PIN hash, the app's device id, the push token.
-  del_drivers: ['cash_pin_hash'],
+  del_drivers: ['name', 'cash_pin_hash'],
   del_driver_devices: ['device_id', 'push_token'],
 };
 

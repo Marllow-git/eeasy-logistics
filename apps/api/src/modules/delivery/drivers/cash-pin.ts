@@ -64,11 +64,7 @@ export class PinCheck {
    * Argon2id verification. Never logs the PIN. Opens a transaction only when none is current, so
    * it never waits for a second app connection while holding one.
    */
-  async check(
-    driverOf: () => Promise<DriverRow>,
-    pin: string,
-    facts: AuditFacts,
-  ): Promise<void> {
+  async check(driverOf: () => Promise<DriverRow>, pin: string, facts: AuditFacts): Promise<void> {
     const run = async () => this.#check((await driverOf()).id, pin, facts);
     if (currentUnitOfWork() !== undefined) {
       const outcome = await run();
