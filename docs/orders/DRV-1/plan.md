@@ -94,6 +94,10 @@ The outbox, the sync screen and the local read model (DRV-2); the run list, offe
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (counts) | Interpretation |
+|---|---|---|---|
+| A | `DRV-1: A foundations` | Jest 51/51 in 7 suites (`session` 10, `api` 7, `domain` 29 incl. the gate table of 11 rows, `scrub` 1, wiring 4 kept; red: the session case "without the lease, the same race revokes the family" shows the failure the lease prevents, green with it); architecture 0 violations (232 modules, four new layer rules plus `driver-pin-never-in-sqlite`); typecheck and lint clean; `packages/i18n` Vitest 70/70 (parity covers `driver`, new `driver.test.ts` 2) | Both languages render: see B (Maestro) |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes

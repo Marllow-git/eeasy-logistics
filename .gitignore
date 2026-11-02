@@ -26,6 +26,10 @@ expo-env.d.ts
 # Native local stack state and data (tools/native-stack.sh)
 .local/
 
+# Expo prebuild output of the managed driver app (DRV-1: local dev-client builds only)
+apps/driver/ios/
+apps/driver/android/
+
 # Playwright output (apps/web, apps/admin)
 test-results/
 playwright-report/

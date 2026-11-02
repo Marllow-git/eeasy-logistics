@@ -35,3 +35,13 @@ auditConfig:
     - GHSA-g3hv-75wg-m249 # minimatch ReDoS; via jest, eslint and @expo/cli, patterns are ours
     - GHSA-3g3m-2fjr-6pw4 # glob AbortSignal bypass; via jest and @expo/cli, no untrusted input
     - GHSA-gcqx-w48m-w2h4 # deepmerge prototype poisoning; via jest-config, no fix published
+
+# Versions younger than minimumReleaseAge, accepted with a reason (DRV-1, 2026-11-02): the Expo
+# SDK 58 patch train of 2026-10-31 that the lockfile already pinned (expo 58.0.22 and its own
+# packages) is re-resolved when the driver app adds its native modules. Remove after 2026-11-04.
+minimumReleaseAgeExclude:
+  - '@expo/log-box@58.0.14'
+  - '@expo/metro-runtime@58.0.16'
+  - '@expo/config@58.0.10'
+  - 'expo@58.0.22'
+  - 'expo-router@58.0.29'

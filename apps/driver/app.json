@@ -5,7 +5,27 @@
     "scheme": "eeasy-logistics-driver",
     "version": "0.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
-    "plugins": ["expo-router", "expo-status-bar"]
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "sa.eeasy.logistics.driver",
+      "supportsTablet": false,
+      "infoPlist": {
+        "UIBackgroundModes": ["location"]
+      }
+    },
+    "android": {
+      "package": "sa.eeasy.logistics.driver",
+      "allowBackup": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-dev-client",
+      "expo-sqlite",
+      ["expo-secure-store", { "configureAndroidBackup": true, "faceIDPermission": false }],
+      ["expo-localization", { "supportsRTL": true }],
+      "expo-notifications",
+      "react-native-quick-crypto"
+    ]
   }
 }

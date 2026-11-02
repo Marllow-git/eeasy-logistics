@@ -1,0 +1,98 @@
+{
+  "app": {
+    "name": "Eeasy Driver"
+  },
+  "language": {
+    "label": "Language",
+    "switch": "العربية",
+    "switch_hint": "Switch the app to Arabic"
+  },
+  "common": {
+    "continue": "Continue",
+    "retry": "Try again",
+    "later": "Later",
+    "cancel": "Cancel",
+    "back": "Back",
+    "loading": "Loading"
+  },
+  "errors": {
+    "network": "No connection. Check your internet and try again.",
+    "unexpected": "Something went wrong. Try again.",
+    "rate_limited": "Too many tries. Wait {seconds} seconds and try again.",
+    "messaging_unavailable": "We cannot send codes right now. Try again in a few minutes."
+  },
+  "update": {
+    "title": "Update the app",
+    "body": "This version of the app is no longer supported. Update it from your app store to keep working.",
+    "soft_body": "A newer version of the app will be required soon. Update it from your app store.",
+    "dismiss": "Not now"
+  },
+  "sign_in": {
+    "title": "Sign in",
+    "subtitle": "Enter the mobile number your dispatcher registered. We will send you a code on WhatsApp.",
+    "phone_label": "Mobile number",
+    "prefix_label": "Country code",
+    "phone_placeholder": "5X XXX XXXX",
+    "send": "Send code",
+    "sent_generic": "If this number is registered, a code was sent to it."
+  },
+  "verify": {
+    "title": "Enter the code",
+    "sent_to": "Enter the 6-digit code sent to {phone}.",
+    "code_label": "Verification code",
+    "resend_in": "You can request a new code in {seconds} seconds.",
+    "resend": "Send a new code",
+    "submit": "Verify",
+    "change_number": "Change the number",
+    "otp_invalid": "The code is incorrect or has expired. Check it and try again.",
+    "device_limit": "This number is already signed in on two phones. Ask your dispatcher to remove an old phone, then request a new code.",
+    "device_revoked": "This phone was removed by your dispatcher. Ask them before signing in again."
+  },
+  "account": {
+    "title": "Choose the account",
+    "subtitle": "Your number drives for more than one merchant. Choose the one you are working for now."
+  },
+  "pin": {
+    "setup_title": "Create your cash PIN",
+    "setup_rule": "Choose 4 to 6 digits. You will enter it each time you collect cash.",
+    "confirm_title": "Confirm your cash PIN",
+    "confirm_rule": "Enter the same PIN again.",
+    "mismatch": "The two PINs do not match. Start again.",
+    "otp_title": "Confirm with a code",
+    "otp_body": "To save your PIN, enter the new code we sent to your WhatsApp.",
+    "otp_send": "Send the code",
+    "save": "Save the PIN",
+    "arm_title": "Enter your cash PIN",
+    "arm_body": "Enter your cash PIN once so this phone can check it when you are offline.",
+    "invalid": "The PIN is incorrect. Try again.",
+    "locked_title": "Cash is locked",
+    "locked_body": "Your cash PIN is locked after too many wrong tries. Ask your dispatcher to reset it. You can still deliver orders without cash.",
+    "continue_without_cash": "Continue without cash",
+    "submit": "Continue",
+    "delete": "Delete the last digit",
+    "entered": "{count} digits entered"
+  },
+  "permissions": {
+    "title": "Allow access",
+    "intro": "The app needs these to run your deliveries. You can decide later for each one.",
+    "location_title": "Location while using the app",
+    "location_body": "Your dispatcher and the recipient see where the parcel is, only while you are on shift. Off shift, nothing is sent.",
+    "background_title": "Location in the background",
+    "background_body": "Keeps sharing your position when the screen is off during a shift, so the recipient sees you arrive.",
+    "background_warning": "Without background location, your position is shared only while the app is open.",
+    "notifications_title": "Notifications",
+    "notifications_body": "Tells you about new orders and changes to your run.",
+    "camera_title": "Camera",
+    "camera_body": "Scans parcel labels and takes delivery photos.",
+    "allow": "Allow",
+    "open_settings": "Open settings",
+    "granted": "Allowed",
+    "denied": "Not allowed",
+    "done": "Continue"
+  },
+  "native": {
+    "location_when_in_use": "Your dispatcher and the recipient see where the parcel is, only while you are on shift.",
+    "location_always": "Keeps sharing your position during a shift when the screen is off, so the recipient sees you arrive. Off shift, nothing is sent.",
+    "camera": "Scans parcel labels and takes delivery photos."
+  }
+}
