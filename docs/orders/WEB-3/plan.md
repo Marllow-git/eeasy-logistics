@@ -87,6 +87,10 @@ The map tile and a pin picker for sites (WEB-6 with Q-19; coordinates are typed 
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (counts) | Interpretation |
+|---|---|---|---|
+| A | the commit `WEB-3: A …` | `packages/ui` Vitest 238 passed in 14 files (new `test/authz-query.test.tsx`: 19, `Can`, `useCan` and `QueryProvider` in `ar` and `en`); `apps/web` `test:unit` (new, `node --test`) 5 passed (`src/routes.test.ts`); `packages/i18n` 62 passed (parity); typecheck and lint green in `ui`, `web`, `i18n` | `requirePermission` takes the manifest path (8.2 #2); `forbidden()` under `experimental.authInterrupts` (8.2 #3); the 403 census check runs with item C's census (8.2 #4) |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes

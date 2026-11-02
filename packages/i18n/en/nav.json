@@ -1,4 +1,6 @@
 {
   "primary": "Main navigation",
-  "home": "Home"
+  "home": "Home",
+  "settings": "Settings",
+  "settings_account": "Account settings"
 }
