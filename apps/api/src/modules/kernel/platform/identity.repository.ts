@@ -3,6 +3,7 @@ import type { PlatformDatabase, PlatformUnitOfWork } from '@eeasy-logistics/db/p
 import {
   PlatformRepository,
   getCrossTenantPlatformUnitOfWork,
+  getPlatformUnitOfWork,
   withPlatformUnitOfWork,
 } from '@eeasy-logistics/db/platform';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -167,6 +168,14 @@ export class UsersRepository extends PlatformRepository<typeof coreUsers> {
         tokenVersion: sql`${coreUsers.tokenVersion} + 1`,
         updatedAt: sql`now()`,
       })
+      .where(eq(coreUsers.id, id));
+  }
+
+  /** Moves `token_version`: every session of the user ends at its next refresh (PLAT-13 plan 2.9). */
+  async endSessions(id: string): Promise<void> {
+    await this.unscoped()
+      .update(coreUsers)
+      .set({ tokenVersion: sql`${coreUsers.tokenVersion} + 1`, updatedAt: sql`now()` })
       .where(eq(coreUsers.id, id));
   }
 
@@ -667,6 +676,60 @@ export class PlatformStaffRepository extends PlatformRepository<typeof corePlatf
       });
   }
 
+  /**
+   * Serialises the staff doors' role changes (PLAT-13 plan 2.9), so two super admins demoting each
+   * other at once cannot both pass the last-super-admin check (a transaction-scoped advisory lock).
+   */
+  async lockRoles(): Promise<void> {
+    await this.unscoped().execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('elx:platform-staff-roles'))`,
+    );
+  }
+
+  /** How many staff rows hold `super_admin` and are not revoked. */
+  async liveSuperAdmins(): Promise<number> {
+    const rows = await this.unscoped()
+      .select({ count: sql<number>`count(*)::int` })
+      .from(corePlatformStaff)
+      .where(and(eq(corePlatformStaff.role, 'super_admin'), isNull(corePlatformStaff.revokedAt)));
+    return rows[0]?.count ?? 0;
+  }
+
+  /** A live row's new role (plan 2.9), granted by `grantedBy`. */
+  async setRole(userId: string, role: PlatformStaffRole, grantedBy: string): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({ role, grantedBy, updatedAt: sql`now()` })
+      .where(and(eq(corePlatformStaff.userId, userId), isNull(corePlatformStaff.revokedAt)));
+  }
+
+  /**
+   * Revokes the row (`roles: []`, plan 2.9): the role and the TOTP stay, so a later grant (PLAT-11's
+   * `grant`, which clears a revoked row's TOTP) starts the enrolment again.
+   */
+  async revoke(userId: string): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({ revokedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(and(eq(corePlatformStaff.userId, userId), isNull(corePlatformStaff.revokedAt)));
+  }
+
+  /**
+   * Clears the TOTP secret, its key id and the replay guard (plan 2.9, `platformResetStaffTotp`):
+   * the next `platformLogin` asks for an enrolment.
+   */
+  async resetTotp(userId: string): Promise<void> {
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpLastStep: null,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(corePlatformStaff.userId, userId));
+  }
+
   /** Serialises bootstrap runs (a transaction-scoped advisory lock). */
   async lockBootstrap(): Promise<void> {
     await this.unscoped().execute(
@@ -934,6 +997,11 @@ export function identityTransactionOf(uow: PlatformUnitOfWork): IdentityTransact
     resets: new PasswordResetsRepository(uow),
     accounts: new InvitingAccounts(uow),
   };
+}
+
+/** The identity repositories on the current platform request's transaction (PLAT-13 plan 2.9). */
+export function currentIdentity(): IdentityTransaction {
+  return identityTransactionOf(getPlatformUnitOfWork());
 }
 
 /** One platform transaction per call, with no platform user (the doors are anonymous). */

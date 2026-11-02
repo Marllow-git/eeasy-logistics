@@ -14,6 +14,7 @@ import { PLATFORM_POOL } from '../platform/tokens.js';
 import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { RATE_LIMITER } from '../rate-limit/rate-limiter.js';
 import { MembersController } from '../members/members.controller.js';
+import { PlatformStaffController } from '../platform-staff/platform-staff.controller.js';
 import { PlatformAccountsController } from '../provisioning/platform-accounts.controller.js';
 import { AccessTokenIssuer } from './access-token.js';
 import { Invitations } from './invitations.js';
@@ -41,12 +42,14 @@ export class AuthModule {
       imports: [KernelModule],
       // PLAT-12: the staff surface's member doors, here because they delegate to `Invitations` and
       // `SecondFactorResets` (plan 2.9). PLAT-13: the platform account doors, here because the
-      // provisioning door and `platformInviteOwner` delegate the owner's invitation to `Invitations`.
+      // provisioning door and `platformInviteOwner` delegate the owner's invitation to `Invitations`,
+      // and the platform staff doors (leg 2) delegate `platformInviteStaff` to it.
       controllers: [
         StaffAuthController,
         PlatformAuthController,
         MembersController,
         PlatformAccountsController,
+        PlatformStaffController,
       ],
       providers: [
         { provide: PasswordHasher, useFactory: () => new PasswordHasher() },

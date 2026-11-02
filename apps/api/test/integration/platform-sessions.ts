@@ -19,6 +19,8 @@ export interface SignedInPlatformStaff {
   readonly role: 'super_admin' | 'admin' | 'support';
   /** The `Cookie` header of the session (access and refresh cookies). */
   readonly cookie: string;
+  /** The password the staff member accepted with (PLAT-13 leg 2: a later `platformLogin`). */
+  readonly password: string;
 }
 
 /** The marker headers of a platform write (PLAT-6) from a fresh client address. */
@@ -78,6 +80,7 @@ export async function platformStaff(
     userId: created.userId,
     email,
     role,
+    password,
     cookie: cookieHeader({
       el_platform_at: cookies.get('el_platform_at')?.value,
       el_platform_rt: cookies.get('el_platform_rt')?.value,

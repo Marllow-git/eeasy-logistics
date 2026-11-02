@@ -22,6 +22,8 @@ export const domainEventTypes = [
   'core.invitation.created',
   'core.password_reset.requested',
   'core.second_factor.reset',
+  // PLAT-13: the notice mail of a platform user's TOTP reset (a kernel effect, no link).
+  'core.platform_staff.totp_reset',
 ] as const;
 export type DomainEventType = (typeof domainEventTypes)[number];
 
