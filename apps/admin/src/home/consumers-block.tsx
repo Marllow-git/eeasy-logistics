@@ -39,7 +39,12 @@ export async function ConsumersBlock({
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            tabIndex={0}
+            role="region"
+            aria-labelledby="consumers-title"
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-start text-muted-foreground">

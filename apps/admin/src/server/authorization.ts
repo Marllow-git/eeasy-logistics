@@ -1,4 +1,5 @@
 import 'server-only';
+import type { Permission } from '@eeasy-logistics/contracts/unions';
 import { forbidden } from 'next/navigation';
 import { routeOf, routeOpen, type ConsolePath } from '../routes';
 import { getPlatformSession } from './session';
@@ -14,4 +15,13 @@ import { getPlatformSession } from './session';
 export async function requirePermission(path: ConsolePath): Promise<void> {
   const me = await getPlatformSession();
   if (!routeOpen(routeOf(path), me)) forbidden();
+}
+
+/**
+ * The gate of a page whose permission differs from its segment's (the account's Members and Audit
+ * tabs need `platform.tenants.read` under `/accounts`, WEB-4 plan 2.7): the same 403 page.
+ */
+export async function requireGrant(permission: Permission): Promise<void> {
+  const me = await getPlatformSession();
+  if (!(me.permissions ?? []).includes(permission)) forbidden();
 }

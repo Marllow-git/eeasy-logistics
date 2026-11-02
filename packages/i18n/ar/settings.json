@@ -352,7 +352,12 @@
       "invitation": "دعوة",
       "user": "مستخدم",
       "session_family": "جلسة",
-      "operation": "طلب"
+      "operation": "طلب",
+      "feature_flag": "وحدة",
+      "rollout_mode": "وضع الإطلاق",
+      "outbox_row": "صف في صندوق الإرسال",
+      "outbox_kind": "نوع في صندوق الإرسال",
+      "platform_staff": "عضو في فريق المنصة"
     },
     "actions": {
       "core_account_settings_updated": "تغيير إعدادات الحساب",
@@ -374,7 +379,21 @@
       "core_auth_totp_enrolled": "تسجيل تطبيق المصادقة",
       "core_session_ended": "تسجيل الخروج",
       "core_session_family_revoked": "إنهاء الجلسات",
-      "core_authorization_denied": "رفض الوصول"
+      "core_authorization_denied": "رفض الوصول",
+      "core_account_activated": "تفعيل الحساب",
+      "core_account_updated": "تغيير بيانات الحساب",
+      "core_account_reactivated": "إعادة تفعيل الحساب",
+      "core_account_closed": "إغلاق الحساب",
+      "core_feature_flag_changed": "تشغيل وحدة أو إيقافها",
+      "core_rollout_mode_changed": "تغيير وضع الإطلاق",
+      "platform_cross_tenant_accessed": "اطلاع من دعم المنصة",
+      "platform_cross_tenant_refused": "رفض اطلاع من دعم المنصة",
+      "platform_outbox_row_replayed": "إعادة إرسال صف من صندوق الإرسال",
+      "platform_outbox_rows_replayed": "إعادة إرسال الصفوف المتعثرة",
+      "core_platform_staff_invited": "دعوة عضو في فريق المنصة",
+      "core_platform_staff_roles_changed": "تغيير دور عضو في فريق المنصة",
+      "core_platform_staff_totp_reset": "إعادة ضبط تطبيق المصادقة لعضو في فريق المنصة",
+      "core_platform_staff_bootstrapped": "إنشاء أول مشرف عام"
     },
     "fields": {
       "roles": "الأدوار",

@@ -37,6 +37,11 @@ void describe('consoleRoutes', () => {
     assert.equal(routeOpen(form, { permissions: undefined }), false);
   });
 
+  void it('opens the outbox to every outbox reader', () => {
+    assert.equal(routeOpen(routeOf('/outbox'), support), true);
+    assert.equal(routeOpen(routeOf('/outbox'), { permissions: ['platform.accounts.read'] }), false);
+  });
+
   void it('opens the home to every signed-in staff member', () => {
     assert.equal(routeOpen(routeOf('/'), { permissions: [] }), true);
   });
@@ -62,6 +67,7 @@ void describe('navigationFor', () => {
           { href: '/rollout', label: 'rollout', prefix: false },
         ],
       },
+      { group: 'operations', items: [{ href: '/outbox', label: 'outbox', prefix: false }] },
     ]);
   });
 
@@ -74,7 +80,7 @@ void describe('navigationFor', () => {
   void it('gives the home its areas without itself', () => {
     assert.deepEqual(
       homeAreas(support).map((entry) => entry.href),
-      ['/accounts', '/rollout'],
+      ['/accounts', '/rollout', '/outbox'],
     );
     assert.deepEqual(homeAreas({ permissions: [] }), []);
   });

@@ -131,7 +131,7 @@ components:
       name: X-Support-Reason
       in: header
       required: true
-      description: Free-text reason written to the audit row of every cross-tenant platform call (document 4 §5, §7).
+      description: Free-text reason written to the audit row of every cross-tenant platform call (document 4 §5, §7). A value outside Latin-1 is sent percent-encoded as UTF-8.
       schema: {type: string, minLength: 5, maxLength: 500}
 
   responses:

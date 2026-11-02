@@ -94,9 +94,17 @@ function SupportGate({ account }: { account: Account }) {
 function AccountTabs({ accountId }: { accountId: string }) {
   const t = useTranslations('platform.account.tabs');
   const pathname = usePathname();
+  const readsTenants = useCan('platform.tenants.read');
   const tabs = [
     { href: `/accounts/${accountId}`, label: t('details') },
     { href: `/accounts/${accountId}/flags`, label: t('flags') },
+    // The account's people and log are cross-tenant reads of their own (WEB-4 plan 2.7).
+    ...(readsTenants
+      ? [
+          { href: `/accounts/${accountId}/members`, label: t('members') },
+          { href: `/accounts/${accountId}/audit`, label: t('audit') },
+        ]
+      : []),
   ];
   return (
     <nav aria-label={t('label')} className="flex gap-1 border-b border-border">

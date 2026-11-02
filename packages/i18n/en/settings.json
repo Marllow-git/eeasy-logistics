@@ -352,7 +352,12 @@
       "invitation": "Invitation",
       "user": "User",
       "session_family": "Session",
-      "operation": "Request"
+      "operation": "Request",
+      "feature_flag": "Module",
+      "rollout_mode": "Rollout mode",
+      "outbox_row": "Outbox row",
+      "outbox_kind": "Outbox kind",
+      "platform_staff": "Platform staff"
     },
     "actions": {
       "core_account_settings_updated": "Account settings changed",
@@ -374,7 +379,21 @@
       "core_auth_totp_enrolled": "Authenticator enrolled",
       "core_session_ended": "Signed out",
       "core_session_family_revoked": "Sessions ended",
-      "core_authorization_denied": "Access refused"
+      "core_authorization_denied": "Access refused",
+      "core_account_activated": "Account activated",
+      "core_account_updated": "Account details changed",
+      "core_account_reactivated": "Account reactivated",
+      "core_account_closed": "Account closed",
+      "core_feature_flag_changed": "Module turned on or off",
+      "core_rollout_mode_changed": "Rollout mode changed",
+      "platform_cross_tenant_accessed": "Read by platform support",
+      "platform_cross_tenant_refused": "Platform support read refused",
+      "platform_outbox_row_replayed": "Outbox row replayed",
+      "platform_outbox_rows_replayed": "Failed outbox rows replayed",
+      "core_platform_staff_invited": "Platform staff invited",
+      "core_platform_staff_roles_changed": "Platform staff role changed",
+      "core_platform_staff_totp_reset": "Platform staff authenticator reset",
+      "core_platform_staff_bootstrapped": "First super admin created"
     },
     "fields": {
       "roles": "Roles",

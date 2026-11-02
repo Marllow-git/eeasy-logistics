@@ -8,7 +8,7 @@ import type { Permission } from '@eeasy-logistics/contracts/unions';
 // account, so no route has a feature key. Kept free of runtime imports so `node --test` runs it.
 
 /** The `platform.nav` catalogue keys the manifest labels its entries with. */
-export type NavigationLabel = 'home' | 'accounts' | 'rollout';
+export type NavigationLabel = 'home' | 'accounts' | 'rollout' | 'outbox' | 'staff' | 'audit';
 
 /** Sidebar groups, in order; all but `main` carry the `platform.nav.groups.<group>` heading. */
 export const navigationGroups = ['main', 'accounts', 'operations', 'governance'] as const;
@@ -52,6 +52,13 @@ export const consoleRoutes = [
     read: 'platform.accounts.read',
     write: 'platform.rollout.manage',
     navigation: { group: 'accounts', label: 'rollout', order: 1 },
+  },
+  // The outbox (PLAT-8 2.7; WEB-4 plan 2.8): rows by status, a row's drawer, replays.
+  {
+    path: '/outbox',
+    read: 'platform.outbox.read',
+    write: 'platform.outbox.replay',
+    navigation: { group: 'operations', label: 'outbox', order: 0 },
   },
 ] as const satisfies readonly ConsoleRoute[];
 

@@ -24,7 +24,10 @@
     "none": "Your role opens no area of the console yet.",
     "areas": {
       "accounts": "Provision merchant accounts, act on one with a support reason, suspend or close it.",
-      "rollout": "Choose who gets each module: no one, the allowlisted accounts, or every account."
+      "rollout": "Choose who gets each module: no one, the allowlisted accounts, or every account.",
+      "outbox": "Read the queued and failed effects of every account and replay the failed ones.",
+      "staff": "Invite the platform team, change roles, revoke access and reset a second factor.",
+      "audit": "Who did what on the platform, with the reason of every support read and change."
     },
     "consumers": {
       "title": "Outbox consumers",
@@ -135,7 +138,9 @@
     "tabs": {
       "label": "Account sections",
       "details": "Details",
-      "flags": "Modules"
+      "flags": "Modules",
+      "members": "Members",
+      "audit": "Audit log"
     },
     "notice": {
       "suspended": "This account is suspended",
@@ -246,5 +251,122 @@
     },
     "done": "Saved. A change can take up to a minute to apply.",
     "updated_on": "Changed {date}"
+  },
+  "filter_gate": {
+    "title": "Why are you reading the data of {name}?",
+    "description": "Every read of this account's data is recorded with this reason in the audit log. It stays with this tab until you reload the page or sign out.",
+    "label": "Support reason",
+    "confirm": "Read the account's data",
+    "all_accounts": "every account"
+  },
+  "account_filter": {
+    "search": "Find an account",
+    "label": "Account",
+    "all": "All accounts"
+  },
+  "members": {
+    "title": "Members",
+    "description": "The people who work on this account. Support reads only: the account owner changes them.",
+    "table_label": "Members of this account",
+    "empty": "This account has no member yet."
+  },
+  "outbox": {
+    "description": "Effects waiting to leave the platform, sent, and failed. Choose an account to see the payloads.",
+    "table_label": "Outbox rows",
+    "columns": {
+      "created": "Created",
+      "kind": "Kind",
+      "type": "Event",
+      "status": "Status",
+      "attempts": "Attempts",
+      "next_attempt": "Next attempt",
+      "account": "Account"
+    },
+    "last_error": "Last error:",
+    "none": "—",
+    "platform_only": "Platform",
+    "needs_reason": "Give a support reason to read this account's rows.",
+    "empty": "No outbox row yet.",
+    "empty_filtered": "No outbox row matches these filters.",
+    "clear_filters": "Clear filters",
+    "filters": {
+      "status": "Status",
+      "all": "All",
+      "kind": "Kind",
+      "all_kinds": "All kinds",
+      "type": "Event type",
+      "aggregate_id": "Aggregate ID",
+      "invalid_id": "Enter a full ID.",
+      "from": "From",
+      "to": "To"
+    },
+    "statuses": {
+      "pending": "Waiting",
+      "enqueued": "Queued",
+      "done": "Sent",
+      "dead": "Failed",
+      "superseded": "Replaced"
+    },
+    "kinds": {
+      "internal_event": "Internal event",
+      "webhook": "Webhook",
+      "message": "Message",
+      "push": "Push notification",
+      "channel_publish": "Channel publish",
+      "carrier_call": "Carrier call",
+      "storage_lifecycle": "Storage clean-up"
+    },
+    "drawer": {
+      "enqueued": "Queued at",
+      "done": "Sent at",
+      "aggregate": "Aggregate",
+      "sequence": "Sequence",
+      "last_error": "Last error",
+      "envelope": "Envelope and payload",
+      "metadata_only": "A platform row: no payload is shown.",
+      "of_account": "Account {name} ·"
+    },
+    "replay": {
+      "button": "Replay…",
+      "hint": "The row goes back to waiting and is sent again.",
+      "title": "Replay {type}?",
+      "description": "The failed row is sent again from the start. The replay and its reason are recorded.",
+      "consequence": "The receiver gets the event again; it drops one it has already applied.",
+      "confirm": "Replay the row",
+      "done": "Replayed: the row is waiting to be sent again.",
+      "refusals": {
+        "not_dead": "This row is no longer failed: reload to see its status.",
+        "outside_receipt_window": "This row is older than 35 days and can no longer be replayed.",
+        "supersede_pending": "A newer row for the same effect is waiting: it replaces this one.",
+        "job_active": "A job is sending this row right now. Try again in a minute."
+      }
+    },
+    "bulk": {
+      "button": "Replay failed rows…",
+      "needs_filter": "Choose an account and a kind first: a bulk replay covers one account and one kind.",
+      "title": "Replay the failed {kind} rows of {name}?",
+      "description": "Every failed row of these filters is sent again. The replay, its counts and its reason are recorded.",
+      "limit": "At most 500 rows are replayed per run; run it again for more.",
+      "rules": "Rows older than 35 days, replaced or running stay failed.",
+      "confirm": "Replay the failed rows",
+      "done": "{replayed} of {matched} failed rows were replayed."
+    }
+  },
+  "audit": {
+    "description": "Every change and every support read on the platform, newest first. Entries cannot be changed or deleted.",
+    "table_label": "Platform audit log",
+    "account_table_label": "Audit log of this account",
+    "account_title": "Audit log",
+    "account_description": "What changed on this account and who read it, with the reason.",
+    "columns": {
+      "account": "Account",
+      "reason": "Reason"
+    },
+    "no_account": "Platform",
+    "needs_reason": "Give a support reason to read this account's entries.",
+    "filters": {
+      "action": "Action",
+      "all_actions": "All actions"
+    }
   }
 }

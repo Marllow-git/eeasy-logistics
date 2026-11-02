@@ -5,6 +5,7 @@ import type { Request } from 'express';
 import type { ZodType, core, output } from 'zod';
 import type { FieldProblem } from '../errors/api-exception.js';
 import { ApiException } from '../errors/api-exception.js';
+import { decodedHeaderReason, supportReasonHeader } from '../tenancy/cross-tenant.js';
 
 // API input comes only through the contract (PLAT-6 item I; roadmap A-17; contracts README §9
 // "API input", §4 "Error model"). A controller names its operation's generated schemas with
@@ -152,9 +153,20 @@ function declaredHeaders(schema: ZodType, headers: Request['headers']): Record<s
   const picked: Record<string, unknown> = {};
   for (const name of Object.keys(shape)) {
     const value = headers[name.toLowerCase()];
-    if (value !== undefined) picked[name] = value;
+    if (value !== undefined) picked[name] = contractHeaderValue(name, value);
   }
   return picked;
+}
+
+/**
+ * A declared header's value as its schema reads it. `X-Support-Reason` travels percent-encoded
+ * when it holds text outside Latin-1 (the `SupportReason` contract note; lead ruling on WEB-4
+ * 8.2 #5): its length bounds apply to the decoded text, as the door's do (`cross-tenant.ts`).
+ */
+export function contractHeaderValue(name: string, value: string | string[]): string | string[] {
+  return name.toLowerCase() === supportReasonHeader && typeof value === 'string'
+    ? decodedHeaderReason(value)
+    : value;
 }
 
 function isEmpty(value: unknown): boolean {

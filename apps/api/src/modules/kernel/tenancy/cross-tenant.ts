@@ -116,7 +116,23 @@ function rawTarget(request: Request, source: CrossTenantSource): unknown {
 
 function rawReason(request: Request, source: CrossTenantSource): unknown {
   if (source.reason === 'body') return objectOf(request.body)?.reason;
-  return request.headers[supportReasonHeader];
+  const header = request.headers[supportReasonHeader];
+  return typeof header === 'string' ? decodedHeaderReason(header) : header;
+}
+
+/**
+ * The header's reason as the person typed it (lead ruling on WEB-4 8.2 #5): a header carries
+ * Latin-1 only, so a reason outside it (Arabic) is sent percent-encoded as UTF-8. A value with `%`
+ * that decodes is the decoded text; one that does not decode (a literal `%`) is used as sent. The
+ * bound and the control-character check then run on what is returned.
+ */
+export function decodedHeaderReason(value: string): string {
+  if (!value.includes('%')) return value;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 /**
