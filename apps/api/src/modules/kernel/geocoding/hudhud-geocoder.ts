@@ -12,6 +12,7 @@ import type {
   ShortCodeResult,
 } from './geocoder.js';
 import { GeocoderInputError, normaliseShortCode, notFound } from './geocoder.js';
+import { badAnswer, geocoderFailure } from './source-http.js';
 
 // The Hudhud adapter (INT-2 plan 2.2; integrations §2.2, §6.1; ADR-0010). Three JSON calls on
 // Hudhud's documented API (docs/research/hudhud-geocoding-2026-11.md §1, read 2026-11-02), each a
@@ -67,11 +68,6 @@ export function searchConfidence(resultCount: number, addressType: string | unde
   return Math.round(Math.max(0.1, Math.min(1, confidence)) * 100) / 100;
 }
 
-const badAnswer = () =>
-  new ProviderFailure('transient', 'the geocoder answered in an unexpected shape', {
-    status: 'BAD_RESPONSE',
-  });
-
 /** A WGS84 coordinate pair, numbers only (search, lookup). */
 function numericPoint(lat: unknown, lon: unknown): GeoPoint | undefined {
   if (typeof lat !== 'number' || typeof lon !== 'number') return undefined;
@@ -82,21 +78,6 @@ function numericPoint(lat: unknown, lon: unknown): GeoPoint | undefined {
 
 const text = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
-
-/** The failure of a non-2xx answer (plan 2.2). */
-export function hudhudFailure(status: number, retryAfter: number): ProviderFailure {
-  if (status === 429) {
-    return new ProviderFailure('rate_limited', 'the geocoder is rate limiting', {
-      status,
-      retryAfterS: retryAfter,
-    });
-  }
-  if (status >= 500) return new ProviderFailure('transient', 'the geocoder failed', { status });
-  if (status === 401 || status === 403) {
-    return new ProviderFailure('unauthorised', 'the geocoder refused our key', { status });
-  }
-  return new ProviderFailure('permanent', 'the geocoder refused the request', { status });
-}
 
 type Method = 'geocode' | 'lookup_short_code' | 'reverse';
 
@@ -226,7 +207,7 @@ export class HudhudGeocoder implements Geocoder {
       if (method === 'lookup_short_code' && response.status === 404) return notFound;
       if (!response.ok) {
         const retryAfter = retryAfterSeconds(response.headers.get('retry-after'), this.#now());
-        throw hudhudFailure(response.status, retryAfter);
+        throw geocoderFailure(response.status, retryAfter);
       }
       let envelope: Envelope | null = null;
       if (raw.length <= maxAnswerBytes) {
