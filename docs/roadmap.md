@@ -8,6 +8,31 @@ Documents cited by number: 2 domain model (`docs/architecture/domain-model.md`),
 
 Columns: **Role** is the executor role (`backend`, `ux`, `driver`, `research`). **Adv.** is the adversary trigger of handbook 01: `yes` when the order touches auth, tokens, authorization, visibility, cash or stock ledgers, or private data.
 
+## 0. Progress
+
+Updated by the lead at every order close (handbook 01 stage 9) and read with the ledger `docs/orders/README.md`, which holds the in-flight rows. A wave's exit criteria are in section 2.
+
+| Order | State | PR | Date |
+|---|---|---|---|
+| ARCH-1, CHORE-1, CHORE-2 | merged | #4 to #14 (foundation) | 2026-10-31 |
+| PLAT-1 CI skeleton, PLAT-2 local stack, PLAT-3 CI lanes, PLAT-4 config, PLAT-5 schema and harness, PLAT-6 request frame, PLAT-7 audit log, PLAT-8 outbox, PLAT-10 roles, PLAT-14 telemetry, PLAT-15 contracts seam | merged | #18 to #76 | 2026-10-31 to 2026-11-01 |
+| WEB-19 admin scaffold, WEB-1 shell and design system | merged | #42, #61 | 2026-11-01 |
+| PLAT-9 messaging port and OTP | merged | #75, fix #84 | 2026-11-01 |
+| PLAT-11 staff and platform authentication | merged | #83 | 2026-11-02 |
+| PLAT-12 accounts, members and sites | merged | #89 | 2026-11-02 |
+| WEB-2 browser sessions and sign-in doors | merged | #91 | 2026-11-02 |
+| INT-4 push sender | merged | #93 | 2026-11-02 |
+| OPS-3 EAS and store accounts (research) | merged | #82 | 2026-11-01 |
+| INT-2 geocoder and short codes | built, lead review passed; renumbers its migration after PLAT-13 merges | #105 | 2026-11-02 |
+| CHORE-3 timestamp migration names and parallel-order migrations | merged | #116 | 2026-11-02 |
+| PLAT-13 provisioning, rollout and suspension | leg 2 building | #104 | 2026-11-02 |
+| WEB-3 merchant settings screens | leg 2 building | #109 | 2026-11-02 |
+| DEL-4 drivers, devices and driver auth | leg 1 building (the first wave 1 order) | #106 (issue) | 2026-11-02 |
+| OPS-1 host, registry and staging | waits on the owner's go (Q-10, Q-12); the wave 0 exit criteria need it | – | – |
+| WEB-4 platform console screens | next, after PLAT-13 | – | – |
+
+Wave 0 remaining for its exit (section 2): PLAT-13, WEB-3, WEB-4, OPS-1 and the staging checks that need it (deploy on merge, the restore drill, the `auth_otp` template approval, the ADR acceptances 0026, 0027, 0029, 0031, 0032, 0033, 0036, 0037).
+
 ## 1. Waves and orders
 
 ### 1.1 Wave 0 · Foundation
@@ -404,6 +429,7 @@ Small changes other documents need; none is made by this roadmap. The ones that 
 | A-24 | PLAT-8 plan 2.10; INT-5, INT-6 rows; Q-19, Q-42, Q-45; PLAT-2 Compose | Owner ruling 2026-11-01: VROOM, Valkey and the other routing and map infrastructure (OSRM or Valhalla matrices, map tiles) are set up last. Wave 0: PLAT-8 decision 2.10 (Valkey in Compose and the native stack) is withdrawn; Redis stays locally and in CI, production Valkey remains OPS-1's choice under Q-42. INT-5 and INT-6 move to the end of their waves; Q-19 and Q-45 are ruled last. The VROOM services of PLAT-2's Compose stay but nothing builds on them until then. A-23 is reserved by PLAT-8 (data §5.2 wording, on its branch). | docs PR (this amendment) | done 2026-11-01 (docs) |
 | A-25 | ADR-0041; ADR-0037; doc 9 §2.4, §5.2, §5.5; data §10; PLAT-9 plan; OPS-1 row | Owner ruling 2026-11-01: WhatsApp messages go through eeasynew's `whatsapp-engine` (Baileys), one deployment for this product; admin-linked platform number for OTP, merchant-linked numbers for merchant messages (a new order, after PLAT-13); templates stay a product rule without Meta approval; policy stays in the kernel; OTP purge option requested from eeasynew. Four provisional defaults in ADR-0041 await the owner. PLAT-9 leg 2 builds the engine adapter and callback door. | docs PR (this amendment); PLAT-9 leg 2; OPS-1 for the deployment | done 2026-11-01 (docs); code owed |
 | A-26 | doc 3 §2.1, §2.4; PLAT-11 plan 2.1 | Lead ruling 2026-11-01 (PLAT-11 plan): one users-class table `core_auth_challenges` (`kind` second_factor, totp, selection, enrolment, enrolment_link; `secret_hash`, `amr`, `membership_ids`, `attempts`, `expires_at`, `consumed_at`, `ip`) holds every intermediate sign-in state the contracts call `challenge_id`, `selection_token` and `enrolment_token`, so attempts and expiry are counted in one place and no signed stateless token is minted before a session exists; `core_invitations` gains `kind` (staff, platform) with a nullable `account_id` for platform invitations; `core_refresh_tokens` gains `surface`, `token_version`, `user_agent_hash` and `successor_ciphertext` for the Q-23 grace. The data catalogue row is written in the PLAT-11 PR. | PLAT-11 PR | open |
+| A-27 | doc 5 §11 (new §11.9) | Timestamp-named migrations; the runner applies every unapplied journal entry in journal order; the forked-snapshot and journal-merge procedures for parallel orders (owner ruling 2026-11-02). | CHORE-3, PR #116 | done 2026-11-02 |
 
 ## 6. Deferred and out of scope
 

@@ -12,7 +12,6 @@ import { SecondFactorResets } from '../auth/second-factor-resets.js';
 import { AuthRequest } from '../auth/request-facts.js';
 import type { ContractInput } from '../contract/contract-pipe.js';
 import { Input, Operation } from '../contract/contract-pipe.js';
-import type { ListSorts } from '../contract/list-page.js';
 import {
   CURSOR_CODEC,
   CursorCodec,
@@ -29,8 +28,7 @@ import type { RateLimiter } from '../rate-limit/rate-limiter.js';
 import { RATE_LIMITER } from '../rate-limit/rate-limiter.js';
 import { membershipStatuses } from '../schema/identity.js';
 import { presentMember } from './members.presenter.js';
-import type { MemberSortField } from './members.service.js';
-import { MembersService } from './members.service.js';
+import { MembersService, memberSorts } from './members.service.js';
 
 // The staff surface's `members` tag (PLAT-12 plan 2.4, 2.7 to 2.11): `listMembers`, `getMember`,
 // `inviteMember`, `updateMember`, `revokeMember`, `resetMemberSecondFactor`. The account is the
@@ -45,11 +43,6 @@ const inviteOp = operationSchemas.inviteMember;
 const updateOp = operationSchemas.updateMember;
 const revokeOp = operationSchemas.revokeMember;
 const resetOp = operationSchemas.resetMemberSecondFactor;
-
-const memberSorts: ListSorts<MemberSortField> = {
-  fields: { created_at: 'timestamp', name: 'text', status: 'text' },
-  default: '-created_at',
-};
 
 @Controller('v1/staff/members')
 export class MembersController {

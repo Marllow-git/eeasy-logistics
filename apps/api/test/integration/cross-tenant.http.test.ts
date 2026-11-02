@@ -22,6 +22,7 @@ import {
   dropProbeTable,
   insertProbeRows,
 } from './probe-table.js';
+import { insertPlatformSubject } from './identity-fixtures.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-6 item D on the real database: the `@CrossTenant()` door (plan 2.7) and the boot role
@@ -75,6 +76,7 @@ describe('the cross-tenant door (PLAT-6 item D)', () => {
 
   beforeAll(async () => {
     owner = connectAs('owner', config);
+    await insertPlatformSubject(owner, 'super_admin', platformUser);
     await owner`INSERT INTO core_accounts (id, name) VALUES
       (${accountA}, 'Cross-tenant A'), (${accountB}, 'Cross-tenant B')`;
     await createProbeTable(owner, config);

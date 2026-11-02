@@ -24,6 +24,7 @@ import { probeOperations } from '../support/probe-operations.js';
 import { signAccessToken, testSigningKey } from '../support/access-tokens.js';
 import type { AuditRow } from './audit-rows.js';
 import { auditRowsOf } from './audit-rows.js';
+import { insertPlatformSubject } from './identity-fixtures.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-7 item B on the real database: `AuditWriter` behind AUDIT_SINK. `record()` writes in the
@@ -139,6 +140,7 @@ describe('AuditWriter on core_audit_log (PLAT-7 item B)', () => {
   });
   const account = uuidv7();
   const user = uuidv7();
+  const platformUser = uuidv7();
   let owner: postgres.Sql;
   let app: INestApplication<App>;
 
@@ -147,13 +149,16 @@ describe('AuditWriter on core_audit_log (PLAT-7 item B)', () => {
       (token) => `${staffCookie}=${token}`,
     );
   const platform = () =>
-    signAccessToken(signing, 'platform').then((token) => `${platformCookie}=${token}`);
+    signAccessToken(signing, 'platform', { claims: { sub: platformUser } }).then(
+      (token) => `${platformCookie}=${token}`,
+    );
   const http = () => request(app.getHttpServer());
   const rowsOf = (response: { headers: Record<string, string> }): Promise<AuditRow[]> =>
     auditRowsOf(owner, response.headers['x-request-id'] ?? '');
 
   beforeAll(async () => {
     owner = connectAs('owner', config);
+    await insertPlatformSubject(owner, 'super_admin', platformUser);
     await owner`INSERT INTO core_accounts (id, name) VALUES (${account}, 'Audit writer')`;
     const moduleRef = await Test.createTestingModule({
       // KernelModule exports AUDIT_SINK to the probe controllers.
@@ -315,7 +320,8 @@ describe('an unusable forwarded address behind the trusted proxy (adversary L-2)
   });
 
   it('answers the door call and stores no ip', async () => {
-    const cookie = `${platformCookie}=${await signAccessToken(signing, 'platform')}`;
+    const sub = await insertPlatformSubject(owner);
+    const cookie = `${platformCookie}=${await signAccessToken(signing, 'platform', { claims: { sub } })}`;
     const response = await request(app.getHttpServer())
       .get(`/v1/platform/accounts/${account}/audit-effect`)
       .set('Cookie', cookie)
