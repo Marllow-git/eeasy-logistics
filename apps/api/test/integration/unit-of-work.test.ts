@@ -13,6 +13,7 @@ import type {
 } from '@eeasy-logistics/db';
 import {
   ScopedRepository,
+  afterCommit,
   createAppPool,
   findContext,
   getContext,
@@ -239,5 +240,38 @@ describe('withUnitOfWork on the elx_app pool', () => {
       sql`SELECT label FROM ${table} ORDER BY label`,
     );
     expect(left.map((row) => row.label)).toEqual(['a-1', 'a-2']);
+  });
+
+  it('runs afterCommit hooks once the transaction committed, never on a rollback', async () => {
+    const seen: string[][] = [];
+    const labels = async () =>
+      (
+        await owner<{ label: string }[]>`
+        SELECT label FROM ${owner(schema)}.uow_rows WHERE label LIKE 'hook-%' ORDER BY label`
+      ).map((row) => row.label);
+    await withUnitOfWork(pool.db, context(accountA), async (uow) => {
+      await new RowRepository(uow).add({ id: uuidv7(), label: 'hook-1' });
+      afterCommit(async () => {
+        // Another connection already sees the row: the hook runs after the commit.
+        seen.push(await labels());
+      });
+      seen.push(await labels());
+    });
+    expect(seen).toEqual([[], ['hook-1']]);
+
+    let ran = false;
+    await expect(
+      withUnitOfWork(pool.db, context(accountA), async (uow) => {
+        await new RowRepository(uow).add({ id: uuidv7(), label: 'hook-2' });
+        afterCommit(() => {
+          ran = true;
+          return Promise.resolve();
+        });
+        throw new Error('roll back');
+      }),
+    ).rejects.toThrow('roll back');
+    expect(ran).toBe(false);
+    expect(await labels()).toEqual(['hook-1']);
+    expect(() => afterCommit(() => Promise.resolve())).toThrow();
   });
 });

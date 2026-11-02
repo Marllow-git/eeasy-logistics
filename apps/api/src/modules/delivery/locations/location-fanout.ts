@@ -43,6 +43,22 @@ export interface LocationFanout {
   forget(accountId: string, driverId: string): Promise<void>;
 }
 
+/**
+ * The latest-key delete over a Redis client the caller owns (the worker's sweeper and consumer):
+ * quiet like the fan-out, since the key expires in 600 s and the maps list live shifts only.
+ */
+export function redisLatestForget(redis: Pick<Redis, 'del'>): Pick<LocationFanout, 'forget'> {
+  return {
+    forget: async (accountId, driverId) => {
+      try {
+        await redis.del(latestKey(accountId, driverId));
+      } catch {
+        // Nothing to log: no key or value may reach a log line, and the key expires on its own.
+      }
+    },
+  };
+}
+
 export class RedisLocationFanout implements LocationFanout, OnApplicationShutdown {
   readonly #redis: Redis;
   readonly #logger = new Logger('LocationFanout');

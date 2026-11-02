@@ -18,7 +18,8 @@ export {
 export { ShiftQuery, type LiveShift } from '../shifts/shift-query.js';
 // DEL-5 leg 2: what the worker runs per account on elx_app (plan 2.5, 2.8): the shift sweep, the
 // trail append per driver and the telemetry retention per account.
-export { noShowGraceMs } from '../shifts/shift-input.js';
+export { noShowGraceMs, overdueGraceMs } from '../shifts/shift-input.js';
+export { redisLatestForget } from '../locations/location-fanout.js';
 export {
   deliveryConsumers,
   SuspendedAccountShiftsConsumer,

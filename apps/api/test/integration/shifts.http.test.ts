@@ -4,8 +4,10 @@ import { operationSchemas as driverOps } from '@eeasy-logistics/contracts/driver
 import type { DriverShift } from '@eeasy-logistics/contracts/staff/schemas';
 import { operationSchemas } from '@eeasy-logistics/contracts/staff/schemas';
 import { uuidv7 } from '@eeasy-logistics/db';
+import { Redis } from 'ioredis';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { latestKey } from '../../src/modules/delivery/locations/location-fanout.js';
 import { testSigningKey } from '../support/access-tokens.js';
 import { auditRowsOf } from './audit-rows.js';
 import { driverAddress, plantDriver, signIn } from './driver-fixtures.js';
@@ -349,5 +351,51 @@ describe('the shift doors over HTTP (DEL-5 item B)', () => {
     const audit = await auditRowsOf(owner, response.headers['x-request-id'] as string);
     expect(audit[0]).toMatchObject({ action: 'delivery.shift.ended', actorType: 'user' });
     expect(audit[0]?.after).toMatchObject({ note: 'Vehicle broke down' });
+  });
+
+  it('ends the live shift by the system when the driver is suspended or archived (adversary F1)', async () => {
+    const redis = new Redis(config.redis.url?.reveal() ?? '');
+    try {
+      for (const status of ['suspended', 'archived'] as const) {
+        const w = await world();
+        const started = driverOps.driverStartShift.responses['200'].parse(
+          (
+            await driverPost(w.session, '/v1/driver/shifts/start', {
+              vehicle_id: w.vehicleId,
+            }).expect(200)
+          ).body,
+        );
+        const key = latestKey(w.driver.accountId, w.driver.driverId);
+        await redis.hset(key, { lat: '24.7', lng: '46.6', client_ts: minutes(0) });
+        const response = await http()
+          .patch(`/v1/staff/drivers/${w.driver.driverId}`)
+          .set(staff.writeHeaders())
+          .set('Cookie', w.dispatcher.cookie)
+          .set('Idempotency-Key', nextKey())
+          .set('Accept-Language', 'en')
+          .send({ status })
+          .expect(200);
+        const [row] = await owner<{ status: string; ended_at: Date | null }[]>`
+          SELECT status, ended_at FROM del_driver_shifts WHERE id = ${started.id}`;
+        expect(row?.status).toBe('ended');
+        expect(row?.ended_at).not.toBeNull();
+        const events = await eventsOf(started.id);
+        expect(events.at(-1)).toMatchObject({
+          type: 'delivery.shift.ended',
+          payload: { shift_id: started.id, ended_by: 'system', reason: `driver_${status}` },
+        });
+        const audit = await auditRowsOf(owner, response.headers['x-request-id'] as string);
+        expect(audit.map((r) => [r.action, r.actorType, r.targetId])).toEqual(
+          expect.arrayContaining([
+            ['delivery.driver.updated', 'user', w.driver.driverId],
+            ['delivery.shift.ended', 'system', started.id],
+          ]),
+        );
+        // The latest key goes once the request's transaction has committed.
+        expect(await redis.exists(key)).toBe(0);
+      }
+    } finally {
+      redis.disconnect();
+    }
   });
 });

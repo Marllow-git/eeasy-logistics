@@ -1,4 +1,4 @@
-import { getContext, getUnitOfWork, uuidv7 } from '@eeasy-logistics/db';
+import { afterCommit, getContext, getUnitOfWork, uuidv7 } from '@eeasy-logistics/db';
 import type { Locale } from '@eeasy-logistics/i18n/push';
 import type {
   AuditSink,
@@ -20,6 +20,7 @@ import {
   ineligibleReason,
   isStale,
   noShowGraceMs,
+  overdueGraceMs,
   planWindowProblems,
   staleRepeatMs,
 } from './shift-input.js';
@@ -38,6 +39,13 @@ import { ShiftsRepository, shiftKeyOf } from './shifts.repository.js';
 type AuditFacts = Pick<RequestFacts, 'requestId' | 'clientRequestId' | 'ip' | 'userAgent'>;
 
 export type EndedBy = Extract<ShiftActor, 'driver' | 'dispatcher' | 'system'>;
+
+/**
+ * Why the system ended a shift: the account's suspension (plan 2.5), the planned end long passed,
+ * or the driver leaving `active` (adversary round 1, finding 1).
+ */
+export type SystemEndReason =
+  'account_suspended' | 'planned_end_passed' | 'driver_suspended' | 'driver_archived';
 
 export interface PlanShiftInput {
   readonly driver_id: string;
@@ -158,7 +166,7 @@ export class ShiftsService {
   ): Promise<ShiftRow> {
     const { before, after } = await this.staffMove(id, 'ended');
     await this.ended(after, 'dispatcher');
-    await this.deps.fanout?.forget(getContext().accountId, after.driverId);
+    this.forgetAfterCommit(after.driverId);
     await this.recordStaff(after, 'delivery.shift.ended', before, facts, note);
     return after;
   }
@@ -257,7 +265,7 @@ export class ShiftsService {
     if (after === undefined) throw new Error('The shift changed under the driver lock');
     if (to === 'ended') {
       await this.ended(after, 'driver');
-      await this.deps.fanout?.forget(getContext().accountId, after.driverId);
+      this.forgetAfterCommit(after.driverId);
       await this.recordDriver(after, driver, 'delivery.shift.ended', before, facts);
     }
     return after;
@@ -352,17 +360,56 @@ export class ShiftsService {
   }
 
   /**
+   * The sweeper's overdue ends (adversary round 1, finding 1): every `active` or `paused` shift of
+   * the account whose `planned_end + 60 min` has passed ends by the system (`planned_end_passed`),
+   * in driver order under each driver's row lock. Returns how many.
+   */
+  async endOverdue(runId: string): Promise<number> {
+    const cutoff = new Date(this.now().getTime() - overdueGraceMs);
+    const due = await new ShiftsRepository(getUnitOfWork()).liveEndedBy(cutoff);
+    return this.endBySystem(due, 'planned_end_passed', runId);
+  }
+
+  /**
    * The suspension consumer's effect (plan 2.5; PLAT-13 8.2 #35): every `active` or `paused` shift
-   * of the unit of work's account ends by the system, in driver order under each driver's row lock,
-   * with `delivery.shift.ended` (`ended_by: system`, the reason) and an audit row. Returns how many.
+   * of the unit of work's account ends by the system, in driver order under each driver's row lock.
+   * Returns how many.
    */
   async endAllBySystem(reason: 'account_suspended', causeId: string): Promise<number> {
+    const live = await new ShiftsRepository(getUnitOfWork()).liveByDriver();
+    return this.endBySystem(live, reason, causeId);
+  }
+
+  /**
+   * `updateDriver` taking the driver out of `active` (adversary round 1, finding 1): the driver's
+   * live shift, if any, ends by the system with `driver_<status>`. The caller holds the driver row
+   * lock; `requestId` is the request's.
+   */
+  async endDriverLive(
+    driverId: string,
+    reason: 'driver_suspended' | 'driver_archived',
+    requestId: string,
+  ): Promise<number> {
+    const live = await new ShiftsRepository(getUnitOfWork()).live(driverId);
+    return this.endBySystem(live === undefined ? [] : [live], reason, requestId);
+  }
+
+  /**
+   * Ends each of `seen` that is still live under its driver's row lock: `delivery.shift.ended`
+   * (`ended_by: system`, `reason`), an audit row with `requestId`, and the driver's latest-position
+   * key deleted once the transaction commits. Returns how many ended.
+   */
+  private async endBySystem(
+    seen: readonly ShiftRow[],
+    reason: SystemEndReason,
+    requestId: string,
+  ): Promise<number> {
     const uow = getUnitOfWork();
     const shifts = new ShiftsRepository(uow);
     let ended = 0;
-    for (const seen of await shifts.liveByDriver()) {
-      await new DriversRepository(uow).lockDriver(seen.driverId);
-      const before = await shifts.find(seen.id);
+    for (const shift of seen) {
+      await new DriversRepository(uow).lockDriver(shift.driverId);
+      const before = await shifts.find(shift.id);
       if (before === undefined || (before.status !== 'active' && before.status !== 'paused')) {
         continue;
       }
@@ -370,11 +417,23 @@ export class ShiftsService {
       const after = await shifts.move(before.id, before.status, 'ended');
       if (after === undefined) continue;
       await this.ended(after, 'system', reason);
-      await this.deps.fanout?.forget(getContext().accountId, after.driverId);
-      await this.recordSystem(after, 'delivery.shift.ended', before, causeId, reason);
+      this.forgetAfterCommit(after.driverId);
+      await this.recordSystem(after, 'delivery.shift.ended', before, requestId, reason);
       ended += 1;
     }
     return ended;
+  }
+
+  /**
+   * Deletes the driver's latest-position key once the unit of work commits, never before: a
+   * position read between the delete and the commit would otherwise refill the maps (adversary
+   * round 1, finding 3). Nothing without Redis.
+   */
+  private forgetAfterCommit(driverId: string): void {
+    const fanout = this.deps.fanout;
+    if (fanout === undefined || fanout === null) return;
+    const { accountId } = getContext();
+    afterCommit(() => fanout.forget(accountId, driverId));
   }
 
   /** The token's driver, its row lock taken and the row read again under it. */

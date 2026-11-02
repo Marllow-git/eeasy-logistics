@@ -56,7 +56,7 @@ export interface RunningWorker {
   stop(): Promise<void>;
 }
 
-type PurgeRedis = Pick<Redis, 'set' | 'eval' | 'status' | 'connect' | 'disconnect'>;
+type PurgeRedis = Pick<Redis, 'set' | 'del' | 'eval' | 'status' | 'connect' | 'disconnect'>;
 
 /** What the worker builds from the configuration; replaced by doubles in unit tests. */
 export interface WorkerDependencies {
@@ -427,10 +427,10 @@ export async function startWorker(
     const sweeper = every(shiftSweeperIntervalMs, 'Shift sweeper', deps.logger, async () => {
       await connected();
       const run = await deps.shiftSweeper(pool, app, redis);
-      if (run.ran && (run.counts.noShows > 0 || run.counts.stale > 0 || run.counts.failed > 0)) {
-        const c = run.counts;
+      const c = run.ran ? run.counts : undefined;
+      if (c !== undefined && c.noShows + c.ended + c.stale + c.failed > 0) {
         deps.logger.log(
-          `Shift sweeper: ${c.noShows} no-shows, ${c.stale} stale alerts, ${c.failed} failed`,
+          `Shift sweeper: ${c.noShows} no-shows, ${c.ended} overdue ends, ${c.stale} stale alerts, ${c.failed} failed`,
         );
       }
     });

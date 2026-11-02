@@ -28,6 +28,8 @@ import {
 } from './driver-input.js';
 import type { DriverRow } from './drivers.repository.js';
 import { DriverDevicesRepository, DriversRepository } from './drivers.repository.js';
+import type { LocationFanout } from '../locations/location-fanout.js';
+import { ShiftsService } from '../shifts/shifts.service.js';
 
 // The staff driver doors (DEL-4 plan 2.2 to 2.4; domain model §3.5; identity and tenancy §2,
 // §3.2, §4; ADR-0023, ADR-0025, ADR-0031). The account is always the token's (`getContext()`).
@@ -113,6 +115,8 @@ export class DriversService {
       readonly outbox: Pick<OutboxWriter, 'enqueue'>;
       /** `DRIVER_APP_URL`: the invitation's link (plan 2.3). */
       readonly appUrl: string;
+      /** The latest-position keys an ended shift drops (DEL-5); none without Redis. */
+      readonly fanout?: Pick<LocationFanout, 'forget'> | null;
     },
   ) {}
 
@@ -210,8 +214,10 @@ export class DriversService {
    * capacity limit may not fall below the orders held (`422 capacity_exceeded`). A suspension ends
    * this membership's driver refresh families (the person's `token_version` stays, 8.2 #23); an
    * archive does that, revokes every device and clears every push token (data §10), and takes the
-   * `driver` role off the membership. One audit row with the changed fields before and after;
-   * nothing changed writes nothing.
+   * `driver` role off the membership. Leaving `active` also ends the driver's live shift by the
+   * system (`driver_suspended` / `driver_archived`, DEL-5 adversary round 1, finding 1), in this
+   * transaction. One audit row with the changed fields before and after; nothing changed writes
+   * nothing.
    */
   async update(id: string, patch: DriverPatch, facts: AuditFacts): Promise<Driver> {
     if (patch.name !== undefined) {
@@ -274,6 +280,18 @@ export class DriversService {
       await this.deps.identities.moveHome(current.membershipId, homeSiteId);
     }
     const row = await drivers.update(id, { name, homeSiteId, status, capacityLimit });
+    if (ending) {
+      // Under the driver row lock taken above: a suspended or archived driver keeps no live shift.
+      await new ShiftsService({
+        audit: this.deps.audit,
+        outbox: this.deps.outbox,
+        fanout: this.deps.fanout,
+      }).endDriverLive(
+        row.id,
+        status === 'archived' ? 'driver_archived' : 'driver_suspended',
+        facts.requestId,
+      );
+    }
     const after: Driver = { row, person: before.person };
     const now = auditFields(after);
     await this.record(
