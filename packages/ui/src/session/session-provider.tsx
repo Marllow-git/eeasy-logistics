@@ -59,7 +59,9 @@ export interface SessionProviderProps<Me extends SessionMe> {
   readonly surface: SessionSurface;
   /** The surface's steps for the re-sign-in dialog, given the page's fetcher. */
   readonly reauthentication: (fetcher: Fetcher, me: Me) => Reauthentication;
-  /** Told when the session ends (analytics `auth.session_ended`): the reason only. */
+  /** The dialog's line at the code step (the platform's TOTP line; the staff phone line by default). */
+  readonly codeDescription?: string;
+  /** Told when the session ends (analytics `auth.session.ended`): the reason only. */
   readonly onSessionEnded?: (reason: SessionEndReason) => void;
   readonly children: ReactNode;
 }
@@ -165,6 +167,7 @@ export function SessionProvider<Me extends SessionMe>({
   me,
   surface,
   reauthentication,
+  codeDescription,
   onSessionEnded,
   children,
 }: SessionProviderProps<Me>) {
@@ -194,6 +197,7 @@ export function SessionProvider<Me extends SessionMe>({
       <ReSignInDialog
         open={dialogOpen}
         reauthentication={steps}
+        codeDescription={codeDescription}
         onSignedIn={() => controller.closeDialog(true)}
         onDismiss={() => controller.closeDialog(false)}
         onOtherAccount={() => {

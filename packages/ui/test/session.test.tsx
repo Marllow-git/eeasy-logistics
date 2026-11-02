@@ -334,6 +334,45 @@ describe.each(directions)('SessionProvider in $locale ($dir)', ({ locale }) => {
     expect(api.state.keys[0]).toBe(api.state.keys[1]);
   });
 
+  it('on the platform surface, asks for the password then the TOTP code with its own line', async () => {
+    const api = stubApi();
+    const assign = vi.spyOn(sessionNavigation, 'assign').mockImplementation(() => {});
+    const totpLine = messages[locale].auth.totp.description;
+    const totpCode = vi.fn((code: string) => {
+      api.state.signedIn = code === '123456';
+      return Promise.resolve({ kind: 'done' as const });
+    });
+    const reauth: Reauthentication = {
+      password: vi.fn(() => Promise.resolve({ kind: 'code' as const })),
+      code: totpCode,
+    };
+    renderIn(
+      locale,
+      <SessionProvider
+        me={{ user: me.user, permissions: [] }}
+        surface="platform"
+        reauthentication={() => reauth}
+        codeDescription={totpLine}
+      >
+        <Page dirty />
+      </SessionProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'save' }));
+    await screen.findByRole('dialog', { name: session.dialog_title });
+    expect(api.fetch.mock.calls.some(([url]) => url === '/v1/platform/auth/refresh')).toBe(true);
+    fireEvent.change(screen.getByLabelText(messages[locale].auth.fields.password), {
+      target: { value: 'pw' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: session.dialog_submit }));
+    expect(await screen.findByText(totpLine)).toBeTruthy();
+    expect(screen.queryByText(session.dialog_code_description)).toBeNull();
+    fireEvent.change(screen.getAllByRole('textbox')[0]!, { target: { value: '123456' } });
+    await waitFor(() => expect(totpCode).toHaveBeenCalledWith('123456'));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('200'));
+    expect(assign).not.toHaveBeenCalled();
+    expect(api.state.keys[0]).toBe(api.state.keys[1]);
+  });
+
   it('signs out through logout, clears sessionStorage and leaves for the signed-out page', async () => {
     const api = stubApi();
     const assign = vi.spyOn(sessionNavigation, 'assign').mockImplementation(() => {});

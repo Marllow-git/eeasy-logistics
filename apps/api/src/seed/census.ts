@@ -18,8 +18,10 @@ import { CensusIdentitiesRepository } from './census.repository.js';
 // through the outbox to the stack's Mailpit like real ones). Local and ci only. Every run puts the
 // identities back to their starting state, so the census can run again: passwords, phones and
 // memberships reset, OTP challenges of the census phones deleted, a fresh invitation and a fresh
-// re-enrolment link mailed. One set per census project (`ar`, `ar-390`, `en`), so the projects
-// never share a user or a phone. apps/web/tests/census/identities.ts mirrors these values.
+// re-enrolment link mailed; the console staff's TOTP reset and a fresh platform invitation mailed.
+// One set per census project (`ar`, `ar-390`, `en`), so the projects never share a user or a phone.
+// apps/web/tests/census/session.ts mirrors the staff values, apps/admin/tests/census/session.ts the
+// console's.
 
 /** The census projects of apps/web and apps/admin (tests/census.config.ts). */
 export const censusProjects = ['ar', 'ar-390', 'en'] as const;
@@ -29,8 +31,8 @@ export type CensusProject = (typeof censusProjects)[number];
 export const censusPassword = ['census', 'harbour', 'lantern', 'meadow'].join(' ');
 
 /**
- * The census platform super admin's TOTP secret (base32), enrolled at seed time so the console
- * census can compute codes (leg 2); assembled from parts for the same reason.
+ * The console census staff's TOTP secret (base32), enrolled at seed time so the console census can
+ * compute codes (leg 2); assembled from parts for the same reason.
  */
 export const censusTotpSecret = ['JBSWY3DP', 'EHPK3PXP', 'GEZDGNBV', 'GY3TQOJQ'].join('');
 
@@ -115,12 +117,64 @@ export function censusUsers(project: CensusProject): CensusUser[] {
 /** The email the census invitation goes to (accepted through its Mailpit link). */
 export const censusInvitee = (project: CensusProject) => censusEmail('invitee', project);
 
-/** The console's census super admin (leg 2), TOTP enrolled with `censusTotpSecret`. */
-export const censusPlatformAdmin = {
-  id: censusId('user-platform'),
-  email: 'census-platform@census.test',
-  name: 'Census Platform Admin',
-} as const;
+/**
+ * The console's census staff (WEB-2 leg 2), one set per project. Each role serves one census check,
+ * so no user signs in more than three times in a run: a TOTP step is accepted once per user (the
+ * replay guard), and the census helper uses the steps around the current one. `enrol` has no TOTP
+ * (the enrolment view at sign-in); the others are enrolled with `censusTotpSecret`.
+ */
+export const censusPlatformRoles = [
+  'admin',
+  'enrol',
+  'shell',
+  'errors',
+  'analytics',
+  'session',
+  'dialog',
+  'logout',
+] as const;
+export type CensusPlatformRole = (typeof censusPlatformRoles)[number];
+
+/** The census email of a console role for a project: `census-platform-<role>-<project>@…`. */
+export function censusPlatformEmail(
+  role: CensusPlatformRole | 'invitee',
+  project: CensusProject,
+): string {
+  return `census-platform-${role}-${slug(project)}@census.test`;
+}
+
+export interface CensusPlatformStaff {
+  readonly id: string;
+  readonly email: string;
+  readonly name: string;
+  /** Enrolled with `censusTotpSecret`, or no TOTP yet. */
+  readonly totp: boolean;
+}
+
+/** The console staff of one project, all `super_admin`. */
+export function censusPlatformStaff(project: CensusProject): CensusPlatformStaff[] {
+  return censusPlatformRoles.map((role) => ({
+    id: censusId(`platform-${role}-${project}`),
+    email: censusPlatformEmail(role, project),
+    name: `Census ${role}`,
+    totp: role !== 'enrol',
+  }));
+}
+
+/** Who the census platform invitation goes to (accepted through its Mailpit link). */
+export const censusPlatformInvitee = (project: CensusProject) =>
+  censusPlatformEmail('invitee', project);
+
+/**
+ * Why `seed:census` refuses to run in this environment, or undefined when it may: it writes known
+ * passwords and a known TOTP secret, so only a local or ci stack takes it (lead ruling on WEB-2
+ * leg 1). `census-main.ts` asks before reading any other configuration.
+ */
+export function censusSeedRefusal(appEnv: string | undefined): string | undefined {
+  if (appEnv === 'local' || appEnv === 'ci') return undefined;
+  const named = appEnv === undefined || appEnv === '' ? '(unset)' : appEnv;
+  return `seed:census refuses to run with APP_ENV=${named}: local or ci only`;
+}
 
 /** What a seed run did, for the log line. */
 export interface CensusSeedSummary {
@@ -145,10 +199,8 @@ export async function seedCensus(config: Config): Promise<CensusSeedSummary> {
     const phones = censusProjects.flatMap((project) =>
       ([1, 2, 3, 4] as const).map((purpose) => censusPhone(purpose, project)),
     );
-    const sealed = cipher.encrypt(
-      censusTotpSecret,
-      `core_platform_staff:${censusPlatformAdmin.id}`,
-    );
+    const staff = censusProjects.flatMap((project) => censusPlatformStaff(project));
+    const platformInvitees = censusProjects.map((project) => censusPlatformInvitee(project));
     await withPlatformUnitOfWork(pool.db, async (uow) => {
       const repository = new CensusIdentitiesRepository(uow);
       await repository.putAccounts(Object.values(censusAccounts));
@@ -157,7 +209,16 @@ export async function seedCensus(config: Config): Promise<CensusSeedSummary> {
       }
       await repository.revokeInvitees(invitees, censusAccounts.one.id);
       await repository.forgetPhones(phones);
-      await repository.putPlatformAdmin(censusPlatformAdmin, passwordHash, sealed);
+      for (const member of staff) {
+        // Sealed under the staff row's context, as `platformConfirmTotp` stores a secret.
+        const sealed = member.totp
+          ? cipher.encrypt(censusTotpSecret, `core_platform_staff:${member.id}`)
+          : null;
+        await repository.putPlatformStaff(member, passwordHash, sealed);
+      }
+      // The last run's invitees hold a staff row with TOTP: revoked, accepting the new invitation
+      // brings the row back without TOTP, so the enrolment view shows again (PLAT-11 8.2 #39).
+      await repository.revokePlatformStaff(platformInvitees);
     });
 
     const store = identityStore(pool.db);
@@ -198,7 +259,20 @@ export async function seedCensus(config: Config): Promise<CensusSeedSummary> {
         requestId: randomUUID(),
       });
     }
-    return { users: users.length + 1, invitations: invitees.length, links: relinks.length };
+    for (const [index, email] of platformInvitees.entries()) {
+      await invitations.createPlatform({
+        email,
+        name: 'Census invitee',
+        role: 'support',
+        invitedBy: null,
+        locale: censusProjects[index] === 'en' ? 'en' : 'ar',
+      });
+    }
+    return {
+      users: users.length + staff.length,
+      invitations: invitees.length + platformInvitees.length,
+      links: relinks.length,
+    };
   } finally {
     await pool.close();
   }

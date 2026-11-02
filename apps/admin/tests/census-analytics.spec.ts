@@ -7,6 +7,7 @@ import {
   plantedPhone,
   test,
 } from './census/helpers';
+import { platformSignIn, projectOf } from './census/session';
 
 // Census of the console's product analytics, the checks of apps/web's census-analytics.spec.ts
 // (PLAT-14 plan 2.8, 2.9; web §10.4): PostHog events leave through /ingest with ids and enums
@@ -15,11 +16,13 @@ import {
 
 test('a console page view and an error page send catalogue events only', async ({ page }) => {
   const captured = await captureAnalytics(page);
+  // WEB-2: the console needs a session (the layout reads platformGetMe).
+  await platformSignIn(page, 'analytics', projectOf(test.info().project.name));
   await page.goto(`/?phone=${encodeURIComponent(plantedPhone)}&name=Sara`);
   await expect.poll(() => captured.events.some((e) => e.event === '$pageview')).toBe(true);
   expect(captured.events.find((e) => e.event === '$pageview')?.properties).toMatchObject({
     token: censusBuild.posthogKey,
-    $current_url: 'http://127.0.0.1:3002/',
+    $current_url: 'http://localhost:3002/',
     $process_person_profile: false,
   });
   await page.goto('/census-fault');

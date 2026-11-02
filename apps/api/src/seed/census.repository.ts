@@ -104,11 +104,14 @@ export class CensusIdentitiesRepository extends PlatformRepository<typeof coreUs
       .where(inArray(coreOtpChallenges.phone, [...phones]));
   }
 
-  /** The console super admin with the census password and an enrolled TOTP secret (sealed). */
-  async putPlatformAdmin(
+  /**
+   * A console super admin with the census password, a live staff row, and the TOTP secret sealed
+   * for it (or none: enrolment at sign-in); the replay guard starts over.
+   */
+  async putPlatformStaff(
     admin: { id: string; email: string; name: string },
     passwordHash: string,
-    sealed: { blob: Buffer; keyId: string },
+    sealed: { blob: Buffer; keyId: string } | null,
   ): Promise<void> {
     const values = {
       name: admin.name,
@@ -128,8 +131,8 @@ export class CensusIdentitiesRepository extends PlatformRepository<typeof coreUs
       });
     const staff = {
       role: 'super_admin' as const,
-      totpSecretCiphertext: sealed.blob,
-      totpKeyId: sealed.keyId,
+      totpSecretCiphertext: sealed?.blob ?? null,
+      totpKeyId: sealed?.keyId ?? null,
       totpLastStep: null,
       revokedAt: null,
     };
@@ -140,5 +143,23 @@ export class CensusIdentitiesRepository extends PlatformRepository<typeof coreUs
         target: corePlatformStaff.userId,
         set: { ...staff, updatedAt: sql`now()` },
       });
+  }
+
+  /** Revokes the staff rows of the platform invitees of the last run, so they can be invited again. */
+  async revokePlatformStaff(emails: readonly string[]): Promise<void> {
+    const users = await this.unscoped()
+      .select({ id: coreUsers.id })
+      .from(coreUsers)
+      .where(inArray(coreUsers.email, [...emails]));
+    if (users.length === 0) return;
+    await this.unscoped()
+      .update(corePlatformStaff)
+      .set({ revokedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(
+        inArray(
+          corePlatformStaff.userId,
+          users.map((user) => user.id),
+        ),
+      );
   }
 }

@@ -389,4 +389,3 @@ test('a used invitation link shows its own page', async ({ page, locale }) => {
   await page.getByRole('button', { name: message(locale, 'auth', 'invitation.submit') }).click();
   await expect(page.getByText(message(locale, 'auth', 'link.invalid_title'))).toBeVisible();
 });
-
