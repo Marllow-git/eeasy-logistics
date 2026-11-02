@@ -21,6 +21,7 @@ import type {
   AuditSink,
   ContractInput,
   ListSorts,
+  OrderStatus,
   RequestFacts,
 } from '../../kernel/public/index.js';
 import {
@@ -80,6 +81,13 @@ const cancelOp = operationSchemas.cancelOrder;
 /** The dispatcher on the staff surface: the machine's `dispatcher`, the event's `user` (D-5). */
 const dispatcherActor = () =>
   ({ role: 'dispatcher', type: 'user', id: getContext().userId }) as const;
+
+/**
+ * `transitionOrder`'s `accepted`: the dispatcher's accept of a `pending` order and the reschedule
+ * of an `attempted` one. `assigned → accepted` (the dispatcher's unassign) stays in the machine for
+ * DEL-6's assignment service, which closes the assignment with it (adversary round 1, ruling 3).
+ */
+const acceptFrom: ReadonlySet<OrderStatus> = new Set(['pending', 'attempted']);
 
 /** A note of a transition: trimmed, blank is none (the contract bounds it at 1000). */
 const noteOf = (note: string | undefined): string | null =>
@@ -279,7 +287,7 @@ export class OrdersController {
 
   /**
    * `transitionOrder` (plan 2.9): `accepted` (from `pending` with a zone, D-3; from `attempted`, the
-   * reschedule without a slot) or `failed` (from `out_for_delivery`, `attempted`, and `picked_up`
+   * reschedule without a slot; never from `assigned`, DEL-6's door) or `failed` (from `out_for_delivery`, `attempted`, and `picked_up`
    * for Q-6) with one of the account's reason codes.
    */
   @Post(':order_id/transitions')
@@ -298,6 +306,7 @@ export class OrdersController {
     const uow = getUnitOfWork();
     const order = await this.transitions.apply(uow, input.params.order_id, {
       to: body.to_status,
+      ...(body.to_status === 'accepted' ? { from: acceptFrom } : {}),
       actor: dispatcherActor(),
       expectedVersion,
       reasonCode: body.reason_code ?? null,
