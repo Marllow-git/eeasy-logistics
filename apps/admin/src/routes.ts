@@ -67,6 +67,12 @@ export const consoleRoutes = [
     write: 'platform.staff.manage',
     navigation: { group: 'governance', label: 'staff', order: 0 },
   },
+  // The platform audit log (PLAT-7 2.4; plan 2.11): read only.
+  {
+    path: '/audit',
+    read: 'platform.audit.read',
+    navigation: { group: 'governance', label: 'audit', order: 1 },
+  },
 ] as const satisfies readonly ConsoleRoute[];
 
 export type ConsolePath = (typeof consoleRoutes)[number]['path'];
