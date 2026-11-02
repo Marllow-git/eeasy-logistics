@@ -258,9 +258,7 @@ describe('platform staff doors over HTTP (PLAT-13 item G)', () => {
       roles: ['platform_admin'],
       totp_enrolled: true,
     });
-    const restored = schemas.PlatformLogin200Response.parse(
-      (await login(target).expect(200)).body,
-    );
+    const restored = schemas.PlatformLogin200Response.parse((await login(target).expect(200)).body);
     expect(restored.totp_enrolment_required).toBe(false);
     const enrolAgain = await post('/v1/platform/auth/totp/enrol', {
       challenge_id: restored.challenge_id,
@@ -455,7 +453,7 @@ describe('platform staff doors over HTTP (PLAT-13 item G)', () => {
     expect(errorOf(again.body).code).toBe('token_invalid');
   });
 
-  it("keeps the platform re-enrolment link through a tenant-side reset (adversary round 2)", async () => {
+  it('keeps the platform re-enrolment link through a tenant-side reset (adversary round 2)', async () => {
     const target = await platformStaff(staff.app, config, owner, 'support');
     const accountId = await insertAccount(owner);
     await insertMembership(owner, accountId, target.userId);
