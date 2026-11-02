@@ -6,12 +6,12 @@ import { connectAs, integrationConfig, sqlState } from './support.js';
 
 const rls = integrationConfig().db.rls;
 
-// Migration 20261102121942_del_drivers on the real database (DEL-4 item A, plan 2.1; data §2.2, §10): del_drivers,
+// Migration 20261102122929_del_drivers on the real database (DEL-4 item A, plan 2.1; data §2.2, §10): del_drivers,
 // del_vehicles and del_driver_devices with their checks, uniques and defaults, the tenant policy
 // (another account's rows are invisible to elx_app), and the grants: elx_app works the three
 // tables, elx_platform only reads them.
 
-describe('del_drivers, del_vehicles, del_driver_devices (migration 20261102121942_del_drivers)', () => {
+describe('del_drivers, del_vehicles, del_driver_devices (migration 20261102122929_del_drivers)', () => {
   let owner: postgres.Sql;
   let app: postgres.Sql;
   let platform: postgres.Sql;

@@ -23,7 +23,7 @@ Updated by the lead at every order close (handbook 01 stage 9) and read with the
 | WEB-2 browser sessions and sign-in doors | merged | #91 | 2026-11-02 |
 | INT-4 push sender | merged | #93 | 2026-11-02 |
 | OPS-3 EAS and store accounts (research) | merged | #82 | 2026-11-01 |
-| INT-2 geocoder and short codes | built, lead review passed; regenerating its migration on main after PLAT-13 | #105 | 2026-11-02 |
+| INT-2 geocoder and short codes | merged (migration `20261102115811_core_geocode_cache`) | #105 | 2026-11-02 |
 | CHORE-3 timestamp migration names and parallel-order migrations | merged | #116 | 2026-11-02 |
 | PLAT-13 provisioning, rollout and suspension | merged (two adversary runs, fixes in) | #104 | 2026-11-02 |
 | WEB-3 merchant settings screens | merged | #109 | 2026-11-02 |

@@ -19,3 +19,8 @@ Shorter entries are left out because the length rule (12 to 256 characters, no c
 ### Attribution
 
 SecLists, MIT licence, Copyright (c) 2018 Daniel Miessler (https://github.com/danielmiessler/SecLists). The list itself is the UK National Cyber Security Centre's "100,000 most used passwords" (PwnedPasswordsTop100k), derived from Have I Been Pwned; its own licence could not be verified (`docs/research/auth-libraries-2026-11.md`, "Not verified" 3). Only digests are shipped, never the passwords.
+
+## `geocode-fixture.json`
+
+The geocoder stub's data (INT-2 plan 2.5; integrations §2.2 "Stub"): 25 districts each of Riyadh and Jeddah with Arabic and English names and approximate centroids, and six fixture National Address short codes mapped to districts. Authored by hand for this repository on 2026-11-02; no dataset was copied, because none with a clear licence and district coverage was found (`docs/research/hudhud-geocoding-2026-11.md` §3). Licence: the repository's. The centroids are rough and serve local and ci tests only; staging and production geocode through Hudhud. `modules/kernel/geocoding/stub-geocoder.ts` reads it once, on the first lookup.
+

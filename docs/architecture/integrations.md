@@ -41,11 +41,11 @@ Columns are the same for every port. "Wave" is the first wave that needs a worki
 |---|---|
 | Methods | `geocode(text, city?, locale) → {point, confidence 0..1, district?, short_code?} \| not_found`; `lookupShortCode(code) → {point, address parts} \| not_found`; `reverse(point) → {text, district, city}` |
 | Owner | kernel, `kernel/public/ports`: sites (kernel, §2.3 of document 2) and orders (Delivery) both need it |
-| Adapters | Hudhud geocoding (first); National Address short code via Hudhud if its contract includes it, otherwise a Saudi National Address (SPL) API adapter (**to confirm** which) |
+| Adapters | Hudhud geocoding (first); National Address short code via Hudhud if its contract includes it, otherwise a Saudi National Address (SPL) API adapter (**to confirm** which). Built (INT-2, owner ruling 2026-11-02): a chain of sources in `GEOCODER_SOURCES` order, each behind its own breaker and asked only for the lookups it has: the official SPL API (short codes, with `NATIONAL_ADDRESS_API_KEY`) and its POI reverse lookup, the Sayyar mirror (short codes, text), then Hudhud as the fallback; the stub in local and ci. The adapter derives the confidence (Hudhud publishes none): 1.0 for an SPL or Hudhud short code, 0.95 for Sayyar's, 0.8 or 0.6 for a Sayyar text match, 0.9 for a single Hudhud search result and 0.7 for the first of several, 0.2 less for a settlement-level match |
 | Kind | sync, read-only |
 | Timeout | 2 s geocode, 2 s short code |
 | Retry | one retry on network error |
-| Cache | normalised text hash and short code → result, 30 days, in a kernel cache table (document 5 names it) with Redis in front |
+| Cache | normalised text hash and short code → result, in `core_geocode_cache` (document 5 §2.1), 30 days for a hit and 24 hours for `not_found`, with Redis in front; the stub's answers are not cached |
 | Breaker and degraded | intake never fails because geocoding failed: the order is stored with no point, `pin_source` unset and confidence 0, and it is listed in the dispatcher's "needs location" view; an address-pin request (§5) is the remedy |
 | Stub | fixture table of Riyadh and Jeddah districts, unknown text returns `not_found` |
 | Credentials | Hudhud key; SPL key if used; platform secrets |

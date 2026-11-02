@@ -116,6 +116,21 @@ export {
 export { oneLineTextProblem } from '../contract/text-rules.js';
 export { normalisePhone, phoneTail } from '../messaging/phone.js';
 export { templateParamsProblem } from '../messaging/templates.js';
+// Geocoding (INT-2 plan 2.1, 2.6): DEL-2's intake and the site geocode step inject `GEOCODER`.
+export { GEOCODER, GeocoderService, type GeocodeOptions } from '../geocoding/geocoder.service.js';
+export {
+  GeocoderInputError,
+  normaliseShortCode,
+  type GeoPoint,
+  type GeocodeLocale,
+  type GeocodeQuery,
+  type GeocodeResult,
+  type GeocoderProviderName,
+  type NotFound,
+  type ReverseResult,
+  type ShortCodeResult,
+  type Unavailable,
+} from '../geocoding/geocoder.js';
 // Feature gate (PLAT-13 plan 2.5): DEL and WMS routes carry `@Feature('delivery' | 'wms')`.
 export { Feature, FeatureGate } from '../features/feature-gate.js';
 export { featureKeys, type FeatureKey } from '../features/feature-keys.js';

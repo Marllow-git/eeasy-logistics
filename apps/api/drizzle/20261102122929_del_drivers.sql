@@ -3,7 +3,7 @@
 -- src/modules/kernel/schema/drivers.ts; this header and everything after the last generated index
 -- added by hand.
 -- Regenerated 2026-11-02 under CHORE-3 timestamp names (data §11.9): was 0016_del_drivers.sql;
--- same SQL body, after main gained 0016_core_rollout.
+-- same SQL body, after main gained 0016_core_rollout and 20261102115811_core_geocode_cache.
 --
 -- Drivers, vehicles and driver devices (DEL-4 plan 2.1; data §2.2, §10; domain model §3.5;
 -- identity and tenancy §3.2; ADR-0025, ADR-0031, ADR-0034). Three tenant tables with the template
