@@ -40,6 +40,9 @@ export class MembersRepository extends ScopedRepository<typeof coreMemberships> 
   matching(filters: MemberFilters): Promise<MemberRow[]> {
     return this.findMany(
       and(
+        // Driver-only memberships are Delivery's (DEL-4 R2): never read, so the in-memory page
+        // stays the size of the staff (PLAT-12 8.2 #36).
+        sql`${coreMemberships.roles} <> ARRAY['driver']::text[]`,
         filters.statuses === undefined
           ? undefined
           : inArray(coreMemberships.status, [...filters.statuses]),

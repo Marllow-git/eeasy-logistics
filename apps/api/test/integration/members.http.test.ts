@@ -6,6 +6,7 @@ import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { testSigningKey } from '../support/access-tokens.js';
 import { auditRowsOf } from './audit-rows.js';
+import { plantDriver } from './driver-fixtures.js';
 import { freshEmail, insertAccount, insertMembership, insertUser } from './identity-fixtures.js';
 import { latestMail, mailpitMessage, sendMailRow } from './mail-delivery.js';
 import type { SignedInMember, StaffApp } from './staff-sessions.js';
@@ -255,6 +256,36 @@ describe('the member doors over HTTP (PLAT-12 items E to G)', () => {
       expect(errorOf((await get(dispatcher, '/v1/staff/members').expect(403)).body).code).toBe(
         'forbidden',
       );
+    });
+
+    it('leaves driver-only memberships out of the list and answers 404 on them; staff with driver stay (DEL-4 R2)', async () => {
+      // One phone driving for A and B: the person row was typed by A. B's member doors never show
+      // it (the drivers are listed by `listDrivers`); a membership holding `driver` beside a staff
+      // role was invited as staff by this account and stays.
+      const a = await accountWithOwner();
+      const b = await accountWithOwner();
+      const inA = await plantDriver(owner, { accountId: a.accountId });
+      const inB = await plantDriver(owner, { accountId: b.accountId, userId: inA.userId });
+      const mixed = await plantMember(b.accountId, 'Mixed Staff', {
+        roles: ['dispatcher', 'driver'],
+      });
+
+      const listed = pageOf((await get(b.owning, '/v1/staff/members').expect(200)).body);
+      expect(listed.data.map((item) => item.id).sort()).toEqual(
+        [b.owning.membershipId, mixed.membershipId].sort(),
+      );
+      expect(JSON.stringify(listed.data)).not.toContain('Planted Person');
+      const byName = pageOf((await get(b.owning, '/v1/staff/members?q=Planted').expect(200)).body);
+      expect(byName.data).toEqual([]);
+
+      const hidden = await get(b.owning, `/v1/staff/members/${inB.membershipId}`).expect(404);
+      expect(errorOf(hidden.body).code).toBe('not_found');
+      await get(a.owning, `/v1/staff/members/${inA.membershipId}`).expect(404);
+      const shown = await get(b.owning, `/v1/staff/members/${mixed.membershipId}`).expect(200);
+      expect(operationSchemas.getMember.responses['200'].parse(shown.body).roles).toEqual([
+        'dispatcher',
+        'driver',
+      ]);
     });
   });
 
