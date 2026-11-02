@@ -1,0 +1,60 @@
+// The support reason of a tab (web §3.5; WEB-4 plan 2.4, §7 #4): held in `sessionStorage` under
+// `elx:support:<accountId>`, so it survives a reload in that tab and is never shared with another
+// tab; removed when the tab leaves the account's routes and on sign-out. Pure functions over a
+// `Storage`, no runtime imports, so `node --test` runs them as they are.
+
+export const reasonPrefix = 'elx:support:';
+
+/** The longest `X-Support-Reason` the API takes (PLAT-13 8.2 #33: the header's bound). */
+export const headerReasonMax = 200;
+/** The longest body reason (suspend, reactivate, close, a flag, a mode, a replay, a reset). */
+export const bodyReasonMax = 500;
+
+export type ReasonStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'>;
+
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The account a console path acts on (`/accounts/<id>` and its tabs), if any. */
+export function accountOfPath(pathname: string | null): string | undefined {
+  const id = /^\/accounts\/([^/]+)(?:\/|$)/.exec(pathname ?? '')?.[1];
+  return id !== undefined && uuid.test(id) ? id.toLowerCase() : undefined;
+}
+
+export function readReason(storage: ReasonStorage, accountId: string): string | undefined {
+  const value = storage.getItem(reasonPrefix + accountId.toLowerCase());
+  return value === null || value === '' ? undefined : value;
+}
+
+export function writeReason(storage: ReasonStorage, accountId: string, reason: string): void {
+  storage.setItem(reasonPrefix + accountId.toLowerCase(), reason);
+}
+
+/** Removes every account's reason but `keep`'s (none: all of them). */
+export function keepOnly(storage: ReasonStorage, keep: string | undefined): void {
+  const kept = keep === undefined ? undefined : reasonPrefix + keep.toLowerCase();
+  const stale: string[] = [];
+  for (let index = 0; index < storage.length; index++) {
+    const key = storage.key(index);
+    if (key !== null && key.startsWith(reasonPrefix) && key !== kept) stale.push(key);
+  }
+  for (const key of stale) storage.removeItem(key);
+}
+
+/**
+ * The reason as the `X-Support-Reason` header carries it. A fetch header takes Latin-1 only, so a
+ * reason with any other character (Arabic) travels percent-encoded as UTF-8 (8.2: the API stores
+ * it as sent until it decodes the header; §8.3).
+ */
+export function headerReason(reason: string): string {
+  return /[^ -ÿ]/u.test(reason) ? encodeURIComponent(reason) : reason;
+}
+
+/** The header's length as the API counts it: the code points of what is sent. */
+export function headerReasonLength(reason: string): number {
+  return [...headerReason(reason.trim())].length;
+}
+
+/** The headers of a cross-tenant call: the tab's reason, or none (an optional-reason door). */
+export function supportHeaders(reason: string | undefined): Record<string, string> {
+  return reason === undefined ? {} : { 'X-Support-Reason': headerReason(reason) };
+}

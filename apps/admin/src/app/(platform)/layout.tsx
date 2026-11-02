@@ -12,6 +12,7 @@ import { appMessages } from '../../i18n/messages';
 import { navigationFor } from '../../routes';
 import { getPlatformSession } from '../../server/session';
 import { PlatformSession } from '../../session/platform-session';
+import { SupportReasonJanitor } from '../../support/support-reason';
 
 export const generateMetadata = rootMetadata;
 
@@ -43,6 +44,7 @@ export default async function PlatformLayout({ children }: { children: ReactNode
     <RootHtml namespaces={['common', 'nav', 'auth', 'errors']}>
       <NextIntlClientProvider locale={locale} messages={clientMessages} timeZone={timeZone}>
         <PlatformSession me={me}>
+          <SupportReasonJanitor />
           <QueryProvider>
             <AppShell
               brand={common('app.name')}

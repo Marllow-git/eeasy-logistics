@@ -97,5 +97,11 @@
     "load_more": "Load more",
     "loading_more": "Loading…",
     "shown": "{count, plural, one {{value} shown} other {{value} shown}}"
+  },
+  "reason": {
+    "label": "Reason",
+    "too_short": "At least {min} characters.",
+    "count": "{count} / {max}",
+    "too_long": "At most {max} characters."
   }
 }
