@@ -615,14 +615,14 @@ describe('the staff driver doors over HTTP (DEL-4 item B)', () => {
       await get(dispatcher, `/v1/staff/drivers/${uuidv7()}`).expect(404);
     });
 
-    it('suspends: the driver sessions end and the token version moves; then back to active', async () => {
+    it('suspends: the driver sessions of the membership end, the token version stays (ruling 8.2 #23); then back to active', async () => {
       const { dispatcher, driver, row } = await withDriver();
       const session = await plantSession(row.user_id, row.membership_id, uuidv7());
       const version = await tokenVersion(row.user_id);
       const response = await update(dispatcher, driver.id, { status: 'suspended' }).expect(200);
       expect(driverOf(response.body).status).toBe('suspended');
       expect(await revokedReason(session)).toBe('revoked');
-      expect(await tokenVersion(row.user_id)).toBe((version ?? 0) + 1);
+      expect(await tokenVersion(row.user_id)).toBe(version);
       expect(await membershipOf(row.membership_id)).toMatchObject({ status: 'active' });
       const audit = await auditRowsOf(owner, response.headers['x-request-id'] as string);
       expect(audit[0]).toMatchObject({
@@ -631,7 +631,7 @@ describe('the staff driver doors over HTTP (DEL-4 item B)', () => {
         after: { status: 'suspended' },
       });
       await update(dispatcher, driver.id, { status: 'active' }).expect(200);
-      expect(await tokenVersion(row.user_id)).toBe((version ?? 0) + 1);
+      expect(await tokenVersion(row.user_id)).toBe(version);
     });
 
     it('archives: devices revoked, push tokens cleared, sessions ended, the driver role released; no way back by update', async () => {

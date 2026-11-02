@@ -203,10 +203,10 @@ export class DriversService {
    * home site passes the create's checks and moves a driver-only membership's `site_ids`; the
    * status follows active ⇄ suspended → archived (`409 invalid_transition` out of archived); the
    * capacity limit may not fall below the orders held (`422 capacity_exceeded`). A suspension ends
-   * the driver's refresh families and moves the person's `token_version`; an archive does that,
-   * revokes every device and clears every push token (data §10), and takes the `driver` role off
-   * the membership. One audit row with the changed fields before and after; nothing changed writes
-   * nothing.
+   * this membership's driver refresh families (the person's `token_version` stays, 8.2 #23); an
+   * archive does that, revokes every device and clears every push token (data §10), and takes the
+   * `driver` role off the membership. One audit row with the changed fields before and after;
+   * nothing changed writes nothing.
    */
   async update(id: string, patch: DriverPatch, facts: AuditFacts): Promise<Driver> {
     if (patch.name !== undefined) {
@@ -252,10 +252,14 @@ export class DriversService {
 
     // The platform side first (PLAT-12 8.2 #29): the request holds no lock it waits on.
     if (name !== before.person.name) await this.deps.identities.rename(current.userId, name);
+    // Lead ruling 2026-11-02 (8.2 #12, #23): suspension and archive end this membership's driver
+    // families only; the person's `token_version` stays, so their sessions elsewhere (another
+    // account they drive for, a staff membership) live on. The refresh verdict refuses this
+    // driver until they are `active` again.
     const ending = status !== current.status && status !== 'active';
     if (ending) {
       await this.deps.identities.endSessions(current.userId, current.membershipId, {
-        bumpTokenVersion: true,
+        bumpTokenVersion: false,
       });
     }
 

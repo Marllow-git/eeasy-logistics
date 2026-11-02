@@ -18,6 +18,7 @@ import { addressKey, RATE_LIMITER } from '../rate-limit/rate-limiter.js';
 import { AccessTokenIssuer } from './access-token.js';
 import type { IssuedSession } from './cookies.js';
 import type { RequestFacts } from './request-facts.js';
+import type { RefreshOutcome } from './sessions.js';
 import { SessionService } from './sessions.js';
 
 // The kernel's half of a driver's sign-in (DEL-4 plan 2.7, 2.12; identity and tenancy §3.2, §4, §8;
@@ -153,6 +154,27 @@ export class DriverSignIn {
         facts,
       ),
     );
+  }
+
+  /** `driverRefresh` (plan 2.8): PLAT-11's rotation with the device verdict, from the body. */
+  refresh(
+    input: { readonly refreshToken: string; readonly deviceId: string },
+    facts: RequestFacts,
+  ): Promise<RefreshOutcome> {
+    return this.#deps.sessions.refreshDriver(input, facts);
+  }
+
+  /** `driverLogout` (plan 2.8): the families of the token's device end; audited when any did. */
+  logout(
+    principal: {
+      readonly userId: string;
+      readonly accountId: string;
+      readonly membershipId: string;
+      readonly deviceId: string;
+    },
+    facts: Pick<RequestFacts, 'ip' | 'userAgent' | 'requestId' | 'clientRequestId'>,
+  ): Promise<number> {
+    return this.#deps.sessions.logoutDevice(principal, facts);
   }
 
   #identity(): IdentityStore {

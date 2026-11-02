@@ -2,6 +2,7 @@ import { getContext, getUnitOfWork, uuidv7 } from '@eeasy-logistics/db';
 import type { FactoryProvider } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
 import { effectiveLimits } from '../accounts/limits.js';
+import { effectiveSettings } from '../accounts/settings.js';
 import type { PermissionResolver } from '../authz/permission-resolver.js';
 import { PERMISSION_RESOLVER } from '../authz/permission-resolver.js';
 import { assertRoleCombination } from '../authz/separation.js';
@@ -41,6 +42,8 @@ export interface DriverAccount {
   readonly defaultLocale: UserLocale;
   /** `limits.drivers` over the code default (PLAT-12 `effectiveLimits`). */
   readonly driversLimit: number;
+  /** `proof_policy` over its defaults (PLAT-12 `effectiveSettings`; `driverGetMe`, plan 2.8). */
+  readonly proofPolicy: Readonly<Record<string, unknown>>;
 }
 
 /** A site of the token's account, as a home site check needs it. */
@@ -64,7 +67,10 @@ export class DriverIdentities {
     this.#deps = deps;
   }
 
-  /** The token's account: its name, default language and driver limit (platform pool, no lock). */
+  /**
+   * The token's account: its name, default language, driver limit and proof policy (platform pool,
+   * no lock).
+   */
   async account(): Promise<DriverAccount> {
     const store = this.#deps.accounts;
     if (store === null) throw this.#unconfigured();
@@ -75,6 +81,7 @@ export class DriverIdentities {
       name: account.name,
       defaultLocale: account.defaultLocale,
       driversLimit: effectiveLimits(account.limits).drivers,
+      proofPolicy: effectiveSettings(account.settings).proof_policy as Record<string, unknown>,
     };
   }
 

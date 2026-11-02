@@ -1,12 +1,14 @@
 import type { Config } from '@eeasy-logistics/config';
 import type { DynamicModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import {
   driverIdentitiesProvider,
   driverSignInProvider,
   KernelModule,
 } from '../kernel/public/index.js';
-import { DRIVER_APP_URL } from './delivery.tokens.js';
+import { DRIVER_APP_URL, DRIVER_MIN_APP_VERSION } from './delivery.tokens.js';
+import { AppVersionGuard } from './driver-auth/app-version.guard.js';
 import { DriverAuthController } from './driver-auth/driver-auth.controller.js';
 import { DriversController } from './drivers/drivers.controller.js';
 import { VehiclesController } from './vehicles/vehicles.controller.js';
@@ -29,6 +31,9 @@ export class DeliveryModule {
         driverIdentitiesProvider,
         driverSignInProvider(config),
         { provide: DRIVER_APP_URL, useValue: config.drivers.appUrl },
+        { provide: DRIVER_MIN_APP_VERSION, useValue: config.drivers.minAppVersion },
+        // Every `v1/driver/*` route but the `@ReplayRoute()` ones (plan 2.10).
+        { provide: APP_GUARD, useClass: AppVersionGuard },
       ],
     };
   }
