@@ -1,6 +1,6 @@
 import type { UnitOfWork } from '@eeasy-logistics/db';
 import { ScopedRepository } from '@eeasy-logistics/db';
-import { and, arrayContains, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, arrayContains, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { MembershipStatus } from '../schema/identity.js';
 import { coreInvitations, coreMemberships } from '../schema/identity.js';
 
@@ -98,6 +98,25 @@ export class MembersRepository extends ScopedRepository<typeof coreMemberships> 
 export class MemberInvitationsRepository extends ScopedRepository<typeof coreInvitations> {
   constructor(uow: UnitOfWork) {
     super(uow, coreInvitations);
+  }
+
+  /**
+   * The name and email of the latest invitation of each of `membershipIds` (adversary M-2): what a
+   * membership that is not `active` shows instead of its user's stored fields.
+   */
+  async latestOf(
+    membershipIds: readonly string[],
+  ): Promise<Map<string, { readonly name: string; readonly email: string }>> {
+    const latest = new Map<string, { readonly name: string; readonly email: string }>();
+    if (membershipIds.length === 0) return latest;
+    const rows = await this.findMany(inArray(coreInvitations.membershipId, [...membershipIds]), {
+      orderBy: [desc(coreInvitations.createdAt), desc(coreInvitations.id)],
+    });
+    for (const row of rows) {
+      if (row.membershipId === null || latest.has(row.membershipId)) continue;
+      latest.set(row.membershipId, { name: row.name, email: row.email });
+    }
+    return latest;
   }
 
   /** Ends the open invitations of a membership now (`revokeMember`, plan 2.8). */

@@ -3,7 +3,6 @@ import { ApiException } from '../errors/api-exception.js';
 import type { ListPageRequest, ListSorts } from './list-page.js';
 import {
   CursorCodec,
-  containsPattern,
   cursorHmacKey,
   enumListFilter,
   keysetSlice,
@@ -158,11 +157,6 @@ describe('the q filter (PLAT-12 leg 2)', () => {
     expect(textQuery(undefined)).toBeUndefined();
     expect(textQuery('   ')).toBeUndefined();
     expect(textQuery('  Sara ')).toBe('Sara');
-  });
-
-  it('escapes the LIKE wildcards and the escape itself, so the text matches literally', () => {
-    expect(containsPattern('sara')).toBe('%sara%');
-    expect(containsPattern('50%_off\\x')).toBe('%50\\%\\_off\\\\x%');
   });
 });
 

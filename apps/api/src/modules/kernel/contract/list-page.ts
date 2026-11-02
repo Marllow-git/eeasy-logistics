@@ -295,14 +295,6 @@ export function textQuery(raw: string | undefined): string | undefined {
   return trimmed === undefined || trimmed === '' ? undefined : trimmed;
 }
 
-/**
- * An `ILIKE` pattern matching `text` anywhere and literally: `\`, `%` and `_` are escaped with a
- * backslash, PostgreSQL's default `LIKE` escape (plan 2.4: "escaped").
- */
-export function containsPattern(text: string): string {
-  return `%${text.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
-}
-
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**

@@ -31,9 +31,15 @@ describe('memberChangeRefusal', () => {
     expect(memberChangeRefusal(change({ caller: admin, target: anOwner, revoking: true }))).toBe(
       'owner_rule',
     );
-    // An owner keeping owner on another owner is no grant: an admin may change the rest.
+    // An owner is changed in any way only by an owner, even when owner stays (adversary M-3).
     expect(
       memberChangeRefusal(change({ caller: admin, target: anOwner, roles: ['owner', 'viewer'] })),
+    ).toBe('owner_rule');
+    expect(
+      memberChangeRefusal(change({ caller: admin, target: anOwner, roles: anOwner.roles })),
+    ).toBe('owner_rule');
+    expect(
+      memberChangeRefusal(change({ target: anOwner, roles: ['owner', 'viewer'] })),
     ).toBeUndefined();
     expect(memberChangeRefusal(change({ roles: ['owner'] }))).toBeUndefined();
     expect(memberChangeRefusal(change({ caller: admin }))).toBeUndefined();

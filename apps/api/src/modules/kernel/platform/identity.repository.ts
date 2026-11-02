@@ -1,7 +1,7 @@
 import type { Pool } from '@eeasy-logistics/db';
 import type { PlatformDatabase, PlatformUnitOfWork } from '@eeasy-logistics/db/platform';
 import { PlatformRepository, withPlatformUnitOfWork } from '@eeasy-logistics/db/platform';
-import { and, asc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { coreAccounts } from '../schema/accounts.js';
 import type {
   InvitationKind,
@@ -83,22 +83,15 @@ export class UsersRepository extends PlatformRepository<typeof coreUsers> {
 
   /**
    * The users of `ids` (PLAT-12 `listMembers`, `getMember`: the people behind an account's
-   * memberships), read only. `match`, an `ILIKE` pattern the caller escaped, keeps those whose name
-   * or email matches it.
+   * memberships), read only. `q` is matched by the door over what each membership shows
+   * (adversary M-2), not here.
    */
-  async findByIds(ids: readonly string[], match?: string): Promise<UserRow[]> {
+  async findByIds(ids: readonly string[]): Promise<UserRow[]> {
     if (ids.length === 0) return [];
     return this.unscoped()
       .select(userColumns)
       .from(coreUsers)
-      .where(
-        and(
-          inArray(coreUsers.id, [...new Set(ids)]),
-          match === undefined
-            ? undefined
-            : or(ilike(coreUsers.name, match), ilike(coreUsers.email, match)),
-        ),
-      );
+      .where(inArray(coreUsers.id, [...new Set(ids)]));
   }
 
   /** The user locked `FOR UPDATE` (password and version changes). */

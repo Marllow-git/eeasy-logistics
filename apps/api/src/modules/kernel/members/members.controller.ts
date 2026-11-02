@@ -25,9 +25,11 @@ import { Idempotent } from '../idempotency/idempotency.interceptor.js';
 import { accountStoreOnPool } from '../platform/accounts.repository.js';
 import { identityStoreOnPool } from '../platform/identity.repository.js';
 import { PLATFORM_POOL } from '../platform/tokens.js';
+import type { RateLimiter } from '../rate-limit/rate-limiter.js';
+import { RATE_LIMITER } from '../rate-limit/rate-limiter.js';
 import { membershipStatuses } from '../schema/identity.js';
 import { presentMember } from './members.presenter.js';
-import type { Member, MemberSortField } from './members.service.js';
+import type { MemberSortField } from './members.service.js';
 import { MembersService } from './members.service.js';
 
 // The staff surface's `members` tag (PLAT-12 plan 2.4, 2.7 to 2.11): `listMembers`, `getMember`,
@@ -49,8 +51,6 @@ const memberSorts: ListSorts<MemberSortField> = {
   default: '-created_at',
 };
 
-const present = (member: Member): Membership => presentMember(member.row, member.user);
-
 @Controller('v1/staff/members')
 export class MembersController {
   private readonly cursors: CursorCodec;
@@ -63,6 +63,7 @@ export class MembersController {
     @Optional() @Inject(PLATFORM_POOL) pool?: Parameters<typeof identityStoreOnPool>[0],
     @Optional() @Inject(CURSOR_CODEC) cursors?: CursorCodec,
     @Optional() @Inject(PERMISSION_RESOLVER) resolver?: PermissionResolver | null,
+    @Optional() @Inject(RATE_LIMITER) limiter?: RateLimiter,
   ) {
     this.cursors = cursors ?? new CursorCodec(undefined);
     this.members = new MembersService({
@@ -72,6 +73,7 @@ export class MembersController {
       audit,
       resolver: resolver ?? undefined,
       resets,
+      limiter,
     });
   }
 
@@ -92,7 +94,7 @@ export class MembersController {
       limit: query.limit,
     });
     const page = await this.members.list({ plan, statuses, siteId: query.site_id, q });
-    return presentPage(page, present);
+    return presentPage(page, presentMember);
   }
 
   @Post('invitations')
@@ -103,13 +105,13 @@ export class MembersController {
     @Input() input: ContractInput<typeof inviteOp>,
     @AuthRequest() facts: RequestFacts,
   ): Promise<Membership> {
-    return present(await this.members.invite(input.body, facts));
+    return presentMember(await this.members.invite(input.body, facts));
   }
 
   @Get(':membership_id')
   @Operation(getOp)
   async get(@Input() input: ContractInput<typeof getOp>): Promise<Membership> {
-    return present(await this.members.get(input.params.membership_id));
+    return presentMember(await this.members.get(input.params.membership_id));
   }
 
   /** Roles and sites; an absent field keeps its value (plan 2.8). Re-reads `token_version`. */
@@ -127,7 +129,7 @@ export class MembersController {
       facts,
       facts.principal?.tokenVersion,
     );
-    return present(member);
+    return presentMember(member);
   }
 
   @Delete(':membership_id')

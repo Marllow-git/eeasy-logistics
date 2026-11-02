@@ -105,15 +105,18 @@ export class AccountRecords extends PlatformRepository<typeof coreAccounts> {
   }
 }
 
-/** One platform transaction over the account doors' repository. */
+/**
+ * One platform transaction over the account doors' repository; `uow` is that transaction, for the
+ * audit row of a change made in it (`AuditSink.recordIn`, PLAT-12 adversary M-1).
+ */
 export interface AccountStore {
-  run<T>(fn: (accounts: AccountRecords) => Promise<T>): Promise<T>;
+  run<T>(fn: (accounts: AccountRecords, uow: PlatformUnitOfWork) => Promise<T>): Promise<T>;
 }
 
 /** The store on the API's platform pool, or null without one (`DATABASE_URL_PLATFORM` unset). */
 export function accountStoreOnPool(pool: Pool<PlatformDatabase> | null): AccountStore | null {
   if (pool === null) return null;
   return {
-    run: (fn) => withPlatformUnitOfWork(pool.db, (uow) => fn(new AccountRecords(uow))),
+    run: (fn) => withPlatformUnitOfWork(pool.db, (uow) => fn(new AccountRecords(uow), uow)),
   };
 }

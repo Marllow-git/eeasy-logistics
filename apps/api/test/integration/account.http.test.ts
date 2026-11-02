@@ -1,8 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { operationSchemas } from '@eeasy-logistics/contracts/staff/schemas';
-import { uuidv7 } from '@eeasy-logistics/db';
+import { createAppPool, uuidv7, withUnitOfWork } from '@eeasy-logistics/db';
+import { createPlatformPool } from '@eeasy-logistics/db/platform';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { AccountService } from '../../src/modules/kernel/accounts/account.service.js';
+import { AuditWriter } from '../../src/modules/kernel/audit/audit-writer.js';
+import { accountStoreOnPool } from '../../src/modules/kernel/platform/accounts.repository.js';
 import { testSigningKey } from '../support/access-tokens.js';
 import { auditRowsOf } from './audit-rows.js';
 import { insertAccount } from './identity-fixtures.js';
@@ -249,6 +253,56 @@ describe('the account doors over HTTP (PLAT-12 item B)', () => {
       const dispatcher = await staff.member(accountId, ['dispatcher']);
       const denied = await patch(dispatcher.cookie, { max_attempts: 4 }).expect(403);
       expect(errorOf(denied.body).code).toBe('forbidden');
+    });
+
+    it('commits the audit row with the change even when the request transaction rolls back (adversary M-1)', async () => {
+      // The settings commit on the platform pool; the request's app transaction commits later or
+      // rolls back on its own. The audit row must ride on the platform transaction, not on the app
+      // one, or a request failing after the settings commit leaves the change unaudited (K-7).
+      const accountId = await insertAccount(owner);
+      const admin = await staff.member(accountId, ['admin']);
+      const app = createAppPool(config.db, 'account-settings-audit-test');
+      const platform = createPlatformPool(config.db, 'account-settings-audit-test');
+      const writer = new AuditWriter(platform);
+      const service = new AccountService(accountStoreOnPool(platform), writer);
+      const requestId = uuidv7();
+      const context = {
+        accountId,
+        membershipId: null,
+        userId: admin.userId,
+        deviceId: null,
+        actingCrossTenant: false,
+        requestId,
+      };
+      const failure = new Error('the request fails after the settings write');
+      try {
+        await expect(
+          withUnitOfWork(app.db, context, async () => {
+            await service.updateSettings({ max_attempts: 6 }, ['max_attempts'], {
+              requestId,
+              clientRequestId: null,
+              ip: null,
+              userAgent: null,
+            });
+            throw failure;
+          }),
+        ).rejects.toBe(failure);
+      } finally {
+        await Promise.all([app.close(), platform.close()]);
+      }
+      const [stored] = await owner<{ settings: unknown; version: number }[]>`
+        SELECT settings, version FROM core_accounts WHERE id = ${accountId}`;
+      expect(stored).toEqual({ settings: { max_attempts: 6 }, version: 2 });
+      const rows = await auditRowsOf(owner, requestId);
+      expect(rows).toEqual([
+        expect.objectContaining({
+          accountId,
+          actorId: admin.userId,
+          action: 'core.account.settings_updated',
+          before: { max_attempts: 3 },
+          after: { max_attempts: 6 },
+        }),
+      ]);
     });
 
     it('asks for the second factor at the next sign-in once second_factor_required is set', async () => {

@@ -72,7 +72,9 @@ export class AccountService {
   /**
    * `updateSettings` (plan 2.3): the `sent` fields of `patch` replace the stored ones under the
    * account row's lock, `version + 1`, and one audit row with the changed keys' before and after
-   * in the same transaction (K-7). A patch that changes nothing writes nothing.
+   * in the same platform transaction (K-7): the row never rides on the request's app transaction,
+   * which commits later or rolls back on its own (adversary M-1). A patch that changes nothing
+   * writes nothing.
    */
   async updateSettings(
     patch: SettingsDocument,
@@ -85,13 +87,13 @@ export class AccountService {
     const problems = settingsProblems(sentPatch);
     if (problems.length > 0) throw new ApiException('validation_failed', { fields: problems });
     const context = getContext();
-    return this.requireStore().run(async (accounts) => {
+    return this.requireStore().run(async (accounts, uow) => {
       const account = await accounts.find(context.accountId, { lock: true });
       if (account === undefined) throw new Error('The account of the token has no row');
       const change = mergeSettings(account.settings, patch, sent);
       if (change.changed.length === 0) return effectiveSettings(account.settings);
       const written = await accounts.writeSettings(context.accountId, change.stored);
-      await this.audit.record({
+      await this.audit.recordIn(uow, {
         actorType: 'user',
         actorId: context.userId,
         accountId: context.accountId,

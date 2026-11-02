@@ -59,6 +59,10 @@ export const namedBudgets = {
   /** Accept an invitation, confirm a reset, redeem an enrolment link, select an account. */
   auth_token_ip: { limit: 20, windowMs: hourMs },
   session_refresh_ip: { limit: 60, windowMs },
+  // The member doors that mail (PLAT-12 adversary L-5): per account, keyed `account:<id>`, charged
+  // before the write.
+  member_invite_account: { limit: 30, windowMs: hourMs },
+  member_reset_account: { limit: 10, windowMs: hourMs },
 } as const satisfies Record<string, NamedBudget>;
 
 /** The named budgets with the configured global OTP budget (`OTP_GLOBAL_HOURLY_BUDGET`). */

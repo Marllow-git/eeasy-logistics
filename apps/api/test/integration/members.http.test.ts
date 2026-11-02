@@ -405,6 +405,88 @@ describe('the member doors over HTTP (PLAT-12 items E to G)', () => {
       }).expect(403);
       expect(errorOf(forbidden.body).code).toBe('forbidden');
     });
+    it('shows an invited membership of a known user with the invitation’s fields only (adversary M-2)', async () => {
+      // A user who belongs to another account, with a stored name, locale and enrolled factor: none
+      // of it may reach this account while the membership is only invited (or revoked).
+      const { owning } = await accountWithOwner({ locale: 'ar' });
+      const elsewhere = await accountWithOwner();
+      const known = await insertUser(owner, {
+        name: 'Stored Elsewhere',
+        locale: 'en',
+        secondFactorPhone: `+9665${String(randomBytes(4).readUInt32BE(0) % 1e8).padStart(8, '0')}`,
+      });
+      await insertMembership(owner, elsewhere.accountId, known.id, { roles: ['viewer'] });
+      const response = await invite(owning, {
+        email: known.email,
+        name: 'Invited Name',
+        roles: ['viewer'],
+      }).expect(201);
+      const member = inviteOp.responses['201'].parse(response.body);
+      const invitedUser = {
+        id: known.id,
+        name: 'Invited Name',
+        email: known.email,
+        phone: null,
+        locale: 'ar',
+        second_factor_enabled: false,
+        created_at: member.created_at,
+        updated_at: member.updated_at,
+      };
+      expect(member.user).toEqual(invitedUser);
+      const read = await get(owning, `/v1/staff/members/${member.id}`).expect(200);
+      expect(operationSchemas.getMember.responses['200'].parse(read.body).user).toEqual(
+        invitedUser,
+      );
+      const listed = pageOf((await get(owning, '/v1/staff/members').expect(200)).body);
+      expect(listed.data.find((item) => item.id === member.id)?.user).toEqual(invitedUser);
+      // `q` and the name sort see the invitation's name, never the stored one.
+      const ids = async (query: string) =>
+        pageOf((await get(owning, `/v1/staff/members${query}`).expect(200)).body).data.map(
+          (item) => item.id,
+        );
+      expect(await ids('?q=Stored')).toEqual([]);
+      expect(await ids('?q=invited%20name')).toEqual([member.id]);
+      for (const body of [response.body, read.body, listed]) {
+        expect(JSON.stringify(body)).not.toContain('Stored Elsewhere');
+      }
+
+      // Revoked before acceptance: still the invitation's fields.
+      await revoke(owning, member.id).expect(204);
+      const revoked = await get(owning, `/v1/staff/members/${member.id}`).expect(200);
+      expect(revoked.body).toMatchObject({
+        status: 'revoked',
+        user: { name: 'Invited Name', locale: 'ar', second_factor_enabled: false },
+      });
+      expect(JSON.stringify(revoked.body)).not.toContain('Stored Elsewhere');
+    });
+
+    it('keeps a driver role on a re-invitation and checks the combination (adversary L-2)', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const driver = await plantMember(accountId, 'Driver', {
+        status: 'revoked',
+        roles: ['driver'],
+      });
+      const again = await invite(owning, {
+        email: driver.email,
+        name: 'Driver',
+        roles: ['viewer'],
+      }).expect(201);
+      expect(again.body).toMatchObject({
+        id: driver.membershipId,
+        status: 'invited',
+        roles: ['viewer', 'driver'],
+      });
+      const cash = await invite(owning, {
+        email: driver.email,
+        name: 'Driver',
+        roles: ['cashier'],
+      }).expect(422);
+      expect(errorOf(cash.body).code).toBe('role_combination_forbidden');
+      expect(await rolesOf(driver.membershipId)).toEqual({
+        roles: ['viewer', 'driver'],
+        status: 'invited',
+      });
+    });
   });
 
   const update = (member: SignedInMember, membershipId: string, body: object) =>
@@ -491,8 +573,8 @@ describe('the member doors over HTTP (PLAT-12 items E to G)', () => {
       expect((await rolesOf(dispatcher.membershipId))?.roles).toEqual(['dispatcher']);
       const second = await plantMember(accountId, 'Second owner', { roles: ['owner'] });
       await update(admin, second.membershipId, { roles: ['admin'] }).expect(403);
-      // Sites of an owner are no owner change.
-      await update(admin, second.membershipId, { site_ids: [site] }).expect(200);
+      // An owner is changed only by an owner, sites included (adversary M-3).
+      await update(admin, second.membershipId, { site_ids: [site] }).expect(403);
       await update(owning, dispatcher.membershipId, { roles: ['owner', 'dispatcher'] }).expect(200);
       await update(owning, second.membershipId, { roles: ['admin'] }).expect(200);
 
@@ -728,6 +810,72 @@ describe('the member doors over HTTP (PLAT-12 items E to G)', () => {
         SELECT count(*)::int AS n FROM core_audit_log
         WHERE action = 'core.member.second_factor_reset' AND account_id = ${accountId}`;
       expect(audits?.n).toBe(0);
+    });
+
+    it('lets only an owner change an owner: sites and the factor reset included (adversary M-3, L-1)', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const site = await plantSite(accountId);
+      const admin = await staff.member(accountId, ['admin']);
+      const second = await staff.member(accountId, ['owner']);
+      await owner`
+        UPDATE core_users SET second_factor_enabled = true, second_factor_phone = ${phone()}
+        WHERE id = ${second.userId}`;
+      const sites = await update(admin, second.membershipId, { site_ids: [site] }).expect(403);
+      expect(errorOf(sites.body).code).toBe('forbidden');
+      const resetting = await reset(admin, second.membershipId, { reason: 'Lost phone' }).expect(
+        403,
+      );
+      expect(errorOf(resetting.body).code).toBe('forbidden');
+      // Nothing changed: the owner's sites, factor and sessions are as they were.
+      const [row] = await owner<{ site_ids: string[] }[]>`
+        SELECT site_ids FROM core_memberships WHERE id = ${second.membershipId}`;
+      expect(row?.site_ids).toEqual([]);
+      const [user] = await owner<{ second_factor_enabled: boolean }[]>`
+        SELECT second_factor_enabled FROM core_users WHERE id = ${second.userId}`;
+      expect(user?.second_factor_enabled).toBe(true);
+      await refresh(second).expect(204);
+      // An owner may do both.
+      await update(owning, second.membershipId, { site_ids: [site] }).expect(200);
+      await reset(owning, second.membershipId, { reason: 'Lost phone' }).expect(204);
+    });
+  });
+
+  describe('budgets of the mailing doors (adversary L-5)', () => {
+    const reset = (member: SignedInMember, membershipId: string) =>
+      send(member, 'post', `/v1/staff/members/${membershipId}/second-factor/reset`, {
+        reason: 'Lost phone',
+      });
+
+    it('limits inviteMember to 30 an hour per account', async () => {
+      const { owning } = await accountWithOwner();
+      const body = () => ({ email: freshEmail('budget'), name: 'Budget', roles: ['viewer'] });
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await invite(owning, body()).expect(201);
+      }
+      const over = body();
+      const refused = await invite(owning, over).expect(429);
+      expect(errorOf(refused.body).code).toBe('rate_limited');
+      expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0);
+      const [none] = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_invitations WHERE email = ${over.email}`;
+      expect(none?.n).toBe(0);
+      // Another account has a budget of its own.
+      await invite((await accountWithOwner()).owning, body()).expect(201);
+    });
+
+    it('limits resetMemberSecondFactor to 10 an hour per account', async () => {
+      const { accountId, owning } = await accountWithOwner();
+      const member = await plantMember(accountId, 'Often reset');
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        await reset(owning, member.membershipId).expect(204);
+      }
+      const refused = await reset(owning, member.membershipId).expect(429);
+      expect(errorOf(refused.body).code).toBe('rate_limited');
+      expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0);
+      const [audits] = await owner<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_audit_log
+        WHERE action = 'core.member.second_factor_reset' AND account_id = ${accountId}`;
+      expect(audits?.n).toBe(10);
     });
   });
 });
