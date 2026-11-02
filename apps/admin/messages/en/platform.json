@@ -14,7 +14,31 @@
     "staff": "Platform staff",
     "audit": "Audit log"
   },
-  "placeholder": {
-    "console": "The platform console is under construction."
+  "no_access": {
+    "title": "You cannot open this page",
+    "description": "Your console role does not allow this page. Ask a super admin for access if you need it.",
+    "home": "Back to the overview"
+  },
+  "home": {
+    "description": "Where the platform team provisions accounts and watches the platform.",
+    "none": "Your role opens no area of the console yet.",
+    "areas": {
+      "accounts": "Provision merchant accounts, act on one with a support reason, suspend or close it.",
+      "rollout": "Choose who gets each module: no one, the allowlisted accounts, or every account."
+    },
+    "consumers": {
+      "title": "Outbox consumers",
+      "description": "Parked and dead events per consumer, and how far each one is behind.",
+      "failed": "The consumers could not be read. Reload the page to try again.",
+      "empty": "No consumer is registered.",
+      "columns": {
+        "consumer": "Consumer",
+        "parked": "Parked",
+        "dead": "Dead",
+        "lag": "Behind by"
+      },
+      "dead_link": "{value} dead",
+      "lag": "{value} s"
+    }
   }
 }

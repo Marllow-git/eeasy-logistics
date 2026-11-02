@@ -86,6 +86,35 @@ describe.each(directions)('frame in $locale ($dir)', ({ locale, dir }) => {
     expect(navigation.closest('aside')?.className).toContain('border-e');
   });
 
+  it('AppShell marks a "prefix" item current on the pages under it, an exact one only on itself', () => {
+    // WEB-4 (lead ruling carried from WEB-3 8.3 #6): a list stays current on its detail pages.
+    route.pathname = '/accounts/0192';
+    renderIn(
+      locale,
+      <AppShell
+        brand="Eeasy"
+        navigation={[
+          {
+            items: [
+              { href: '/accounts', label: 'Accounts', match: 'prefix' },
+              { href: '/acc', label: 'Acc', match: 'prefix' },
+              { href: '/rollout', label: 'Rollout' },
+            ],
+          },
+        ]}
+      >
+        <p>Content</p>
+      </AppShell>,
+    );
+    const navigation = screen.getByRole('navigation', { name: nav.primary });
+    const current = (name: string) =>
+      within(navigation).getByRole('link', { name }).getAttribute('aria-current');
+    expect(current('Accounts')).toBe('page');
+    expect(current('Acc')).toBeNull();
+    expect(current('Rollout')).toBeNull();
+    route.pathname = null;
+  });
+
   it('AppShell opens the navigation as a sheet from the start edge on small screens', () => {
     renderIn(
       locale,

@@ -101,6 +101,10 @@ One commit per item `WEB-4: <letter> <title>` with its §8.0 row, pushed after e
 
 ### 8.0 Counts
 
+| Item | Commit | Tests (red, then green) | Interpretation |
+|---|---|---|---|
+| A foundations | see `git log` (`WEB-4: A …`) | admin `test:unit` (new `routes.test.ts`): red 1 failed / 6 passed with the prefix flag stubbed, green 9/9 (7 cases); ui `shell.test.tsx` prefix case: red 2 failed (ar, en) / 10 passed with the prefix branch removed, green 12/12; ui `tokens.test.ts` 51/51 with the two `--color-support` pairs; admin typecheck, lint clean; ui lint 0 errors (1 known warning, WEB-3 8.2 #7) | the 403 page and the navigation by permission are proved in item C's census (one stack per leg, WEB-3 8.2 #4); 8.2 #1 to #3 |
+
 ### 8.1 Deviations
 
 ### 8.2 Notes

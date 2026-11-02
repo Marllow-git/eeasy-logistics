@@ -11,9 +11,10 @@
     "start": "next start -p 3002",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
-    "test": "pnpm run test:architecture",
+    "test": "pnpm run test:architecture && pnpm run test:unit",
     "test:architecture": "depcruise src tests next.config.ts --config .dependency-cruiser.cjs",
-    "test:census": "playwright test --config tests/census.config.ts"
+    "test:census": "playwright test --config tests/census.config.ts",
+    "test:unit": "node --test --test-reporter=dot \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@eeasy-logistics/config": "workspace:*",
