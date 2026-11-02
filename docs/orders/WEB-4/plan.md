@@ -175,3 +175,20 @@ Fix round 1 beyond the console's paths, from the lead's rulings: `packages/ui/sr
 8. ~~**Direction marks in a reason (8.2 #25)**~~ allowed by the API since 8.2 #28; nothing to strip client-side.
 
 ## 9. Lead review and adversary
+
+Lead: architecture lead (Fable), 2026-11-02. Adversary: Opus, one run (no high, so no re-check under handbook 01).
+
+**Lead review.** Leg 1 accepted on 2026-11-02 (PR #129 at 11f57a5; rulings: the API decodes a percent-encoded UTF-8 support reason, the consumers door answers without Redis, the prefix navigation match, `confirmDisabled`, `CENSUS_API_URL`, the client-side `platform` strings, one theme token, the reason in `sessionStorage` with a janitor, the id tail as the account number). Leg 2 accepted: the members and audit tabs, the outbox with single and bulk replay behind the reason dialog, staff with the TOTP reset and the re-enrolment link page, the platform audit with the reason column, the Arabic release note; 8.2 #15 (the unfiltered outbox and audit lists require a header the API neither checks nor records: the console asks once per tab; a later contract change makes the header optional without `account_id`, 8.3 #6); a replay without the queues answers 500, so the census asserts the request and PLAT-8's tests cover the replay (chore list: the replay door without Redis).
+
+**Adversary, run 1 (CHANGES REQUIRED → fixed in a6b1d28 to ff5fe70, b6d41bd):**
+
+| Finding | Ruling | Result |
+|---|---|---|
+| M-1 a stored support reason outlived a session that ended without a sign-out | fix | keyed `elx:support:<userId>:<accountId>`; `useSessionEndCleanup` (additive in the shared provider) drops every reason on each session end; census and unit tests |
+| L-1 Unicode format characters pass the decoded reason | fix | `\p{Cf}` refused in header and body reasons, except the Arabic letter mark, the left-to-right and right-to-left marks and the zero-width joiners (b6d41bd); the one-decode rule in `errors.md` |
+| L-2 the platform-wide reason is not recorded | fix in copy | the dialog says it is kept for the tab and not recorded; the contract change deferred (8.3 #6) |
+| L-3 a duplicated tab inherits the reason | accepted | web §3.5 names it |
+
+**For later orders.** The outbox and audit lists' header optional without `account_id` (contract); the replay door's answer without queues (chore list); the console's provisioning screens for sites, zones and coverage now that DEL-1 built the doors (a WEB-4 follow-up order); the owner's picks on §7 (`--support` hue, the sessionStorage reading) stand as defaults.
+
+**Verdict:** ready for the gate; two-way door; blast radius the platform console, the shared session provider (additive hook), and two API changes on reasons (decoding; the format-character refusal).
