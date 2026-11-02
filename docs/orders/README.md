@@ -30,7 +30,6 @@ Rules recorded here are owner rulings the pipeline depends on and that the code 
 | INT-2 | #98 | `feat/INT-2-geocoder` | executor worktree | executor-api (Opus) | build (A–D) | native, scratch databases, Redis, the fixture stub | one-way door (one migration, `core_geocode_cache`); adversary no; third executor under the ruling of 2026-11-02; files disjoint from PLAT-13 and WEB-2; research `docs/research/hudhud-geocoding-2026-11.md` (PR #97) |
 | WEB-3 | #102 | `feat/WEB-3-merchant-settings` | executor worktree | executor-web (Opus) | build, leg 1 (A–C) | native stack with the API on 3000, the worker, Mailpit, the WhatsApp stub, `seed:census` | two-way door; adversary no; two legs; third executor under the ruling of 2026-11-02 (files disjoint from PLAT-13 and INT-2); design references `docs/references/design/WEB-3.md` |
 | DEL-4 | #106 | `feat/DEL-4-drivers-devices-auth` | executor worktree | executor-api (Opus) | build, leg 1 (A–C) | native, scratch databases, Redis, the WhatsApp stub, Mailpit | one-way door (one migration: drivers, vehicles, devices); adversary required (Opus); two legs; third executor under the ruling of 2026-11-02 (files disjoint from PLAT-13 leg 2 and WEB-3); the first wave 1 order |
-| CHORE-3 | #112 | `chore/timestamp-migrations` | executor worktree | executor-api (Opus) | build (A–B) | native, scratch databases | two-way door (tooling, the runner); adversary no; owner ruling 2026-11-02 (timestamp migration names); files disjoint from the three orders in flight |
 
 ## Next unblocked (roadmap §1.1)
 
