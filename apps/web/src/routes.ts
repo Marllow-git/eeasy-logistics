@@ -8,7 +8,8 @@ import type { Permission } from '@eeasy-logistics/contracts/unions';
 // navigation and answers `notFound()`. Kept free of runtime imports so `node --test` runs it as is.
 
 /** The `nav` catalogue keys the manifest labels its entries with. */
-export type NavigationLabel = 'home' | 'settings_account';
+export type NavigationLabel =
+  'home' | 'settings_account' | 'settings_members' | 'settings_sites' | 'settings_audit';
 
 /** Sidebar groups, in order; `settings` carries the `nav.settings` heading. */
 export const navigationGroups = ['main', 'settings'] as const;
@@ -38,9 +39,29 @@ export const merchantRoutes = [
     write: 'core.account.manage',
     navigation: { group: 'settings', label: 'settings_account', order: 0 },
   },
+  {
+    path: '/settings/members',
+    read: 'core.members.read',
+    write: 'core.members.manage',
+    navigation: { group: 'settings', label: 'settings_members', order: 1 },
+  },
+  {
+    path: '/settings/sites',
+    read: 'core.sites.read',
+    write: 'core.sites.manage',
+    navigation: { group: 'settings', label: 'settings_sites', order: 2 },
+  },
+  // The new-site form is a write screen: its layout gates on the manage permission (WEB-3 2.8).
+  { path: '/settings/sites/new', read: 'core.sites.manage', write: 'core.sites.manage' },
+  {
+    path: '/settings/audit',
+    read: 'core.audit.read',
+    navigation: { group: 'settings', label: 'settings_audit', order: 3 },
+  },
 ] as const satisfies readonly MerchantRoute[];
 
 export type MerchantPath = (typeof merchantRoutes)[number]['path'];
+type NavigableRoute = Extract<(typeof merchantRoutes)[number], { navigation: object }>;
 
 /** What the manifest reads of the session: `Me.permissions` and `Me.features`. */
 export interface SessionGrants {
@@ -86,7 +107,10 @@ export function navigationFor(
     .map((group) => ({
       group,
       items: merchantRoutes
-        .filter((route) => route.navigation.group === group && routeOpen(route, grants))
+        .filter(
+          (route): route is NavigableRoute =>
+            'navigation' in route && route.navigation.group === group && routeOpen(route, grants),
+        )
         .toSorted((a, b) => a.navigation.order - b.navigation.order)
         .map((route) => ({ href: route.path, label: route.navigation.label })),
     }))

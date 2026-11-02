@@ -21,7 +21,8 @@
     "notifications": "الإشعارات"
   },
   "actions": {
-    "close": "إغلاق"
+    "close": "إغلاق",
+    "cancel": "إلغاء"
   },
   "error_page": {
     "title": "حدث خطأ غير متوقع",

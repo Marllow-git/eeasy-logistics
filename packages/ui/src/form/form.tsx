@@ -1,6 +1,6 @@
 'use client';
 
-import { ApiError, uuidv7 } from '@eeasy-logistics/contracts/http';
+import { ApiError } from '@eeasy-logistics/contracts/http';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createContext, use, useCallback, useId, useState, type ReactNode } from 'react';
 import {
@@ -22,6 +22,7 @@ import { Label } from '../components/label/label';
 import { cn } from '../cn';
 import { useTranslations } from '../intl';
 import { useUnsavedState } from '../session/session-provider';
+import { useIntentKey } from './intent-key';
 
 /** The react-hook-form types a page's sections name, so apps need no direct dependency. */
 export type { FieldValues, UseFormReturn } from 'react-hook-form';
@@ -57,6 +58,10 @@ export function fieldCodeOf(issue: {
   if (issue.origin === 'string') {
     if (issue.code === 'too_small') return issue.input === '' ? 'required' : 'too_short';
     if (issue.code === 'too_big') return 'too_long';
+  }
+  // An empty list where one choice at least is needed (the roles of a member) asks for a choice.
+  if (issue.origin === 'array' && issue.code === 'too_small' && Array.isArray(issue.input)) {
+    return issue.input.length === 0 ? 'required' : 'invalid';
   }
   return 'invalid';
 }
@@ -123,12 +128,7 @@ export function changedValues<Values extends Record<string, unknown>>(
   return changed;
 }
 
-/** The intent's `Idempotency-Key` (web §7.4): kept across retries, renewed after a success. */
-export function useIntentKey(): { key: string; renew: () => void } {
-  const [key, setKey] = useState(() => uuidv7());
-  const renew = useCallback(() => setKey(uuidv7()), []);
-  return { key, renew };
-}
+export { useIntentKey };
 
 export interface SubmitContext<Values> {
   /** The top-level fields the user changed: what a PATCH sends. */

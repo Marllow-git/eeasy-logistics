@@ -27,7 +27,10 @@ export type CensusRole =
   // WEB-3: the owner, a viewer and a site-scoped member of the project's own settings account.
   | 'settings'
   | 'viewer'
-  | 'sitestaff';
+  | 'sitestaff'
+  // WEB-3 leg 2: the member the census invites and the one the seed leaves invited.
+  | 'member'
+  | 'pending';
 
 export function censusEmail(role: CensusRole, project: CensusProject): string {
   return `census-${role}-${project.replace('-', '')}@census.test`;
@@ -48,6 +51,15 @@ export const censusSettingsAccounts = {
   'ar-390': 'متجر الطائف',
   en: 'متجر أبها',
 } as const satisfies Record<CensusProject, string>;
+
+/** The invited name of the seed's pending member (apps/api/src/seed/census.ts). */
+export const censusPendingName = 'ليلى الحربي';
+
+/** The seeded sites of each settings account (apps/api/src/seed/census.ts `censusSites`). */
+export const censusSiteNames = {
+  branch: { ar: 'فرع العليا', en: 'Olaya branch' },
+  warehouse: { ar: 'مستودع السلي', en: 'Al Sulay warehouse' },
+} as const;
 
 export function projectOf(name: string): CensusProject {
   if (name !== 'ar' && name !== 'ar-390' && name !== 'en') throw new Error(`project ${name}`);

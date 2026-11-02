@@ -21,7 +21,8 @@
     "notifications": "Notifications"
   },
   "actions": {
-    "close": "Close"
+    "close": "Close",
+    "cancel": "Cancel"
   },
   "error_page": {
     "title": "Something went wrong",
