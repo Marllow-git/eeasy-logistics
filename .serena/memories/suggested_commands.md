@@ -32,7 +32,7 @@
 - `tools/pr-gate.sh <PR>` before any merge (checks head, CI, plan §8/§9, release note, template). It prints `docs-only: yes|no` from `tools/changed-scope.sh` (the same classifier CI uses to skip build and test lanes on docs-only PRs) and fails a code PR whose required lane did not succeed.
 - `gh pr create` from `.github/pull_request_template.md`; branch `feat/<ORDER-ID>-<slug>` with `docs/orders/<ID>/plan.md` as first commit.
 - `git worktree list` / `git worktree prune` — executor worktrees live under `.claude/worktrees/`.
-- Serena trap (2026-11-01, PLAT-9): the Serena MCP server can be shared by parallel sessions, and another session's `activate_project` silently retargets your symbol edits to its worktree. Re-activate your worktree right before every Serena edit (or edit with file tools) and check `git status` in both worktrees after one.
+- Serena per agent (owner ruling 2026-11-02): each executor definition in `.claude/agents/` starts its own Serena server (`mcpServers` inline, `--project-from-cwd`, dashboard off), so its active project is its worktree and no sibling can retarget it; its tools are `mcp__serena__*`. The lead session keeps the plugin's shared server (`mcp__plugin_serena_serena__*`) and must `activate_project` its own path before a symbol read, since executors no longer touch that server. (Supersedes the 2026-11-01 PLAT-9 trap note.)
 - `.env.example` is sourced by bash (CI, `native-stack.sh`): quote any value with spaces or `<>` (`MAIL_FROM="Name <a@b>"`); `util.parseEnv` strips the quotes.
 
 ## Darwin notes
