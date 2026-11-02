@@ -20,6 +20,10 @@ export { ShiftQuery, type LiveShift } from '../shifts/shift-query.js';
 // trail append per driver and the telemetry retention per account.
 export { noShowGraceMs } from '../shifts/shift-input.js';
 export {
+  deliveryConsumers,
+  SuspendedAccountShiftsConsumer,
+} from '../shifts/account-suspended.consumer.js';
+export {
   sweepAccountShifts,
   type ShiftSweep,
   type SystemShiftDependencies,

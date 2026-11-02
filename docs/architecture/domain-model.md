@@ -727,7 +727,9 @@ Idempotency key is the envelope `id` unless stated. "Webhook" means exposed to m
 | `delivery.liability.recorded` | Delivery | driver block check | driver, signed amount, reason | no |
 | `delivery.deposit.recorded` | Delivery | cash report | site, amount, bank reference | no |
 | `delivery.driver.cash_blocked` | Delivery | dispatcher alert | driver, held amount, since | no |
-| `delivery.shift.started` / `.ended` | Delivery | telemetry gate | driver, vehicle, site | no |
+| `delivery.shift.started` | Delivery | dispatch stream, offers (DEL-6) (DEL-5) | shift, driver, site, vehicle, started at, ad hoc | no |
+| `delivery.shift.ended` | Delivery | dispatch stream, offers (DEL-6) (DEL-5) | shift, driver, site, ended at, ended by (driver, dispatcher, system), reason (`account_suspended`) | no |
+| `delivery.shift.tracking_stale` | Delivery | dispatch board (DEL-6); the driver's `push` row is its effect (DEL-5) | shift, driver, site, last point time, alerted at | no |
 | `wms.inbound_receipt.received` | WMS | none (webhook) | lines, discrepancies | yes |
 | `wms.movement.recorded` | WMS | audit export, analytics | batch id, lines, reason, ref | no |
 | `wms.stock.available_changed` | WMS | channel publication | product, available, on hand | yes |
