@@ -4,6 +4,8 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import type { Config } from '@eeasy-logistics/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import type { Type } from '@nestjs/common';
+import type { TestingModuleBuilder } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { Redis } from 'ioredis';
 import type postgres from 'postgres';
@@ -47,16 +49,29 @@ export interface StaffApp {
 /** A fresh documentation address per call (TEST-NET-2), so no login budget is shared. */
 const address = () => `198.51.100.${randomInt(1, 255)}`;
 
+/** What a suite adds to the app (PLAT-13): test-only controllers, provider overrides. */
+export interface StaffAppOptions {
+  readonly controllers?: Type[];
+  readonly configure?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
+}
+
 /** `config` must carry the signing key, credentials and `TRUST_PROXY_HOPS: '1'`. */
-export async function startStaffApp(config: Config, owner: postgres.Sql): Promise<StaffApp> {
+export async function startStaffApp(
+  config: Config,
+  owner: postgres.Sql,
+  options: StaffAppOptions = {},
+): Promise<StaffApp> {
   const redisUrl = config.redis.url?.reveal();
   if (redisUrl === undefined) throw new Error('REDIS_URL is required for this suite');
   const runId = randomBytes(4).toString('hex');
   const redis = new Redis(redisUrl);
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
+  const builder = Test.createTestingModule({
+    imports: [AppModule.forRoot(config)],
+    controllers: options.controllers ?? [],
+  })
     .overrideProvider(RATE_LIMITER)
-    .useValue(new RateLimiter(redisRateLimitStore(redisUrl), { prefix: `elx-test-${runId}:rl` }))
-    .compile();
+    .useValue(new RateLimiter(redisRateLimitStore(redisUrl), { prefix: `elx-test-${runId}:rl` }));
+  const moduleRef = await (options.configure?.(builder) ?? builder).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>(createHttpAdapter(config), {
     ...httpAppOptions,
     logger: false,

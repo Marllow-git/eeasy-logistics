@@ -7,6 +7,7 @@ import type { OutboxWriter } from '../outbox/outbox-writer.js';
 import type { IdentityStore } from '../platform/identity.repository.js';
 import { countRevocations } from './auth-metrics.js';
 import { enqueueMail, mailLink } from './mail-links.js';
+import { platformLinkMarker } from './platform-sign-in.js';
 import { enrolmentLinkTtlSeconds } from './second-factor.js';
 import { compoundToken, opaqueToken, tokenHash } from './tokens.js';
 
@@ -71,7 +72,8 @@ export class SecondFactorResets {
       await tx.users.resetSecondFactor(user.id);
       const families = await tx.refreshTokens.revokeAll(user.id, 'revoked');
       countRevocations('revoked', families.length);
-      await tx.challenges.consumeOpen(user.id, 'enrolment_link');
+      // A pending platform re-enrolment link (PLAT-13 M-2) is the console's, not this reset's.
+      await tx.challenges.consumeOpenUnmarked(user.id, 'enrolment_link', platformLinkMarker);
       const expiresAt = await tx.challenges.insert({
         id,
         kind: 'enrolment_link',

@@ -15,6 +15,7 @@ import { Operation } from '../../src/modules/kernel/public/index.js';
 import { probeOperations } from '../support/probe-operations.js';
 import { webClientHeaders } from '../support/web-client.js';
 import { ProbeRepository, createProbeTable, dropProbeTable, probeLabels } from './probe-table.js';
+import { insertPlatformSubject } from './identity-fixtures.js';
 import { connectAs, integrationConfig } from './support.js';
 
 // PLAT-6 adversary M-1: a continuation left running after the response (here a timer) must not
@@ -130,7 +131,8 @@ describe('a unit of work is closed once its transaction settles (adversary M-1)'
   });
 
   it('a platform repository kept past the response throws too', async () => {
-    const cookie = `${platformCookie}=${await signAccessToken(signing, 'platform')}`;
+    const sub = await insertPlatformSubject(owner);
+    const cookie = `${platformCookie}=${await signAccessToken(signing, 'platform', { claims: { sub } })}`;
     await http()
       .post('/v1/platform/late-probe')
       .set('Cookie', cookie)

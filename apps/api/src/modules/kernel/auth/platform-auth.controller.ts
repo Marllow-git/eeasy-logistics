@@ -31,6 +31,7 @@ const verifyTotp = operationSchemas.platformVerifyTotp;
 const acceptInvitation = operationSchemas.platformAcceptInvitation;
 const enrolTotp = operationSchemas.platformEnrolTotp;
 const confirmTotp = operationSchemas.platformConfirmTotp;
+const redeemLink = operationSchemas.platformRedeemEnrolmentLink;
 const refresh = operationSchemas.platformRefresh;
 const logout = operationSchemas.platformLogout;
 const getMe = operationSchemas.platformGetMe;
@@ -118,6 +119,22 @@ export class PlatformAuthController {
       facts,
     );
     return this.#answer(started, response);
+  }
+
+  /** `platformRedeemEnrolmentLink` (PLAT-13 M-2): the reset's emailed link plus the password. */
+  @Post('auth/enrolment-links/redeem')
+  @Public()
+  @HttpCode(200)
+  @Operation(redeemLink)
+  async redeemLink(
+    @Input() input: ContractInput<typeof redeemLink>,
+    @AuthRequest() facts: RequestFacts,
+  ): Promise<TotpChallenge> {
+    const step = await this.signIn.redeemEnrolmentLink(
+      { token: input.body.token, password: input.body.password },
+      facts,
+    );
+    return presentChallenge(step);
   }
 
   /** `platformRefresh`: rotates the cookies and slides the 12-hour idle expiry; a refusal clears them. */

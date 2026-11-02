@@ -16,6 +16,7 @@ import type { ChallengeKind } from '../schema/identity.js';
 import type { AuthenticationMethod } from './access-token.js';
 import { authenticationMethods } from './access-token.js';
 import type { PasswordHasher } from './passwords.js';
+import { platformLinkMarker } from './platform-sign-in.js';
 import type { RequestFacts } from './request-facts.js';
 import type { SessionService } from './sessions.js';
 import type { SignInStep, StaffSignIn } from './sign-in.js';
@@ -269,6 +270,8 @@ export class StaffSecondFactor {
         link !== undefined &&
         !link.consumed &&
         !link.amr.includes('pwd') &&
+        // A platform TOTP re-enrolment link is the platform door's only (PLAT-13 adversary M-2).
+        !link.amr.includes(platformLinkMarker) &&
         link.attempts < otpRules.maxAttempts;
       if (!usable) return new Refused('token_invalid');
       if (link.expired) throw new ApiException('token_expired');

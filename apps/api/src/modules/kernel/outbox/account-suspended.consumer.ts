@@ -1,4 +1,6 @@
 import { Logger } from '@nestjs/common';
+import { FeatureCacheBustConsumer } from '../features/feature-cache.consumer.js';
+import type { FeatureCache } from '../features/feature-resolver.js';
 import type { DomainEvent } from './domain-event.js';
 import type { DomainEventConsumer } from './domain-event-consumers.js';
 import { OnDomainEvent } from './domain-event-consumers.js';
@@ -21,7 +23,15 @@ export class AccountSuspendedLogConsumer implements DomainEventConsumer {
   }
 }
 
-/** The kernel's internal consumers in this build. */
-export function kernelConsumers(): DomainEventConsumer[] {
-  return [new AccountSuspendedLogConsumer()];
+/**
+ * The kernel's internal consumers in this build. PLAT-13: the feature cache bust, given the worker's
+ * cache (none: it consumes and does nothing; the platform list only needs its name).
+ */
+export function kernelConsumers(
+  options: { readonly featureCache?: FeatureCache | null } = {},
+): DomainEventConsumer[] {
+  return [
+    new AccountSuspendedLogConsumer(),
+    new FeatureCacheBustConsumer(options.featureCache ?? null),
+  ];
 }
