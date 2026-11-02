@@ -75,5 +75,13 @@
       "with_bank": "Deposited",
       "not_held": "Not cash"
     }
+  },
+  "authz": {
+    "not_permitted": "Your role on this account does not allow this."
+  },
+  "no_access": {
+    "title": "You cannot open this page",
+    "description": "Your role on this account does not allow this page. Ask the account owner or an admin for access if you need it.",
+    "home": "Back to home"
   }
 }
