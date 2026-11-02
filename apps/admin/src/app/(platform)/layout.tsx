@@ -36,8 +36,13 @@ export default async function PlatformLayout({ children }: { children: ReactNode
   const locale: Locale = requested === 'en' ? 'en' : 'ar';
   // The console's screens are client components that read `platform` too: this app's namespace
   // joins the shared ones on the client here, never in apps/web (ADR-0038).
+  // The shared member-role, member and audit labels of `settings` (packages/i18n) serve the
+  // account's Members and Audit tabs and the platform audit log (WEB-4 plan 2.7, 2.11); the rest
+  // of the merchant settings catalogue stays out of the console's client.
+  const { roles, members, audit } = pickMessages(locale, ['settings']).settings;
   const clientMessages = {
     ...pickMessages(locale, ['common', 'nav', 'auth', 'errors']),
+    settings: { roles, members, audit },
     ...appMessages[locale],
   };
   return (

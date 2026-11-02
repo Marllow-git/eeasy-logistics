@@ -9,6 +9,8 @@ import {
   censusMemberInvitee,
   censusPendingMember,
   censusPlatformInvitee,
+  censusOutboxAggregate,
+  censusPlatformHire,
   censusPlatformRoleOf,
   censusPlatformStaff,
   censusProjects,
@@ -137,16 +139,26 @@ describe('the console census accounts and roles (WEB-4)', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('seeds one admin and one support member per project, every other console user a super admin', () => {
+  it('seeds one admin and three support members per project, every other console user a super admin', () => {
     for (const project of censusProjects) {
       const roles = censusPlatformStaff(project).map((member) => member.role);
       expect(roles.filter((role) => role === 'admin')).toHaveLength(1);
-      expect(roles.filter((role) => role === 'support')).toHaveLength(1);
-      expect(roles.filter((role) => role === 'super_admin')).toHaveLength(roles.length - 2);
+      // `support` reads; `colleague` and `relink` are the staff census's targets (leg 2).
+      expect(roles.filter((role) => role === 'support')).toHaveLength(3);
+      expect(roles.filter((role) => role === 'super_admin')).toHaveLength(roles.length - 4);
     }
     expect(censusPlatformRoleOf('operator')).toBe('admin');
     expect(censusPlatformRoleOf('support')).toBe('support');
+    expect(censusPlatformRoleOf('colleague')).toBe('support');
+    expect(censusPlatformRoleOf('relink')).toBe('support');
     expect(censusPlatformRoleOf('accounts')).toBe('super_admin');
+    expect(censusPlatformRoleOf('staff')).toBe('super_admin');
+  });
+
+  it('gives each project its own outbox aggregate and hire address', () => {
+    const aggregates = censusProjects.map((project) => censusOutboxAggregate(project));
+    expect(new Set(aggregates).size).toBe(censusProjects.length);
+    expect(censusPlatformHire('ar-390')).toBe('census-platform-hire-ar390@census.test');
   });
 });
 

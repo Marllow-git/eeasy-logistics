@@ -7,6 +7,7 @@ import { AuditWriter } from '../modules/kernel/audit/audit-writer.js';
 import { Invitations } from '../modules/kernel/auth/invitations.js';
 import { PasswordHasher } from '../modules/kernel/auth/passwords.js';
 import { SecondFactorResets } from '../modules/kernel/auth/second-factor-resets.js';
+import { nextOutboxId } from '../modules/kernel/outbox/outbox-id.js';
 import { OutboxWriter } from '../modules/kernel/outbox/outbox-writer.js';
 import { identityStore } from '../modules/kernel/platform/identity.repository.js';
 import { loadPermissionResolver } from '../modules/kernel/platform/roles.repository.js';
@@ -260,18 +261,29 @@ export const censusPlatformRoles = [
   'rollout',
   'operator',
   'support',
+  // WEB-4 leg 2: super admins for the outbox and the staff screens; two `support` members the
+  // staff census acts on: `colleague` (role changed, then revoked) and `relink` (TOTP reset, then
+  // re-enrolled from the mailed link). Each run puts them back (role, TOTP, not revoked).
+  'outbox',
+  'staff',
+  'colleague',
+  'relink',
 ] as const;
 export type CensusPlatformRole = (typeof censusPlatformRoles)[number];
 
-/** The console role of a census staff member: `super_admin` but for WEB-4's two. */
+/** The console role of a census staff member: `super_admin` but for WEB-4's `admin` and supports. */
 export const censusPlatformRoleOf = (
   role: CensusPlatformRole,
 ): 'super_admin' | 'admin' | 'support' =>
-  role === 'operator' ? 'admin' : role === 'support' ? 'support' : 'super_admin';
+  role === 'operator'
+    ? 'admin'
+    : role === 'support' || role === 'colleague' || role === 'relink'
+      ? 'support'
+      : 'super_admin';
 
 /** The census email of a console role for a project: `census-platform-<role>-<project>@…`. */
 export function censusPlatformEmail(
-  role: CensusPlatformRole | 'invitee',
+  role: CensusPlatformRole | 'invitee' | 'hire',
   project: CensusProject,
 ): string {
   return `census-platform-${role}-${slug(project)}@census.test`;
@@ -300,6 +312,13 @@ export function censusPlatformStaff(project: CensusProject): CensusPlatformStaff
 /** Who the census platform invitation goes to (accepted through its Mailpit link). */
 export const censusPlatformInvitee = (project: CensusProject) =>
   censusPlatformEmail('invitee', project);
+
+/** WEB-4: whom the staff census invites from the console (revoked by every run, so it can again). */
+export const censusPlatformHire = (project: CensusProject) => censusPlatformEmail('hire', project);
+
+/** WEB-4: the aggregate of a project's dead outbox row (deterministic, so a run replaces the last). */
+export const censusOutboxAggregate = (project: CensusProject) =>
+  censusId(`outbox-${slug(project)}`);
 
 /**
  * Why `seed:census` refuses to run in this environment, or undefined when it may: it writes known
@@ -392,7 +411,18 @@ export async function seedCensus(config: Config): Promise<CensusSeedSummary> {
       }
       // The last run's invitees hold a staff row with TOTP: revoked, accepting the new invitation
       // brings the row back without TOTP, so the enrolment view shows again (PLAT-11 8.2 #39).
-      await repository.revokePlatformStaff(platformInvitees);
+      await repository.revokePlatformStaff([
+        ...platformInvitees,
+        ...censusProjects.map((project) => censusPlatformHire(project)),
+      ]);
+      // WEB-4 leg 2: a fresh dead outbox row on each project's console account.
+      for (const project of censusProjects) {
+        await repository.putDeadOutboxRow({
+          id: nextOutboxId(),
+          accountId: censusAccounts[censusConsoleAccounts(project).active].id,
+          aggregateId: censusOutboxAggregate(project),
+        });
+      }
     });
 
     const store = identityStore(pool.db);

@@ -42,7 +42,15 @@ export type PlatformRole =
   | 'lifecycle'
   | 'rollout'
   | 'operator'
-  | 'support';
+  | 'support'
+  // WEB-4 leg 2: super admins for the outbox and staff screens; the staff census's two targets
+  // (`colleague`: role changed then revoked; `relink`: TOTP reset then re-enrolled); `hire` is
+  // invited from the console by mail.
+  | 'outbox'
+  | 'staff'
+  | 'colleague'
+  | 'relink'
+  | 'hire';
 
 export function platformEmail(role: PlatformRole, project: CensusProject): string {
   return `census-platform-${role}-${project.replace('-', '')}@census.test`;
@@ -266,6 +274,11 @@ export function consoleAccount(
     id: censusId(`account-${prefix}-${project.replace('-', '')}`),
     name: consoleNames[project][kind],
   };
+}
+
+/** A console staff member's id (`censusId('platform-<role>-<project>')` of the seed). */
+export function platformUserId(role: PlatformRole, project: CensusProject): string {
+  return censusId(`platform-${role}-${project}`);
 }
 
 /** The merchant web's origin (`PUBLIC_WEB_URL` of `.env.example`): a staff invitation's link. */

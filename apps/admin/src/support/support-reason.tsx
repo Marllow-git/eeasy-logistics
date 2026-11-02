@@ -11,6 +11,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import { clearListReasons } from './list-reasons';
 import { accountOfPath, keepOnly, readReason, supportHeaders, writeReason } from './reason-store';
 
 // The tab's support reason in React (web §3.5; WEB-4 plan 2.4). `SupportReasonJanitor` (in the
@@ -38,6 +39,7 @@ export function SupportReasonJanitor() {
   }, [pathname]);
   const clear = useCallback(() => {
     keepOnly(window.sessionStorage, undefined);
+    clearListReasons();
     notify();
   }, []);
   useSignOutCleanup(clear);

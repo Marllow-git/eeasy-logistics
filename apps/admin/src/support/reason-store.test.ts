@@ -73,12 +73,13 @@ void describe('the support header', () => {
     assert.equal(headerReason('Ticket 4411'), 'Ticket 4411');
     assert.equal(headerReason('بلاغ ٤٤'), encodeURIComponent('بلاغ ٤٤'));
     assert.equal(decodeURIComponent(headerReason('بلاغ رقم 4411')), 'بلاغ رقم 4411');
+    assert.equal(headerReason('50%20 off'), encodeURIComponent('50%20 off'));
     assert.deepEqual(supportHeaders(undefined), {});
     assert.deepEqual(supportHeaders('Ticket 4411'), { 'X-Support-Reason': 'Ticket 4411' });
   });
 
   void it('measures what the API counts', () => {
     assert.equal(headerReasonLength('  Ticket  '), 6);
-    assert.equal(headerReasonLength('بلاغ'), encodeURIComponent('بلاغ').length);
+    assert.equal(headerReasonLength('بلاغ'), 4);
   });
 });

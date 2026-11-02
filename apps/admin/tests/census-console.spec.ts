@@ -18,6 +18,7 @@ import {
   projectOf,
   type CensusProject,
 } from './census/session';
+import type { Request, Route } from '@playwright/test';
 
 // Census of the console screens (WEB-4 plan 2.13, leg 1): the home and navigation by permission
 // with the 403 page; the accounts list; provisioning until the owner accepts and the account is
@@ -340,7 +341,7 @@ test('an admin sets a flag with a reason and cannot change a rollout mode', asyn
   });
 
   const account = consoleAccount('active', project());
-  await openAccount(page, locale, account);
+  const reason = await openAccount(page, locale, account);
   await page.getByRole('link', { name: p(locale, 'account.tabs.flags') }).click();
   const feature = p(locale, 'features.wms');
   const toggle = page.getByRole('switch', { name: p(locale, 'flags.switch_label', { feature }) });
@@ -357,6 +358,15 @@ test('an admin sets a flag with a reason and cannot change a rollout mode', asyn
   await expect(toggle).toHaveAttribute('aria-checked', wasOn ? 'false' : 'true');
   await checkPage(page, locale);
   await expect(page).toHaveScreenshot('console-flags.png', { fullPage: true, mask: masks(page) });
+
+  // The account's Audit tab shows the change with its reason (leg 1 8.3 #3).
+  await page.getByRole('link', { name: p(locale, 'account.tabs.audit') }).click();
+  const log = page.getByRole('table', { name: p(locale, 'audit.account_table_label') });
+  const changed = log
+    .getByRole('row')
+    .filter({ hasText: message(locale, 'settings', 'audit.actions.core_feature_flag_changed') })
+    .first();
+  await expect(changed).toContainText(reason);
 });
 
 test('a super admin changes a rollout mode with a reason', async ({ page, locale }) => {
@@ -384,4 +394,148 @@ test('a super admin changes a rollout mode with a reason', async ({ page, locale
       group.getByRole('radio', { name: p(locale, `rollout.modes.${mode}`), exact: true }),
     ).toBeChecked();
   }
+});
+
+// Leg 2 (WEB-4 plan 2.7, 2.8): the account's members and audit log under the banner, read by a
+// support member; the outbox with its account filter, the seeded dead row's drawer and the two
+// replays. The census API runs without the queues (lead ruling on 8.3 #2): `platformListConsumers`
+// answers, but a replay needs BullMQ, so the census asserts each replay request (reason, intent
+// key, client header) and answers it itself; the API's integration suite covers the replay.
+
+test('support reads the members and the audit log of an account under the banner', async ({
+  page,
+  locale,
+}) => {
+  await platformSignIn(page, 'support', project());
+  const account = consoleAccount('active', project());
+  const reason = await openAccount(page, locale, account);
+  await page.getByRole('link', { name: p(locale, 'account.tabs.members') }).click();
+  await expect(
+    page.getByRole('heading', { level: 2, name: p(locale, 'members.title') }),
+  ).toBeVisible();
+  const members = page.getByRole('table', { name: p(locale, 'members.table_label') });
+  await expect(members).toBeVisible();
+  await expect(page.getByRole('region', { name: p(locale, 'account.banner.label') })).toContainText(
+    reason,
+  );
+  await page.waitForLoadState('networkidle');
+  await checkPage(page, locale);
+  await expect(page).toHaveScreenshot('console-members.png', { fullPage: true, mask: masks(page) });
+
+  await page.getByRole('link', { name: p(locale, 'account.tabs.audit') }).click();
+  const log = page.getByRole('table', { name: p(locale, 'audit.account_table_label') });
+  // Every read under the door is audited with the reason: the members read above among them.
+  const read = log
+    .getByRole('row')
+    .filter({
+      hasText: message(locale, 'settings', 'audit.actions.platform_cross_tenant_accessed'),
+    })
+    .first();
+  await expect(read).toContainText(reason);
+  await page.waitForLoadState('networkidle');
+  await checkPage(page, locale);
+  // The log grows with every run: the viewport only, its rows masked.
+  await expect(page).toHaveScreenshot('console-account-audit.png', {
+    mask: [...masks(page), log.locator('tbody')],
+  });
+});
+
+/** Answers a replay request in the census and keeps it for the assertions. */
+function answerReplay(page: Page, path: RegExp, status: number, body: () => unknown) {
+  const seen: Request[] = [];
+  void page.route(path, async (route: Route) => {
+    seen.push(route.request());
+    await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body()) });
+  });
+  return seen;
+}
+
+test('outbox: an account filter with a reason, the dead row, its drawer and the replays', async ({
+  page,
+  locale,
+}) => {
+  await platformSignIn(page, 'outbox', project());
+  await page.goto('/outbox');
+  // The contract requires a reason on the platform-wide list too (8.2): asked once in the tab.
+  const wide = page.getByRole('alertdialog', {
+    name: p(locale, 'filter_gate.title', { name: p(locale, 'filter_gate.all_accounts') }),
+  });
+  await wide.getByRole('textbox').fill(reasonFor(locale, 'outbox overview'));
+  await wide.getByRole('button', { name: p(locale, 'filter_gate.confirm') }).click();
+  await expect(page.getByRole('table', { name: p(locale, 'outbox.table_label') })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: p(locale, 'nav.outbox') }),
+  ).toBeVisible();
+  const bulk = page.getByRole('button', { name: p(locale, 'outbox.bulk.button') });
+  await expect(bulk).toBeDisabled();
+  await expect(page.getByText(p(locale, 'outbox.bulk.needs_filter'))).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  await checkPage(page, locale);
+  // The outbox grows with every run: the viewport only, its rows masked.
+  await expect(page).toHaveScreenshot('console-outbox.png', {
+    mask: [...masks(page), page.getByRole('table').locator('tbody')],
+  });
+
+  const account = consoleAccount('active', project());
+  await page.goto(`/outbox?account_id=${account.id}&status=dead&kind=webhook`);
+  const gate = page.getByRole('alertdialog', {
+    name: p(locale, 'filter_gate.title', { name: account.name }),
+  });
+  await expect(gate).toBeVisible();
+  const reason = reasonFor(locale, 'outbox');
+  await gate.getByRole('textbox').fill(reason);
+  await gate.getByRole('button', { name: p(locale, 'filter_gate.confirm') }).click();
+  const table = page.getByRole('table', { name: p(locale, 'outbox.table_label') });
+  const dead = table.getByRole('row').filter({ hasText: 'http_503' }).first();
+  await expect(dead).toBeVisible();
+  await expect(dead).toContainText(p(locale, 'outbox.statuses.dead'));
+
+  await dead.click();
+  const drawer = page.getByRole('dialog', { name: 'core.account.suspended' });
+  await expect(drawer.getByLabel(p(locale, 'outbox.drawer.envelope'))).toContainText(
+    'WEB-4 outbox census row',
+  );
+  await page.waitForLoadState('networkidle');
+  await checkPage(page, locale);
+  await expect(page).toHaveScreenshot('console-outbox-drawer.png', {
+    mask: [
+      ...masks(page),
+      drawer.getByLabel(p(locale, 'outbox.drawer.envelope')),
+      drawer.locator('dd bdi'),
+      drawer.locator('p bdi'),
+    ],
+  });
+
+  // One row: never one click; the reason is the tab's, sent in the body with the intent's key.
+  const replays = answerReplay(page, /\/v1\/platform\/outbox\/[^/]+\/replay$/, 200, () => ({}));
+  await drawer.getByRole('button', { name: p(locale, 'outbox.replay.button') }).click();
+  const confirm = page.getByRole('alertdialog');
+  await expect(confirm.getByRole('textbox')).toHaveValue(reason);
+  await confirm.getByRole('button', { name: p(locale, 'outbox.replay.confirm') }).click();
+  await expect(drawer.getByRole('status')).toHaveText(p(locale, 'outbox.replay.done'));
+  expect(replays).toHaveLength(1);
+  const one = replays[0]!;
+  expect(one.method()).toBe('POST');
+  expect(one.postDataJSON()).toEqual({ reason });
+  expect(await one.headerValue('idempotency-key')).toMatch(/^[0-9a-f-]{36}$/);
+  expect(await one.headerValue('x-el-client')).toBe('web');
+  await page.keyboard.press('Escape');
+
+  // The filtered set: the account and the kind name it; the count comes back from the API.
+  const bulks = answerReplay(page, /\/v1\/platform\/outbox\/replay-dead$/, 202, () => ({
+    matched: 1,
+    replayed: 1,
+  }));
+  await expect(bulk).toBeEnabled();
+  await bulk.click();
+  const confirmBulk = page.getByRole('alertdialog');
+  await expect(confirmBulk).toContainText(p(locale, 'outbox.bulk.limit'));
+  await confirmBulk.getByRole('button', { name: p(locale, 'outbox.bulk.confirm') }).click();
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: p(locale, 'outbox.bulk.done', { matched: '1', replayed: '1' }) }),
+  ).toBeVisible();
+  expect(bulks).toHaveLength(1);
+  expect(bulks[0]!.postDataJSON()).toEqual({ account_id: account.id, kind: 'webhook', reason });
 });

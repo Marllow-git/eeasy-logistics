@@ -11,6 +11,7 @@ import {
   coreUsers,
 } from '../modules/kernel/schema/identity.js';
 import { coreOtpChallenges } from '../modules/kernel/schema/otp-challenges.js';
+import { coreOutbox } from '../modules/kernel/schema/outbox.js';
 import type { CensusAccountKey, CensusAccountStatus, CensusSite, CensusUser } from './census.js';
 
 /**
@@ -151,6 +152,38 @@ export class CensusIdentitiesRepository extends PlatformRepository<typeof coreUs
       .onConflictDoUpdate({
         target: corePlatformStaff.userId,
         set: { ...staff, updatedAt: sql`now()` },
+      });
+  }
+
+  /**
+   * WEB-4 leg 2: one dead `webhook` row of a console census account, fresh each run, so the
+   * outbox census lists it, opens its drawer and replays it. The rows of the last run on the same
+   * aggregate (dead, or pending after a replay) are deleted first: elx_platform holds DELETE on
+   * `core_outbox` (0007; used otherwise by the pruning job only), and the seed runs on local and ci
+   * stacks only. The envelope is a census marker, never a real effect.
+   */
+  async putDeadOutboxRow(row: {
+    id: string;
+    accountId: string;
+    aggregateId: string;
+  }): Promise<void> {
+    await this.unscoped().delete(coreOutbox).where(eq(coreOutbox.aggregateId, row.aggregateId));
+    await this.unscoped()
+      .insert(coreOutbox)
+      .values({
+        id: row.id,
+        type: 'core.account.suspended',
+        eventVersion: 1,
+        accountId: row.accountId,
+        aggregateType: 'account',
+        aggregateId: row.aggregateId,
+        sequence: 1,
+        payload: { census: true, note: 'WEB-4 outbox census row' },
+        kind: 'webhook',
+        status: 'dead',
+        attempts: 5,
+        lastError: 'http_503: endpoint unavailable',
+        enqueuedAt: sql`now()`,
       });
   }
 

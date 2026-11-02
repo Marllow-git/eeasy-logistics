@@ -42,16 +42,17 @@ export function keepOnly(storage: ReasonStorage, keep: string | undefined): void
 
 /**
  * The reason as the `X-Support-Reason` header carries it. A fetch header takes Latin-1 only, so a
- * reason with any other character (Arabic) travels percent-encoded as UTF-8 (8.2: the API stores
- * it as sent until it decodes the header; §8.3).
+ * reason with any other character (Arabic) travels percent-encoded as UTF-8, and so does one with a
+ * `%`, which the API would otherwise try to decode (the `SupportReason` contract note; the API
+ * decodes it and audits the text as typed).
  */
 export function headerReason(reason: string): string {
-  return /[^\u0020-\u00ff]/u.test(reason) ? encodeURIComponent(reason) : reason;
+  return /[^\u0020-\u00ff]|%/u.test(reason) ? encodeURIComponent(reason) : reason;
 }
 
-/** The header's length as the API counts it: the code points of what is sent. */
+/** The header's length as the API counts it: the code points of the decoded, trimmed text. */
 export function headerReasonLength(reason: string): number {
-  return [...headerReason(reason.trim())].length;
+  return [...reason.trim()].length;
 }
 
 /** The headers of a cross-tenant call: the tab's reason, or none (an optional-reason door). */
