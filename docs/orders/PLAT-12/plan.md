@@ -198,3 +198,23 @@ Fix round 1 (adversary pass on `26d2296`, three mediums and six lows; the lead's
 - Fix round 1, not done: M-1 had no red run on `26d2296` (#39: the row already rode on the platform transaction; the red shown is a mutation); the accepted lows L-3, L-4 and L-6 change nothing (#36 to #38).
 
 ## 9. Lead review and adversary
+
+Lead review (Fable), 2026-11-02, both legs against §2 and §8.2 on heads 73ffbf3 (leg 1), 26d2296 (leg 2) and c89076b (the fix round): no defect found in the order's own code. Leg 1 (A to D): the two-pool rule applied (`FOR NO KEY UPDATE`, the advisory lock, the platform read of the limit without a lock), `sentBodyFields` for the PATCH merge, the page helper generalised from PLAT-7 with the audit tests byte-unchanged, the `Base` read-only generator fix, the activate-side limit check; 8.1 deviations #4, #5, #11, #12, #13, #14 accepted, lead note #18 added. Leg 2 (E to H): the account from the token in every door, the owner rules as one pure function under the membership write lock, the caller's `token_version` re-read before any lock, sessions ended per membership, the member page in memory (#21) accepted for wave 0; 8.1 deviations (no `version` on memberships, the in-memory page, the doors in `AuthModule`, the reset's token re-read, 15 scenarios) accepted. Fix round: the two reversed assertions (an admin changing an owner's sites, the `owner_rule` unit case) follow the ruling below; `containsPattern` removed with its last caller.
+
+Adversary pass (Fable, read-only, head 26d2296): **PASS**, no critical or high. Rulings:
+
+| Finding | Severity | Abuse | Ruling | Fixed in |
+|---|---|---|---|---|
+| M-1 | medium | the settings audit row believed to commit with the app transaction, not the platform write | did not reproduce (`withPlatformUnitOfWork` drops the tenant context, so `record` already wrote on the platform side); the path made explicit with `recordIn(uow)` and a test that a rolled-back app transaction leaves the row | c89076b |
+| M-2 | medium | an invited membership presented an existing user of another tenant (name, factor state): an email probe | fix: invited and revoked memberships show the invitation's name and email, `second_factor_enabled: false`, the account's locale, the membership's timestamps | c89076b |
+| M-3 | medium | an admin could reset an owner's second factor, ending every session on every account | fix: an owner's membership is changed in any way only by an owner | c89076b |
+| L-1 | low | an admin could end an owner's sessions through a `site_ids` change | fix: as M-3 | c89076b |
+| L-2 | low | a re-invite dropped a `driver` role | fix: `createStaff` keeps it and checks the combination | c89076b |
+| L-3 | low | the member page is O(members) in memory | accepted for wave 0 (8.2 #36); DEL-4 moves it to a SQL keyset or caps it before drivers join | – |
+| L-4 | low | an admin may change `second_factor_required` | accepted: §7 #3's default until the owner rules (8.2 #37) | – |
+| L-5 | low | invitations and resets as a mail cannon | fix: per-account hourly budgets (30 invitations, 10 resets), refused calls counted | c89076b |
+| L-6 | low | `core_usage_counters` writable by elx_app with no door | accepted as recorded (8.2 #38); DEL-2 adds the increment as an UPSERT in a repository method and the architecture test forbids direct writes then | – |
+
+No re-check (standing ruling 2026-11-01). Identity §9 items 2 (tenancy from the token), 3 (revocation within one token lifetime: sessions ended per membership on every change) and 5 (budgets by identity: the account) answered; 1, 4 and 6 are PLAT-11's.
+
+Gate: PR #89 marked ready on c89076b; merged by the lead under the one-way-door delegation of 2026-11-01 after `tools/pr-gate.sh 89` passed on the head it reports.
