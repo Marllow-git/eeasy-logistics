@@ -209,7 +209,7 @@ export class PlatformStaffService {
    * under a lock that serialises every role change; an unchanged role writes nothing. A change ends
    * the target's platform sessions (every platform family revoked, as PLAT-12's member change does),
    * so the new role applies from the next sign-in; a revoked row keeps its role and TOTP, and a
-   * later grant goes through PLAT-11's `grant` (which clears a revoked row's TOTP: enrol again).
+   * later role restores it with the TOTP kept (adversary round 2: a lost device is a TOTP reset).
    */
   async setRoles(
     userId: string,
@@ -237,7 +237,7 @@ export class PlatformStaffService {
     if (refusal !== undefined) throw this.forbidden('platformSetStaffRoles', refusal);
     if (next === current) return viewOf(target);
     if (next === null) await tx.platformStaff.revoke(userId);
-    else if (current === null) await tx.platformStaff.grant(userId, next, caller.id);
+    else if (current === null) await tx.platformStaff.restore(userId, next, caller.id);
     else await tx.platformStaff.setRole(userId, next, caller.id);
     const families = await tx.refreshTokens.revokeAll(userId, 'revoked', {
       surface: 'platform',
