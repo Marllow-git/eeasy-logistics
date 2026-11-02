@@ -236,3 +236,25 @@ Fix round 1:
 - **Not run locally:** the Compose ci profile; the web and admin builds and censuses (untouched code).
 
 ## 9. Lead review and adversary
+
+Lead review (Fable), 2026-11-02, both legs against §2 and §8.2 on head 230f839 then 7cbe6fe: no defect found in the order's own code. Leg 1 (items A to E) was reviewed on 2026-11-01 before the leg 2 brief; its three findings traced to PLAT-9's callback door and were fixed on main by PR #84. Leg 2 (F to J): the three-transaction code check (#29), the enrolment challenge as the enrolment row (#32), the reset marker (#33), TOTP on `node:crypto` pinned to RFC 6238 (#36, wording corrected: the oldest matching step above `totp_last_step` is accepted), the bootstrap refusal set under the advisory lock (#44), the purge (#46) and the sealed links with the aggregate id from the row (#48) all match the plan. The `web-build-census` lane change is proven by CI on the PR. The one changed existing test (`sign-in.http.test.ts`, the switch case) keeps its assertions and only enrols the phone after sign-in, which M-2 requires.
+
+Adversary pass (Fable, read-only, head 230f839, identity §9 in full): **PASS**, no critical or high. Rulings:
+
+| Finding | Severity | Abuse | Ruling | Fixed in |
+|---|---|---|---|---|
+| M-1 | medium | an enrolment naming a victim's phone superseded, cooled down and spent the attempts of that phone's live sign-in code (shared OTP purpose) | fix: own purpose `second_factor_enrol`, migration 0013; the per-phone budgets stay shared as the adversary recommended, so one enrolment token can still exhaust a phone's hourly request budget (8.2 #57), accepted as low | 7cbe6fe |
+| M-2 | medium | a member manager's reset dropped the user's opt-in factor on every other account until re-enrolment | fix: the reset marker asks for enrolment on every membership; the session revocation at reset stays (decision 2.8, a lost phone) | 7cbe6fe |
+| M-3 | medium | `createStaff` and `createPlatform` returned the accept link; a later door echoing it would let the inviter accept on the invitee's behalf | fix: ids only; `bootstrap` alone returns the link through an unexported type | 7cbe6fe |
+| L-1 | low | the grace handed out an already-used successor, leading a late tab into a family revocation | fix: a used successor answers `token_invalid` without revoking | 7cbe6fe |
+| L-2 | low | the staff lookup ran only for a known email (timing) | fix: unconditional lookup with a fixed absent id | 7cbe6fe |
+| L-3 | low | a switch that needed a factor left the old family alive | fix: the family ends before the factor is asked; a user who abandons the factor signs in again | 7cbe6fe |
+| L-4 | low | platform sessions slide with no absolute cap | accepted: identity §3.3 is the recorded design; owner question §7 #6 | – |
+| L-5 | low | `login_email` 10/h charged first lets anyone lock an email for an hour | accepted: decision 2.11, §7 #4 | – |
+| L-6 | low | platform used refresh rows are purged 7 days after their own expiry while the family slides, so a very old stolen token fails closed without signalling theft | accepted (8.2 #55); revisit with the cap of §7 #6 | – |
+| L-7 | low | `getMe` does not re-read membership status or staff revocation inside the 15-minute token window | accepted: identity §4 window (8.2 #56) | – |
+| L-8 | low | bootstrap for a disabled user's email printed an unacceptable link and blocked reruns for 72 h | fix: refused before any write | 7cbe6fe |
+
+No re-check (standing ruling 2026-11-01: a second adversary run only after a critical or high). Identity §9 items: 1 (same body and cost for unknown and disabled users) 2.2 and L-2; 2 (tenancy from the token) `acc` set only by select and switch; 3 (revocation within one token lifetime) 2.6, L-3 and L-7; 4 (secrets hashed or encrypted) 2.3, 2.9, item J; 5 (budgets keyed by identity) 2.11; 6 (audit of every session event) 2.7, 2.12.
+
+Gate: PR #83 marked ready; merged by the lead under the one-way-door delegation of 2026-11-01 after `tools/pr-gate.sh 83` passed on the head it reports.
