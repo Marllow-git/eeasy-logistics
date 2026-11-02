@@ -12,8 +12,10 @@ export type NavigationItem = {
   href: string;
   label: string;
   icon?: ReactNode;
-  /** Defaults to the current path being exactly `href`. */
+  /** Defaults to the current path being exactly `href` (or under it, with `match` "prefix"). */
   active?: boolean;
+  /** "prefix": also current on every path under `href` (a list and its detail pages). */
+  match?: 'exact' | 'prefix';
   /** Sub-pages, shown as an indented sub-tree only while this item or one of them is current. */
   children?: NavigationItem[];
 };
@@ -22,7 +24,9 @@ export type NavigationItem = {
 export type NavigationGroup = { label?: string; items: NavigationItem[] };
 
 function isCurrent(item: NavigationItem, pathname: string | null): boolean {
-  return item.active ?? pathname === item.href;
+  if (item.active !== undefined) return item.active;
+  if (pathname === item.href) return true;
+  return item.match === 'prefix' && pathname !== null && pathname.startsWith(`${item.href}/`);
 }
 
 function NavigationLink({
