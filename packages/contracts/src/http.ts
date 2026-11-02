@@ -257,6 +257,14 @@ async function unauthorizedCode(response: Response): Promise<string | undefined>
   return isRecord(body) && typeof body.code === 'string' ? body.code : undefined;
 }
 
+/**
+ * A 401 that means the page has no session any more: a token the API refuses (`token_invalid`), or
+ * no credential at all (`unauthenticated`: the cookies were cleared by a refused refresh, maybe in
+ * another tab).
+ */
+const sessionGone = (code: string | undefined) =>
+  code === 'token_invalid' || code === 'unauthenticated';
+
 type RefreshOutcome = 'refreshed' | 'refused' | 'suspended' | 'failed';
 
 /** The in-flight refresh of this tab when Web Locks are missing (none we support; guarded). */
@@ -275,7 +283,8 @@ function defaultLocks(): RefreshLocks | null {
  * browser through the Web Locks API (`lockName`): the lock holder calls the surface's refresh, and
  * a request that waited for the lock first retries itself (another tab may have refreshed), then
  * refreshes only if it still gets `token_expired`. The original request is retried once. A
- * `401 token_invalid` or a refused refresh calls `onSessionEnded`. The session doors themselves
+ * `401 token_invalid` or `unauthenticated` (the cookies are gone) or a refused refresh calls
+ * `onSessionEnded`, once per request; concurrent requests share the one dialog the app shows. The session doors themselves
  * (sign-in, refresh, …), whose 401 codes speak of their own tokens, never refresh.
  */
 export function createSessionFetcher(options: SessionFetcherOptions): Fetcher {
@@ -347,7 +356,7 @@ export function createSessionFetcher(options: SessionFetcherOptions): Fetcher {
     if (response.status !== 401 || isDoor) return response;
 
     const code = await unauthorizedCode(response);
-    if (code === 'token_invalid') {
+    if (sessionGone(code)) {
       return (await ended('token_invalid')) ? send(path, request) : response;
     }
     if (code !== 'token_expired') return response;
@@ -361,7 +370,7 @@ export function createSessionFetcher(options: SessionFetcherOptions): Fetcher {
       return refresh();
     });
     if (outcome instanceof Response) {
-      if ((await unauthorizedCode(outcome)) !== 'token_invalid') return outcome;
+      if (!sessionGone(await unauthorizedCode(outcome))) return outcome;
       return (await ended('token_invalid')) ? send(path, request) : outcome;
     }
     if (outcome === 'refreshed') return send(path, request);

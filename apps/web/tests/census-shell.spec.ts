@@ -13,6 +13,7 @@ import {
   test,
   type Locale,
 } from './census/helpers';
+import { projectOf, signIn } from './census/session';
 
 // Census of the shell (WEB-1 plan 2.9): the placeholder routes of the three groups render inside
 // the shared shell in the project's locale, pass the locale, accessibility and security checks,
@@ -31,12 +32,15 @@ const routes = [
 
 for (const route of routes) {
   test(`${route.name} (${route.path}) in the project locale`, async ({ page, locale }) => {
+    // WEB-2: the merchant area needs a session (the layout reads getMe).
+    if (route.group === 'merchant')
+      await signIn(page, 'staff', projectOf(test.info().project.name));
     const traffic = recordTraffic(page);
     const response = await page.goto(route.path);
     expect(response?.status(), `HTTP status of ${route.path}`).toBe(200);
     await settle(page);
 
-    expectSecurityHeaders(response);
+    expectSecurityHeaders(response, route.group);
     await expectLocale(page, locale);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(
       message(locale, route.title[0], route.title[1]),

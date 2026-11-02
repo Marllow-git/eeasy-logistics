@@ -250,6 +250,7 @@ describe('createSessionProxy (web §3.2)', () => {
     expect(response.headers.get('content-security-policy')).toContain("'nonce-bm9uY2U='");
     expect(response.headers.get('x-frame-options')).toBe('DENY');
     expect(response.headers.get('x-middleware-request-x-nonce')).toBe('bm9uY2U=');
+    expect(response.headers.get('x-middleware-request-x-el-path')).toBe('/orders');
     expect(response.headers.get('x-middleware-request-content-security-policy')).toContain(
       "'nonce-bm9uY2U='",
     );

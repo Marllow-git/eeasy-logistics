@@ -6,9 +6,12 @@ import { defineConfig, devices } from '@playwright/test';
  * and screenshot baselines. Projects: `ar` at 1440 px and 390 px (Arabic is the primary layout,
  * reviewed first), `en` at 1440 px.
  *
- * The server must already listen on 127.0.0.1:3001, the web port of `.env.example`
- * (`PUBLIC_WEB_URL`): locally `pnpm --filter web build && pnpm --filter web start -p 3001`, in CI the
- * standalone server. The address is fixed rather than read from the environment, which only
+ * The server must already listen on port 3001 and be reached as `http://localhost:3001`, the
+ * `PUBLIC_WEB_URL` of `.env.example`: the API accepts a staff write only with that exact Origin
+ * (ADR-0032), and the browser keeps the API's `Secure` session cookies on localhost (WEB-2). Locally
+ * `pnpm --filter web build && pnpm --filter web start -p 3001`, in CI the standalone server; with the
+ * API, its worker, Mailpit and the WhatsApp stub of the stack, and `seed:census` run first
+ * (tests/census/session.ts). The address is fixed rather than read from the environment, which only
  * packages/config may read (AGENTS.md).
  *
  * A census spec joins `testMatch` in the PR that adds it (handbook 03), so an unlisted spec reports
@@ -16,7 +19,12 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: '.',
-  testMatch: ['census-shell.spec.ts', 'census-errors.spec.ts', 'census-analytics.spec.ts'],
+  testMatch: [
+    'census-shell.spec.ts',
+    'census-errors.spec.ts',
+    'census-analytics.spec.ts',
+    'census-auth.spec.ts',
+  ],
   outputDir: '../test-results',
   forbidOnly: true,
   retries: 0,
@@ -29,7 +37,7 @@ export default defineConfig({
   },
   use: {
     ...devices['Desktop Chrome'],
-    baseURL: 'http://127.0.0.1:3001',
+    baseURL: 'http://localhost:3001',
     trace: 'retain-on-failure',
   },
   projects: [

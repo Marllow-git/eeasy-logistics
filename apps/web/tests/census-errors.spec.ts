@@ -13,6 +13,7 @@ import {
   settle,
   test,
 } from './census/helpers';
+import { projectOf, signIn } from './census/session';
 
 // Census of the error pages and the Sentry tunnel (PLAT-14 plan 2.9, web §10.4): each group's
 // error page renders inside its frame and the root one full-page, in the project's locale, with
@@ -35,6 +36,10 @@ for (const fault of faults) {
     page,
     locale,
   }) => {
+    // WEB-2: the merchant area needs a session (the layout reads getMe).
+    if (fault.shell === 'navigation') {
+      await signIn(page, 'staff', projectOf(test.info().project.name));
+    }
     const response = await page.goto(fault.path);
     expect(response?.status(), `HTTP status of ${fault.path}`).toBe(500);
     await settle(page);

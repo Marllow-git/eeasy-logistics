@@ -14,6 +14,7 @@ import {
   sessionPaths,
   uuidv7,
   type RefreshLocks,
+  type SessionEndReason,
 } from '../src/http.ts';
 
 const origin = 'http://localhost:3001';
@@ -46,7 +47,11 @@ const server = setupServer(
     api.refreshes++;
     // The refresh takes a moment, so concurrent requests overlap it.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    if (api.refreshAnswer === 401) return error(401, 'token_invalid');
+    if (api.refreshAnswer === 401) {
+      // A refused refresh clears the cookies (PLAT-11 plan 2.6).
+      browserToken = '';
+      return error(401, 'token_invalid');
+    }
     if (api.refreshAnswer === 403) return error(403, 'account_suspended');
     api.token = `a${api.refreshes + 1}`;
     browserToken = api.token;
@@ -61,6 +66,7 @@ const server = setupServer(
       client: request.headers.get('x-el-client'),
     });
     if (params.id === 'revoked') return error(401, 'token_invalid');
+    if (token === undefined || token === '') return error(401, 'unauthenticated');
     if (token !== api.token) return error(401, 'token_expired');
     return HttpResponse.json({ id: params.id });
   }),
@@ -179,6 +185,8 @@ describe('createSessionFetcher (WEB-2 plan 2.4)', () => {
       code: 'token_expired',
     });
     expect(onSessionEnded).toHaveBeenLastCalledWith('refresh_refused');
+    // The refused refresh cleared the cookies; the browser holds an expired session again.
+    browserToken = 'a0';
     api.refreshAnswer = 403;
     await expect(get(fetcher({ onSessionEnded }), '1')).rejects.toMatchObject({ status: 401 });
     expect(onSessionEnded).toHaveBeenLastCalledWith('account_suspended');
@@ -198,6 +206,28 @@ describe('createSessionFetcher (WEB-2 plan 2.4)', () => {
     });
     expect(result.data.id).toBe('5');
     expect(api.seen.map((seen) => seen.key)).toEqual(['key-2', 'key-2']);
+  });
+
+  it('resumes both of two concurrent calls after one sign-in when the refresh was refused', async () => {
+    api.refreshAnswer = 401;
+    let resumed: (() => void) | undefined;
+    const signedIn = new Promise<void>((resolve) => (resumed = resolve));
+    const onSessionEnded = vi.fn(async (_reason: SessionEndReason) => {
+      // The app shows one dialog for both; the user signs in once.
+      await signedIn;
+      return true;
+    });
+    const f = fetcher({ onSessionEnded });
+    const both = Promise.all([get(f, '1'), get(f, '2')]);
+    await vi.waitFor(() => expect(onSessionEnded).toHaveBeenCalledTimes(2));
+    expect(onSessionEnded.mock.calls.map(([reason]) => reason).sort()).toEqual([
+      'refresh_refused',
+      'token_invalid',
+    ]);
+    browserToken = api.token;
+    resumed!();
+    expect((await both).map((result) => result.data.id)).toEqual(['1', '2']);
+    expect(api.refreshes).toBe(1);
   });
 
   it('never refreshes for a session door, whose 401 speaks of its own token', async () => {
