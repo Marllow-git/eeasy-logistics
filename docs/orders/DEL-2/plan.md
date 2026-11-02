@@ -106,6 +106,7 @@ CSV import (DEL-3); offers, assignment, capacity and the dispatch stream (DEL-6)
 | F | see `git log` (`DEL-2: F …`) | docs and memories only: Prettier on data.md, domain-model.md, the plan and the memories clean; no new tests | memories `core`, `api/core` |
 | R1-1 | `DEL-2: R1-1 …` | `orders-locating.http.test.ts` 2 red (the geocoder ran in the tenant context: `[true ×6]`, `[true]`) → 2 green; `chain-geocoder` +1 (caller's deadline); orders and geocoding unit 161 green; `orders`, `orders-read`, `orders-transitions` with the new file 19 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #20 |
 | R1-2 | `DEL-2: R1-2 …` | `orders-locating.http.test.ts` budget cases 2 red (a third lookup past a budget of 2; a lookup for an unchanged address) → 4 green; unit `intake` +2, `order-updates` +2, `rate-limiter` +1 (orders, rate-limit, geocoding 179 green); orders suites and `rate-limit.http` 27 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #21 |
+| R1-3 | `DEL-2: R1-3 …` | `orders-transitions.http.test.ts` 1 red (`assigned → accepted` answered 200) → 7 green; typecheck, lint, Prettier clean; ELX_RLS=on | 8.2 #22 |
 
 ### 8.1 Deviations
 

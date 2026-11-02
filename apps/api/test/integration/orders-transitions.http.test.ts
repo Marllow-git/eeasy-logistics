@@ -320,4 +320,22 @@ describe('order transitions over HTTP (DEL-2 item E)', () => {
     ).toBe('forbidden');
     await cancel(viewer, order.id, { reason_code: 'customer_request' }, '"1"').expect(403);
   });
+
+  it('never accepts an assigned order through the door: that arrow is DEL-6s (round 1, ruling 3)', async () => {
+    const { siteId, dispatcher } = await orderWorld(owner, staff);
+    const order = await createOrder(staff, dispatcher, orderBody(siteId));
+    await transition(dispatcher, order.id, { to_status: 'accepted' }, '"1"').expect(200);
+    await forceStatus(owner, order.id, 'assigned');
+    const refused = await transition(dispatcher, order.id, { to_status: 'accepted' }, '"3"').expect(
+      409,
+    );
+    expect(errorOf(refused.body)).toMatchObject({
+      code: 'invalid_transition',
+      details: { current_status: 'assigned', version: 3 },
+    });
+    expect((await eventsOf(order.id)).map((event) => event.to_status)).toEqual([
+      'pending',
+      'accepted',
+    ]);
+  });
 });

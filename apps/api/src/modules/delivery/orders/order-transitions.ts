@@ -32,6 +32,11 @@ export interface TransitionActor {
 export interface TransitionCommand {
   readonly to: OrderStatus;
   readonly actor: TransitionActor;
+  /**
+   * The statuses this door may move from, checked under the row lock on top of the machine (a
+   * door narrower than the actor's arrows: `transitionOrder`'s `accepted`, adversary round 1).
+   */
+  readonly from?: ReadonlySet<OrderStatus> | undefined;
   /** The `If-Match` version; a different current version is `409 version_conflict` (D-22). */
   readonly expectedVersion?: number | undefined;
   readonly reasonCode?: string | null | undefined;
@@ -69,7 +74,7 @@ export class OrderTransitions {
     if (current === undefined) throw new ApiException('not_found');
     if (command.expectedVersion !== undefined) assertVersion(current, command.expectedVersion);
     const verdict = transition(current.status, command.to, command.actor.role);
-    if (!verdict.allowed) {
+    if (!verdict.allowed || (command.from !== undefined && !command.from.has(current.status))) {
       throw new ApiException('invalid_transition', {
         details: { current_status: current.status, version: current.version },
       });
