@@ -41,6 +41,8 @@ Feature book (A-28): the decision rows of §1.6 (ADR-A to ADR-G, OPS-8, RES-1) a
 
 ## 1. Waves and orders
 
+**Phase order (owner ruling 2026-11-03, A-37): core and admin, then the merchant web, then the driver app.** The product is in development with no pilot running, so the user-facing apps wait. Core is every backend order (`PLAT`, `DEL`, `INT`, `WMS`, `BILL`, `PDPL`, `SEC`, `RPT`, `VEH`, `HUB`) and its contract; admin is `apps/admin` (WEB-12 and the console follow-ups in the ledger, plus the console screens each new backend door needs). The merchant and recipient web in `apps/web` (WEB-5 to WEB-11, WEB-13 to WEB-18, WEB-20) waits until core and admin are complete; the WEB-6 plan stays merged and registers first on resume. Until then each backend order proves its contract without a screen: the contract tests of PLAT-15 for every door it adds, and one API scenario test that walks the order's main flow through the generated client.
+
 **Driver app deferred (owner ruling 2026-11-03, A-36).** Every `DRV` order (DRV-1 to DRV-12, in any wave) waits until the web and admin work is complete; the waves' web, admin and backend orders go first. The backend doors the app will call (DEL-4, DEL-5, DEL-7 and the rest) are still built in their waves, because the board, the cash desk and the console read them, and their contracts stay the app's seam. DRV-1's leg 1 (draft PR #147) is parked, not closed; its Expo patch-train exemption and plan are revisited on resume. The wave exit boxes that need the app move to the driver app phase (§2).
 
 ### 1.1 Wave 0 · Foundation
@@ -379,18 +381,18 @@ Each criterion is checked on staging by the owner unless it says CI. A wave exit
 - [ ] ADR-0026, 0027, 0029, 0031, 0032, 0033, 0036 and 0037 are accepted or replaced.
 
 **Wave 1.**
-- [ ] UAT-2: the UAT-1 operator script run on this product (`docs/orders/OPS-4/uat-2.md`), every step PASS, including own-fleet coverage (field steps in the driver app phase, A-36).
+- [ ] UAT-2: the UAT-1 operator script run on this product (`docs/orders/OPS-4/uat-2.md`), every step PASS, including own-fleet coverage (staff and recipient steps in the web phase, A-37; field steps in the driver app phase, A-36).
 - [ ] (driver app phase, A-36) A delivery with split COD recorded with the phone offline replays after reconnection with one collection on the ledger and no duplicate event (D-15).
 - [ ] RLS is enabled on every operational table (PLAT-16) and the full suite is green.
 - [ ] (driver app phase, A-36) Maestro flows green in `ar` and `en` on Android in CI and on iOS nightly; a `preview` build is with the pilot drivers.
-- [ ] The tracking page meets the doc 7 §10.2 budget; the recipient sees the driver move while `out_for_delivery`.
+- [ ] (web phase, A-37) The tracking page meets the doc 7 §10.2 budget; the recipient sees the driver move while `out_for_delivery`.
 - [ ] The wave 1 templates are in the product's template catalogue in both languages and send through the engine (ADR-0041).
 - [ ] PDPL-1: records of processing, retention schedule and the breach runbook are in place.
 
 **Wave 2.**
 - [ ] A cash day run through the OPS-5 script closes at every site with zero unexplained deficit, and the nightly cash assertions are green.
 - [ ] A driver's run is sequenced by VROOM (rung 1) and the app follows it; with VROOM and Hudhud stubbed down, the fallbacks are taken and labelled.
-- [ ] A recipient reschedules and pins an address from WhatsApp links in both languages.
+- [ ] (web phase, A-37) A recipient reschedules and pins an address from WhatsApp links in both languages.
 
 **Wave 3.**
 - [ ] On staging: receive stock with a lot and a serial product, put away, pick, pack and hand over to the own-fleet card, which creates a Delivery order that is delivered.
@@ -418,11 +420,11 @@ At the eeasynew cadence (foundation plan §6): wave 0 two to three weeks, wave 1
 
 Wave 1 is 26 with PDPL-1. The feature book adds 58 rows; waves 2 and 3 as sized cannot hold them, so they sit in 2b and 3b until the owner keeps or cuts them (Q-66); each "no" on Q-52 to Q-56 or Q-65 removes whole groups.
 
-**Critical path.** PLAT-1 → PLAT-2 → PLAT-5 → PLAT-6 → PLAT-11 (waits on PLAT-9 and the WhatsApp provider, Q-27) → PLAT-12 → PLAT-13 → WEB-4 → wave 0 exit → DEL-1 → DEL-2 → DEL-6 → DEL-7 → WEB-7 → OPS-4 (UAT-2, staff and recipient steps) → DEL-11 → DEL-12 → wave 2 exit; with the driver app deferred (A-36), DRV-4 → DRV-5 → the UAT-2 field steps run on resume. The WMS path is WMS-1 → WMS-2 → WMS-19 → WMS-3 → WMS-6 → WMS-7. No other feature book row sits on either path.
+**Critical path.** PLAT-1 → PLAT-2 → PLAT-5 → PLAT-6 → PLAT-11 (waits on PLAT-9 and the WhatsApp provider, Q-27) → PLAT-12 → PLAT-13 → WEB-4 → wave 0 exit → DEL-1 → DEL-2 → DEL-6 → DEL-7 → DEL-11 → DEL-12 → core exit; then the web phase (WEB-5 → WEB-7, A-37) and the driver app phase (DRV-4 → DRV-5, A-36) before OPS-4 (UAT-2). The WMS path is WMS-1 → WMS-2 → WMS-19 → WMS-3 → WMS-6 → WMS-7. No other feature book row sits on either path.
 
 **What can overlap.**
 - Wave 0: PLAT-4, PLAT-15 and WEB-1 run beside the database chain; OPS-1 runs from day one once the provider is chosen.
-- Wave 1: the DRV orders are deferred (A-36); WEB-5 to WEB-8 follow their backend orders by one order; OPS-3 starts in wave 0 because store review and the background-location declaration take weeks.
+- Wave 1: the DRV orders are deferred (A-36); the merchant web waits for core and admin (A-37); OPS-3 starts in wave 0 because store review and the background-location declaration take weeks.
 - Wave 2 and 3: two backend executors; WMS-1 to WMS-3 have no dependency on wave 2.
 - Integrations whose external answer is pending (INT-2, INT-5, INT-8, INT-11) build against stubs and fixtures (doc 9 §9) and switch on when the contract is signed.
 
@@ -564,10 +566,12 @@ Small changes other documents need; none is made by this roadmap. The ones that 
 | A-34 | ADR-0007, ADR-0011 | Verify the Logestechs COD chain citation and the "no WMS" statement against current public pages. | researcher | open |
 | A-35 | doc 5 §13.2; Q-38 | Regulated and tax records outlive the 90-day deletion (Q-67). | PDPL-1 | open |
 | A-36 | roadmap §0, §1, §2, §3, §6 | Owner ruling 2026-11-03: the driver app (every DRV order) is deferred until web and admin are complete; DRV-1 parked on draft PR #147; app-dependent exit boxes move to the driver app phase; the critical path runs through the web and admin orders. | docs PR (this amendment) | done 2026-11-03 |
+| A-37 | roadmap §1, §2, §3, §6 | Owner ruling 2026-11-03: phase order core and admin, then merchant and recipient web, then driver app; `apps/web` orders deferred; each backend order proves its contract with contract tests and an API scenario test through the generated client; web-dependent exit boxes move to the web phase. | docs PR (this amendment) | done 2026-11-03 |
 
 ## 6. Deferred and out of scope
 
 - **Login-gated censuses** (Logestechs admin, OTO Flex, Bolesa 2 re-audit): skipped by owner ruling 2026-10-31 (ARCH-1 plan §6); they stay owed in the reference index and need a login before any order can run them.
+- **Merchant and recipient web** (owner ruling 2026-11-03, A-37): `apps/web` orders resume after core and admin are complete; `apps/admin` is not deferred.
 - **Driver app** (owner ruling 2026-11-03, A-36): DRV-1 to DRV-12 resume after the web and admin work is complete; UAT-2 runs its staff and recipient steps first and its field steps on resume.
 - **Executor-fleet seam**: nothing is built on it (ADR-0005, AGENTS.md).
 - **Digital COD**: `PaymentPort` stays unimplemented until the owner unlocks ADR-0017 (doc 9 §2.9).
