@@ -312,6 +312,11 @@ Runs after wave 2's core rows it depends on; whether it stays a sub-wave or is c
 
 | Id | Title | Delivers | Bound by | Depends on | Role | Adv. |
 |---|---|---|---|---|---|---|
+| SRCH-1 | Global search and command index (comfort, early in slice 1) | Account-scoped search over orders, recipients, drivers, stops, SKUs and sites with number, phone and Arabic normalisation; the action registry behind a command palette (RES-2 C-1 to C-5, C-54). | RES-2 | PLAT-6, PLAT-10, DEL-2 | backend | yes |
+| PREF-1 | Saved views and preferences (comfort, early in slice 1) | `saved_views` and `user_preferences`: named list queries with columns, sort and page size; recents, pins, last site; account defaults (RES-2 C-6, C-12, C-55, C-92, C-93, C-95). | RES-2 | PLAT-10, PLAT-12 | backend | yes |
+| BULK-1 | Bulk action contract (comfort, before the next list doors) | One pattern for every bulk change: filter snapshot with expected count, per-row results, per-row version check, idempotency key, retry of failed rows (RES-2 C-15, C-17, C-37, C-38); DEL-20 and later bulk doors use it. | RES-2; doc 3 §3, §4 | DEL-2, PLAT-8 | backend | no |
+| TPL-1 | Templates, address book and import mappings | Order templates, recipient address book, saved import mappings with scheduled repeat, the import preview and undo contract (RES-2 C-23, C-24, C-26, C-27, C-29, C-39). | RES-2 | DEL-3, DEL-14 | backend | yes |
+| PRINT-1 | Print jobs and documents | One print-job door producing signed PDFs for labels, slips, pick lists, run sheets and proof of delivery, with reprint counts and audit (RES-2 C-20, C-64 to C-66). | RES-2 | INT-1, PLAT-7 | backend | no |
 | DEL-19 | Intake hardening | COD rules at intake, address prompts, delivery instructions on DEL-14's tokens. | book ch. 01 | DEL-2, DEL-14 | backend | yes |
 | DEL-20 | Own-fleet labels and bulk actions | `getOrderLabel`, the label layout with a scannable parcel id, bulk actions with per-row results. | doc 3 `getOrderLabel`; book ch. 01, 11 | DEL-2 | backend | no |
 | DEL-21 | Notification centre and dispatcher alerts | Staff notification centre, dispatcher alerts with escalation, the `cash_block_notice` (from INT-7). | book ch. 04, 14 | DEL-6, DEL-11, Q-58 | backend | no |
@@ -421,7 +426,7 @@ At the eeasynew cadence (foundation plan §6): wave 0 two to three weeks, wave 1
 | 0 | 2 to 3 | 21 | 3 | 3 |
 | 1 | 6 to 8 | 25 | 11 | 11 |
 | 2 | 4 | 16 | 15 | 15 |
-| 2b | after Q-66 | 19 | – | – |
+| 2b | after Q-66 | 24 (with the five RES-2 rows) | – | – |
 | 3 | 6 | 13 (with WMS-19) | 21 | about 17 (starts at week 10, when wave 1 enters UAT) |
 | 3b | after Q-66 | 12 | – | – |
 | 4 | open | 12 + 17 (§1.9) | – | – |
@@ -512,6 +517,7 @@ Owner delegation 2026-10-31: every proposed default stands provisionally and is 
 | Q-65 | book index §1.10; ch. 01 | Dangerous goods and cold chain in scope | no | 3 | default (provisional) |
 | Q-66 | book ch. 15 §2 | Keep the feature book rows as waves 2b and 3b, or cut by ruling | keep as 2b and 3b, sized after the rulings above | 2 | ruled 2026-11-03: keep every row; the owner wants full breadth, the smallest conveniences included (A-38). Scope questions Q-52 to Q-56 and Q-65 still need their own yes or no |
 | Q-67 | book index §2; ch. 09, 12 | Retention conflicts with Q-38: SFDA GSDP records (shelf life plus one year) and tax records survive closed-account deletion | keep regulated records for their legal term; delete the rest at 90 days (A-35) | 1 | default (provisional) |
+| Q-68 | RES-2 C-76 | Show the Hijri date beside the Gregorian one? AGENTS.md says Gregorian dates only | no: Gregorian only, as AGENTS.md; a change needs an AGENTS.md and ADR-0016 amendment | 2 | default (provisional) |
 
 Proposed ADRs and the wave by which each must be accepted (or replaced):
 
@@ -577,6 +583,7 @@ Small changes other documents need; none is made by this roadmap. The ones that 
 | A-36 | roadmap §0, §1, §2, §3, §6 | Owner ruling 2026-11-03: the driver app (every DRV order) is deferred until web and admin are complete; DRV-1 parked on draft PR #147; app-dependent exit boxes move to the driver app phase; the critical path runs through the web and admin orders. | docs PR (this amendment) | done 2026-11-03 |
 | A-37 | roadmap §1, §2, §3, §6 | Owner ruling 2026-11-03: phase order core and admin, then merchant and recipient web, then driver app, so the UIs are built once against a settled backend; a contract freeze gate before each UI phase; `apps/web` orders deferred; each backend order proves its contract with contract tests and an API scenario test through the generated client; web-dependent exit boxes move to the web phase. | docs PR (this amendment) | done 2026-11-03 |
 | A-38 | roadmap §1, §4; handbook 04 | Owner direction 2026-11-03: the platform covers every feature, the smallest conveniences included, so the merchant runs every operation at their fingertips and enjoys it. Every backend order with a staff or recipient surface carries a plan §2b merchant comfort and screen map (handbook 04); RES-2 builds the catalogue; Q-66 ruled keep; A-37's gate runs per slice. | docs PR (this amendment); RES-2 | done 2026-11-03 (docs); RES-2 owed |
+| A-39 | roadmap §1.7, §4; handbook 04 | RES-2 adopted (`docs/research/merchant-comfort-2026-11.md`, 96 items): rows SRCH-1, PREF-1, BULK-1 (early in slice 1, so later list and bulk doors are built on them), TPL-1, PRINT-1; comfort items added to DEL-21 (per-user alert settings, digest, quiet hours), RPT-1 (export, schedule and delta contract), DEL-17 (KPI drill-through) and DEL-7 (proof PDF) when their plans are written; the note's §2 fifteen questions are the plan §2b checklist; Q-68 Hijri dates. The note's dependencies on WEB-1 and WEB-5 are dropped (A-37). | docs PR (this amendment) | done 2026-11-03 |
 
 ## 6. Deferred and out of scope
 
