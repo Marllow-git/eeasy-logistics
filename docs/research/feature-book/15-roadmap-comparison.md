@@ -1,5 +1,7 @@
 # Feature book against the roadmap · 2026-11-02
 
+**Folded into `docs/roadmap.md` on 2026-11-03 (amendment A-28).** The roadmap is now the authority; this note stays as the record of the comparison.
+
 How `docs/roadmap.md` (as merged at 6ca087e) holds up against the fourteen feature-book chapters. Counts come from the chapters' feature indexes (283 feature rows): **91 covered by a roadmap row as written, 100 partial (a row exists but the shape or scope changes), 92 missing (no row)**. By module the picture is uneven: the driver field loop and the platform console are mostly covered; hubs (9 of 10 missing), WMS inbound (none fully covered), compliance and alerts (13 of 30 missing) and returns (6 of 15 missing) are the thin areas.
 
 ## 1. Wave by wave: what the book changes in each roadmap row
