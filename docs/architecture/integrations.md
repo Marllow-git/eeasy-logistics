@@ -73,15 +73,15 @@ Columns are the same for every port. "Wave" is the first wave that needs a worki
 |---|---|
 | Methods | `sendTemplate({to E.164, template_key, locale ar\|en, params, idempotency_key}) → {provider_message_id}`; `listTemplates() → [{key, locale, status, category}]`; status callbacks and replies arrive inbound (§3) |
 | Owner | kernel: driver and staff OTP (document 4 §3) and Delivery's recipient messages both send through it |
-| Adapters | one WhatsApp Business provider adapter, for the provider eeasynew already uses (owner ruling 2026-11-01, Q-27; which provider is **to confirm** with eeasynew); SMS is a named second adapter with no implementation before wave 3 (ADR-0037) |
+| Adapters | `EngineMessageSender` on this product's own deployment of the Eeasy `whatsapp-engine` (ADR-0041, amended 2026-11-03, roadmap A-29): `message.send.verification` for OTP, `message.send.text` for the rest; an admin-linked platform number for OTP and platform messages, merchant-linked numbers for merchant messages; SMS is a named second adapter with no implementation before wave 3 (ADR-0037) |
 | Kind | outbox, kind `message` |
 | Timeout | 5 s |
 | Retry | §4.2 |
-| Idempotency | the outbox row id, sent as the provider's client reference where supported; a resend after a timeout checks the reference first when the provider allows lookup (**to confirm** per provider) |
-| Breaker and degraded | breaker per provider; while open, OTP requests return `503 messaging_unavailable` at the door (document 4 §3.2 budgets still apply) and recipient messages wait in the queue; platform §3 `MESSAGING_DISABLED=true` stops sends and marks rows `superseded` with reason `disabled` |
+| Idempotency | the outbox row id, sent as the engine's `eeasy_message_id` and idempotency key; a resend after a timeout checks `message.status` first |
+| Breaker and degraded | breaker per engine instance; while open, OTP requests return `503 messaging_unavailable` at the door (document 4 §3.2 budgets still apply) and recipient messages wait in the queue; platform §3 `MESSAGING_DISABLED=true` stops sends and marks rows `superseded` with reason `disabled` |
 | Stub | `whatsapp-stub` (platform §2): records sends, exposes the last OTP per phone to tests |
-| Credentials | provider token and webhook secret, platform secrets, **issued for this product only** (a system user or API key scoped to this product's number), never eeasynew's token; templates are platform-level, one set for all accounts |
-| Wave | 0 (OTP template), 1 (recipient templates) |
+| Credentials | the engine command and callback secret pair and service identity of this product's deployment, platform secrets, never eeasynew's; templates are platform-level text in `packages/i18n`, one set for all accounts |
+| Wave | 0 (OTP), 1 (recipient templates); merchant-linked numbers by a later order (ADR-0041) |
 
 ### 2.5 `PushSender` (Delivery)
 
@@ -191,7 +191,7 @@ Raw payloads hold recipient PII: retained 30 days, then the body is deleted and 
 | Salla | `/hooks/salla` | an app-level webhook URL; a signature header computed as HMAC-SHA256 of the body with the app's webhook secret when the app chooses the signature strategy (header names `X-Salla-Signature` and `X-Salla-Security-Strategy`; **to confirm** on the partner portal); store events carry the merchant (store) id; app events (`app.store.authorize`, `app.uninstalled`) arrive on the same URL | signature strategy is required for our app; verify HMAC with the app secret; no timestamp in the signature (**to confirm**), so step 4 is skipped and step 5 dedupes on the event id plus body hash |
 | Zid | `/hooks/zid/{connection_id}` | webhooks registered per store through the Zid API with an event and target URL; no body signature is documented (**to confirm**) | the path carries the connection id, and the per-connection random secret is sent as the Basic Auth password Zid supports at registration (`username` and `password` fields, confirmed 2026-10-31, `docs/research/provider-facts-2026-10.md`); it is compared in constant time and redacted from logs; then the consumer re-fetches the order with `fetchOrder` before acting (verify by fetch), so a forged call can at most trigger a read |
 | Eeasy shipping | `/hooks/eeasy-shipping` | signed webhooks are a listed need of eeasynew #885 (foundation plan §5); the scheme is not yet defined | we ask #885 to adopt the ADR-0040 scheme unchanged (Standard Webhooks v1: `webhook-id`, `webhook-timestamp`, `webhook-signature: v1,` HMAC-SHA256 over `"<id>.<timestamp>.<raw body>"`, per-account `whsec_` secret, 300 s window); until then **to confirm** |
-| WhatsApp provider | `/hooks/whatsapp` | message status (sent, delivered, read, failed) and inbound replies; Meta Cloud API signs with `X-Hub-Signature-256` (HMAC-SHA256 with the app secret); business solution providers use their own schemes (**to confirm** with the chosen provider) | provider scheme; statuses update the message log; an opt-out reply updates the opt-out list (§5.5) |
+| WhatsApp engine | `/hooks/whatsapp` | `message.status`, `suppression.changed`, `connection.event` (ADR-0041) | the engine's signed envelope (`X-Eeasy-*` headers, nonce, body hash, HMAC v1), answered `200 {"ok":true}`; statuses update the message log; `suppression.changed` updates the opt-out list (§5.5); `needs_relink` and `banned` raise PLAT-14 alerts |
 | Expo push | none | Expo exposes receipts by polling, not webhooks | not applicable (§2.5) |
 
 ### 3.3 Replay tooling for platform staff
@@ -264,10 +264,10 @@ Every template exists in Arabic and English (ADR-0016) and is chosen by the reci
 
 | Wave | Template key | Category | Recipient | Triggered by | Parameters |
 |---|---|---|---|---|---|
-| 0 | `auth_otp` | authentication (copy-code button) | staff second factor and drivers | document 4 §3 | code, encrypted with the credentials key on the outbox row, which is deleted one hour after sending (data §5.2, §10) (amended 2026-10-31, roadmap A-5) |
+| 0 | `auth_otp` | verification (`message.send.verification`) | staff second factor and drivers | document 4 §3 | code, encrypted with the credentials key on the outbox row, which is deleted one hour after sending (data §5.2, §10) (amended 2026-10-31, roadmap A-5) |
 | 1 | `driver_invitation` | utility (engine type `shipment_issued`, deferrable) | a driver a dispatcher created, from the account's own sender | `createDriver` (DEL-4 plan 2.3; amended 2026-11-02, roadmap A-26) | account name (at most 80 characters, from provisioning), app link (`DRIVER_APP_URL`, a placeholder landing until DRV-6 names the store listing) |
 | 1 | `order_assigned` | utility | recipient | `delivery.order.assigned` | merchant name, order number |
-| 1 | `order_out_for_delivery` | utility | recipient | `delivery.order.out_for_delivery` | merchant name, driver first name, ETA window, tracking link (purpose `track`) |
+| 1 | `order_out_for_delivery` | utility | recipient | `delivery.order.out_for_delivery` | merchant name, driver first name, tracking link (purpose `track`); the ETA window only once INT-6 produces one |
 | 1 | `order_attempted` | utility | recipient | `delivery.order.attempted` | merchant name, reason (localised label), reschedule link from wave 2 |
 | 1 | `order_delivered` | utility | recipient | `delivery.order.delivered` | merchant name, order number, COD amount if any |
 | 2 | `reschedule_request` | utility | recipient | a dispatcher action or `delivery.order.attempted` | reschedule link (48 h, document 4 §3.5) |
@@ -275,11 +275,11 @@ Every template exists in Arabic and English (ADR-0016) and is chosen by the reci
 | 2 | `order_rescheduled` | utility | recipient | `delivery.order.rescheduled` | new slot |
 | 2 | `cash_block_notice` | utility | the driver's home-site dispatchers who opted in | `delivery.driver.cash_blocked` | driver first name, held amount, since |
 
-Each account chooses which recipient templates are on (default: out for delivery, attempted, delivered). Merchant branding beyond the merchant's name in the text is not available: templates are platform-level, approved once.
+Each account chooses which recipient templates are on (default: out for delivery, attempted, delivered). Merchant branding beyond the merchant's name in the text is not available: templates are platform-level text (WEB-20 and Q-62 decide branding later).
 
-### 5.2 Approval
+### 5.2 Templates without Meta approval
 
-Templates are submitted under the Eeasy business that eeasynew already verified with Meta, on **this product's own phone number** and display name (owner ruling 2026-11-01, Q-27), so business verification is not repeated and the two products do not share a number's quality rating. Preferred: a separate WhatsApp Business account under that verified business, which keeps our template namespace apart. If the provider puts the new number in eeasynew's WhatsApp Business account instead, every template name carries the `elx_` prefix so the shared namespace cannot collide. Whether Meta's messaging limits are counted per number or per business is **to confirm** with the provider. Meta states review takes up to 24 hours (confirmed 2026-10-31, `docs/research/provider-facts-2026-10.md`); re-categorisation of a utility template as marketing is not stated publicly (**to confirm** current policy with the provider). Rule: submit a wave's templates when its order starts and no later than three weeks before its exit; a wave does not exit on a template still pending. Template text lives in `packages/i18n` with the template key, so review comments change one file.
+Amended 2026-11-03 (roadmap A-29, ADR-0041): messages go through the engine as text rendered by the kernel from bilingual templates in `packages/i18n`; there is no Meta submission, review or category. "Templates only" (ADR-0037) stays a product rule: parameters are never merchant free text. A wave exits when its templates are in the catalogue in both languages and send through the engine on staging. The risk moved from approval to the linked number: a ban or `needs_relink` stops OTP until relinked (ADR-0041 consequences; roadmap R-3).
 
 ### 5.3 SMS fallback
 
@@ -292,13 +292,13 @@ Not in waves 0 to 2 (ADR-0037). `MessageSender` keeps a second adapter slot; a r
 
 ### 5.5 Opt-out
 
-A recipient opts out by the template's quick-reply button or by replying a stop word (`STOP`, `إيقاف`, `الغاء`). The kernel stores `(account_id, phone)` in an opt-out list; later recipient messages for that pair are skipped (`done`, reason `opted_out`). Opt-out never blocks OTP for a driver or staff member, and the merchant sees "messages off" on the order. A reply of `START` or `اشتراك` reverses it. Provider-side blocks reported in status callbacks are treated the same way.
+A recipient opts out by replying a stop word (the union of ours and the engine's: `STOP`, `إيقاف`, `الغاء`); engine text has no quick-reply buttons, and the engine's `suppression.changed` callback is the inbound owner (ADR-0041). The kernel stores `(account_id, phone)` in an opt-out list; later recipient messages for that pair are skipped (`done`, reason `opted_out`). Opt-out never blocks OTP for a driver or staff member, and the merchant sees "messages off" on the order. A reply of `START`, `اشتراك` or `تشغيل` reverses it. Provider-side blocks reported in status callbacks are treated the same way.
 
 ### 5.6 Cost control per account
 
 - Account limit `messages_per_month` (document 2 §2.1 limits and usage counters), set by the provisioning door; the usage counter increments when a row is sent.
 - At 80 % the owner gets an in-app notice; at 100 % recipient messages are skipped with reason `budget` and the owner sees it; OTP is counted but never blocked.
-- Estimate at the first-customer profile (500 orders a day, three recipient messages per order on average): about 45,000 utility messages a month. Meta's per-message price for Saudi utility templates is in the order of USD 0.01 before any provider margin (**estimate, to confirm** with the chosen provider), so about USD 450 to 700 a month; this number belongs in the D6 pricing decision (foundation plan §8).
+- Estimate at the first-customer profile (500 orders a day, three recipient messages per order on average): about 45,000 utility messages a month. The engine has no per-message charge (ADR-0041); the cost is hosting and the number's ban risk. The default `messages_per_month` of 3,000 lasts about two days at this profile and is revisited by INT-3 (roadmap A-28).
 
 ## 6. Geo and routing
 
@@ -487,7 +487,7 @@ Rules:
 
 ## 12. Open questions for the owner
 
-1. **WhatsApp provider.** Ruled 2026-11-01 (Q-27): reuse the WhatsApp setup eeasynew already runs (its verified Meta business and its provider), with a new phone number and our own credentials for this product (§2.4, §5.2). Open: which provider that is (Meta Cloud API direct or a business solution provider), to confirm with eeasynew before PLAT-9 builds its adapter.
+1. **WhatsApp provider.** Ruled 2026-11-01 (Q-27), then superseded the same day by ADR-0041: messages go through this product's own deployment of the Eeasy `whatsapp-engine` (§2.4, §5.2); the four ADR-0041 defaults await the owner.
 2. **Hudhud contract.** Who signs the B2B agreement, the quota, the price per geocode and per matrix element, and whether National Address short-code lookup is included or needs the SPL API. Needed before wave 1 (geocoding at intake).
 3. **eeasynew #885 timeline.** Accept the 2027-01-15 go or no-go date for carrier fulfilment in wave 3 (§7.7), and the request that Eeasy shipping signs its webhooks with the ADR-0040 scheme.
 4. **Second partner apps.** Register new Salla and Zid partner apps for this product (proposed), which on Salla may need a second partner account; or reuse eeasynew's apps, which couples the two products' review cycles and tokens.

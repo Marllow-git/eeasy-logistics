@@ -1154,7 +1154,7 @@ components:
       required: [site_id, source]
       properties:
         site_id: {type: string, format: uuid}
-        source: {type: string, enum: [carrier_return, walk_in]}
+        source: {type: string, enum: [delivery_return, carrier_return, walk_in]}
         source_ref: {type: string}
         lines: {type: array, items: {$ref: '#/components/schemas/StockRef'}}
     ReceiveReturnRequest:
