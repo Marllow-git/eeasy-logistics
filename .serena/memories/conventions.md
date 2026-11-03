@@ -20,4 +20,5 @@
 - Executors never answer owner questions (roadmap §4 Q-*): build on the default, record interpretation in §8.2.
 - Release note `docs/release-notes/YYYY-MM-DD-<slug>.md` in Arabic for any user-visible change.
 - ADRs: supersede, never edit; plan files and PRs cite ADR numbers.
+- Plan files: every backend order adding or changing a staff or recipient door carries §2b merchant comfort and screen map (handbook 04, roadmap A-38).
 - Docs index updated in the same PR (`docs/README.md`, `adr/README.md`).
